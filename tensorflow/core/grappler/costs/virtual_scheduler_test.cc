@@ -775,14 +775,15 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto z = ops::RandomUniform(s.WithOpName("z"), {10, 10, 10, 10}, DT_FLOAT);
     auto w = ops::RandomUniform(s.WithOpName("w"), {10, 10, 10, 10}, DT_FLOAT);
     OutputList input_tensors = {x, y, z, w};
-    auto out = ops::AddN(s.WithOpName("out"), input_tensors);
+    auto add = ops::AddN(s.WithOpName("add"), input_tensors);
+    auto out = ops::Identity(s.WithOpName("out"), add);
 
     grappler_item_ = absl::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_addn_graph";
     grappler_item_->fetch = {"out"};
 
-    dependency_["out"] = {"x", "y", "z", "w"};
+    dependency_["out"] = {"x", "y", "z", "w", "add"};
   }
 
   // Graph with some placeholder feed nodes that are not in the fetch fan-in.
@@ -926,11 +927,29 @@ node {
     }
   }
   attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
     key: "value"
     value {
       tensor {
         dtype: DT_FLOAT
         tensor_shape {
+          dim { size: 128 }
+          dim { size: 32 }
         }
         float_val: 3.1415
       }
@@ -947,6 +966,22 @@ node {
     value {
       type: DT_FLOAT
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "client_terminated"
@@ -988,6 +1023,22 @@ node {
     value {
       b: false
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "recv_device"
@@ -2209,7 +2260,7 @@ versions {
   // Returns cost based on op.
   Costs SimplePredictCosts(const OpContext& op_context) const {
     Costs c;
-    int64 exec_cost = 0;
+    int64_t exec_cost = 0;
     if (op_context.op_info.op() == "MatMul") {
       exec_cost = 2000000000;
     } else if (op_context.op_info.op() == "RandomUniform") {
@@ -2317,11 +2368,11 @@ versions {
 
   // Helper method for checking nodes dependency.
   void ValidateDependencyChain(
-      const std::unordered_map<string, int64>& start_times,
+      const std::unordered_map<string, int64_t>& start_times,
       const std::vector<string>& nodes_in_dependency_order) {
-    int64 prev_node_time = -1;
+    int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
-      int64 curr_node_time = start_times.at(node);
+      int64_t curr_node_time = start_times.at(node);
       EXPECT_GE(curr_node_time, prev_node_time);
       prev_node_time = curr_node_time;
     }
@@ -2385,12 +2436,13 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   EXPECT_EQ(1, stepstats.dev_stats().size());
 
   // Create a map of op name -> start and end times (micros).
-  std::map<string, std::pair<int64, int64>> start_end_times;
+  std::map<string, std::pair<int64_t, int64_t>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
-      int64 start = stats.all_start_micros();
-      int64 end = start + stats.all_end_rel_micros();
-      start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
+      int64_t start = stats.all_start_micros();
+      int64_t end = start + stats.all_end_rel_micros();
+      start_end_times[stats.node_name()] =
+          std::pair<int64_t, int64_t>(start, end);
 
       // Make sure that the output properties are correct for
       // MatMul and RandomUniform operations.
@@ -2411,16 +2463,16 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64 cur_time = static_cast<int64>(5000005);
+  int64_t cur_time = static_cast<int64_t>(5000005);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
-  int64 increment = static_cast<int64>(2000000);
+  int64_t increment = static_cast<int64_t>(2000000);
   auto op_names = {"ab", "abc", "abcd", "abcde"};
   for (const auto& op_name : op_names) {
-    int64 actual_start = start_end_times[op_name].first;
-    int64 actual_end = start_end_times[op_name].second;
-    int64 expected_start = cur_time;
-    int64 expected_end = cur_time + increment;
+    int64_t actual_start = start_end_times[op_name].first;
+    int64_t actual_end = start_end_times[op_name].second;
+    int64_t expected_start = cur_time;
+    int64_t expected_end = cur_time + increment;
     EXPECT_EQ(expected_start, actual_start);
     EXPECT_EQ(expected_end, actual_end);
     cur_time += increment;
@@ -2471,18 +2523,69 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
 
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
-  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> expected_names = {"x", "y", "z", "w"};
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+
+  // Total 10 nodes: Four const, x, y, z, w, add, out.
+  ASSERT_EQ(cpu_state.temporary_memory_usage_trace.size(), 10);
+  const std::pair<std::string, int64_t>& x_usage =
+      cpu_state.temporary_memory_usage_trace.at(4);
+  EXPECT_EQ(x_usage.first, "x");
+  EXPECT_EQ(x_usage.second, one_input_node_size);
+  const std::pair<std::string, int64_t>& add_usage =
+      cpu_state.temporary_memory_usage_trace.at(8);
+  EXPECT_EQ(add_usage.first, "add");
+  EXPECT_EQ(add_usage.second, 5 * one_input_node_size);
+  const std::pair<std::string, int64_t>& out_usage =
+      cpu_state.temporary_memory_usage_trace.at(9);
+  EXPECT_EQ(out_usage.first, "out");
+  EXPECT_EQ(out_usage.second, one_input_node_size);
   ExpectUnorderedMapEq(
       {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
       scheduler_->GetPersistentMemoryUsage());
   ExpectUnorderedMapEq(
-      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 160000)},
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 200000)},
       scheduler_->GetPeakMemoryUsage());
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Nodes add and out are placed on CPU1.
+  // Nodes x, y are allocate in memory, while Nodes z and w are streaming nodes.
+  for (auto& node : *graph.mutable_node()) {
+    if (node.name() == "out" || node.name() == "add") {
+      node.set_device(kCPU1);
+    }
+    if (node.name() == "z" || node.name() == "w")
+      (*node.mutable_attr())[kStreaming].mutable_list()->add_b(true);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  const auto& cpu_state_1 = device_states->at(kCPU1);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
+  const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
+  EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  EXPECT_EQ(cpu_1_expected_tensors.size() * one_input_node_size,
+            cpu_state_1.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
+  EXPECT_EQ(cpu_state_1.memory_usage, 0);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
@@ -2508,7 +2611,7 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
 
   // The graph has a NoOp that takes control dependency from 7 NoOps. The peak
   // memory usage is when executing the final NoOp.
-  int64 one_input_node_size = 4;  // control dependency
+  int64_t one_input_node_size = 4;  // control dependency
   const std::vector<string> expected_names = {"x", "y", "z", "w",
                                               "u", "v", "t"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
@@ -2542,7 +2645,7 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
   //  z4 = control dependency from bn.
   //  Note that bn.mean doesn't have any consumer.
   const int x_size = batch_size_ * width_ * height_ * depth_in_;
-  int64 expected_size =
+  int64_t expected_size =
       4 * (2 * x_size /* x and bn.y */ + depth_in_ /* bn.var */ +
            1 /* control dependency */);
   EXPECT_EQ(expected_size, cpu_state.memory_usage);
@@ -2641,12 +2744,12 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int num_next_iteration_1 = 0;
   int num_exit = 0;
   int num_exit_1 = 0;
-  int64 next_iter_start_micro;
-  int64 next_iter_1_start_micro;
-  int64 exit_start_micro;
-  int64 exit_1_start_micro;
+  int64_t next_iter_start_micro;
+  int64_t next_iter_1_start_micro;
+  int64_t exit_start_micro;
+  int64_t exit_1_start_micro;
 
-  std::unordered_map<string, int64> start_times;
+  std::unordered_map<string, int64_t> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       start_times[stats.node_name()] = stats.all_start_micros();
@@ -2895,9 +2998,10 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   // Same number of _Send and _Recv.
   EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at(kRecv), 4);
-  EXPECT_EQ(op_count.at(kSend), 4);
+  // Expect 3 Send and Recvs each: port 0, 1, and, 2.
+  // Control dependency bypasses the channel.
+  EXPECT_EQ(op_count.at(kRecv), 3);
+  EXPECT_EQ(op_count.at(kSend), 3);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {
@@ -2919,9 +3023,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
 
 TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {

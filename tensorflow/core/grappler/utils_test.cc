@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -199,8 +201,9 @@ TEST_F(UtilsTest, ExecuteWithTimeout) {
   notification.Notify();
 
   // This should run till the end.
-  ASSERT_TRUE(ExecuteWithTimeout([]() { sleep(1); }, 0 /* timeout_in_ms */,
-                                 thread_pool.get()));
+  ASSERT_TRUE(ExecuteWithTimeout(
+      []() { Env::Default()->SleepForMicroseconds(1000000); },
+      0 /* timeout_in_ms */, thread_pool.get()));
 
   // Deleting before local variables go off the stack.
   thread_pool.reset();
@@ -431,10 +434,12 @@ TEST(CheckAttrExists, All) {
 
   Status status = CheckAttrExists(node, "banana");
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.ToString(),
-            "Invalid argument: Node 'node' lacks 'banana' attr: name: \"node\" "
-            "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
-            "{ b: true } }");
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "Node 'node' lacks 'banana' attr: name: \"node\" "
+      "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
+      "{ b: true } }"));
   EXPECT_FALSE(CheckAttrsExist(node, {""}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"pear", "cherry"}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"banana", "apple"}).ok());

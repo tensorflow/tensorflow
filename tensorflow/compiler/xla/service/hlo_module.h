@@ -102,7 +102,8 @@ class HloModule {
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
   void ReplaceComputations(
-      const std::unordered_map<HloComputation*, HloComputation*>& replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
 
   const string& name() const { return name_; }
   void set_name(string name) { name_ = std::move(name); }
@@ -180,16 +181,16 @@ class HloModule {
   HloComputation* GetComputationWithName(absl::string_view name);
 
   // Gets the number of computations in this module.
-  int64 computation_count() const { return computations_.size(); }
+  int64_t computation_count() const { return computations_.size(); }
 
   // Returns the mutable computation for the given index.
-  HloComputation* mutable_computation(int64 idx) {
+  HloComputation* mutable_computation(int64_t idx) {
     CHECK(idx >= 0 && idx < computations_.size());
     return computations_[idx].get();
   }
 
   // Gets the number of instructions in this module.
-  int64 instruction_count() const;
+  int64_t instruction_count() const;
 
   // Deallocate removed instructions in each computation.
   void Cleanup() {
@@ -202,6 +203,11 @@ class HloModule {
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
+
+  // Same as MakeComputationPostOrder() but only returns the computations
+  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
@@ -221,8 +227,12 @@ class HloModule {
   // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
+  HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
+
+  bool is_dynamic() const { return is_dynamic_; }
+  void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
   // Return a string representation of the module.
   //
@@ -354,13 +364,13 @@ class HloModule {
   }
 
   // Add a program argument to be prefetched across programs.
-  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+  void AddCrossProgramPrefetch(int64_t parameter, const ShapeIndex& index) {
     cross_program_prefetches_.emplace_back(parameter, index);
   }
 
   // Get the list of program arguments to be prefetch across programs.
-  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
-      const {
+  const absl::Span<const std::pair<int64_t, ShapeIndex>>
+  CrossProgramPrefetches() const {
     return cross_program_prefetches_;
   }
 
@@ -423,10 +433,13 @@ class HloModule {
   absl::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
-  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
+  std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;
+
+  // True if the module contains dynamic computation.
+  bool is_dynamic_ = false;
 };
 
 }  // namespace xla

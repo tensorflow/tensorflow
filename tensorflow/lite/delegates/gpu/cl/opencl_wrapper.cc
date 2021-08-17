@@ -69,13 +69,7 @@ absl::Status LoadOpenCL() {
         error_code));
   }
 #else
-  void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
-  if (libopencl) {
-    LoadOpenCLFunctions(libopencl, false);
-    return absl::OkStatus();
-  }
-  // record error
-  std::string error(dlerror());
+  void* libopencl = nullptr;
 #ifdef __ANDROID__
   // Pixel phone or auto?
   libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
@@ -91,6 +85,19 @@ absl::Status LoadOpenCL() {
     return absl::OkStatus();
   }
 #endif
+#ifdef __APPLE__
+  static const char* kClLibName =
+      "/System/Library/Frameworks/OpenCL.framework/OpenCL";
+#else
+  static const char* kClLibName = "libOpenCL.so";
+#endif
+  libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
+  if (libopencl) {
+    LoadOpenCLFunctions(libopencl, false);
+    return absl::OkStatus();
+  }
+  // record error
+  std::string error(dlerror());
   return absl::UnknownError(
       absl::StrCat("Can not open OpenCL library on this device - ", error));
 #endif
@@ -225,6 +232,8 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
+
+  LoadQcomExtensionFunctions();
 }
 
 // No OpenCL support, do not set function addresses
@@ -344,6 +353,8 @@ PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+DEFINE_QCOM_FUNCTION_PTRS
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,

@@ -248,7 +248,7 @@ class PoolingTest(test.TestCase):
   def testPoolNC(self):
     if test.is_gpu_available(cuda_only=True):
       # "NC*" format is currently only supported on CUDA.
-      with self.session(use_gpu=True):
+      with self.session():
         for padding in ["SAME", "VALID"]:
           self._test(
               input_shape=[2, 2, 9],
@@ -274,9 +274,6 @@ class PoolingTest(test.TestCase):
               strides=[1, 2],
               dilation_rate=[1, 1],
               data_format="NCHW")
-          if test.is_built_with_rocm():
-            # Pooling with 3D tensors is not supported in ROCm
-            continue
           self._test(
               input_shape=[2, 2, 7, 5, 3],
               window_shape=[2, 2, 2],

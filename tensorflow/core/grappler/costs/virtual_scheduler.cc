@@ -41,6 +41,7 @@ const char kAttrSrcDevice[] = "send_device";
 const char kAttrDstDevice[] = "recv_device";
 const char kAttrTensorName[] = "tensor_name";
 const char kChannelDevice[] = "Channel";
+const char kStreaming[] = "_streaming";
 
 namespace {
 
@@ -94,9 +95,9 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
                                  DeviceState* device) {
   if (node->attr().count(kOutputShapes) == 0) return;
 
-  int64 execution_count = node->attr().count(kExecutionCount) == 0
-                              ? 1
-                              : node->attr().at(kExecutionCount).i();
+  int64_t execution_count = node->attr().count(kExecutionCount) == 0
+                                ? 1
+                                : node->attr().at(kExecutionCount).i();
 
   auto& shape_annotation_stats = device->shape_annotation_stats;
   shape_annotation_stats.num_ops_annotated += 1;
@@ -107,6 +108,17 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
       node_state.shape_incompatible ? 1 : 0;
   shape_annotation_stats.num_ops_with_dynamic_shapes +=
       (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
+}
+
+bool IsStreamingPort(const NodeDef& node, const int port) {
+  if (!node.attr().contains(kStreaming)) return false;
+
+  auto& attr_list = node.attr().at(kStreaming).list();
+  bool is_streaming_port = false;
+  if (port >= 0 && port < attr_list.b().size()) {
+    is_streaming_port = attr_list.b(port);
+  }
+  return is_streaming_port;
 }
 
 }  // namespace
@@ -156,7 +168,7 @@ Status HeapReadyManager::Init(
   // the same node_manager.
   node_map_ = node_map;
   nodes_.clear();
-  waiting_queue_.clear();
+  curr_node_ = nullptr;
 
   // Sets up the comparator for the heap.
   greater_ = Greater();
@@ -164,38 +176,44 @@ Status HeapReadyManager::Init(
   return Status::OK();
 }
 
+void HeapReadyManager::AddNode(const NodeDef* node) {
+  // push_heap in AddNode and pop_heap in RemoveCurrNode() guarantees that the
+  // first element is the node with minimum time_ready.
+  nodes_.push_back(node);
+  std::push_heap(nodes_.begin(), nodes_.end(), greater_);
+}
+
 const NodeDef* HeapReadyManager::GetCurrNode() {
+  if (curr_node_) return curr_node_;
   if (nodes_.empty()) {
-    // Nothing in the node_; probably, the very first call. Move waiting_queue_
-    // to node_.
-    DrainWaitingQueue();
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   }
-  return nodes_.front();
+  const std::string node_name = nodes_.front()->name();
+  // Next time we call GetCurrNode(), it just returns the cached copy
+  // curr_node_, until we call the RemoveCurrNode().
+  curr_node_ = nodes_.front();
+  // Remove current node from the heap immediately. Because if we wait until
+  // later, the heap could have gotten re-organized if AddNode is called. The
+  // current node is anyways cached, incase GetCurrNode() is called again.
+  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+  nodes_.pop_back();
+  return curr_node_;
 }
 
 void HeapReadyManager::RemoveCurrNode() {
-  if (nodes_.empty()) {
-    // Make sure that there is a node to be removed at the front of nodes_.
-    GetCurrNode();
+  if (curr_node_) {
+    // If cached copy exists, remove that.
+    // Reset curr_node_ so that GetCurrNode() finds another node.
+    curr_node_ = nullptr;
+  } else {
+    // If cached copy not present, then remove entry from the heap queue.
+    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
+    nodes_.pop_back();
   }
-  std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-  nodes_.pop_back();
-  DrainWaitingQueue();
 }
 
 bool HeapReadyManager::Empty() const {
-  return nodes_.empty() && waiting_queue_.empty();
-}
-
-void HeapReadyManager::DrainWaitingQueue() {
-  for (const auto* node : waiting_queue_) {
-    // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-    // the first element is the node with minimum time_ready.
-    nodes_.push_back(node);
-    std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-  }
-  waiting_queue_.clear();
+  return nodes_.empty() && curr_node_ == nullptr;
 }
 
 bool FirstReadyCmp(
@@ -480,7 +498,12 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 
-      if (curr_node_device == in_device) {
+      // Control dependencies should be treated as high priority. Current
+      // Channel device doesn't model a separate virual channel for control v/s
+      // data transfers. So in the interim, it may be okay to let control
+      // dependencies magically flow across devices bypassing the channel
+      // device.
+      if (curr_node_device == in_device || IsControlInput(input_node_name)) {
         // Same device: connect input_node and curr_node directly.
         curr_node_state.inputs.push_back(
             std::make_pair(input_node, input_node_port_num));
@@ -647,10 +670,12 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
 
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
+  bool control_input = false;
   if (input_node_port_num >= 0) {
     src_name = absl::StrCat(from->name(), "_", input_node_port_num);
   } else {
     src_name = absl::StrCat(from->name(), "_minus1");
+    control_input = true;
   }
 
   // _Send op.
@@ -684,6 +709,18 @@ std::pair<const NodeDef*, const NodeDef*> SchedulerState::CreateSendRecv(
   if (input_node->attr().count(kAttrTensorName)) {
     recv_attr[kAttrTensorName].set_s(
         input_node->attr().at(kAttrTensorName).s());
+  }
+
+  // Propagate the streaming attribute to the send/recv nodes.
+  if (from->attr().contains(kStreaming) && !control_input) {
+    if (input_node_port_num >= from->attr().at(kStreaming).list().b_size()) {
+      LOG(ERROR)
+          << from->name()
+          << " port index larger than length of _streaming attribute list.";
+    } else if (from->attr().at(kStreaming).list().b(input_node_port_num)) {
+      send_attr[kStreaming].mutable_list()->add_b(true);
+      recv_attr[kStreaming].mutable_list()->add_b(true);
+    }
   }
 
   // NodeState for _Send op.
@@ -828,7 +865,8 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -861,8 +899,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
@@ -888,13 +934,18 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
       int port_num = port_num_output_pair.first;
+
       // There's a chance that a specific output is not used at all.
       if (node_state.outputs[port_num].empty()) {
         node_state.time_no_references[port_num] = curr_time;
       } else {
-        device.memory_usage +=
-            CalculateOutputSize(node_state.output_properties, port_num) *
-            node_state.execution_count;
+        // Streaming outputs do not allocate memory, they are directly consumed
+        // by the target node.
+        if (!IsStreamingPort(*node, port_num)) {
+          device.memory_usage +=
+              CalculateOutputSize(node_state.output_properties, port_num) *
+              node_state.execution_count;
+        }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
     }
@@ -921,10 +972,30 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     GetOutputNodes(node, curr_time, &new_nodes);
   }
 
+  // When op is scheduled, both input and output tensors must be allocated in
+  // memory. Now that output memory is added, check max memory usage.
+  if (!IsPersistent(*node)) {
+    if (device.memory_usage > device.max_memory_usage) {
+      device.max_memory_usage = device.memory_usage;
+
+      if (track_mem_usage_snapshot_) {
+        device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
+      }
+    }
+  }
+
+  // Append the current temporary memory usage of the device to the memory usage
+  // trace.
+  if (track_mem_usage_snapshot_) {
+    device.temporary_memory_usage_trace.push_back(
+        {node->name(), device.memory_usage});
+  }
+
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {
     auto* input = input_port.first;
     auto port = input_port.second;
+
     auto& input_state = node_map_[input];
     input_state.num_outputs_executed[port]++;
     int input_state_outputs_size_ = input_state.outputs[port].size();
@@ -934,25 +1005,19 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // input node.
       input_state.time_no_references[port] = curr_time;
       auto& input_device = device_[input_state.device_name];
-      input_device.memory_usage -=
-          CalculateOutputSize(input_state.output_properties, port) *
-          node_state.execution_count;
+      // If the node input is marked as streaming, then it wasn't allocated
+      // in memory. A streaming input is still reference counted, but it doesn't
+      // de-allocate memory.
+      if (!IsStreamingPort(*input, port)) {
+        input_device.memory_usage -=
+            CalculateOutputSize(input_state.output_properties, port) *
+            node_state.execution_count;
+      }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
     }
   }
 
-  if (!IsPersistent(*node)) {
-    // Now that output memory is added and used up nodes are deallocated,
-    // check max memory usage.
-    if (device.memory_usage > device.max_memory_usage) {
-      device.max_memory_usage = device.memory_usage;
-
-      if (track_mem_usage_snapshot_) {
-        device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
-      }
-    }
-  }
   return new_nodes;
 }
 
@@ -1004,9 +1069,9 @@ Costs SchedulerState::Summary() const {
   for (const auto& name : device_names) {
     const auto& state = device_.at(name);
 
-    std::map<string, int64> op_to_memory;
+    std::map<string, int64_t> op_to_memory;
     // First profile only persistent memory usage.
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
@@ -1022,7 +1087,7 @@ Costs SchedulerState::Summary() const {
       op_to_memory[node->op()] += output_size;
       persistent_ops.insert(node->op());
     }
-    int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
+    int64_t max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
         max_memory_usage;
 
@@ -1086,7 +1151,7 @@ Costs SchedulerState::Summary() const {
         is_total_cost_accurate = false;
       }
 
-      int64 op_mem_usage = 0;
+      int64_t op_mem_usage = 0;
       auto it = op_to_memory.find(op);
       if (it != op_to_memory.end()) {
         op_mem_usage = it->second;
@@ -1215,7 +1280,7 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       auto* mem_stats = node_stats->mutable_memory_stats();
       // SchedulerState does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
-      int64 persistent_memory_size = 0;
+      int64_t persistent_memory_size = 0;
       if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
       }
@@ -1225,9 +1290,9 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
   }
 }
 
-const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
+const std::unordered_map<string, int64_t> SchedulerState::GetPeakMemoryUsage()
     const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
@@ -1236,13 +1301,13 @@ const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
   return result;
 }
 
-const std::unordered_map<string, int64>
+const std::unordered_map<string, int64_t>
 SchedulerState::GetPersistentMemoryUsage() const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
@@ -1306,11 +1371,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   auto new_nodes = scheduler_state_->MarkNodeExecuted(
       node, node_costs,
       scheduler_state_->CreateOpContext(ready_nodes_->GetCurrNode()));
-  ready_nodes_->RemoveCurrNode();
   // Add the set of new nodes obtained from MarkNodeExecuted() to ready_nodes_.
   for (auto node : new_nodes) {
     ready_nodes_->AddNode(node);
   }
+  ready_nodes_->RemoveCurrNode();
   return !ready_nodes_->Empty();
 }
 

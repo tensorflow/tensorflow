@@ -12,7 +12,7 @@ py_library(
         "astunparse/printer.py",
         "astunparse/unparser.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 genrule(

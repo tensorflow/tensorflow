@@ -89,6 +89,9 @@ class StripStringsTest(test_util.TensorFlowTestCase):
     # Validate the description
     self.assertIsNotNone(initial_model.description)
     self.assertIsNone(final_model.description)
+    self.assertIsNotNone(initial_model.signatureDefs)
+    self.assertIsNone(final_model.signatureDefs)
+
     # Validate the main subgraph's name, inputs, outputs, operators and tensors
     initial_subgraph = initial_model.subgraphs[0]
     final_subgraph = final_model.subgraphs[0]

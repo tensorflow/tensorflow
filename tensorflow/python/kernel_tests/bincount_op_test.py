@@ -20,8 +20,10 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -36,7 +38,7 @@ from tensorflow.python.platform import googletest
 class BincountTest(test_util.TensorFlowTestCase):
 
   def test_empty(self):
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(
           self.evaluate(bincount_ops.bincount([], minlength=5)),
           [0, 0, 0, 0, 0])
@@ -54,7 +56,7 @@ class BincountTest(test_util.TensorFlowTestCase):
           np.float64)
 
   def test_values(self):
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(
           self.evaluate(bincount_ops.bincount([1, 1, 1, 2, 2, 3])),
           [0, 3, 2, 1])
@@ -74,7 +76,7 @@ class BincountTest(test_util.TensorFlowTestCase):
           np.ones(10000))
 
   def test_maxlength(self):
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(
           self.evaluate(bincount_ops.bincount([5], maxlength=3)), [0, 0, 0])
       self.assertAllEqual(
@@ -84,7 +86,7 @@ class BincountTest(test_util.TensorFlowTestCase):
 
   def test_random_with_weights(self):
     num_samples = 10000
-    with self.session(use_gpu=True):
+    with self.session():
       np.random.seed(42)
       for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
         arr = np.random.randint(0, 1000, num_samples)
@@ -98,7 +100,7 @@ class BincountTest(test_util.TensorFlowTestCase):
 
   def test_random_without_weights(self):
     num_samples = 10000
-    with self.session(use_gpu=True):
+    with self.session():
       np.random.seed(42)
       for dtype in [np.int32, np.float32]:
         arr = np.random.randint(0, 1000, num_samples)
@@ -107,8 +109,23 @@ class BincountTest(test_util.TensorFlowTestCase):
             self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
 
+  def test_bincount_determinism_error(self):
+    num_samples = 10000
+    np.random.seed(42)
+    arr = np.random.randint(0, 1000, num_samples)
+    try:
+      config.enable_deterministic_ops(True)
+      with test_util.use_gpu():
+        if test_util.is_gpu_available(cuda_only=True):
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError, "Determinism is not yet "
+              "supported for Bincount."):
+            self.evaluate(bincount_ops.bincount(arr, None))
+    finally:
+      config.enable_deterministic_ops(False)
+
   def test_zero_weights(self):
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(
           self.evaluate(bincount_ops.bincount(np.arange(1000), np.zeros(1000))),
           np.zeros(1000))

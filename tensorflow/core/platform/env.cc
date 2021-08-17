@@ -140,6 +140,36 @@ Status Env::RegisterFileSystem(const std::string& scheme,
   return file_system_registry_->Register(scheme, std::move(filesystem));
 }
 
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<string>& values) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, values);
+}
+
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<int64_t>& values) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, values);
+}
+
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<double>& values) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, values);
+}
+
 Status Env::FlushFileSystemCaches() {
   std::vector<string> schemes;
   TF_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
@@ -287,8 +317,8 @@ Status Env::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return fs->HasAtomicMove(path, has_atomic_move);
 }
 
-Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
-                              int64* undeleted_dirs) {
+Status Env::DeleteRecursively(const string& dirname, int64_t* undeleted_files,
+                              int64_t* undeleted_dirs) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteRecursively(dirname, undeleted_files, undeleted_dirs);
@@ -394,12 +424,8 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-  int32 tid = GetCurrentThreadId();
-#ifdef PLATFORM_WINDOWS
-  int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-  int32 pid = static_cast<int32>(getpid());
-#endif
+  int32_t tid = GetCurrentThreadId();
+  int32_t pid = GetProcessId();
   long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
@@ -414,6 +440,14 @@ bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
   } else {
     return true;
   }
+}
+
+int32 Env::GetProcessId() {
+#ifdef PLATFORM_WINDOWS
+  return static_cast<int32>(GetCurrentProcessId());
+#else
+  return static_cast<int32>(getpid());
+#endif
 }
 
 Thread::~Thread() {}
@@ -525,7 +559,7 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
   static constexpr int kBufSize = 512 << 10;
 
   RandomAccessFile* file_;
-  int64 pos_;
+  int64_t pos_;
   Status status_;
   char scratch_[kBufSize];
 };

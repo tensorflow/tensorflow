@@ -292,7 +292,7 @@ def _compute_gradient_list(f, xs, delta):
 
 
 @tf_export("test.compute_gradient", v1=[])
-def compute_gradient(f, x, delta=1e-3):
+def compute_gradient(f, x, delta=None):
   """Computes the theoretical and numeric Jacobian of `f`.
 
   With y = f(x), computes the theoretical and numeric Jacobian dy/dx.
@@ -329,6 +329,12 @@ def compute_gradient(f, x, delta=1e-3):
     raise ValueError(
         "`x` must be a list or tuple of values convertible to a Tensor "
         "(arguments to `f`), not a %s" % type(x))
+  if delta is None:
+    # By default, we use a step size for the central finite difference
+    # approximation that is exactly representable as a binary floating
+    # point number, since this reduces the amount of noise due to rounding
+    # in the approximation of some functions.
+    delta = 1.0 / 1024
   return _compute_gradient_list(f, x, delta)
 
 

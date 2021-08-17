@@ -89,7 +89,7 @@ class ProcessFunctionLibraryRuntime {
   // takes references on each of the `tensors_to_send`. Method doesn't block.
   static Status SendTensors(const string& source_device,
                             const string& target_device,
-                            const string& key_prefix, int64 src_incarnation,
+                            const string& key_prefix, int64_t src_incarnation,
                             gtl::ArraySlice<Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
@@ -103,7 +103,7 @@ class ProcessFunctionLibraryRuntime {
   // block and calls `done` when `num_tensors` are fetched.
   static void ReceiveTensorsAsync(
       const string& source_device, const string& target_device,
-      const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+      const string& key_prefix, int64_t src_incarnation, int64_t num_tensors,
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
@@ -119,7 +119,7 @@ class ProcessFunctionLibraryRuntime {
 
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name,
-                              int64* incarnation) const;
+                              int64_t* incarnation) const;
 
   // For a given canonicalized key signature of the function instantiated
   // on device `device_name` and a `local_handle`, creates a handle and returns
@@ -150,8 +150,7 @@ class ProcessFunctionLibraryRuntime {
   // is set to the device backing the resource.
   // REQUIRES: `handle` identifies a multi-device function.
   Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
-                          std::vector<Device*>* output_devices,
-                          const bool eager_lazy_copy) const;
+                          std::vector<Device*>* output_devices) const;
 
   // Returns true if function with handle `handle` was instantiated on device
   // `device_name`. Returns false for multi-device functions.
@@ -169,6 +168,18 @@ class ProcessFunctionLibraryRuntime {
   // execute cross process.
   Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
                         bool* is_cross_process) const;
+
+  // TODO(iga): Reword
+  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
+  // corresponding resource lives. This ensures that the Placer assigns ops that
+  // access these resources to the appropriate devices.
+  static Status PinArgsAndRets(const std::vector<string>& input_devices,
+                               const std::vector<string>& output_devices,
+                               const DeviceSet& device_set,
+                               const std::vector<Node*>& arg_nodes,
+                               const std::vector<Node*>& ret_nodes,
+                               const FunctionLibraryDefinition* lib_def,
+                               Device* default_device);
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isn't needed at all, the local FLR
@@ -208,8 +219,9 @@ class ProcessFunctionLibraryRuntime {
     return device_set_;
   }
 
-  // Initialize the set of local and remote devices for op device selection.
-  void InitializeDeviceSet();
+  // Initialize the set of local and remote devices and corresponding flr for op
+  // device selection.
+  void InitializeDeviceAndFlr();
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 
@@ -319,7 +331,7 @@ class ProcessFunctionLibraryRuntime {
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
+      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
       const Rendezvous* rendezvous) const;
 
   DistributedFunctionLibraryRuntime* const parent_;
@@ -376,17 +388,6 @@ class ProcessFunctionLibraryRuntime {
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
-
-  // TODO(iga): Reword
-  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
-  // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  Status PinArgsAndRets(const std::vector<string>& input_devices,
-                        const std::vector<string>& output_devices,
-                        const DeviceSet& device_set,
-                        const std::vector<Node*>& arg_nodes,
-                        const std::vector<Node*>& ret_nodes,
-                        Device* default_device) const;
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
@@ -479,6 +480,9 @@ class ProcessFunctionLibraryRuntime {
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
   const Rendezvous::Factory rendezvous_factory_;
+
+  const OptimizerOptions optimizer_options_;
+  const int graph_def_version_;
 };
 
 }  // namespace tensorflow

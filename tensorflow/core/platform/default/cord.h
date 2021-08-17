@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 
-// TODO(ebrevdo): Fill this in.
+// It seems CORD doesn't work well with CUDA <= 10.2
+#if !defined(__CUDACC__) || ((defined(__CUDACC__) && CUDA_VERSOIN > 10020))
+
+#include "absl/strings/cord.h"
+#define TF_CORD_SUPPORT 1
+
+#endif  // __CUDACC__
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_

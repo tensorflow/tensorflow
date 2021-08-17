@@ -35,7 +35,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features_;
 
   ParallelTaskAssignmentTest()
-      : HloTestBase(), target_machine_features_([](int64 shape_size) {
+      : HloTestBase(), target_machine_features_([](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 

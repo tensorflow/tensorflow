@@ -46,14 +46,14 @@ static const double kLargeAllocationWarningThreshold = 0.1;
 
 // Cache first invocation to port::AvailableRam, as it can be expensive.
 static int64_t LargeAllocationWarningBytes() {
-  static int64_t value = static_cast<int64>(port::AvailableRam() *
-                                            kLargeAllocationWarningThreshold);
+  static int64_t value = static_cast<int64_t>(port::AvailableRam() *
+                                              kLargeAllocationWarningThreshold);
   return value;
 }
 
 static int64_t TotalAllocationWarningBytes() {
-  static int64_t value = static_cast<int64>(port::AvailableRam() *
-                                            kTotalAllocationWarningThreshold);
+  static int64_t value = static_cast<int64_t>(port::AvailableRam() *
+                                              kTotalAllocationWarningThreshold);
   return value;
 }
 
@@ -89,9 +89,9 @@ class CPUAllocator : public Allocator {
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
       stats_.peak_bytes_in_use =
-          std::max<int64>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+          std::max<int64_t>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
       stats_.largest_alloc_size =
-          std::max<int64>(stats_.largest_alloc_size, alloc_size);
+          std::max<int64_t>(stats_.largest_alloc_size, alloc_size);
 
       if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
           total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
@@ -115,15 +115,18 @@ class CPUAllocator : public Allocator {
   }
 
   absl::optional<AllocatorStats> GetStats() override {
+    if (!cpu_allocator_collect_stats) return absl::nullopt;
     mutex_lock l(mu_);
     return stats_;
   }
 
-  void ClearStats() override {
+  bool ClearStats() override {
+    if (!cpu_allocator_collect_stats) return false;
     mutex_lock l(mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;
     stats_.largest_alloc_size = 0;
+    return true;
   }
 
   size_t AllocatedSizeSlow(const void* ptr) const override {
@@ -156,13 +159,17 @@ class CPUAllocatorFactory : public AllocatorFactory {
     explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
         : SubAllocator({}, {}), cpu_allocator_(cpu_allocator) {}
 
-    void* Alloc(size_t alignment, size_t num_bytes) override {
+    void* Alloc(size_t alignment, size_t num_bytes,
+                size_t* bytes_received) override {
+      *bytes_received = num_bytes;
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
     }
 
     void Free(void* ptr, size_t num_bytes) override {
       cpu_allocator_->DeallocateRaw(ptr);
     }
+
+    bool SupportsCoalescing() const override { return false; }
 
    private:
     CPUAllocator* cpu_allocator_;

@@ -103,7 +103,7 @@ class OpsTestBase : public ::testing::Test {
   // Like AddInput but takes in an explicit arrayslice of data.
   template <typename T>
   void AddInputFromArray(const TensorShape& shape,
-                         const gtl::ArraySlice<T>& data) {
+                         const gtl::ArraySlice<T> data) {
     test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
   }
 

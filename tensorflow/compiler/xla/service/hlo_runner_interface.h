@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -43,7 +44,7 @@ class HloRunnerInterface {
   // The options used to configure an ExecuteReplicated() call.
   struct ReplicatedExecuteOptions {
     // The number of devices the HLO module should be replicated onto.
-    int64 num_replicas = 1;
+    int64_t num_replicas = 1;
 
     // The arguments to be fed to each replica. Since this is used for a
     // replicated execution, all the arguments are the same for all replicas.
@@ -51,7 +52,7 @@ class HloRunnerInterface {
 
     // If the HLO module being run has an infeed instruction, this will be the
     // data which will be fed to it, for as many as infeed_steps steps.
-    const Literal* infeed = nullptr;
+    std::vector<const Literal*> infeed_values;
 
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
@@ -60,7 +61,7 @@ class HloRunnerInterface {
     // lead to infeed threads feeding to a gone computation, while a lower
     // value would trigger a stuck ExecuteReplicated() call (the computation
     // will be trying to infeed data which will never come).
-    int64 infeed_steps = -1;
+    int64_t infeed_steps = -1;
 
     // The shape of the outfeed operation. If empty, the HLO module does not
     // generate any outfeed.
@@ -96,10 +97,21 @@ class HloRunnerInterface {
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
       const std::string& filename, const DebugOptions& debug_options);
 
+  // Reads the proto file in xla.HloModule format, creates and returns the
+  // HloModule.
+  static StatusOr<std::unique_ptr<HloModule>>
+  ReadModuleFromModuleBinaryProtofile(const std::string& filename,
+                                      const DebugOptions& debug_options);
+
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       const std::string& filename, const DebugOptions& debug_options);
+
+  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // true, the HLO passes will be run as part of compilation.
+  virtual StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) = 0;
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
@@ -122,6 +134,20 @@ class HloRunnerInterface {
                                     bool run_hlo_passes,
                                     ExecutionProfile* profile) = 0;
 
+  // Same as above, but with Executable as input.
+  StatusOr<Literal> ExecuteWithExecutable(Executable* executable,
+                                          absl::Span<const Literal> arguments,
+                                          ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> ExecuteWithExecutable(
+      Executable* executable, absl::Span<const Literal* const> arguments) {
+    return ExecuteWithExecutable(executable, arguments, nullptr);
+  }
+
+  virtual StatusOr<Literal> ExecuteWithExecutable(
+      Executable* executable, absl::Span<const Literal* const> arguments,
+      ExecutionProfile* profile) = 0;
+
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
@@ -135,6 +161,18 @@ class HloRunnerInterface {
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
+
+  virtual StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::function<Executable*(int64_t)> executable_provider,
+      std::function<int64_t(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      const ReplicatedExecuteOptions& options) = 0;
+
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+ protected:
+  void UpdateEntryComputationLayout(
+      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

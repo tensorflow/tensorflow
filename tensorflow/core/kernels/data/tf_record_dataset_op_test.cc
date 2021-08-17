@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -22,7 +22,7 @@ constexpr char kNodeName[] = "tf_record_dataset";
 class TFRecordDatasetParams : public DatasetParams {
  public:
   TFRecordDatasetParams(std::vector<tstring> filenames,
-                        CompressionType compression_type, int64 buffer_size,
+                        CompressionType compression_type, int64_t buffer_size,
                         string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
@@ -35,7 +35,7 @@ class TFRecordDatasetParams : public DatasetParams {
     return {
         CreateTensor<tstring>(TensorShape({num_files}), filenames_),
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)}),
-        CreateTensor<int64>(TensorShape({}), {buffer_size_})};
+        CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -60,7 +60,7 @@ class TFRecordDatasetParams : public DatasetParams {
  private:
   std::vector<tstring> filenames_;
   CompressionType compression_type_;
-  int64 buffer_size_;
+  int64_t buffer_size_;
 };
 
 class TFRecordDatasetOpTest : public DatasetOpsTestBase {};
@@ -153,6 +153,44 @@ std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
 
 ITERATOR_GET_NEXT_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
                          GetNextTestCases())
+
+std::vector<SkipTestCase<TFRecordDatasetParams>> SkipTestCases() {
+  return {{/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6},
+
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6},
+
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6}};
+}
+
+ITERATOR_SKIP_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
+                     SkipTestCases())
 
 TEST_F(TFRecordDatasetOpTest, DatasetNodeName) {
   auto dataset_params = TFRecordDatasetParams1();

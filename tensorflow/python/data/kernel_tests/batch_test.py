@@ -18,11 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -30,11 +35,14 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -43,9 +51,11 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              count=[0, 28], batch_size=[14, 15], drop_remainder=[True,
-                                                                  False])))
-  def testBasic(self, count, batch_size, drop_remainder):
+              count=[0, 28],
+              batch_size=[14, 15],
+              drop_remainder=[True, False],
+              num_parallel_calls=[None, 1, 2, 4])))
+  def testBasic(self, count, batch_size, drop_remainder, num_parallel_calls):
     """Tests the batch dataset logic for various input configurations.
 
     Args:
@@ -53,6 +63,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       batch_size: the batch size
       drop_remainder: whether a smaller batch size should be produced if batch
         size does not divide number of inputs evenly
+      num_parallel_calls: the number batches to process asynchronously in
+        parallel
     """
 
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
@@ -65,7 +77,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn).repeat(count).batch(batch_size, drop_remainder)
+        _map_fn).repeat(count).batch(batch_size, drop_remainder,
+                                     num_parallel_calls)
     get_next = self.getNext(dataset)
 
     if drop_remainder:
@@ -228,6 +241,101 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(lambda x: (x, None)).batch(
         10).map(lambda x, y: x)
     self.assertDatasetProduces(dataset, expected_output=[list(range(10))])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, local_determinism, global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(100))
+
+    def dataset_fn(delay_ms):
+
+      def sleep(x):
+        time.sleep(delay_ms / 1000)
+        return x
+
+      def map_function(x):
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype)
+        else:
+          return x
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset.map(
+          map_function, num_parallel_calls=2, deterministic=local_determinism)
+      dataset = dataset.batch(
+          batch_size=6, num_parallel_calls=2,
+          deterministic=local_determinism).unbatch()
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest('Creating a large buffer causes OOM when using tsan.')
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.batch(2, num_parallel_calls=5)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
+
+
+class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
+
+  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+    components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(tensor_slice_len))
+
+    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    tensor_slice_len = 8
+    batch_size = 2
+    num_outputs = tensor_slice_len // batch_size
+    verify_fn(self,
+              lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+              num_outputs)
+
+  def _sparse(self, i):
+    return sparse_tensor.SparseTensorValue(
+        indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+  def _build_dataset_sparse(self, batch_size=5):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_sparse, num_outputs=2)
+
+  def _build_dataset_nested_sparse(self):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testNestedSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_nested_sparse, num_outputs=1)
 
 
 if __name__ == '__main__':

@@ -197,8 +197,8 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
-  int64 size = DataTypeSize(BaseType(prop.dtype()));
+int64_t CalculateTensorSize(const OpInfo::TensorProperties& prop) {
+  int64_t size = DataTypeSize(BaseType(prop.dtype()));
   TensorShapeProto shape = prop.shape();
 
   // Can't infer the size if the rank is unknown. It has to be at least a
@@ -216,11 +216,11 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
     }
   }
 
-  int64 num_elems = TensorShape(shape).num_elements();
+  int64_t num_elems = TensorShape(shape).num_elements();
   return num_elems * size;
 }
 
-int64 CalculateOutputSize(
+int64_t CalculateOutputSize(
     const std::vector<OpInfo::TensorProperties>& output_properties,
     const int port_num) {
   if (port_num < 0) return 4;  // 4B for control dependency.
@@ -241,14 +241,15 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
-      TfGpuId tf_gpu_id(parsed.id);
-      PlatformGpuId platform_gpu_id;
-      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+      TfDeviceId tf_device_id(parsed.id);
+      PlatformDeviceId platform_device_id;
+      Status s =
+          GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.
-        platform_gpu_id = PlatformGpuId(parsed.id);
+        platform_device_id = PlatformDeviceId(parsed.id);
       }
-      return GetLocalGPUInfo(platform_gpu_id);
+      return GetLocalGPUInfo(platform_device_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }

@@ -47,19 +47,19 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
                                           "proto."));
     }
     auto output_shape = input_shape_or.ValueOrDie();
-    int64 rank = output_shape.rank();
+    int64_t rank = output_shape.rank();
     if (sharding.type() == xla::OpSharding::OTHER) {
-      for (int64 i = 0; i < rank; ++i) {
-        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+      for (int64_t i = 0; i < rank; ++i) {
+        int64_t partitions_i = sharding.tile_assignment_dimensions(i);
         if (partitions_i == 1) continue;
-        int64 dim_size =
+        int64_t dim_size =
             xla::CeilOfRatio(output_shape.dimensions(i), partitions_i);
         output_shape.set_dimensions(i, dim_size);
       }
     }
     xla::XlaOp input_annotation;
     {
-      // Annotate the full-shape input with the manual sharding.
+      // Annotate the full-shape input with the sharding.
       xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
                                                        sharding);
       input_annotation =
@@ -68,12 +68,11 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
     }
 
     {
-      // Annotate the shard-shape output with replicated sharding, so that the
+      // Annotate the shard-shape output with manual sharding, so that the
       // partitioner will leave it as is.
-      xla::OpSharding replicated;
-      replicated.set_type(xla::OpSharding::REPLICATED);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       replicated);
+      xla::OpSharding manual;
+      manual.set_type(xla::OpSharding::MANUAL);
+      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
       auto output = xla::CustomCall(ctx->builder(),
                                     /*call_target_name=*/"SPMDFullToShardShape",
                                     {input_annotation}, output_shape);
@@ -112,19 +111,18 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
     }
     xla::XlaOp input_annotation;
     {
-      // Annotate the shard-shape input with replicated sharding, so that the
+      // Annotate the shard-shape input with manual sharding, so that the
       // partitioner will leave it as is.
-      xla::OpSharding replicated;
-      replicated.set_type(xla::OpSharding::REPLICATED);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       replicated);
+      xla::OpSharding manual;
+      manual.set_type(xla::OpSharding::MANUAL);
+      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
       input_annotation =
           xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
                           {input}, input_shape_or.ValueOrDie());
     }
 
     {
-      // Annotate the full-shape output with the manual sharding.
+      // Annotate the full-shape output with the sharding.
       xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
                                                        sharding);
       ctx->SetOutput(

@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import tensorflow as tf
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.lite.tools.signature import signature_def_utils
@@ -33,7 +32,7 @@ class SignatureDefUtilsTest(tf.test.TestCase):
     """Test a SavedModel conversion has correct Metadata."""
     filename = tf.compat.v1.resource_loader.get_path_to_datafile(
         '../../testdata/add.bin')
-    if not os.path.exists(filename):
+    if not tf.io.gfile.exists(filename):
       raise IOError('File "{0}" does not exist in {1}.'.format(
           filename,
           tf.compat.v1.resource_loader.get_root_dir_with_all_resources()))

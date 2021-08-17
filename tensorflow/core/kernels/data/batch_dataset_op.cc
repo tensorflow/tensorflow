@@ -17,12 +17,12 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -47,7 +47,7 @@ constexpr char kBatchDataset[] = "BatchDataset";
 
 class BatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, bool drop_remainder,
           bool parallel_copy, const DatasetBase* input, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
@@ -56,7 +56,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         // is passed with drop_remainder set to false. Avoid OOM in such case
         // by limiting `reserve()` size by 2**16.
         reserve_size_(drop_remainder ? batch_size
-                                     : std::min<int64>(batch_size, 1 << 16)),
+                                     : std::min<int64_t>(batch_size, 1 << 16)),
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
         input_(input),
@@ -109,8 +109,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+  int64_t Cardinality() const override {
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -199,67 +199,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      const size_t num_tuple_components = batch_elements[0].size();
-      out_tensors->reserve(num_tuple_components);
-      const int64 num_batch_elements = batch_elements.size();
-      for (size_t component_index = 0; component_index < num_tuple_components;
-           ++component_index) {
-        const Tensor& first_element = batch_elements[0][component_index];
-        TensorShape batch_component_shape({num_batch_elements});
-        // NOTE(mrry): Copy the shape of the first element here, because
-        // `first_element.shape()` will become undefined after the 0th batch
-        // element is moved into the output batch.
-        TensorShape first_element_shape(first_element.shape());
-        batch_component_shape.AppendShape(first_element_shape);
-        out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
-                                  batch_component_shape);
-        if (!out_tensors->back().IsInitialized()) {
-          return errors::ResourceExhausted(
-              "Failed to allocate memory for the batch of component ",
-              component_index);
-        }
-        Tensor& batch_component = out_tensors->back();
-        // Build the output tuple component by copying one slice
-        // from each input element in the batch.
-        auto copy_element_fn = [component_index, &batch_elements,
-                                &batch_component](int index) {
-          TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-              std::move(batch_elements[index][component_index]),
-              &batch_component, index));
-          return Status::OK();
-        };
-        BlockingCounter counter(num_batch_elements);
-        Status status;
-        mutex status_mu;
-        for (size_t i = 0; i < num_batch_elements; ++i) {
-          if (batch_elements[i][component_index].shape() !=
-              first_element_shape) {
-            return errors::InvalidArgument(
-                "Cannot batch tensors with different shapes in "
-                "component ",
-                component_index, ". First element had shape ",
-                first_element_shape.DebugString(), " and element ", i,
-                " had shape ",
-                batch_elements[i][component_index].shape().DebugString(), ".");
-          }
-          if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
-            (*ctx->runner())(
-                [i, &status, &status_mu, &counter, &copy_element_fn]() {
-                  Status s = copy_element_fn(i);
-                  {
-                    mutex_lock l(status_mu);
-                    status.Update(s);
-                  }
-                  counter.DecrementCount();
-                });
-          } else {
-            status.Update(copy_element_fn(i));
-            counter.DecrementCount();
-          }
-        }
-        counter.Wait();
-        TF_RETURN_IF_ERROR(status);
-      }
+      TF_RETURN_IF_ERROR(
+          CopyBatch(ctx, batch_elements, dataset()->parallel_copy_,
+                    /*allocation_callback=*/nullptr, out_tensors));
+
       *end_of_sequence = false;
       return Status::OK();
     }
@@ -301,8 +244,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
-  const int64 batch_size_;
-  const int64 reserve_size_;
+  const int64_t batch_size_;
+  const int64_t reserve_size_;
   const bool drop_remainder_;
   const bool parallel_copy_;
   const DatasetBase* const input_;
@@ -321,8 +264,9 @@ BatchDatasetOp::BatchDatasetOp(OpKernelConstruction* ctx)
 
 void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 batch_size = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
+  int64_t batch_size = 0;
+  OP_REQUIRES_OK(ctx,
+                 ParseScalarArgument<int64_t>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));
 

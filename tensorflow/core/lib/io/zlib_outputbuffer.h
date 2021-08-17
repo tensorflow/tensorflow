@@ -45,8 +45,8 @@ class ZlibOutputBuffer : public WritableFile {
   // output_buffer_bytes should be greater than 1.
   ZlibOutputBuffer(
       WritableFile* file,
-      int32 input_buffer_bytes,   // size of z_stream.next_in buffer
-      int32 output_buffer_bytes,  // size of z_stream.next_out buffer
+      int32_t input_buffer_bytes,   // size of z_stream.next_in buffer
+      int32_t output_buffer_bytes,  // size of z_stream.next_out buffer
       const ZlibCompressionOptions& zlib_options);
 
   ~ZlibOutputBuffer();
@@ -65,7 +65,7 @@ class ZlibOutputBuffer : public WritableFile {
   // To immediately write contents to file call `Flush()`.
   Status Append(StringPiece data) override;
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& cord) override;
 #endif
 
@@ -90,7 +90,7 @@ class ZlibOutputBuffer : public WritableFile {
 
   // Returns the write position in the underlying file. The position does not
   // reflect buffered, un-flushed data.
-  Status Tell(int64* position) override;
+  Status Tell(int64_t* position) override;
 
  private:
   WritableFile* file_;  // Not owned

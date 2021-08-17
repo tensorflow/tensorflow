@@ -18,12 +18,28 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
 namespace hlo {
+// Attrs for OP type
+// TODO(disc): create and move to placement_utils.h
+constexpr llvm::StringRef kDiscShapeCalcAttr = "disc.shape_op";
+
+// Attrs for placement
+constexpr llvm::StringRef kDiscPlaceAssignment = "disc.device";
+constexpr llvm::StringRef kCpu = "cpu";
+constexpr llvm::StringRef kGpu = "gpu";
+enum class PlacementType {
+  kCpu,
+  kGpu,
+};
+
+// Function arguments and results placement attributes.
+constexpr StringRef kInputPlacementAttr = "hlo.input_placements";
+constexpr StringRef kOutputPlacementAttr = "hlo.output_placements";
 
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
@@ -71,7 +87,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value);
 // Enum type used to specify scalar argument to GetScalarLimitOfType.
 enum ScalarLimit {
   kLowest,          // The scalar corresponding to numeric_limits<T>::lowest.
-  kInfinityLowest,  // Like kMax, but returns -infinity where available.
+  kInfinityLowest,  // Like kLowest, but returns -infinity where available.
   kMax,             // The scalar corresponding to numeric_limits<T>::max.
   kInfinityMax,     // Like kMax, but returns infinity where available.
 };
@@ -82,6 +98,17 @@ enum ScalarLimit {
 //
 // Requires `ty` to be either FloatType or IntegerType.
 DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit);
+
+// Given `op_name` from LMHLO, returns the corresponding op name in MHLO.
+// Returns empty string if no such op exists.
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext* context);
+
+// Return true if Attr has values [0, 1, ...].
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr);
+
+// Returns the argument index for the giving FuncOp and its operand value.
+int64_t getArgumentIndex(mlir::FuncOp op, Value value);
 
 }  // namespace hlo
 }  // namespace mlir

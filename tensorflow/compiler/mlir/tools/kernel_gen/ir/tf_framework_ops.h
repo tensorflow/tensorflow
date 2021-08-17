@@ -19,11 +19,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.h.inc"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -36,6 +37,12 @@ namespace tf_framework {
 /// tensorflow/core/framework/op_kernel.h
 class OpKernelContextType
     : public Type::TypeBase<OpKernelContextType, Type, TypeStorage> {
+ public:
+  using Base::Base;
+};
+
+class JITCallableType
+    : public Type::TypeBase<JITCallableType, Type, TypeStorage> {
  public:
   using Base::Base;
 };

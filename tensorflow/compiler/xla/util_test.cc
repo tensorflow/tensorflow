@@ -50,7 +50,7 @@ TEST(UtilTest, CommaSeparatedString) {
 }
 
 TEST(UtilTest, VectorString) {
-  std::list<int64> empty_list;
+  std::list<int64_t> empty_list;
   EXPECT_EQ(VectorString(empty_list), "()");
 
   std::vector<float> float_vector = {5.5};
@@ -70,10 +70,16 @@ TEST(UtilTest, LogLines) {
 
 TEST(UtilTest, CommonFactors) {
   struct {
-    std::vector<int64> a, b;
-    absl::InlinedVector<std::pair<int64, int64>, 8> expected;
+    std::vector<int64_t> a, b;
+    absl::InlinedVector<std::pair<int64_t, int64_t>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
+      {/*.a =*/{1}, /*.b =*/{}, /*.expected =*/{{0, 0}, {1, 0}}},
+      {/*.a =*/{}, /*.b =*/{1}, /*.expected =*/{{0, 0}, {0, 1}}},
+      {/*.a =*/{0, 10}, /*.b =*/{0, 10, 3}, /*.expected =*/{{0, 0}, {2, 3}}},
+      {/*.a =*/{1, 0}, /*.b =*/{1, 0, 1},
+       /*.expected =*/{{0, 0}, {1, 1}, {2, 2}, {2, 3}}},
+      {/*.a =*/{0, 1}, /*.b =*/{0, 1}, /*.expected =*/{{0, 0}, {1, 1}, {2, 2}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},
       {/*.a =*/{2, 5, 1, 3},
        /*.b =*/{1, 10, 3, 1},
@@ -106,24 +112,57 @@ TEST(UtilTest, SanitizeFileName) {
 }
 
 TEST(UtilTest, RoundTripFpToString) {
-  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<Eigen::half>::quiet_NaN()),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
+                false, QuietNanWithoutPayload<Eigen::half>())),
             "nan");
-  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<Eigen::half>::quiet_NaN()),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
+                true, QuietNanWithoutPayload<Eigen::half>())),
             "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
+                false, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
+                true, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(
+                false, QuietNanWithoutPayload<float>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(
+                true, QuietNanWithoutPayload<float>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<double>(
+                false, QuietNanWithoutPayload<double>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<double>(
+                true, QuietNanWithoutPayload<double>())),
+            "-nan");
+
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(false, 0x1)),
+            "nan(0x1)");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(true, 0x1)),
+            "-nan(0x1)");
   EXPECT_EQ(RoundTripFpToString(
-                std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
-            "nan");
+                NanWithSignAndPayload<tensorflow::bfloat16>(false, 0x1)),
+            "nan(0x1)");
   EXPECT_EQ(RoundTripFpToString(
-                -std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
-            "-nan");
-  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<float>::quiet_NaN()),
-            "nan");
-  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<float>::quiet_NaN()),
-            "-nan");
-  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<double>::quiet_NaN()),
-            "nan");
-  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<double>::quiet_NaN()),
-            "-nan");
+                NanWithSignAndPayload<tensorflow::bfloat16>(true, 0x1)),
+            "-nan(0x1)");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(false, 0x1)),
+            "nan(0x1)");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(true, 0x1)),
+            "-nan(0x1)");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<double>(false, 0x1)),
+            "nan(0x1)");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<double>(true, 0x1)),
+            "-nan(0x1)");
+}
+
+TEST(UtilTest, SplitF64ToF32) {
+  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
+  // [∞,0].
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
 }
 
 }  // namespace

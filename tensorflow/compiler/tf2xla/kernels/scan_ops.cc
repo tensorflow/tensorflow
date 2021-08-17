@@ -36,8 +36,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 5> kScanOpTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32}};
+constexpr std::array<DataType, 6> kScanOpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64}};
 
 class ScanOp : public XlaOpKernel {
  public:
@@ -54,7 +54,7 @@ class ScanOp : public XlaOpKernel {
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis_shape.DebugString()));
 
-    int64 axis;
+    int64_t axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &axis));
     if (axis < 0) {
       axis += input_shape.dims();
@@ -75,11 +75,12 @@ class ScanOp : public XlaOpKernel {
 
     xla::XlaBuilder* builder = ctx->builder();
 
-    std::vector<int64> window_strides(input_shape.dims(), 1);
-    std::vector<int64> window_dims(input_shape.dims(), 1);
+    std::vector<int64_t> window_strides(input_shape.dims(), 1);
+    std::vector<int64_t> window_dims(input_shape.dims(), 1);
     window_dims[axis] = input_shape.dim_size(axis);
 
-    std::vector<std::pair<int64, int64>> padding(input_shape.dims(), {0, 0});
+    std::vector<std::pair<int64_t, int64_t>> padding(input_shape.dims(),
+                                                     {0, 0});
     padding[axis].first = input_shape.dim_size(axis) - 1;
     // In exclusive mode, add an extra padding element so there is a complete
     // window of padding before the data starts.

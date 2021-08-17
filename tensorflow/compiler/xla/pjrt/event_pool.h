@@ -42,6 +42,7 @@ class EventPool {
     // useful aspect of this total order is that two events returned by
     // ThenAllocateAndRecordEvent on the same stream can be compared to see
     // which was recorded earlier on that stream.
+    // Valid sequence numbers are > 0.
     inline bool operator<(const Handle& rhs) const {
       return sequence_number_ < rhs.sequence_number_;
     }
@@ -76,6 +77,11 @@ class EventPool {
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
   StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+
+  // Version of ThenAllocateAndRecordEvent split into two phases; this is
+  // sometimes helpful if we want to avoid failures by preallocating events.
+  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:
   const bool allow_reuse_;

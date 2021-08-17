@@ -69,7 +69,7 @@ class ComputeConstantTest : public ::testing::Test {
     LOG(FATAL) << "invalid client_type value";
   }
 
-  StatusOr<Literal> ComputeConstantLiteral(Client* client, const XlaOp& operand,
+  StatusOr<Literal> ComputeConstantLiteral(Client* client, const XlaOp operand,
                                            XlaBuilder* builder,
                                            Layout* output_layout = nullptr) {
     TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
@@ -79,14 +79,14 @@ class ComputeConstantTest : public ::testing::Test {
   }
 
   template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(Client* client, const XlaOp& operand,
+  StatusOr<Scalar> ComputeConstantScalar(Client* client, const XlaOp operand,
                                          XlaBuilder* builder) {
     TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
                                                              builder, nullptr));
     return literal.Get<Scalar>({});
   }
 
-  bool IsConstant(const XlaOp& operand, XlaBuilder* builder) {
+  bool IsConstant(const XlaOp operand, XlaBuilder* builder) {
     StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
     return result.ok() ? result.ValueOrDie() : false;
@@ -246,8 +246,8 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
 
-    std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
-    for (const std::vector<int64>& layout : layouts) {
+    std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
+    for (const std::vector<int64_t>& layout : layouts) {
       auto layout_proto = LayoutUtil::MakeLayout(layout);
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, ComputeConstantLiteral(

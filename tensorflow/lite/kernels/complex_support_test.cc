@@ -19,18 +19,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
-namespace ops {
-namespace custom {
-
-TfLiteRegistration* Register_REAL();
-TfLiteRegistration* Register_IMAG();
-
 namespace {
 
 template <typename T>
@@ -42,7 +35,7 @@ class RealOpModel : public SingleOpModel {
     output_ = AddOutput(output);
 
     const std::vector<uint8_t> custom_option;
-    SetCustomOp("Real", custom_option, Register_REAL);
+    SetBuiltinOp(BuiltinOperator_REAL, BuiltinOptions_NONE, 0);
 
     BuildInterpreter({GetShape(input_)});
   }
@@ -103,7 +96,7 @@ class ImagOpModel : public SingleOpModel {
     output_ = AddOutput(output);
 
     const std::vector<uint8_t> custom_option;
-    SetCustomOp("Imag", custom_option, Register_IMAG);
+    SetBuiltinOp(BuiltinOperator_IMAG, BuiltinOptions_NONE, 0);
 
     BuildInterpreter({GetShape(input_)});
   }
@@ -155,7 +148,86 @@ TEST(ImagOpTest, SimpleDoubleTest) {
                                  {7, -1, 3.5f, 5, 2, 11, 0, 33.3f})));
 }
 
+template <typename T>
+class ComplexAbsOpModel : public SingleOpModel {
+ public:
+  ComplexAbsOpModel(const TensorData& input, const TensorData& output) {
+    input_ = AddInput(input);
+
+    output_ = AddOutput(output);
+
+    const std::vector<uint8_t> custom_option;
+    SetBuiltinOp(BuiltinOperator_COMPLEX_ABS, BuiltinOptions_NONE, 0);
+
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  int input() { return input_; }
+
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int output_;
+};
+
+TEST(ComplexAbsOpTest, IncompatibleType64Test) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      ComplexAbsOpModel<float> m({TensorType_COMPLEX64, {2, 4}},
+                                 {TensorType_FLOAT64, {}}),
+      "output->type != kTfLiteFloat32");
+}
+
+TEST(ComplexAbsOpTest, IncompatibleType128Test) {
+  EXPECT_DEATH_IF_SUPPORTED(
+      ComplexAbsOpModel<float> m({TensorType_COMPLEX128, {2, 4}},
+                                 {TensorType_FLOAT32, {}}),
+      "output->type != kTfLiteFloat64");
+}
+
+TEST(ComplexAbsOpTest, SimpleFloatTest) {
+  ComplexAbsOpModel<float> m({TensorType_COMPLEX64, {2, 4}},
+                             {TensorType_FLOAT32, {}});
+
+  m.PopulateTensor<std::complex<float>>(m.input(), {{75, 7},
+                                                    {-6, -1},
+                                                    {9, 3.5},
+                                                    {-10, 5},
+                                                    {-3, 2},
+                                                    {-6, 11},
+                                                    {0, 0},
+                                                    {22.1, 33.3}});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), testing::ElementsAre(2, 4));
+  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
+                                 {75.32596f, 6.0827627f, 9.656604f, 11.18034f,
+                                  3.6055512f, 12.529964f, 0.f, 39.966236f})));
+}
+
+TEST(ComplexAbsOpTest, SimpleDoubleTest) {
+  ComplexAbsOpModel<double> m({TensorType_COMPLEX128, {2, 4}},
+                              {TensorType_FLOAT64, {}});
+
+  m.PopulateTensor<std::complex<double>>(m.input(), {{75, 7},
+                                                     {-6, -1},
+                                                     {9, 3.5},
+                                                     {-10, 5},
+                                                     {-3, 2},
+                                                     {-6, 11},
+                                                     {0, 0},
+                                                     {22.1, 33.3}});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), testing::ElementsAre(2, 4));
+  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
+                                 {75.32596f, 6.0827627f, 9.656604f, 11.18034f,
+                                  3.6055512f, 12.529964f, 0.f, 39.966236f})));
+}
+
 }  // namespace
-}  // namespace custom
-}  // namespace ops
 }  // namespace tflite

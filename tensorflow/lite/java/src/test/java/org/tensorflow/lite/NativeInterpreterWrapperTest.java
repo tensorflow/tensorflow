@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -58,6 +59,11 @@ public final class NativeInterpreterWrapperTest {
   private static final String NONEXISTING_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/nonexisting_model.bin";
 
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
+
   @Test
   public void testConstructor() {
     try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
@@ -81,7 +87,13 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+      assertThat(e)
+          .hasMessageThat()
+          .containsMatch(
+              String.join(
+                  "|",
+                  "The model is not a valid Flatbuffer",
+                  "does not encode a valid TensorFlow Lite model"));
     }
   }
 
@@ -92,7 +104,6 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(NONEXISTING_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
       assertThat(e).hasMessageThat().contains("Could not open");
     }
   }
@@ -104,7 +115,15 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(MODEL_WITH_CUSTOM_OP_PATH);
       fail();
     } catch (IllegalStateException e) {
-      assertThat(e).hasMessageThat().contains("Encountered unresolved custom op: Assign");
+      assertThat(e)
+          .hasMessageThat()
+          .contains("preparing tensor allocations: Encountered unresolved custom op: Assign");
+    } catch (IllegalArgumentException e) {
+      // As we could apply TfLite delegate by default, during which the prepration of this
+      // unresolved custom op could fail and this type of exception is thrown.
+      assertThat(e)
+          .hasMessageThat()
+          .containsMatch("Failed to apply .* delegate: Encountered unresolved custom op: Assign");
     }
   }
 
@@ -201,8 +220,20 @@ public final class NativeInterpreterWrapperTest {
       outputs.put(0, parsedOutputs);
       wrapper.run(inputs, outputs);
       long[] outputOneD = parsedOutputs[0][0][0];
-      long[] expected = {-892834092L, 923423L, 2123918239018L, -892834092L, 923423L, 2123918239018L,
-          -892834092L, 923423L, 2123918239018L, -892834092L, 923423L, 2123918239018L};
+      long[] expected = {
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L
+      };
       assertThat(outputOneD).isEqualTo(expected);
     }
   }
@@ -222,8 +253,20 @@ public final class NativeInterpreterWrapperTest {
       outputs.put(0, parsedOutputs);
       wrapper.run(inputs, outputs);
       byte[] outputOneD = parsedOutputs[0][0][0];
-      byte[] expected = {(byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0};
+      byte[] expected = {
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0
+      };
       assertThat(outputOneD).isEqualTo(expected);
     }
   }
@@ -242,7 +285,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       String[] outputOneD = parsedOutputs[0][0][0];
       String[] expected = {
-          "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
+        "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
       };
       assertThat(outputOneD).isEqualTo(expected);
     }
@@ -276,8 +319,8 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       String[] outputOneD = parsedOutputs[0][0][0];
       String[] expected = {
-          "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e",
-          "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e"
+        "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e",
+        "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e"
       };
       assertThat(outputOneD).isEqualTo(expected);
     }
@@ -332,8 +375,8 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       byte[] outputOneD = parsedOutputs[0][0][0];
       byte[] expected = {
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0
+        (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
+        (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0
       };
       assertThat(outputOneD).isEqualTo(expected);
     }
@@ -440,7 +483,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Invalid handle to Interpreter.");
+      assertThat(e).hasMessageThat().contains("Internal error: Found invalid handle");
     }
   }
 

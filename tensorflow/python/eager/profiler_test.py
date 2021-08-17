@@ -47,8 +47,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_pb.ParseFromString(profile_result)
     devices = frozenset(device.name for device in profile_pb.devices.values())
     self.assertIn('/host:CPU', devices)
-    if not test_util.IsBuiltWithROCm() and config.list_physical_devices('GPU'):
-      # device tracing is not yet supported on the ROCm platform
+    if config.list_physical_devices('GPU'):
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
     self.assertIn('three_times_five', events)

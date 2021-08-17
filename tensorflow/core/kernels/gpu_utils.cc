@@ -112,13 +112,12 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
 
 tensorflow::ComputeCapability GetComputeCapability(
     se::StreamExecutor* stream_executor) {
-  tensorflow::ComputeCapability cc;
-  int cc_major, cc_minor;
-  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                  &cc_minor);
-  cc.set_major(cc_major);
-  cc.set_minor(cc_minor);
-  return cc;
+  tensorflow::ComputeCapability cc_proto;
+  se::CudaComputeCapability cc =
+      stream_executor->GetDeviceDescription().cuda_compute_capability();
+  cc_proto.set_major(cc.major);
+  cc_proto.set_minor(cc.minor);
+  return cc_proto;
 }
 
 }  // namespace
@@ -214,71 +213,65 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-//   2. tensorflow/core/kernels/gpu_utils.cc
-//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
-bool RequireCudnnDeterminism() {
-  static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                               /*default_val=*/false,
-                                               &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
-  }();
-  return require_cudnn_determinism;
-}
+Status BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results,
+    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    se::dnn::AlgorithmConfig* algo) {
+  auto compare_run_times = [](const AutotuneResult& lhs,
+                              const AutotuneResult& rhs) {
+    return proto_utils::FromDurationProto(lhs.run_time()) <
+           proto_utils::FromDurationProto(rhs.run_time());
+  };
+  int idx = -1;
+  int idx_no_scratch = -1;
+  for (int i = 0; i < results.size(); i++) {
+    if (!results[i].has_failure()) {
+      if (idx == -1 || compare_run_times(results[i], results[idx])) {
+        idx = i;
+      }
+      if (results[i].scratch_bytes() == 0 &&
+          (idx_no_scratch == -1 ||
+           compare_run_times(results[i], results[idx_no_scratch]))) {
+        idx_no_scratch = i;
+      }
+    }
+  }
 
-Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
-                              se::dnn::AlgorithmConfig* algo) {
-  std::vector<AutotuneResult> filtered_results;
-  absl::c_copy_if(
-      results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& result) { return !result.has_failure(); });
-  if (filtered_results.empty()) {
+  if (idx == -1) {
     return errors::NotFound("No algorithm worked!");
   }
-  std::vector<AutotuneResult> filtered_results_no_scratch;
-  absl::c_copy_if(
-      filtered_results, std::back_inserter(filtered_results_no_scratch),
-      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
 
-  auto selected_result = filtered_results.begin();
-  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
-  if (!RequireCudnnDeterminism()) {
-    auto compare_run_times = [](const AutotuneResult& lhs,
-                                const AutotuneResult& rhs) {
-      return proto_utils::FromDurationProto(lhs.run_time()) <
-             proto_utils::FromDurationProto(rhs.run_time());
-    };
-    selected_result = absl::c_min_element(filtered_results, compare_run_times);
-    selected_result_no_scratch =
-        absl::c_min_element(filtered_results_no_scratch, compare_run_times);
+  if (plans == nullptr) {
+    VLOG(2) << "fastest algorithm: "
+            << proto_utils::FromDurationProto(results[idx].run_time())
+            << " with algo " << results[idx].conv().algorithm()
+            << ", workspace bytes " << results[idx].scratch_bytes();
+    algo->set_algorithm({results[idx].conv().algorithm(),
+                         results[idx].conv().tensor_ops_enabled()});
+    algo->set_scratch_size(results[idx].scratch_bytes());
+    if (idx_no_scratch != -1) {
+      algo->set_algorithm_no_scratch(
+          {results[idx_no_scratch].conv().algorithm(),
+           results[idx_no_scratch].conv().tensor_ops_enabled()});
+    }
+  } else {
+    VLOG(2) << "fastest algorithm: "
+            << proto_utils::FromDurationProto(results[idx].run_time())
+            << " with algo " << (*plans)[idx]->getTag() << ", workspace bytes "
+            << (*plans)[idx]->getWorkspaceSize();
+    algo->set_algorithm(
+        {(*plans)[idx]->getTag(), (*plans)[idx]->get_raw_desc()});
+    algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());
+    if (idx_no_scratch != -1) {
+      algo->set_algorithm_no_scratch(
+          {(*plans)[idx_no_scratch]->getTag(),
+           (*plans)[idx_no_scratch]->get_raw_desc()});
+    }
+    algo->set_plan((*plans)[idx]);
+    if (idx_no_scratch != -1 && idx_no_scratch != idx) {
+      algo->set_plan_no_scratch((*plans)[idx_no_scratch]);
+    }
   }
-
-  algo->set_algorithm({selected_result->conv().algorithm(),
-                       selected_result->conv().tensor_ops_enabled()});
-  algo->set_scratch_size(selected_result->scratch_bytes());
-  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
-    algo->set_algorithm_no_scratch(
-        {selected_result_no_scratch->conv().algorithm(),
-         selected_result_no_scratch->conv().tensor_ops_enabled()});
-  }
-
   return Status::OK();
 }
 

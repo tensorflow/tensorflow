@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -40,6 +41,24 @@ class TakeTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_output = min(count, 10) if count != -1 else 10
     self.assertDatasetProduces(
         dataset, [tuple(components[0][i:i + 1]) for i in range(num_output)])
+
+
+class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_take_dataset(self, count):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(count)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(count=[5], num_outputs=[5]) +
+          combinations.combine(count=[20, 10, -1], num_outputs=[10]) +
+          combinations.combine(count=[0], num_outputs=[0])))
+  def test(self, verify_fn, count, num_outputs):
+    verify_fn(self, lambda: self._build_take_dataset(count), num_outputs)
 
 
 if __name__ == "__main__":

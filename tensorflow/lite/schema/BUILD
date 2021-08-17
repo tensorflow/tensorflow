@@ -20,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -42,6 +42,7 @@ py_library(
         "schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
@@ -53,7 +54,7 @@ py_test(
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",
@@ -67,6 +68,22 @@ py_test(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# py_test(
+#     name = "schema_validation_test",
+#     srcs = ["schema_validation_test.py"],
+#     data = [
+#         "//tensorflow/lite/schema:schema_fbs_srcs",
+#         "//tensorflow/lite/schema:schema_generated.h.oss",
+#     ],
+#     python_version = "PY3",
+#     deps = [
+#         "//testing/pybase",
+#         "@absl_py//absl/flags",
+#     ],
+# )
+# copybara:uncomment_end
+
 exports_files([
     "schema.fbs",
     "schema_v0.fbs",
@@ -74,6 +91,7 @@ exports_files([
     "schema_v2.fbs",
     "schema_v3.fbs",
     "schema_v3a.fbs",
+    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -116,7 +134,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3a.fbs",
+        "schema_v3b.fbs",
     ],
     tags = [
         "no_oss",
@@ -125,7 +143,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:flatc_library",
     ],
 )

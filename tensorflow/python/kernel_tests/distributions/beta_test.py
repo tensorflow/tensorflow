@@ -112,7 +112,7 @@ class BetaTest(test.TestCase):
     x = [.5, .5]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
+    self.assertAllClose([1., 3. / 2], self.evaluate(pdf), rtol=1e-5, atol=1e-5)
     self.assertEqual((2,), pdf.get_shape())
 
   def testPdfTwoBatchesNontrivialX(self):
@@ -121,7 +121,7 @@ class BetaTest(test.TestCase):
     x = [.3, .7]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([1, 63. / 50], self.evaluate(pdf))
+    self.assertAllClose([1, 63. / 50], self.evaluate(pdf), rtol=1e-5, atol=1e-5)
     self.assertEqual((2,), pdf.get_shape())
 
   def testPdfUniformZeroBatch(self):
@@ -140,7 +140,10 @@ class BetaTest(test.TestCase):
     x = [[.5, .5], [.3, .7]]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([[1., 3. / 2], [1., 63. / 50]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [1., 63. / 50]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfAlphaStretchedInBroadcastWhenLowerRank(self):
@@ -148,7 +151,10 @@ class BetaTest(test.TestCase):
     b = [1., 2]
     x = [[.5, .5], [.2, .8]]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [1., 24. / 25]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [1., 24. / 25]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenSameRank(self):
@@ -156,7 +162,10 @@ class BetaTest(test.TestCase):
     b = [[1., 2], [2., 3]]
     x = [[.5, .5]]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenLowerRank(self):
@@ -164,13 +173,16 @@ class BetaTest(test.TestCase):
     b = [[1., 2], [2., 3]]
     x = [.5, .5]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):
     b = [[0.01, 0.1, 1., 2], [5., 10., 2., 3]]
     pdf = self.evaluate(beta_lib.Beta(1., b).prob(0.))
-    self.assertAllEqual(np.ones_like(pdf, dtype=np.bool), np.isfinite(pdf))
+    self.assertAllEqual(np.ones_like(pdf, dtype=np.bool_), np.isfinite(pdf))
 
   def testBetaMean(self):
     a = [1., 2, 3]
@@ -318,8 +330,8 @@ class BetaTest(test.TestCase):
       b = 10. * np.random.random(shape).astype(dt)
       x = np.random.random(shape).astype(dt)
       actual = self.evaluate(beta_lib.Beta(a, b).cdf(x))
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 0. <= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 1. >= x)
       if not stats:
         return
       self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=9e-3, atol=5e-6)
@@ -331,8 +343,8 @@ class BetaTest(test.TestCase):
       b = 10. * np.random.random(shape).astype(dt)
       x = np.random.random(shape).astype(dt)
       actual = self.evaluate(math_ops.exp(beta_lib.Beta(a, b).log_cdf(x)))
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
-      self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 0. <= x)
+      self.assertAllEqual(np.ones(shape, dtype=np.bool_), 1. >= x)
       if not stats:
         return
       self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=3e-3, atol=2e-5)

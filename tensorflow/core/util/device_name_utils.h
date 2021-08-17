@@ -154,6 +154,11 @@ class DeviceNameUtils {
   static Status MergeOverrideDevNames(ParsedName* target,
                                       const ParsedName& other);
 
+  // Merges the device specifications in "*target" and "other", and
+  // stores the result in "*target" by setting all unset values in target with
+  // corresponding set ones in other.
+  static void MergeUnsetDevNames(ParsedName* target, const ParsedName& other);
+
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
   static bool IsSameAddressSpace(StringPiece src, StringPiece dst);

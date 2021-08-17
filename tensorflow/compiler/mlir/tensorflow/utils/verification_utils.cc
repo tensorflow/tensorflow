@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -24,7 +25,10 @@ namespace TF {
 LogicalResult VerifyShapeOfReshapeOp(ArrayRef<int64_t> shape) {
   bool has_dynamic_dim = false;
   for (int64_t dim : shape) {
-    if (dim != ShapedType::kDynamicSize) continue;
+    if (dim != ShapedType::kDynamicSize) {
+      if (dim < 0) return failure();
+      continue;
+    }
     if (has_dynamic_dim) return failure();
     has_dynamic_dim = true;
   }

@@ -36,7 +36,6 @@ VALID_LIBS = [
     "opt_einsum_archive",
     "org_sqlite",
     "pasta",
-    "pcre",
     "png",
     "pybind11",
     "six_archive",

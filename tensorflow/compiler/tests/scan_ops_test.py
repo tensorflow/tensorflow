@@ -72,7 +72,7 @@ def handle_options(func, x, axis, exclusive, reverse):
 
 class CumsumTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32, np.int32]
+  valid_dtypes = [np.float32, np.int32, np.int64]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])
@@ -91,7 +91,6 @@ class CumsumTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)
@@ -171,7 +170,6 @@ class CumprodTest(xla_test.XLATestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     for dtype in self.valid_dtypes:
       x = np.zeros([0]).astype(dtype)

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <array>
+#include <iterator>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -23,12 +25,12 @@ namespace tensorflow {
 namespace {
 
 /// Constants
-constexpr int32 kShrinkAxis = -1, kNewAxis = -2;
+constexpr int32_t kShrinkAxis = -1, kNewAxis = -2;
 
 // Sparse slicing specification
 // if one does foo[3:5, ..., -3], this will have 3 length tensors
 struct StridedSliceSparseSpec {
-  int64 dims;
+  int64_t dims;
   int32 num_add_axis_after_ellipsis;
   const Tensor* begin_tensor;
   const Tensor* end_tensor;
@@ -44,14 +46,14 @@ struct StridedSliceSparseSpec {
 // each inlinedVector will have 10 entries whereas the
 // sparse had 3 length tensors.
 struct StridedSliceDenseSpec {
-  const int64 dims;
+  const int64_t dims;
   int32 begin_mask;
   int32 end_mask;
   bool begin_valid;
   bool end_valid;
-  gtl::InlinedVector<int64, 4>& begin;
-  gtl::InlinedVector<int64, 4>& end;
-  gtl::InlinedVector<int64, 4>& strides;
+  gtl::InlinedVector<int64_t, 4>& begin;
+  gtl::InlinedVector<int64_t, 4>& end;
+  gtl::InlinedVector<int64_t, 4>& strides;
   // This vector helps construct the final shape of the slice.
   // The final tensor is reduced in rank whenever a single index e.g. foo[3]
   // is called for. The final tensor increases in rank with tf.newaxis
@@ -64,6 +66,7 @@ struct StridedSliceDenseSpec {
   // index. A -1 in this vector means there the index is not from the sparse
   // input.
   gtl::InlinedVector<int32, 4> final_shape_gather_indices_sparse;
+  gtl::InlinedVector<int32, 4> input_shape_gather_indices_sparse;
   // The dense indexed shrink mask is which processing dimensions
   // should be shrunk. For example, if foo.shape = (10,10,10,10)
   // foo[3, ..., 5] has sparse_shrink_axis_mask of 0x5 and
@@ -81,6 +84,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
   dense->begin.resize(dense->dims);
   dense->end.resize(dense->dims);
   dense->strides.resize(dense->dims);
+  dense->input_shape_gather_indices_sparse.resize(dense->dims);
   // What indices to get the final shape from.
   dense->begin_mask = 0;
   dense->end_mask = 0;
@@ -103,9 +107,9 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
       if ((1 << i) & sparse.ellipsis_mask) {
         // Expand the ellipsis into the appropriate indices
         // NOTE: this only works because we guaranteed one ellipsis
-        int32 next_index = std::min(dense->dims - (sparse.dims - i) + 1 +
-                                        sparse.num_add_axis_after_ellipsis,
-                                    dense->dims);
+        int32_t next_index = std::min(dense->dims - (sparse.dims - i) + 1 +
+                                          sparse.num_add_axis_after_ellipsis,
+                                      dense->dims);
         for (; full_index < next_index; full_index++) {
           // new_axis' aren't real axis so you have to skip
           dense->begin[full_index] = dense->end[full_index] = 0;
@@ -114,6 +118,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
           dense->end_mask |= (1 << full_index);
           dense->final_shape_gather_indices.push_back(full_index);
           dense->final_shape_gather_indices_sparse.push_back(-1);
+          dense->input_shape_gather_indices_sparse[full_index] = i;
         }
       } else if ((1 << i) & sparse.new_axis_mask) {
         dense->final_shape_gather_indices.push_back(kNewAxis);
@@ -153,6 +158,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
           // from.
           dense->final_shape_gather_indices_sparse.push_back(i);
         }
+        dense->input_shape_gather_indices_sparse[full_index] = i;
         full_index++;
       }
     }
@@ -163,14 +169,13 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
-    gtl::InlinedVector<int64, 4>* strides,
-    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping,
-    gtl::InlinedVector<int64, 4>* output_to_processing_mapping) {
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec) {
   const bool begin_is_wrong =
       begin_tensor != nullptr &&
       !(TensorShapeUtils::IsVector(begin_tensor->shape()) &&
@@ -220,7 +225,7 @@ Status ValidateStridedSliceOp(
                                         new_axis_mask,
                                         shrink_axis_mask};
 
-  for (int32 i = 0; i < sparse_spec.dims; i++) {
+  for (int32_t i = 0; i < sparse_spec.dims; i++) {
     if (ellipsis_seen && ((1 << i) & new_axis_mask) != 0) {
       sparse_spec.num_add_axis_after_ellipsis++;
     }
@@ -255,7 +260,7 @@ Status ValidateStridedSliceOp(
   if (strides_tensor.dtype() == DT_INT32) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
   } else if (strides_tensor.dtype() == DT_INT64) {
-    TF_RETURN_IF_ERROR(BuildDenseSpec<int64>(sparse_spec, &dense_spec));
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int64_t>(sparse_spec, &dense_spec));
   } else {
     LOG(FATAL) << "begin must be either int32 or int64";
   }
@@ -267,10 +272,10 @@ Status ValidateStridedSliceOp(
   *is_simple_slice = true;
   processing_shape->Clear();
   for (int i = 0; i < input_shape.dims(); ++i) {
-    int64& begin_i = (*begin)[i];
-    int64& end_i = (*end)[i];
-    int64& stride_i = (*strides)[i];
-    int64 dim_i = input_shape.dim_size(i);
+    int64_t& begin_i = (*begin)[i];
+    int64_t& end_i = (*end)[i];
+    int64_t& stride_i = (*strides)[i];
+    int64_t dim_i = input_shape.dim_size(i);
     if (stride_i == 0) {
       return errors::InvalidArgument("strides[", i, "] must be non-zero");
     }
@@ -280,16 +285,17 @@ Status ValidateStridedSliceOp(
       continue;
     }
 
-    const std::array<int64, 2> masks = {
+    const std::array<int64_t, 2> masks = {
         {dense_spec.begin_mask & (1 << i), dense_spec.end_mask & (1 << i)}};
-    const std::array<int64, 2> valid_range = {
+    const std::array<int64_t, 2> valid_range = {
         {stride_i > 0 ? 0 : -1, stride_i > 0 ? dim_i : dim_i - 1}};
 
-    auto canonical = [stride_i, dim_i, masks, valid_range](int64 x, int c) {
+    auto canonical = [stride_i, dim_i, masks, valid_range](int64_t x, int c) {
       if (masks[c]) {
         return stride_i > 0 ? valid_range[c] : valid_range[(c + 1) & 1];
       } else {
-        int64 x_fwd = x < 0 ? dim_i + x : x;  // make negative indices positive
+        int64_t x_fwd =
+            x < 0 ? dim_i + x : x;  // make negative indices positive
         return x_fwd < valid_range[0]
                    ? valid_range[0]
                    : x_fwd > valid_range[1] ? valid_range[1] : x_fwd;
@@ -309,7 +315,7 @@ Status ValidateStridedSliceOp(
         // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
         // and canonical puts these to n-1 and 0, which implies a degenerate
         // interval. Fortunately, it is now safe to re-create end as begin+1.
-        int64 x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
+        int64_t x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
         begin_i = x_fwd;
         end_i = begin_i + 1;
         if (x_fwd < 0 || x_fwd >= dim_i) {
@@ -330,7 +336,7 @@ Status ValidateStridedSliceOp(
       (*slice_dim0) &= (i == 0 && stride_i == 1) || begin_and_end_masked;
     }
     // Compute the processing shape (the intermediate Eigen will produce)
-    int64 interval_length;
+    int64_t interval_length;
     bool known_interval = false;
     if (dense_spec.begin_valid && dense_spec.end_valid) {
       interval_length = end_i - begin_i;
@@ -354,7 +360,7 @@ Status ValidateStridedSliceOp(
       }
     }
     if (known_interval) {
-      int64 size_i;
+      int64_t size_i;
       // Hold zero if the interval is degenerate, otherwise account for
       // remainder
       if (interval_length == 0 || ((interval_length < 0) != (stride_i < 0))) {
@@ -375,57 +381,58 @@ Status ValidateStridedSliceOp(
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
   final_shape->Clear();
-  if (output_to_sparse_mapping != nullptr) {
-    output_to_sparse_mapping->clear();
+  if (shape_spec != nullptr) {
+    shape_spec->output_to_sparse_mapping.clear();
+    shape_spec->output_to_processing_mapping.clear();
+    shape_spec->processing_to_sparse_mapping.assign(
+        dense_spec.input_shape_gather_indices_sparse.begin(),
+        dense_spec.input_shape_gather_indices_sparse.end());
+
+    shape_spec->begin_dense_mask = dense_spec.begin_mask;
+    shape_spec->end_dense_mask = dense_spec.end_mask;
+    shape_spec->shrink_axis_dense_mask = dense_spec.shrink_axis_mask;
   }
 
-  if (output_to_processing_mapping != nullptr) {
-    output_to_processing_mapping->clear();
-  }
-  for (int64 dense_dim = 0;
+  for (int64_t dense_dim = 0;
        dense_dim < dense_spec.final_shape_gather_indices.size(); ++dense_dim) {
-    int64 gather_index = dense_spec.final_shape_gather_indices[dense_dim];
-    int64 sparse_index =
+    int64_t gather_index = dense_spec.final_shape_gather_indices[dense_dim];
+    int64_t sparse_index =
         dense_spec.final_shape_gather_indices_sparse[dense_dim];
     if (gather_index >= 0) {
       final_shape->AddDim(processing_shape->dim_size(gather_index));
-      if (output_to_sparse_mapping != nullptr) {
-        output_to_sparse_mapping->push_back(sparse_index);
-      }
-      if (output_to_processing_mapping != nullptr) {
-        output_to_processing_mapping->push_back(gather_index);
+      if (shape_spec != nullptr) {
+        shape_spec->output_to_sparse_mapping.push_back(sparse_index);
+        shape_spec->output_to_processing_mapping.push_back(gather_index);
       }
     } else if (gather_index == kNewAxis) {
       final_shape->AddDim(1);
-      if (output_to_sparse_mapping != nullptr) {
-        output_to_sparse_mapping->push_back(-1);
-      }
-      if (output_to_processing_mapping != nullptr) {
-        output_to_processing_mapping->push_back(-1);
+      if (shape_spec != nullptr) {
+        shape_spec->output_to_sparse_mapping.push_back(-1);
+        shape_spec->output_to_processing_mapping.push_back(-1);
       }
     }
   }
+
   return Status::OK();
 }
 
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides,
-    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping,
-    gtl::InlinedVector<int64, 4>* output_to_processing_mapping) {
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec) {
   // Validate with PartialTensorShape output
   PartialTensorShape partial_processing_shape, partial_final_shape;
   TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
       begin_tensor, end_tensor, strides_tensor, input_shape, begin_mask_spec,
       end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
       &partial_processing_shape, &partial_final_shape, is_identity,
-      is_simple_slice, slice_dim0, begin, end, strides,
-      output_to_sparse_mapping, output_to_processing_mapping));
+      is_simple_slice, slice_dim0, begin, end, strides, shape_spec));
 
   // Verify that the output shapes are fully known
   if (!partial_processing_shape.AsTensorShape(processing_shape) ||

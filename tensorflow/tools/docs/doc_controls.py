@@ -32,6 +32,18 @@ def set_deprecated(obj: T) -> T:
   return obj
 
 
+_INHERITABLE_HEADER = "_tf_docs_inheritable_header"
+
+
+def inheritable_header(text):
+
+  def _wrapped(cls):
+    setattr(cls, _INHERITABLE_HEADER, text)
+    return cls
+
+  return _wrapped
+
+
 _DO_NOT_DOC = "_tf_docs_do_not_document"
 
 

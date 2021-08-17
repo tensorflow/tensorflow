@@ -132,10 +132,10 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
-    cp \
+    cp -L \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-    cp -R \
+    cp -LR \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     cp_external \
@@ -145,14 +145,19 @@ function prepare_src() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
+    # If oneDNN was built with openMP then copy the omp libs over
+    if [ -f "bazel-bin/external/llvm_openmp/libiomp5md.dll" ]; then
+      cp bazel-bin/external/llvm_openmp/libiomp5md.dll ${TMPDIR}/tensorflow/python
+      cp bazel-bin/external/llvm_openmp/libiomp5md.dll.if.lib ${TMPDIR}/tensorflow/python
+    fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
-      cp \
+      cp -L \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
         "${TMPDIR}"
-      cp -R \
+      cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \
@@ -172,10 +177,10 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
-      cp \
+      cp -L \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
         "${TMPDIR}"
-      cp -R \
+      cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       cp_external \

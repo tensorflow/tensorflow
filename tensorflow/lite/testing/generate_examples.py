@@ -91,6 +91,10 @@ parser.add_argument(
     help=("Comma-separated list of test set names to generate. "
           "If not specified, a test set is selected by parsing the name of "
           "'zip_to_output' file."))
+parser.add_argument(
+    "--mlir_quantizer",
+    action="store_true",
+    help=("Whether the new MLIR quantizer is being used."))
 
 
 # Toco binary path provided by the generate rule.
@@ -116,6 +120,7 @@ def main(unused_args):
   options.tflite_convert_function = toco_convert.toco_convert
   options.no_tests_limit = FLAGS.no_tests_limit
   options.no_conversion_report = FLAGS.no_conversion_report
+  options.mlir_quantizer = FLAGS.mlir_quantizer
 
   if FLAGS.test_sets:
     test_sets = FLAGS.test_sets.split(",")

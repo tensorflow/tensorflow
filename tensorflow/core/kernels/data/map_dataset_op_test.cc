@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -94,13 +94,13 @@ MapDatasetParams MapDatasetParams3() {
 std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {12}, {24}, {36}})},
           {/*dataset_params=*/MapDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{20, 14}, {8, 2}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{20, 14}, {8, 2}})},
           {/*dataset_params=*/MapDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(MapDatasetOpTest, MapDatasetParams, GetNextTestCases())
@@ -166,15 +166,15 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*breakpoints*/ {0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {12}, {24}, {36}})},
           {/*dataset_params=*/MapDatasetParams2(),
            /*breakpoints*/ {0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{20, 14}, {8, 2}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{20, 14}, {8, 2}})},
           {/*dataset_params=*/MapDatasetParams3(),
            /*breakpoints*/ {0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(MapDatasetOpTest, MapDatasetParams,

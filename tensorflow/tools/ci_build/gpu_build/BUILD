@@ -3,7 +3,7 @@
 # learning applications.
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 sh_binary(

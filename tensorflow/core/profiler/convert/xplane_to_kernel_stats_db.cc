@@ -56,15 +56,17 @@ void ConvertDeviceTraceXPlaneToKernelReports(
           case StatType::kLevel0:  // old way to deliver tf_op info.
             tf_op_fullname = stat.StrOrRefValue();
             break;
-          case StatType::kKernelDetails:
+          case StatType::kKernelDetails: {
             kernel.set_name(event.Name().data(), event.Name().size());
             kernel.set_is_kernel_using_tensor_core(
                 IsKernelUsingTensorCore(event.Name()));
             kernel.set_total_duration_ns(event.DurationNs());
             kernel.set_min_duration_ns(event.DurationNs());
             kernel.set_max_duration_ns(event.DurationNs());
-            ParseKernelLaunchParams(stat.StrOrRefValue(), &kernel);
+            absl::string_view launch_params = stat.StrOrRefValue();
+            ParseKernelLaunchParams(launch_params, &kernel);
             break;
+          }
           case StatType::kEquation:
             equation = stat.StrOrRefValue();
             break;

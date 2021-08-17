@@ -56,15 +56,25 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters &params,
 Status GetGradientAccumulationSupport(const OptimizationParameters &params,
                                       GradientAccumulationSupport *support);
 
+// Returns whether both the given set of optimization parameters has gradient
+// accumulation turned on and that the algorithm used supports it or should
+// ignore that setting. Returns an error if gradient accumulation is enabled and
+// the algorithm does not support it.
+Status UseGradientAccumulation(const OptimizationParameters &params,
+                               bool *use_gradient_accumulation);
+
 // Returns the parameter specifications for the optimization algorithm (the main
 // parameters first, followed by any auxiliary parameters such as Adagrad
 // accumulators).
 Status GetOptimizationAlgorithmStateVariables(
-    const OptimizationParameters &params, bool use_gradient_accumulation,
+    const OptimizationParameters &params,
     std::vector<StateVariableSpecification> *state_variables);
 
-// Maximum value of auxiliar_parameter_count for any optimization algorithm.
-static constexpr int kMaxAuxiliaryParameterCount = 3;
+// Maximum value of auxiliary_parametery_count for any optimization algorithm.
+// This count is used by TPU embedding load/retrieve and needs to be independent
+// of any particular TPU version and hence, we take the maximum across all TPU
+// versions.
+static constexpr int kMaxAuxiliaryParameterCount = 7;
 
 // Fill value for gradient accumulators. This is a denormal so that it will be
 // flushed to zero on the current TPU platforms and needs to continue to have

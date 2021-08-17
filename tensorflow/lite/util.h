@@ -21,6 +21,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <stddef.h>
+
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -88,6 +91,14 @@ bool IsUnresolvedCustomOp(const TfLiteRegistration& registration);
 
 // Returns a descriptive name with the given op TfLiteRegistration.
 std::string GetOpNameByRegistration(const TfLiteRegistration& registration);
+
+// The prefix of a validation subgraph name.
+// WARNING: This is an experimental API and subject to change.
+constexpr char kValidationSubgraphNamePrefix[] = "VALIDATION:";
+
+// Checks whether the prefix of the subgraph name indicates the subgraph is a
+// validation subgraph.
+bool IsValidationSubgraph(const char* name);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

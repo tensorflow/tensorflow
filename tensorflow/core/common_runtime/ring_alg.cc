@@ -48,10 +48,11 @@ limitations under the License.
 // dynamically so that the resulting chunk size does not exceed
 // kMaxChunkSizeBytes, empirically set at 4 MiB.
 constexpr size_t kMaxChunkSizeBytes = (4 * 1024 * 1024);
-// kMaxSubdivsPerDev is used to give an upper bound on the number of
-// subdivisions dynamically generated.  A reasonable value would be a small
+// kMaxSubdivsPerDeviceDefault is used to give an upper bound on the number of
+// subdivisions dynamically generated when user does not provide the parameter
+// through the collectives API. A reasonable value would be a small
 // multiple of the number of NICs adjacent to each device.
-constexpr int kMaxSubdivsPerDevice = 2;
+constexpr int kMaxSubdivsPerDeviceDefault = 2;
 
 namespace tensorflow {
 namespace {
@@ -107,12 +108,26 @@ RingAlg::RingAlg(CollectiveType type, const string& name)
 
 namespace {
 Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
+  // This function generates subdivision_offsets. Expect it to be empty when
+  // called.
+  DCHECK(col_params->instance.impl_details.subdiv_offsets.empty());
+
+  if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
+    col_params->instance.impl_details.subdiv_offsets = {0};
+    VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
+    return Status::OK();
+  }
+
   if (col_params->instance.shape.num_elements() == 0) {
     return errors::Internal("shape in CollectiveParams should be non-empty");
   }
   const int kAvgDevPerTask =
       col_params->group.group_size / col_params->group.num_tasks;
-  const int kMaxNumSubdivs = kMaxSubdivsPerDevice * kAvgDevPerTask;
+  const int max_subdivs_per_device =
+      (col_params->instance.impl_details.max_subdivs_per_device > 0)
+          ? col_params->instance.impl_details.max_subdivs_per_device
+          : kMaxSubdivsPerDeviceDefault;
+  const int kMaxNumSubdivs = max_subdivs_per_device * kAvgDevPerTask;
   if (kMaxNumSubdivs <= 0) {
     return errors::Internal("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs,
                             " in ",
@@ -164,7 +179,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
 
 Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   const string& device_name =
-      col_params->group.device_names[col_params->default_rank];
+      col_params->group.devices[col_params->default_rank].name();
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -227,7 +242,7 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
         int permuted_di = prior_dev_count + offset_di;
         int rank = static_cast<int>(perm.size());
         perm.push_back(permuted_di);
-        if (col_params->group.device_names[permuted_di] == device_name) {
+        if (col_params->group.devices[permuted_di].name() == device_name) {
           DCHECK_EQ(permuted_di, col_params->default_rank);
           col_params->subdiv_rank[sdi] = rank;
         }
@@ -245,7 +260,7 @@ Status RingAlg::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
-  col_params_ = &col_ctx->col_params;
+  col_params_ = col_ctx->col_params;
   return collective_util::InitializeDeviceAndLocality(
       col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
       &col_ctx->device_locality);
@@ -390,7 +405,7 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
   col_ctx_->col_exec->remote_access()->PostToPeer(
-      col_params_->group.device_names[send_to_dev_idx],
+      col_params_->group.devices[send_to_dev_idx].name(),
       col_params_->group.task_names[send_to_dev_idx], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), &rf->chunk,
@@ -410,7 +425,7 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
                            ? &rf->tmp_chunk
                            : &rf->chunk;
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
-      col_params_->group.device_names[rf->recv_dev_idx],
+      col_params_->group.devices[rf->recv_dev_idx].name(),
       col_params_->group.task_names[rf->recv_dev_idx],
       col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),

@@ -30,9 +30,9 @@ func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg
 // CHECK:  %[[VAL_11:.*]] = constant dense<0> : tensor<i32>
 // CHECK:  %[[VAL_12:.*]] = constant dense<1000> : tensor<i32>
 // CHECK:  %[[VAL_14:.*]] = index_cast %[[VAL_11]] : tensor<i32> to tensor<index>
-// CHECK:  %[[VAL_15:.*]] = extract_element %[[VAL_14]][] : tensor<index>
+// CHECK:  %[[VAL_15:.*]] = tensor.extract %[[VAL_14]][] : tensor<index>
 // CHECK:  %[[VAL_16:.*]] = index_cast %[[VAL_12]] : tensor<i32> to tensor<index>
-// CHECK:  %[[VAL_17:.*]] = extract_element %[[VAL_16]][] : tensor<index>
+// CHECK:  %[[VAL_17:.*]] = tensor.extract %[[VAL_16]][] : tensor<index>
 // CHECK:  %[[VAL_18:.*]] = index_cast %[[VAL_10]] : tensor<i32> to tensor<index>
-// CHECK:  %[[VAL_19:.*]] = extract_element %[[VAL_18]][] : tensor<index>
+// CHECK:  %[[VAL_19:.*]] = tensor.extract %[[VAL_18]][] : tensor<index>
 // CHECK:  scf.for %[[VAL_21:.*]] = %[[VAL_15]] to %[[VAL_17]] step %[[VAL_19]] iter_args(%[[VAL_22:.*]] = %[[VAL_9]], %[[VAL_23:.*]] = %[[VAL_12]])

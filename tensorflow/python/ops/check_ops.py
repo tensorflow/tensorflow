@@ -155,11 +155,13 @@ def _unary_assert_doc(sym, sym_name):
   return _decorator
 
 
-def _binary_assert_doc(sym):
+def _binary_assert_doc(sym, test_var):
   """Common docstring for most of the v1 assert_* ops that compare two tensors element-wise.
 
   Args:
     sym: Binary operation symbol, i.e. "=="
+    test_var: a string that represents the variable in the right-hand side of
+      binary operator of the test case
 
   Returns:
     Decorator that adds the appropriate docstring to the function for
@@ -203,16 +205,70 @@ def _binary_assert_doc(sym):
 
     Returns:
       Op that raises `InvalidArgumentError` if `x {sym} y` is False.
-      @compatibility(eager)
-        returns None
-      @end_compatibility
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
         `x {sym} y` is False. The check can be performed immediately during
         eager execution or if `x` and `y` are statically known.
+
+    @compatibility(TF2)
+    `tf.compat.v1.{opname}` is compatible with eager execution and
+    `tf.function`.
+    Please use `tf.debugging.{opname}` instead when migrating to TF2. Apart
+    from `data`, all arguments are supported with the same argument name.
+
+    If you want to ensure the assert statements run before the
+    potentially-invalid computation, please use `tf.control_dependencies`,
+    as tf.function auto-control dependencies are insufficient for assert
+    statements.
+
+    #### Structural Mapping to Native TF2
+
+    Before:
+
+    ```python
+    tf.compat.v1.{opname}(
+      x=x, y=y, data=data, summarize=summarize,
+      message=message, name=name)
+    ```
+
+    After:
+
+    ```python
+    tf.debugging.{opname}(
+      x=x, y=y, message=message,
+      summarize=summarize, name=name)
+    ```
+
+    #### TF1 & TF2 Usage Example
+
+    TF1:
+
+    >>> g = tf.Graph()
+    >>> with g.as_default():
+    ...   a = tf.compat.v1.placeholder(tf.float32, [2])
+    ...   b = tf.compat.v1.placeholder(tf.float32, [2])
+    ...   result = tf.compat.v1.{opname}(a, b,
+    ...     message='"a {sym} b" does not hold for the given inputs')
+    ...   with tf.compat.v1.control_dependencies([result]):
+    ...     sum_node = a + b
+    >>> sess = tf.compat.v1.Session(graph=g)
+    >>> val = sess.run(sum_node, feed_dict={{a: [1, 2], b:{test_var}}})
+
+
+    TF2:
+
+    >>> a = tf.Variable([1, 2], dtype=tf.float32)
+    >>> b = tf.Variable({test_var}, dtype=tf.float32)
+    >>> assert_op = tf.debugging.{opname}(a, b, message=
+    ...   '"a {sym} b" does not hold for the given inputs')
+    >>> # When working with tf.control_dependencies
+    >>> with tf.control_dependencies([assert_op]):
+    ...   val = a + b
+
+    @end_compatibility
     """.format(
-        sym=sym, opname=opname)
+        sym=sym, opname=opname, test_var=test_var)
     return func
 
   return _decorator
@@ -661,7 +717,7 @@ def assert_equal_v2(x, y, message=None, summarize=None, name=None):
 
 @tf_export(v1=['debugging.assert_equal', 'assert_equal'])
 @dispatch.add_dispatch_support
-@_binary_assert_doc('==')
+@_binary_assert_doc('==', '[1, 2]')
 def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
   with ops.name_scope(name, 'assert_equal', [x, y, data]):
     # Short-circuit if x and y are the same tensor.
@@ -713,7 +769,7 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
 @tf_export(v1=['debugging.assert_none_equal', 'assert_none_equal'])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_none_equal')
-@_binary_assert_doc('!=')
+@_binary_assert_doc('!=', '[2, 1]')
 def assert_none_equal(
     x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('!=', 'assert_none_equal', math_ops.not_equal,
@@ -895,7 +951,7 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
 
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
 @dispatch.add_dispatch_support
-@_binary_assert_doc('<')
+@_binary_assert_doc('<', '[2, 3]')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('<', 'assert_less', math_ops.less, np.less, x, y, data,
                         summarize, message, name)
@@ -941,7 +997,7 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
 @tf_export(v1=['debugging.assert_less_equal', 'assert_less_equal'])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_less_equal')
-@_binary_assert_doc('<=')
+@_binary_assert_doc('<=', '[1, 3]')
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('<=', 'assert_less_equal', math_ops.less_equal,
                         np.less_equal, x, y, data, summarize, message, name)
@@ -986,7 +1042,7 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
 
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
 @dispatch.add_dispatch_support
-@_binary_assert_doc('>')
+@_binary_assert_doc('>', '[0, 1]')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
   return _binary_assert('>', 'assert_greater', math_ops.greater, np.greater, x,
                         y, data, summarize, message, name)
@@ -1033,7 +1089,7 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
 @tf_export(v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_greater_equal')
-@_binary_assert_doc('>=')
+@_binary_assert_doc('>=', '[1, 0]')
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
                          name=None):
   return _binary_assert('>=', 'assert_greater_equal', math_ops.greater_equal,
@@ -1519,8 +1575,23 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
 
   This can always be checked statically, so this method returns nothing.
 
+  Example:
+
+  >>> a = tf.Variable(1.0)
+  >>> tf.debugging.assert_type(a, tf_type= tf.float32)
+
+  >>> b = tf.constant(21)
+  >>> tf.debugging.assert_type(b, tf_type=tf.bool)
+  Traceback (most recent call last):
+  ...
+  TypeError: ...
+
+  >>> c = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2],
+  ...  dense_shape=[3, 4])
+  >>> tf.debugging.assert_type(c, tf_type= tf.int32)
+
   Args:
-    tensor: A `Tensor` or `SparseTensor`.
+    tensor: A `Tensor`, `SparseTensor` or `tf.Variable .
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1552,6 +1623,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
+  tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
     if not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
@@ -2221,36 +2293,58 @@ def assert_scalar(tensor, name=None, message=None):
 def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 
-  For example:
+  When executed, this operation asserts that the input tensor `x`'s shape
+  is compatible with the `shape` argument.
+  See `tf.TensorShape.is_compatible_with` for details.
 
-  >>> @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
-  ... def f(tensor):
-  ...   return tf.ensure_shape(tensor, [3, 3])
-  >>>
-  >>> f(tf.zeros([3, 3])) # Passes
-  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
-  array([[0., 0., 0.],
-         [0., 0., 0.],
-         [0., 0., 0.]], dtype=float32)>
-  >>> f([1, 2, 3]) # fails
-  Traceback (most recent call last):
-  ...
-  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+  >>> x = tf.constant([[1, 2, 3],
+  ...                  [4, 5, 6]])
+  >>> x = tf.ensure_shape(x, [2, 3])
 
-  The above example raises `tf.errors.InvalidArgumentError`,
-  because the shape (3,) is not compatible with the shape (None, 3, 3)
+  Use `None` for unknown dimensions:
 
-  With eager execution this is a shape assertion, that returns the input:
+  >>> x = tf.ensure_shape(x, [None, 3])
+  >>> x = tf.ensure_shape(x, [2, None])
 
-  >>> x = tf.constant([1,2,3])
-  >>> print(x.shape)
-  (3,)
-  >>> x = tf.ensure_shape(x, [3])
+  If the tensor's shape is not compatible with the `shape` argument, an error
+  is raised:
+
   >>> x = tf.ensure_shape(x, [5])
   Traceback (most recent call last):
   ...
   tf.errors.InvalidArgumentError: Shape of tensor dummy_input [3] is not
     compatible with expected shape [5]. [Op:EnsureShape]
+
+  During graph construction (typically tracing a `tf.function`),
+  `tf.ensure_shape` updates the static-shape of the **result** tensor by
+  merging the two shapes. See `tf.TensorShape.merge_with` for details.
+
+  This is most useful when **you** know a shape that can't be determined
+  statically by TensorFlow.
+
+  The following trivial `tf.function` prints the input tensor's
+  static-shape before and after `ensure_shape` is applied.
+
+  >>> @tf.function
+  ... def f(tensor):
+  ...   print("Static-shape before:", tensor.shape)
+  ...   tensor = tf.ensure_shape(tensor, [None, 3])
+  ...   print("Static-shape after:", tensor.shape)
+  ...   return tensor
+
+  This lets you see the effect of `tf.ensure_shape` when the function is traced:
+  >>> cf = f.get_concrete_function(tf.TensorSpec([None, None]))
+  Static-shape before: (None, None)
+  Static-shape after: (None, 3)
+
+  >>> cf(tf.zeros([3, 3])) # Passes
+  >>> cf(tf.constant([1, 2, 3])) # fails
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+
+  The above example raises `tf.errors.InvalidArgumentError`, because `x`'s
+  shape, `(3,)`, is not compatible with the `shape` argument, `(None, 3)`
 
   Inside a `tf.function` or `v1.Graph` context it checks both the buildtime and
   runtime shapes. This is stricter than `tf.Tensor.set_shape` which only

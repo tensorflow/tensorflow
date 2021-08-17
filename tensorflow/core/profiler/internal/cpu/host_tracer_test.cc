@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,77 +38,6 @@ std::unique_ptr<ProfilerInterface> CreateHostTracer(
     const ProfileOptions& options);
 
 namespace {
-
-using ::testing::UnorderedElementsAre;
-
-NodeExecStats MakeNodeStats(absl::string_view name, uint32 thread_id,
-                            absl::string_view label = "") {
-  NodeExecStats ns;
-  ns.set_node_name(std::string(name));
-  ns.set_thread_id(thread_id);
-  if (!label.empty()) {
-    ns.set_timeline_label(std::string(label));
-  }
-  return ns;
-}
-
-class NodeStatsMatcher {
- public:
-  explicit NodeStatsMatcher(const NodeExecStats& expected)
-      : expected_(expected) {}
-
-  bool MatchAndExplain(const NodeExecStats& p,
-                       ::testing::MatchResultListener* /* listener */) const {
-    return p.node_name() == expected_.node_name() &&
-           p.thread_id() == expected_.thread_id() &&
-           p.timeline_label() == expected_.timeline_label();
-  }
-
-  void DescribeTo(::std::ostream* os) const { *os << expected_.DebugString(); }
-  void DescribeNegationTo(::std::ostream* os) const {
-    *os << "not equal to expected message: " << expected_.DebugString();
-  }
-
- private:
-  const NodeExecStats expected_;
-};
-
-inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
-    const NodeExecStats& expected) {
-  return ::testing::MakePolymorphicMatcher(NodeStatsMatcher(expected));
-}
-
-TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
-  uint32 thread_id = Env::Default()->GetCurrentThreadId();
-
-  auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
-
-  TF_ASSERT_OK(tracer->Start());
-  { TraceMe traceme("hello"); }
-  { TraceMe traceme("world"); }
-  { TraceMe traceme("contains#inside"); }
-  { TraceMe traceme("good#key1=value1#"); }
-  { TraceMe traceme("morning#key1=value1,key2=value2#"); }
-  { TraceMe traceme("incomplete#key1=value1,key2#"); }
-  TF_ASSERT_OK(tracer->Stop());
-
-  RunMetadata run_metadata;
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
-
-  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 1);
-  EXPECT_EQ(run_metadata.step_stats().dev_stats(0).node_stats_size(), 6);
-  EXPECT_THAT(
-      run_metadata.step_stats().dev_stats(0).node_stats(),
-      UnorderedElementsAre(
-          EqualsNodeStats(MakeNodeStats("hello", thread_id)),
-          EqualsNodeStats(MakeNodeStats("world", thread_id)),
-          EqualsNodeStats(MakeNodeStats("contains#inside", thread_id)),
-          EqualsNodeStats(MakeNodeStats("good", thread_id, "key1=value1")),
-          EqualsNodeStats(
-              MakeNodeStats("morning", thread_id, "key1=value1,key2=value2")),
-          EqualsNodeStats(
-              MakeNodeStats("incomplete", thread_id, "key1=value1,key2"))));
-}
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   uint32 thread_id;

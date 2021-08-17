@@ -62,13 +62,13 @@ class StringDest : public WritableFile {
     contents_->append(slice.data(), slice.size());
     return Status::OK();
   }
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& data) override {
     contents_->append(std::string(data));
     return Status::OK();
   }
 #endif
-  Status Tell(int64* pos) override {
+  Status Tell(int64_t* pos) override {
     *pos = contents_->size();
     return Status::OK();
   }
@@ -136,7 +136,7 @@ class RecordioTest : public ::testing::Test {
     TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
   }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   void Write(const absl::Cord& msg) {
     ASSERT_TRUE(!reading_) << "Write() after starting to read";
     TF_ASSERT_OK(writer_->WriteRecord(msg));
@@ -204,7 +204,7 @@ TEST_F(RecordioTest, ReadWrite) {
   ASSERT_EQ("EOF", Read());  // Make sure reads at eof work
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 TEST_F(RecordioTest, ReadWriteCords) {
   Write(absl::Cord("foo"));
   Write(absl::Cord("bar"));
@@ -347,25 +347,25 @@ TEST_F(RecordioTest, ReadErrorWithCompression) {
 TEST_F(RecordioTest, CorruptLength) {
   Write("foo");
   IncrementByte(6, 100);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptLengthCrc) {
   Write("foo");
   IncrementByte(10, 100);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptData) {
   Write("foo");
   IncrementByte(14, 10);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptDataCrc) {
   Write("foo");
   IncrementByte(WrittenBytes() - 1, 10);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, ReadEnd) { CheckOffsetPastEndReturnsNoRecords(0); }

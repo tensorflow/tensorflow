@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -45,17 +45,23 @@ hexagon_op_tests(
         "reduce_test.cc",
         "reshape_test.cc",
         "resize_test.cc",
+        "rsqrt_test.cc",
         "slice_test.cc",
         "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",
+        "squared_difference_test.cc",
         "strided_slice_test.cc",
         "transpose_conv_test.cc",
         "transpose_test.cc",
     ],
     deps = [
         ":hexagon_delegate_op_model",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:reshape_test_common",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )

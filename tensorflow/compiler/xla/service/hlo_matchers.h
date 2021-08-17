@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -43,7 +46,7 @@ class HloMatcher : public ::testing::MatcherInterface<const HloInstruction*> {
 // Custom matcher for parameters, which accepts a parameter number.
 class HloParameterMatcher : public HloMatcher {
  public:
-  explicit HloParameterMatcher(int64 parameter_number)
+  explicit HloParameterMatcher(int64_t parameter_number)
       : HloMatcher(HloOpcode::kParameter, /*operands=*/{}),
         parameter_number_(parameter_number) {}
 
@@ -51,7 +54,7 @@ class HloParameterMatcher : public HloMatcher {
                        ::testing::MatchResultListener* listener) const override;
 
  private:
-  int64 parameter_number_;
+  int64_t parameter_number_;
 };
 
 // Custom matcher for comparisons, which accepts a comparison direction.
@@ -74,7 +77,7 @@ class HloComparisonMatcher : public HloMatcher {
 class HloGetTupleElementMatcher : public HloMatcher {
  public:
   HloGetTupleElementMatcher(::testing::Matcher<const HloInstruction*> operand,
-                            int64 tuple_index)
+                            int64_t tuple_index)
       : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
         tuple_index_(tuple_index) {}
 
@@ -82,7 +85,7 @@ class HloGetTupleElementMatcher : public HloMatcher {
                        ::testing::MatchResultListener* listener) const override;
 
  private:
-  int64 tuple_index_;
+  int64_t tuple_index_;
 };
 
 // Custom matcher for custom-call instructions, which accepts a matcher for its
@@ -119,7 +122,9 @@ class HloShapeMatcher
 class HloShapeAndLayoutMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShapeAndLayoutMatcher(const Shape& shape) : shape_(shape) {}
+  explicit HloShapeAndLayoutMatcher(const Shape& shape,
+                                    bool minor_to_major_only = false)
+      : shape_(shape), minor_to_major_only_(minor_to_major_only) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
                        ::testing::MatchResultListener* listener) const override;
@@ -127,6 +132,7 @@ class HloShapeAndLayoutMatcher
 
  private:
   Shape shape_;
+  bool minor_to_major_only_;
 };
 
 // Verify the sharding of an instruction against the provided HloSharding. If a
@@ -152,8 +158,8 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
  public:
   explicit HloDotWithContractingDimsMatcher(
       ::testing::Matcher<const HloInstruction*> lhs,
-      ::testing::Matcher<const HloInstruction*> rhs, int64 lhs_contracting_dim,
-      int64 rhs_contracting_dim)
+      ::testing::Matcher<const HloInstruction*> rhs,
+      int64_t lhs_contracting_dim, int64_t rhs_contracting_dim)
       : HloMatcher(HloOpcode::kDot, /*operands=*/{lhs, rhs}),
         lhs_contracting_dim_(lhs_contracting_dim),
         rhs_contracting_dim_(rhs_contracting_dim) {}
@@ -163,15 +169,15 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  int64 lhs_contracting_dim_;
-  int64 rhs_contracting_dim_;
+  int64_t lhs_contracting_dim_;
+  int64_t rhs_contracting_dim_;
 };
 
 // Custom matcher for asynchronous copy (CopyStart/CopyDone pair) with specified
 // source and destination memory spaces.
 class HloAsyncCopyMatcher : public HloMatcher {
  public:
-  HloAsyncCopyMatcher(int64 to_space, int64 from_space,
+  HloAsyncCopyMatcher(int64_t to_space, int64_t from_space,
                       ::testing::Matcher<const HloInstruction*> operand)
       : HloMatcher(HloOpcode::kCopyDone,
                    {::testing::MakeMatcher(
@@ -184,8 +190,21 @@ class HloAsyncCopyMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  int64 to_space_;
-  int64 from_space_;
+  int64_t to_space_;
+  int64_t from_space_;
+};
+
+class HloConstantMatcher : public HloMatcher {
+ public:
+  explicit HloConstantMatcher(Literal literal)
+      : HloMatcher(HloOpcode::kConstant, /*operands=*/{}),
+        literal_(std::move(literal)) {}
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Literal literal_;
 };
 
 // HloInstruction* matchers for opcode and operands. Example:
@@ -209,15 +228,17 @@ HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Bitcast);
+HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(CollectivePermute);
+HLO_MATCHER(CollectivePermuteStart);
+HLO_MATCHER(CollectivePermuteDone);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
-HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
@@ -252,12 +273,15 @@ HLO_MATCHER(Recv);
 HLO_MATCHER(RecvDone);
 HLO_MATCHER(Reduce);
 HLO_MATCHER(ReducePrecision);
+HLO_MATCHER(ReduceScatter);
 HLO_MATCHER(ReduceWindow);
 HLO_MATCHER(Remainder);
 HLO_MATCHER(ReplicaId);
 HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
+HLO_MATCHER(RngBitGenerator);
+HLO_MATCHER(RngGetAndUpdateState);
 HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
@@ -279,6 +303,16 @@ HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
 
+#define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
+  template <>                                                            \
+  inline ::testing::Matcher<const ::xla::HloInstruction*> opcode(        \
+      std::vector<::testing::Matcher<const HloInstruction*>> operands) { \
+    return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(        \
+        ::xla::HloOpcode::k##opcode, operands));                         \
+  }
+
+HLO_MATCHER_VECTOR_OPERANDS(DynamicSlice);
+
 // The special cases below let you check additional information about the
 // HloInstruction, beyond just its opcode and operands.  In all cases you can
 // still use the generic matcher which doesn't check this info.
@@ -288,7 +322,7 @@ HLO_MATCHER(Xor);
 //  - Parameter(N) matches parameter number N.
 //  - Parameter() matches any parameter.
 inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
-    int64 parameter_number) {
+    int64_t parameter_number) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloParameterMatcher(parameter_number));
 }
@@ -333,7 +367,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Lt(M... operands) {
 // tuple element of operand, while GetTupleElement(operand) matches any GTE
 // operation on operand, and GetTupleElement() matches any GTE operation at all.
 inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
-    ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index) {
+    ::testing::Matcher<const HloInstruction*> operand, int64_t tuple_index) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloGetTupleElementMatcher(operand, tuple_index));
 }
@@ -394,9 +428,9 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
       new ::xla::testing::HloShapeAndLayoutMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
-    absl::string_view shape) {
+    absl::string_view shape, bool minor_to_major_only = false) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
-      ParseShape(shape).ValueOrDie()));
+      ParseShape(shape).ValueOrDie(), minor_to_major_only));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.
@@ -417,6 +451,11 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
       new ::xla::testing::HloShardingMatcher(absl::nullopt));
 }
 
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(::xla::HloOpcode::kDot, {}));
+}
+
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
     ::testing::Matcher<const HloInstruction*> lhs_matcher,
     ::testing::Matcher<const HloInstruction*> rhs_matcher) {
@@ -435,7 +474,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
     ::testing::Matcher<const HloInstruction*> lhs_matcher,
     ::testing::Matcher<const HloInstruction*> rhs_matcher,
-    int64 lhs_contracting_dim, int64 rhs_contracting_dim) {
+    int64_t lhs_contracting_dim, int64_t rhs_contracting_dim) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloDotWithContractingDimsMatcher(
           lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
@@ -445,10 +484,22 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
 // CopyDone(CopyStart(...)) where from_space and to_space is the source and
 // destination memory spaces, respectively.
 inline ::testing::Matcher<const ::xla::HloInstruction*> AsyncCopy(
-    int64 to_space, int64 from_space,
+    int64_t to_space, int64_t from_space,
     ::testing::Matcher<const HloInstruction*> operand_matcher) {
   return ::testing::MakeMatcher(new ::xla::testing::HloAsyncCopyMatcher(
       to_space, from_space, operand_matcher));
+}
+
+//  - Constant() matches any constant.
+//  - Constant(V) matches a constant with the given value.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kConstant, {}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
+    Literal value) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloConstantMatcher(std::move(value)));
 }
 
 #undef HLO_MATCHER

@@ -75,7 +75,9 @@ def _sysconfig_module():
   """Load tf.sysconfig if available and working (i.e., inside a pip package)."""
   try:
     _ = sysconfig_lib.get_include()
-  except ImportError:
+  except (ImportError, ValueError):
+    # ValueError may come from saved_model_cli_test trying to enable
+    # eager mode twice.
     return None
   return sysconfig_lib
 
@@ -266,7 +268,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       xla_flags = '--xla_cpu_multi_thread_eigen={}'.format(
           'true' if multithreading else 'false')
     else:
-      xla_flags += ',--xla_cpu_multi_thread_eigen={}'.format(
+      xla_flags += ' --xla_cpu_multi_thread_eigen={}'.format(
           'true' if multithreading else 'false')
     os.environ['XLA_FLAGS'] = xla_flags
 

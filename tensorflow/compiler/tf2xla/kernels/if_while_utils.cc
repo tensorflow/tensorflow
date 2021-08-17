@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 
 namespace tensorflow {
 
@@ -33,16 +35,40 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
     // If the input tensor is a compile time constant build a kConstant type
     // argument.
     if (should_resolve_constant(i)) {
+      VLOG(1) << "Trying to resolve constant " << i;
       // NOTE: We can not simply check that this is Kind::kConstant because
       // this could be the output of a MetadataOnly op e.g. Size.
-      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
+
+      // If we can infer the constant values of an inner computation's argument,
+      // replace them with constants. If that fails, we fallback to infer the
+      // bounds of the argument.
+      StatusOr<absl::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
-      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        arg->kind = XlaCompiler::Argument::kConstant;
-        arg->type = expression.dtype();
-        arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
-        arg->shape = expression.GetShape().ValueOrDie();
-        resolved_constant_idxs.push_back(i);
+      StatusOr<absl::optional<Tensor>> bounds =
+          expression.ResolveConstant(ctx->compiler()->client(), false,
+                                     xla::ValueInferenceMode::kUpperBound);
+      if ((maybe_constant.ok() && maybe_constant->has_value()) ||
+          (bounds.ok() && bounds->has_value())) {
+        StatusOr<Tensor> values_are_dynamic =
+            expression.ResolveDynamism(ctx->compiler()->client());
+        bool all_values_are_static = false;
+        if (values_are_dynamic.ok()) {
+          xla::Literal literal =
+              HostTensorToLiteral(values_are_dynamic.ValueOrDie()).ValueOrDie();
+          all_values_are_static = literal.IsAll(0);
+        }
+
+        if (all_values_are_static) {
+          arg->kind = XlaCompiler::Argument::kConstant;
+          arg->type = expression.dtype();
+          arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
+          arg->shape = expression.GetShape().ValueOrDie();
+          resolved_constant_idxs.push_back(i);
+        } else {
+          arg->value_bound.emplace(std::move(bounds.ValueOrDie().value()));
+          arg->value_dynamism.emplace(
+              std::move(values_are_dynamic.ValueOrDie()));
+        }
       }
     }
   }

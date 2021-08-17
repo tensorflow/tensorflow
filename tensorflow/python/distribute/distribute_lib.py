@@ -192,6 +192,7 @@ from __future__ import print_function
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
+import functools
 import threading
 import weakref
 
@@ -205,6 +206,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -220,7 +222,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -286,7 +287,7 @@ def get_loss_reduction():
     return reduce_util.ReduceOp.SUM
   last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if (last_reduction == losses_impl.Reduction.SUM or
-      last_reduction == loss_reduction.ReductionV2.SUM):
+      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
     return reduce_util.ReduceOp.SUM
   return reduce_util.ReduceOp.MEAN
 
@@ -373,11 +374,13 @@ class _CurrentDistributionContext(object):
                strategy,
                var_creator_scope,
                var_scope=None,
+               resource_creator_scope=None,
                default_device=None):
     self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    self._resource_creator_scope = resource_creator_scope
     if default_device:
       self._device_scope = ops.device(default_device)
     else:
@@ -395,6 +398,9 @@ class _CurrentDistributionContext(object):
       if self._var_scope:
         self._var_scope.__enter__()
       self._var_creator_scope.__enter__()
+      if self._resource_creator_scope:
+        nest.map_structure(lambda scope: scope.__enter__(),
+                           self._resource_creator_scope)
       if self._device_scope:
         self._device_scope.__enter__()
     return self._context.strategy
@@ -420,6 +426,16 @@ class _CurrentDistributionContext(object):
           RuntimeError("Variable creator scope nesting error: move call to "
                        "tf.distribute.set_strategy() out of `with` scope."),
           e)
+
+    if self._resource_creator_scope:
+      try:
+        self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                              traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Resource creator scope nesting error: move call "
+                         "to tf.distribute.set_strategy() out of `with` "
+                         "scope."), e)
 
     if self._var_scope:
       try:
@@ -594,6 +610,7 @@ class RunOptions(
     collections.namedtuple("RunOptions", [
         "experimental_enable_dynamic_batch_size",
         "experimental_bucketizing_dynamic_shape",
+        "experimental_xla_options",
     ])):
   """Run options for `strategy.run`.
 
@@ -609,22 +626,27 @@ class RunOptions(
       bucketize inputs passed into `run` if the input shape is
       dynamic. This is a performance optimization to reduce XLA recompilation,
       which should not have impact on correctness.
+    experimental_xla_options: A `tf.tpu.XLAOptions` instance. Only applies to
+      TPUStrategy. Controls the XLA compiling options on TPUs. Default to None.
   """
 
   def __new__(cls,
               experimental_enable_dynamic_batch_size=True,
-              experimental_bucketizing_dynamic_shape=False):
+              experimental_bucketizing_dynamic_shape=False,
+              experimental_xla_options=None):
     return super(RunOptions,
                  cls).__new__(cls, experimental_enable_dynamic_batch_size,
-                              experimental_bucketizing_dynamic_shape)
+                              experimental_bucketizing_dynamic_shape,
+                              experimental_xla_options)
 
 
 @tf_export("distribute.InputOptions", v1=[])
 class InputOptions(
     collections.namedtuple("InputOptions", [
-        "experimental_prefetch_to_device",
+        "experimental_fetch_to_device",
         "experimental_replication_mode",
         "experimental_place_dataset_on_device",
+        "experimental_per_replica_buffer_size",
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -644,15 +666,17 @@ class InputOptions(
           tf.distribute.InputOptions(
               experimental_replication_mode=
               experimental_replication_mode.PER_WORKER,
-              experimental_place_dataset_on_device=False)))
+              experimental_place_dataset_on_device=False,
+              experimental_per_replica_buffer_size=1)))
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+    experimental_fetch_to_device: Boolean. If True, dataset
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
-      using TPUEmbedding API. experimental_prefetch_to_device can only be used
-      with experimental_replication_mode=PER_WORKER
+      using TPUEmbedding API. experimental_fetch_to_device can only be used
+      with experimental_replication_mode=PER_WORKER. Default behavior is same as
+      setting it to True.
     experimental_replication_mode: Replication mode for the input function.
       Currently, the InputReplicationMode.PER_REPLICA is only supported with
       tf.distribute.MirroredStrategy.
@@ -662,16 +686,26 @@ class InputOptions(
       dataset will be placed on the device, otherwise it will remain on the
       host. experimental_place_dataset_on_device=True can only be used with
       experimental_replication_mode=PER_REPLICA
+    experimental_per_replica_buffer_size: Integer. Default to 1. Indicates the
+      prefetch buffer size in the replica device memory. Users can set it
+      to 0 to completely disable prefetching behavior, or a number greater than
+      1 to enable larger buffer size. Note that this option is still
+      valid with `experimental_fetch_to_device=False`.
   """
 
   def __new__(cls,
-              experimental_prefetch_to_device=True,
+              experimental_fetch_to_device=None,
               experimental_replication_mode=InputReplicationMode.PER_WORKER,
-              experimental_place_dataset_on_device=False):
+              experimental_place_dataset_on_device=False,
+              experimental_per_replica_buffer_size=1):
+    if experimental_fetch_to_device is None:
+      experimental_fetch_to_device = True
+
     return super(InputOptions,
-                 cls).__new__(cls, experimental_prefetch_to_device,
+                 cls).__new__(cls, experimental_fetch_to_device,
                               experimental_replication_mode,
-                              experimental_place_dataset_on_device)
+                              experimental_place_dataset_on_device,
+                              experimental_per_replica_buffer_size)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
@@ -799,6 +833,9 @@ class StrategyBase(object):
     self._mean_reduce_helper_fns = {}
     self._reduce_sum_fns = {}
 
+    # Whether this strategy is designed to work with `ClusterCoordinator`.
+    self._should_use_with_coordinator = False
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
@@ -871,30 +908,34 @@ class StrategyBase(object):
     explicitly (i.e. calling those either inside or outside the scope is OK).
 
     * Anything that creates variables that should be distributed variables
-      must be in `strategy.scope`. This can be either by directly putting it in
-      scope, or relying on another API like `strategy.run` or `model.fit` to
-      enter it for you. Any variable that is created outside scope will not be
-      distributed and may have performance implications. Common things that
-      create variables in TF: models, optimizers, metrics. These should always
-      be created inside the scope. Another source of variable creation can be
-      a checkpoint restore - when variables are created lazily. Note that any
-      variable created inside a strategy captures the strategy information. So
-      reading and writing to these variables outside the `strategy.scope` can
-      also work seamlessly, without the user having to enter the scope.
+      must be called in a `strategy.scope`. This can be accomplished either by
+      directly calling the variable creating function within the scope context,
+      or by relying on another API like `strategy.run` or `keras.Model.fit` to
+      automatically enter it for you. Any variable that is created outside scope
+      will not be distributed and may have performance implications. Some common
+      objects that create variables in TF are Models, Optimizers, Metrics. Such
+      objects should always be initialized in the scope, and any functions
+      that may lazily create variables (e.g., `Model.__call__()`, tracing a
+      `tf.function`, etc.) should similarly be called within scope. Another
+      source of variable creation can be a checkpoint restore - when variables
+      are created lazily. Note that any variable created inside a strategy
+      captures the strategy information. So reading and writing to these
+      variables outside the `strategy.scope` can also work seamlessly, without
+      the user having to enter the scope.
     * Some strategy APIs (such as `strategy.run` and `strategy.reduce`) which
-      require to be in a strategy's scope, enter the scope for you
-      automatically, which means when using those APIs you don't need to
-      enter the scope yourself.
-    * When a `tf.keras.Model` is created inside a `strategy.scope`, we capture
-      this information. When high level training frameworks methods such as
-      `model.compile`, `model.fit` etc are then called
-      on this model, we automatically enter the scope, as well as use this
-      strategy to distribute the training etc. See
-      detailed example in [distributed keras tutorial](https://www.tensorflow.org/tutorials/distribute/keras).
-      Note that simply calling the `model(..)` is not impacted - only high
-      level training framework APIs are. `model.compile`, `model.fit`,
-      `model.evaluate`, `model.predict` and `model.save` can all be called
-      inside or outside the scope.
+      require to be in a strategy's scope, enter the scope automatically, which
+      means when using those APIs you don't need to explicitly enter the scope
+      yourself.
+    * When a `tf.keras.Model` is created inside a `strategy.scope`, the Model
+      object captures the scope information. When high level training framework
+      methods such as `model.compile`, `model.fit`, etc. are then called, the
+      captured scope will be automatically entered, and the associated strategy
+      will be used to distribute the training etc. See a detailed example in
+      [distributed keras tutorial](https://www.tensorflow.org/tutorials/distribute/keras).
+      WARNING: Simply calling `model(..)` does not automatically enter the
+      captured scope -- only high level training framework APIs support this
+      behavior: `model.compile`, `model.fit`, `model.evaluate`, `model.predict`
+      and `model.save` can all be called inside or outside the scope.
     * The following can be either inside or outside the scope:
         * Creating the input datasets
         * Defining `tf.function`s that represent your training step
@@ -911,6 +952,7 @@ class StrategyBase(object):
   # pylint: enable=line-too-long
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
+  @deprecated(None, "use extended.colocate_vars_with() instead.")
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
@@ -933,6 +975,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None, "use run() instead")
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
@@ -1055,6 +1098,8 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "distribute_dataset").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -1130,6 +1175,9 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__,
+        "distribute_datasets_from_function").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -1160,13 +1208,14 @@ class StrategyBase(object):
     `all_reduce`. Please see the module-level docstring of tf.distribute for the
     concept of replica context.
 
-    All arguments in `args` or `kwargs` should either be Python values of a
-    nested structure of tensors, e.g. a list of tensors, in which case `args`
-    and `kwargs` will be passed to the `fn` invoked on each replica. Or `args`
-    or `kwargs` can be `tf.distribute.DistributedValues` containing tensors or
-    composite tensors, i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which
-    case each `fn` call will get the component of a
-    `tf.distribute.DistributedValues` corresponding to its replica.
+    All arguments in `args` or `kwargs` can be a nested structure of tensors,
+    e.g. a list of tensors, in which case `args` and `kwargs` will be passed to
+    the `fn` invoked on each replica. Or `args` or `kwargs` can be
+    `tf.distribute.DistributedValues` containing tensors or composite tensors,
+    i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which case each `fn` call
+    will get the component of a `tf.distribute.DistributedValues` corresponding
+    to its replica. Note that arbitrary Python values that are not of the types
+    above are not supported.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
     whether eager execution is enabled, `fn` may be called one or more times. If
@@ -1232,10 +1281,10 @@ class StrategyBase(object):
 
     Args:
       fn: The function to run on each replica.
-      args: Optional positional arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
-      kwargs: Optional keyword arguments to `fn`. Its element can be a Python
-        value, a tensor or a `tf.distribute.DistributedValues`.
+      args: Optional positional arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
+      kwargs: Optional keyword arguments to `fn`. Its element can be a tensor,
+        a nested structure of tensors or a `tf.distribute.DistributedValues`.
       options: An optional instance of `tf.distribute.RunOptions` specifying
         the options to run `fn`.
 
@@ -1393,44 +1442,49 @@ class StrategyBase(object):
     if reduce_op != reduce_util.ReduceOp.MEAN:
       raise TypeError("Expected `reduce_op` to be a `tf.distribute.ReduceOp`, "
                       "not: %r" % reduce_op)
-    # TODO(josh11b): Support list/tuple and tensor axis values.
-    if not isinstance(axis, six.integer_types):
-      raise TypeError("Expected `axis` to be an integer not: %r" % axis)
 
-    def mean_reduce_helper(v, axis=axis):
+    def mean_reduce_helper(v, axes=axis):
       """Computes the numerator and denominator on each replica."""
-      numer = math_ops.reduce_sum(v, axis=axis)
-      if v.shape.rank is not None:
-        # Note(joshl): We support axis < 0 to be consistent with the
-        # tf.math.reduce_* operations.
-        if axis < 0:
-          if axis + v.shape.rank < 0:
+      numer = math_ops.reduce_sum(v, axis=axes)
+      def dimension(axis):
+        if v.shape.rank is not None:
+          # Note(joshl): We support axis < 0 to be consistent with the
+          # tf.math.reduce_* operations.
+          if axis < 0:
+            if axis + v.shape.rank < 0:
+              raise ValueError(
+                  "`axis` = %r out of range for `value` with rank %d" %
+                  (axis, v.shape.rank))
+            axis += v.shape.rank
+          elif axis >= v.shape.rank:
             raise ValueError(
                 "`axis` = %r out of range for `value` with rank %d" %
                 (axis, v.shape.rank))
-          axis += v.shape.rank
-        elif axis >= v.shape.rank:
-          raise ValueError(
-              "`axis` = %r out of range for `value` with rank %d" %
-              (axis, v.shape.rank))
-        # TF v2 returns `None` for unknown dimensions and an integer for
-        # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
-        # or tensor_shape.Dimension(integer). `dimension_value` hides this
-        # difference, always returning `None` or an integer.
-        dim = tensor_shape.dimension_value(v.shape[axis])
-        if dim is not None:
-          # By returning a python value in the static shape case, we can
-          # maybe get a fast path for reducing the denominator.
-          # TODO(b/151871486): Remove array_ops.identity after we fallback to
-          # simple reduction if inputs are all on CPU.
-          return numer, array_ops.identity(
-              constant_op.constant(dim, dtype=dtypes.int64))
-      elif axis < 0:
-        axis = axis + array_ops.rank(v)
-      # TODO(b/151871486): Remove array_ops.identity after we fallback to simple
-      # reduction if inputs are all on CPU.
-      denom = array_ops.identity(
-          array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
+          # TF v2 returns `None` for unknown dimensions and an integer for
+          # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
+          # or tensor_shape.Dimension(integer). `dimension_value` hides this
+          # difference, always returning `None` or an integer.
+          dim = tensor_shape.dimension_value(v.shape[axis])
+          if dim is not None:
+            # By returning a python value in the static shape case, we can
+            # maybe get a fast path for reducing the denominator.
+            # TODO(b/151871486): Remove array_ops.identity after we fallback to
+            # simple reduction if inputs are all on CPU.
+            return array_ops.identity(
+                constant_op.constant(dim, dtype=dtypes.int64))
+        elif axis < 0:
+          axis = axis + array_ops.rank(v)
+        # TODO(b/151871486): Remove array_ops.identity after we fallback to
+        # simple reduction if inputs are all on CPU.
+        return array_ops.identity(
+            array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
+      if isinstance(axis, six.integer_types):
+        denom = dimension(axis)
+      elif isinstance(axis, (tuple, list)):
+        denom = math_ops.reduce_prod([dimension(a) for a in axes])
+      else:
+        raise TypeError(
+            "Expected `axis` to be an integer, tuple or list not: %r" % axis)
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -1458,6 +1512,7 @@ class StrategyBase(object):
     return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
+  @deprecated(None, "use `experimental_local_results` instead.")
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -1489,12 +1544,13 @@ class StrategyBase(object):
     computed on that worker.
 
     Args:
-      value: A value returned by `experimental_run()`, `run()`,
-        `extended.call_for_each_replica()`, or a variable created in `scope`.
+      value: A value returned by `experimental_run()`, `run(), or a variable
+      created in `scope`.
 
     Returns:
-      A tuple of values contained in `value`. If `value` represents a single
-      value, this returns `(value,).`
+      A tuple of values contained in `value` where ith element corresponds to
+      ith replica. If `value` represents a single value, this returns
+      `(value,).`
     """
     return self._extended._local_results(value)  # pylint: disable=protected-access
 
@@ -1509,6 +1565,7 @@ class StrategyBase(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
+  @deprecated(None, "use `update_config_proto` instead.")
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -1909,6 +1966,10 @@ class StrategyV1(StrategyBase):
     return self.extended.experimental_make_numpy_dataset(
         numpy_input, session=session)
 
+  @deprecated(
+      None,
+      "This method is not available in TF 2.x. Please switch to using `run` instead."
+  )
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -2044,6 +2105,10 @@ class StrategyExtendedV2(object):
     # when creating Datasets from numpy array inputs.
     self._require_static_shapes = False
 
+  def _resource_creator_scope(self):
+    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2078,6 +2143,16 @@ class StrategyExtendedV2(object):
                       trackable.CheckpointInitialValueCallable):
         checkpoint_restore_uid = kwargs[
             "initial_value"].checkpoint_position.restore_uid
+      elif (isinstance(kwargs["initial_value"], functools.partial) and
+            isinstance(kwargs["initial_value"].func,
+                       trackable.CheckpointInitialValueCallable)):
+        # Some libraries (e.g, Keras) create partial function out of initializer
+        # to bind shape/dtype, for example:
+        #  initial_val = functools.partial(initializer, shape, dtype=dtype)
+        # Therefore to get the restore_uid we need to examine the "func" of
+        # the partial function.
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].func.checkpoint_position.restore_uid
       else:
         checkpoint_restore_uid = None
 
@@ -2108,7 +2183,9 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter), self._default_device)
+            custom_getter=distributed_getter),
+        strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
+        self._default_device)
 
   def _allow_variable_partition(self):
     return False
@@ -2380,6 +2457,55 @@ class StrategyExtendedV2(object):
         for t, v in value_destination_pairs
     ]
 
+  def _replica_ctx_all_reduce(self, reduce_op, value, options=None):
+    """All-reduce `value` across all replicas so that all get the final result.
+
+    If `value` is a nested structure of tensors, all-reduces of these tensors
+    will be batched when possible. `options` can be set to hint the batching
+    behavior.
+
+    This API must be called in a replica context.
+
+    Args:
+      reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
+        be combined.
+      value: Value to be reduced. A tensor or a nested structure of tensors.
+      options: A `tf.distribute.experimental.CommunicationOptions`. Options to
+        perform collective operations. This overrides the default options if the
+        `tf.distribute.Strategy` takes one in the constructor.
+
+    Returns:
+      A tensor or a nested strucutre of tensors with the reduced values. The
+      structure is the same as `value`.
+    """
+    if options is None:
+      options = collective_util.Options()
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context, (
+        "`StrategyExtended._replica_ctx_all_reduce` must be called in"
+        " a replica context")
+
+    def merge_fn(_, flat_value):
+      return self.batch_reduce_to(reduce_op, [(v, v) for v in flat_value],
+                                  options)
+
+    reduced = replica_context.merge_call(merge_fn, args=(nest.flatten(value),))
+    return nest.pack_sequence_as(value, reduced)
+
+  def _replica_ctx_update(self, var, fn, args=(), kwargs=None, group=True):
+    """Run `fn` with `args` and `kwargs` to update `var`."""
+    # This method is called by ReplicaContext.update. Strategies who'd like to
+    # remove merge_call in this path should override this method.
+    replica_context = distribution_strategy_context.get_replica_context()
+    if not replica_context:
+      raise ValueError("`StrategyExtended._replica_ctx_update` must be called "
+                       "in a replica context.")
+
+    def merge_fn(_, *merged_args, **merged_kwargs):
+      return self.update(var, fn, merged_args, merged_kwargs, group=group)
+
+    return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
+
   def _gather_to(self, value, destinations, axis, options=None):
     """Gather `value` across replicas along axis-th dimension to `destinations`.
 
@@ -2486,19 +2612,45 @@ class StrategyExtendedV2(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    _require_cross_replica_or_default_context_extended(self)
+    # TODO(b/178944108): Update the documentation to relfect the fact that
+    # `update` can be called in a replica context.
     if kwargs is None:
       kwargs = {}
-    fn = autograph.tf_convert(
-        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
-    with self._container_strategy().scope():
-      return self._update(var, fn, args, kwargs, group)
+    replica_context = distribution_strategy_context.get_replica_context()
+    # pylint: disable=protected-access
+    if (replica_context is None or replica_context is
+        distribution_strategy_context._get_default_replica_context()):
+      fn = autograph.tf_convert(
+          fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
+      with self._container_strategy().scope():
+        return self._update(var, fn, args, kwargs, group)
+    else:
+      return self._replica_ctx_update(
+          var, fn, args=args, kwargs=kwargs, group=group)
 
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _local_results(self, distributed_value):
-    raise NotImplementedError("must be implemented in descendants")
+  def _local_results(self, val):
+    """Returns local results per replica as a tuple."""
+    if isinstance(val, values.DistributedValues):
+      return val._values  # pylint: disable=protected-access
+
+    if nest.is_nested(val):
+      replica_values = []
+
+      def get_values(x, index):
+        if isinstance(x, values.DistributedValues):
+          return x._values[index]  # pylint: disable=protected-access
+        return x
+
+      for i in range(len(self.worker_devices)):
+        replica_values.append(
+            nest.map_structure(
+                lambda x: get_values(x, i),  # pylint: disable=cell-var-from-loop
+                val))
+      return tuple(replica_values)
+    return (val,)
 
   def value_container(self, value):
     """Returns the container that this per-replica `value` belongs to.
@@ -2629,6 +2781,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None, "please use `run` instead.")
   def experimental_run_steps_on_iterator(self,
                                          fn,
                                          iterator,
@@ -2799,6 +2952,10 @@ class StrategyExtendedV1(StrategyExtendedV2):
     """
     raise NotImplementedError("must be implemented in descendants")
 
+  def _use_merge_call(self):
+    """Whether to use merge-calls inside the distributed strategy."""
+    return True
+
   @property
   def experimental_between_graph(self):
     """Whether the strategy uses between-graph replication or not.
@@ -2874,7 +3031,7 @@ class ReplicaContextBase(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     if not (replica_id_in_sync_group is None or
-            tensor_util.is_tensor(replica_id_in_sync_group) or
+            tensor_util.is_tf_type(replica_id_in_sync_group) or
             isinstance(replica_id_in_sync_group, int)):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
@@ -2977,7 +3134,7 @@ class ReplicaContextBase(object):
     # error. Making the tensor at call time to ensure it is the same graph where
     # it's used. However to be compatible with tpu.replicate(),
     # self._replica_id_in_sync_group can also be a Tensor.
-    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+    if tensor_util.is_tf_type(self._replica_id_in_sync_group):
       return self._replica_id_in_sync_group
     return constant_op.constant(
         self._replica_id_in_sync_group,
@@ -3031,18 +3188,18 @@ class ReplicaContextBase(object):
     ...   value2 = tf.identity(2.)
     ...   return ctx.all_reduce(tf.distribute.ReduceOp.SUM, [value1, value2])
     >>> strategy.experimental_local_results(strategy.run(step_fn))
-    ([PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=4.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=4.0>
-    }],)
+    ([<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
+    <tf.Tensor: shape=(), dtype=float32, numpy=4.0>],
+    [<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
+    <tf.Tensor: shape=(), dtype=float32, numpy=4.0>])
 
     Note that all replicas need to participate in the all-reduce, otherwise this
     operation hangs. Note that if there're multiple all-reduces, they need to
     execute in the same order on all replicas. Dispatching all-reduce based on
     conditions is usually error-prone.
+
+    Known limitation: if `value` contains `tf.IndexedSlices`, attempting to
+    compute gradient w.r.t `value` would result in an error.
 
     This API currently can only be called in the replica context. Other
     variants to reduce values across replicas are:
@@ -3057,9 +3214,9 @@ class ReplicaContextBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts.
-        The structure and the shapes of the `tf.Tensor` need to be same on all
-        replicas.
+      value: a potentially nested structure of `tf.Tensor` or `tf.IndexedSlices` which
+        `tf.nest.flatten` accepts. The structure and the shapes of `value` need to be
+        same on all replicas.
       options: a `tf.distribute.experimental.CommunicationOptions`. Options to
         perform collective operations. This overrides the default options if the
         `tf.distribute.Strategy` takes one in the constructor. See
@@ -3070,6 +3227,13 @@ class ReplicaContextBase(object):
        A nested structure of `tf.Tensor` with the reduced values. The structure
        is the same as `value`.
     """
+    flattened_value = nest.flatten(value)
+    has_indexed_slices = False
+
+    for v in flattened_value:
+      if isinstance(v, ops.IndexedSlices):
+        has_indexed_slices = True
+
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
@@ -3080,19 +3244,37 @@ class ReplicaContextBase(object):
           reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat],
           options)
 
-    if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
+    # Due to the use of `capture_call_time_value` in collective ops, we have
+    # to maintain two branches: one w/ merge_call and one w/o. Details can be
+    # found in b/184009754.
+    if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self.merge_call(batch_all_reduce, args=flattened_value))
+
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
         ys = self.merge_call(batch_all_reduce, args=xs)
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
     else:
-      # TODO(cjfj): Implement gradients for other reductions.
-      reduced = nest.pack_sequence_as(
-          value, self.merge_call(batch_all_reduce, args=nest.flatten(value)))
-      return nest.map_structure(array_ops.prevent_gradient, reduced)
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+                reduce_op, flattened_value, options))
+
+      @custom_gradient.custom_gradient
+      def grad_wrapper(*xs):
+        ys = self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+            reduce_op, xs, options)
+        # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
+        return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
+
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -3188,21 +3370,18 @@ class ReplicaContext(ReplicaContextBase):
            [3, 4]], dtype=int32)>
     }]
     >>> strategy.experimental_local_results(result)
-    ([PerReplica:{
-      0: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
-      1: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+    ([<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
+    <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [1, 2],
-           [3, 4]], dtype=int32)>,
-      1: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+           [3, 4]], dtype=int32)>],
+           [<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
+           <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [1, 2],
-           [3, 4]], dtype=int32)>
-    }],)
+           [3, 4]], dtype=int32)>])
 
 
     What if you are all-gathering tensors with different shapes on different
@@ -3269,6 +3448,94 @@ class ReplicaContext(ReplicaContextBase):
       return ys, grad
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+
+  def _update(self, var, fn, args=(), kwargs=None, group=True):
+    """Run `fn` to update `var` with `args` and `kwargs` in replica context.
+
+    `tf.distribute.ReplicaContext.update` takes a (distributed) variable `var`
+    to be updated, an update function `fn`, and `args` and `kwargs` for `fn`.
+    `fn` applies to each component variable of `var` with corresponding input
+    values from `args` and `kwargs`.
+
+    Example usage:
+
+    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
+    >>> with strategy.scope():
+    ...   distributed_variable = tf.Variable(5.0)
+    >>> distributed_variable
+    MirroredVariable:{
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=5.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=5.0>
+    }
+    >>> def replica_fn(v):
+    ...   value = tf.identity(1.0)
+    ...   replica_context = tf.distribute.get_replica_context()
+    ...   update_fn = lambda var, value: var.assign(value)
+    ...   replica_context._update(v, update_fn, args=(value,))
+    >>> strategy.run(replica_fn, args=(distributed_variable,))
+    >>> distributed_variable
+    MirroredVariable:{
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=1.0>
+    }
+
+    This API must be called in a replica context.
+
+    Note that if `var` is a MirroredVariable (i.e., the type of variable created
+    under the scope of a synchronous strategy, and is synchronized on-write, see
+    `tf.VariableSynchronization` for more information) and `args`/`kwargs`
+    contains different values for different replicas, `var` will be dangerously
+    out of synchronization. Thus we recommend using `variable.assign(value)` as
+    long as you can, which under the hood aggregates the updates and guarantees
+    the synchronization. The case where you actually want this API instead of
+    `variable.assign(value)` is that before assigning `value` to the `variable`,
+    you'd like to conduct some pre-`assign` computation colocated with the
+    variable devices (i.e. where variables reside, for MirroredStrategy they are
+    the same as the compute device, for ParameterServerStrategy they refer to
+    parameter servers). E.g.,
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
+    with strategy.scope():
+      v = tf.Variable(5.0, aggregation=tf.VariableAggregation.SUM)
+    def replica_fn(inputs):
+      value = computation(inputs)
+      replica_context = tf.distribute.get_replica_context()
+      reduced_value = replica_context.all_reduce(value)
+
+      def update_fn(var, value):
+        # this computation will colocate with `var`'s device
+        updated_value = post_reduce_pre_update_computation(value)
+        var.assign(value)
+
+      replica_context._update(v, update_fn, args=(reduced_value,))
+
+    strategy.run(replica_fn, args=(inputs,))
+    ```
+
+    This code snippet is consistent across all strategies. If you directly
+    compute and use `assign` in the replica context instead of wrapping it with
+    `update`, for strategies with fewer variable devices than compute devices
+    (e.g., parameter server strategy, usually), the
+    `post_reduce_pre_update_computation` will happen
+    N==number_of_compute_devices times which is less performant.
+
+
+    Args:
+      var: Variable, possibly distributed to multiple devices, to operate on.
+      fn: Function to call. Should take the variable as the first argument.
+      args: Tuple or list. Additional positional arguments to pass to `fn()`.
+      kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. Most strategies enter a merge_call to
+      conduct update in cross-replica context, and group=True guarantees updates
+      on all replicas is executed.
+
+    Returns:
+      The return value of `fn` for the local replica.
+    """
+    if kwargs is None:
+      kwargs = {}
+    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs, group=group)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["distribute.ReplicaContext"])
@@ -3579,3 +3846,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
     "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")
+distribution_strategy_input_api_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/input_api",
+    "Counter to track the usage of the input APIs", "strategy", "api")

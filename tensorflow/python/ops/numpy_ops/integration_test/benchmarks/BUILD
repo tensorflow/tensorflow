@@ -2,7 +2,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -27,6 +27,7 @@ py_binary(
 py_library(
     name = "numpy_mlp",
     srcs = ["numpy_mlp.py"],
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -35,6 +36,7 @@ py_library(
 py_library(
     name = "tf_numpy_mlp",
     srcs = ["tf_numpy_mlp.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/ops/numpy_ops:numpy",

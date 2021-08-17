@@ -60,25 +60,32 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
                                            bool include_eol) {
   result->clear();
   Status s;
+  size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       // Get more data into buffer
       s = FillBuffer();
       if (limit_ == 0) {
         break;
       }
+      start_pos = pos_;
     }
-    char c = buf_[pos_++];
+    char c = buf_[pos_];
     if (c == '\n') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       if (include_eol) {
         result->append(1, c);
       }
+      pos_++;
       return Status::OK();
     }
     // We don't append '\r' to *result
-    if (c != '\r') {
-      result->append(1, c);
+    if (c == '\r') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
+      start_pos = pos_ + 1;
     }
+    pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -86,7 +93,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
   return s;
 }
 
-Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
@@ -109,8 +116,8 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
         break;
       }
     }
-    const int64 bytes_to_copy =
-        std::min<int64>(limit_ - pos_, bytes_to_read - result->size());
+    const int64_t bytes_to_copy =
+        std::min<int64_t>(limit_ - pos_, bytes_to_read - result->size());
     result->insert(result->size(), buf_, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
   }
@@ -124,7 +131,7 @@ Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return s;
 }
 
-Status BufferedInputStream::SkipNBytes(int64 bytes_to_skip) {
+Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",
                                    bytes_to_skip);
@@ -147,25 +154,32 @@ Status BufferedInputStream::SkipNBytes(int64 bytes_to_skip) {
   return Status::OK();
 }
 
-int64 BufferedInputStream::Tell() const {
+int64_t BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 
-Status BufferedInputStream::Seek(int64 position) {
+Status BufferedInputStream::Seek(int64_t position) {
   if (position < 0) {
     return errors::InvalidArgument("Seeking to a negative position: ",
                                    position);
   }
 
-  // Position of the buffer within file.
-  const int64 bufpos = Tell();
-  if (position < bufpos) {
-    // Reset input stream and skip 'position' bytes.
+  // Position of the buffer's lower limit within file.
+  const int64_t buf_lower_limit = input_stream_->Tell() - limit_;
+  if (position < buf_lower_limit) {
+    // Seek before buffer, reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
-  return SkipNBytes(position - bufpos);
+  if (position < Tell()) {
+    // Seek within buffer before 'pos_'
+    pos_ -= Tell() - position;
+    return Status::OK();
+  }
+
+  // Seek after 'pos_'
+  return SkipNBytes(position - Tell());
 }
 
 template <typename T>
@@ -188,7 +202,7 @@ Status BufferedInputStream::ReadAll(T* result) {
   return status;
 }
 
-template Status BufferedInputStream::ReadAll<string>(string* result);
+template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 Status BufferedInputStream::Reset() {
@@ -199,7 +213,7 @@ Status BufferedInputStream::Reset() {
   return Status::OK();
 }
 
-Status BufferedInputStream::ReadLine(string* result) {
+Status BufferedInputStream::ReadLine(std::string* result) {
   return ReadLineHelper(result, false);
 }
 
@@ -207,10 +221,33 @@ Status BufferedInputStream::ReadLine(tstring* result) {
   return ReadLineHelper(result, false);
 }
 
-string BufferedInputStream::ReadLineAsString() {
-  string result;
+std::string BufferedInputStream::ReadLineAsString() {
+  std::string result;
   ReadLineHelper(&result, true).IgnoreError();
   return result;
+}
+
+Status BufferedInputStream::SkipLine() {
+  Status s;
+  bool skipped = false;
+  while (true) {
+    if (pos_ == limit_) {
+      // Get more data into buffer
+      s = FillBuffer();
+      if (limit_ == 0) {
+        break;
+      }
+    }
+    char c = buf_[pos_++];
+    skipped = true;
+    if (c == '\n') {
+      return Status::OK();
+    }
+  }
+  if (errors::IsOutOfRange(s) && skipped) {
+    return Status::OK();
+  }
+  return s;
 }
 
 }  // namespace io

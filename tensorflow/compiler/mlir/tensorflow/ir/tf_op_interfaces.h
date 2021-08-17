@@ -82,9 +82,9 @@ struct ResourceHandle {
   // Make ResourceHandle hashable.
   friend ::llvm::hash_code hash_value(const ResourceHandle& resource_handle);
 
-  std::string container;
-  std::string name;
-  std::string device;
+  StringRef container;
+  StringRef name;
+  StringRef device;
   Operation* op = nullptr;
 };
 
@@ -102,6 +102,22 @@ struct ResourceHandleValueAndId {
   Value value;
   int64_t id = -1;
 };
+
+//===----------------------------------------------------------------------===//
+// TF op helper functions for handling resource handles and ids.
+//===----------------------------------------------------------------------===//
+
+// Returns device of op if present. If op has no device set, an empty string ref
+// is returned instead.
+llvm::StringRef GetDeviceOrEmpty(Operation* op);
+
+// Returns resource handle value and id for resource op based on attributes. If
+// a resource handle is anonymous, a new id is always returned.
+ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
+    llvm::StringRef container, llvm::StringRef shared_name,
+    llvm::StringRef device, Value resource,
+    llvm::SmallDenseMap<ResourceHandle, int64_t>& resource_handle_id_map,
+    int64_t& next_id);
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 }  // namespace TF

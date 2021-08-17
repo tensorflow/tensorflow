@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -31,15 +30,13 @@ namespace xla {
 namespace gpu {
 
 ConvolutionThunk::ConvolutionThunk(
-    ThunkInfo thunk_info, GpuConvConfig&& config,
+    ThunkInfo thunk_info, GpuConvConfig config,
     std::vector<BufferAllocation::Slice> operand_slices,
-    BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice,
-    BufferAllocation::Slice tuple_result_slice)
+    BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice)
     : Thunk(Kind::kConvolution, thunk_info),
       operand_buffers_(std::move(operand_slices)),
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
-      tuple_result_buffer_(tuple_result_slice),
       config_(std::move(config)) {}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -56,21 +53,11 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                                 result_buffer, scratch, params.stream));
 
-  // Write the output tuple.
-  const int kNumOutputs = 2;
-  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
-  ptrs[0] = result_buffer.opaque();
-  ptrs[1] = scratch.opaque();
-  se::DeviceMemory<void*> tuple_addr(
-      buffer_allocations.GetDeviceAddress(tuple_result_buffer_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, params.stream,
-                params.deferred_host_callbacks);
-
+  // Note: Convolution has a tuple buffer as an output, but we don't need to
+  // populate it as no one should be reading from the tuple directly.
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }

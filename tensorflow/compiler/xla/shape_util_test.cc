@@ -20,12 +20,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -562,7 +564,7 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
 
 TEST(ShapeUtilTest, ForEachIndex) {
   struct ShapeDimensionAndNumberInvocations {
-    std::vector<int64> dimensions;
+    std::vector<int64_t> dimensions;
     int invocations;
   } test_data[] = {
       {{}, 1},     {{0}, 0},      {{16}, 16},          {{3, 0}, 0},
@@ -573,13 +575,13 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+    auto increment_func = [&invocations](absl::Span<const int64_t> indexes) {
       invocations++;
       return true;
     };
 
-    std::vector<int64> zero_base(data.dimensions.size(), 0);
-    std::vector<int64> step(data.dimensions.size(), 1);
+    std::vector<int64_t> zero_base(data.dimensions.size(), 0);
+    std::vector<int64_t> step(data.dimensions.size(), 1);
 
     ShapeUtil::ForEachIndex(shape, zero_base, data.dimensions, step,
                             increment_func);
@@ -593,7 +595,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -612,9 +614,9 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
 
 TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
-  int64 output[10][10];
+  int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64> indexes) {
+  auto set_func = [&](absl::Span<const int64_t> indexes) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 
@@ -711,23 +713,20 @@ TEST(ShapeUtilTest, HasDegenerateDimensions) {
 }
 
 TEST(ShapeUtilTest, PermuteDimensionsLayout) {
-  std::vector<int64> layout(3);
+  std::vector<int64_t> layout(3);
   std::iota(layout.begin(), layout.end(), 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
     SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
-    std::vector<int64> permutation(3);
+    std::vector<int64_t> permutation(3);
     std::iota(permutation.begin(), permutation.end(), 0);
     do {
       SCOPED_TRACE(
           absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
-      // TransposeIsBitcast takes the inverse of the permutation that
-      // PermuteDimensions takes.
       EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
-          s, ShapeUtil::PermuteDimensions(permutation, s),
-          InversePermutation(permutation)));
+          s, ShapeUtil::PermuteDimensions(permutation, s), permutation));
     } while (std::next_permutation(permutation.begin(), permutation.end()));
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
@@ -747,18 +746,42 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
                            /*dynamic_dimensions*/ {false, true, true});
   SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
 
-  std::vector<int64> permutation(3);
+  std::vector<int64_t> permutation(3);
   std::iota(permutation.begin(), permutation.end(), 0);
   do {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
     for (int i = 0; i < shape.rank(); i++) {
-      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
-      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
-                shape.is_dynamic_dimension(i));
+      EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
+      EXPECT_EQ(permuted.is_dynamic_dimension(i),
+                shape.is_dynamic_dimension(permutation[i]));
     }
   } while (std::next_permutation(permutation.begin(), permutation.end()));
+}
+
+TEST(ShapeUtilTest, MoveDimToMajor) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
+  Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(shape, new_shape);
+
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 1);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {2, 0, 1}));
+
+  shape = ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {0, 2, 1});
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {2, 1, 0}));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10, 10, 10}),
+       ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {0, 2, 1})});
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {10, 10, 10}),
+                                       ShapeUtil::MakeShapeWithLayout(
+                                           F32, {10, 10, 10}, {2, 1, 0})}));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
@@ -826,6 +849,20 @@ TEST(AlignmentTest,
       input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 5, 77}));
   EXPECT_FALSE(aligned_shape);
 }
+
+void BM_MakeShape(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    ShapeUtil::MakeShape(F32, {2});
+  }
+}
+BENCHMARK(BM_MakeShape);
+
+void BM_MakeValidatedShape(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    ShapeUtil::MakeValidatedShape(F32, {2}).ValueOrDie();
+  }
+}
+BENCHMARK(BM_MakeValidatedShape);
 
 }  // namespace
 }  // namespace xla

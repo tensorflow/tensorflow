@@ -136,10 +136,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        &data->output_shift);
   }
 
-  if (input->type == kTfLiteInt16) {
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-  }
-  if (output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 

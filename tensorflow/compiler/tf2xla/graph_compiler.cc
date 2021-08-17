@@ -79,14 +79,13 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         if (arg_must_be_compile_time_constant[i]) {
           TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
-          if (!value.has_value()) {
-            return errors::InvalidArgument(absl::StrCat(
-                "Argument ", i, " to function '", func.name(),
-                "' must be a compile-time constant, but ",
-                "unable to resolve argument value to a constant."));
+          if (value.has_value()) {
+            arg.kind = XlaCompiler::Argument::kConstant;
+            arg.constant_value = *value;
+          } else {
+            arg.kind = XlaCompiler::Argument::kParameter;
           }
-          arg.kind = XlaCompiler::Argument::kConstant;
-          arg.constant_value = *value;
+
         } else {
           arg.kind = XlaCompiler::Argument::kParameter;
         }
@@ -269,7 +268,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RET_CHECK(arguments.size() == expressions.size());
 
   std::vector<xla::XlaOp> handles;
-  for (int64 i = 0, end = expressions.size(); i < end; ++i) {
+  for (int64_t i = 0, end = expressions.size(); i < end; ++i) {
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;
     }
@@ -298,7 +297,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
   int computation_output = 0;
-  for (int64 i = 0; i < n->num_outputs(); ++i) {
+  for (int64_t i = 0; i < n->num_outputs(); ++i) {
     if (result.outputs[i].is_constant) {
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
@@ -313,7 +312,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
 
-  for (int64 i = 0, end = result.resource_updates.size(); i < end; i++) {
+  for (int64_t i = 0, end = result.resource_updates.size(); i < end; i++) {
     if (result.resource_updates[i].modified) {
       XlaResource* resource =
           expressions[result.resource_updates[i].input_index]->resource();
@@ -324,8 +323,13 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   }
 
   if (add_token_input_output) {
+    std::string node_name;
+    if (!GetNodeAttr(n->attrs(), kXlaOriginalOutsideCompilationNodeName,
+                     &node_name)
+             .ok())
+      node_name = n->name();
     TF_RETURN_IF_ERROR(compiler->SetNodeToken(
-        n->name(), xla::GetTupleElement(output_handle, computation_output)));
+        node_name, xla::GetTupleElement(output_handle, computation_output)));
   }
   return b->first_error();
 }

@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/simple_memory_arena.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <limits>
+#include <memory>
+#include <string>
 #include <vector>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 
 namespace {
 
@@ -76,10 +85,8 @@ TfLiteStatus SimpleMemoryArena::Allocate(
   high_water_mark_ = std::max(high_water_mark_, best_offset + size);
   new_alloc->offset = best_offset;
 
-  auto insertion_it = ordered_allocs_.begin();
-  while (insertion_it != ordered_allocs_.end() && *insertion_it < *new_alloc) {
-    ++insertion_it;
-  }
+  auto insertion_it = std::upper_bound(ordered_allocs_.begin(),
+                                       ordered_allocs_.end(), *new_alloc);
   ordered_allocs_.insert(insertion_it, *new_alloc);
   return kTfLiteOk;
 }
@@ -159,6 +166,18 @@ TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
   underlying_buffer_aligned_ptr_ = nullptr;
   underlying_buffer_.reset();
   return kTfLiteOk;
+}
+
+// Using weak symbols to create a pluggable debugging module.
+TFLITE_ATTRIBUTE_WEAK void DumpArenaInfo(
+    const std::string& name, const std::vector<int>& execution_plan,
+    size_t arena_size, const std::vector<ArenaAllocWithUsageInterval>& allocs) {
+}
+
+void SimpleMemoryArena::DumpDebugInfo(
+    const std::string& name, const std::vector<int>& execution_plan) const {
+  tflite::DumpArenaInfo(name, execution_plan, underlying_buffer_size_,
+                        ordered_allocs_);
 }
 
 }  // namespace tflite

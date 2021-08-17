@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+constexpr int64_t kMaxOperandsAndOutputsPerFusion = 64;
 
 bool IsInputFusible(const HloInstruction& instr);
 
@@ -108,6 +108,17 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
                                   const HloInstruction& consumer);
+
+// Returns number of instructions in the fusible `instr`. If `instr` is not a
+// fusion instruction, 1 is returned.
+size_t GetInstrCountOfFusible(const HloInstruction& instr);
+
+// Returns the outputs of the fusible `instr`.
+absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
+    const HloInstruction& instr);
+
+// Returns the output size of the fusible `instr`.
+size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

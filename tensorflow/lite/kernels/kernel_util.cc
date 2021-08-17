@@ -21,11 +21,18 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+#ifndef TF_LITE_STATIC_MEMORY
+#include <string>
+#endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#endif
 
 namespace tflite {
 
@@ -112,6 +119,7 @@ TfLiteStatus GetInputSafe(const TfLiteContext* context, const TfLiteNode* node,
 TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
   TfLiteTensor* tensor = GetMutableInput(context, node, index);
+  if (tensor == nullptr) return nullptr;
   return tensor->is_variable ? tensor : nullptr;
 }
 
@@ -190,7 +198,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
   return PopulateConvolutionQuantizationParams(
@@ -205,7 +213,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift, int num_channels) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift,
+    int num_channels) {
   TF_LITE_ENSURE_EQ(context, input->quantization.type,
                     kTfLiteAffineQuantization);
   TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -326,30 +335,49 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
 }
 
 namespace {
-void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
-                                           int32_t qmin, int32_t qmax,
-                                           TfLiteTensor* output,
-                                           int32_t* act_min, int32_t* act_max) {
+
+inline TfLiteStatus Quantize(TfLiteContext* context, float scale,
+                             int32_t zero_point, float f, int32_t& q) {
+  const float tmp = TfLiteRound(f / scale);
+  const bool no_integer_overflow_from_quantization =
+      (tmp >= static_cast<float>(std::numeric_limits<int32_t>::min()) &&
+       tmp <= static_cast<float>(std::numeric_limits<int32_t>::max()));
+  TF_LITE_ENSURE(context, no_integer_overflow_from_quantization);
+  q = zero_point + static_cast<int32_t>(tmp);
+  return kTfLiteOk;
+}
+
+TfLiteStatus CalculateActivationRangeQuantizedImpl(
+    TfLiteContext* context, TfLiteFusedActivation activation, int32_t qmin,
+    int32_t qmax, TfLiteTensor* output, int32_t* act_min, int32_t* act_max) {
   const auto scale = output->params.scale;
   const auto zero_point = output->params.zero_point;
 
-  auto quantize = [scale, zero_point](float f) {
-    return zero_point + static_cast<int32_t>(TfLiteRound(f / scale));
-  };
-
+  int32_t tmp_q;
   if (activation == kTfLiteActRelu) {
-    *act_min = std::max(qmin, quantize(0.0));
+    TF_LITE_ENSURE_OK(context,
+                      Quantize(context, scale, zero_point, 0.0, tmp_q));
+    *act_min = std::max(qmin, tmp_q);
     *act_max = qmax;
   } else if (activation == kTfLiteActRelu6) {
-    *act_min = std::max(qmin, quantize(0.0));
-    *act_max = std::min(qmax, quantize(6.0));
+    TF_LITE_ENSURE_OK(context,
+                      Quantize(context, scale, zero_point, 0.0, tmp_q));
+    *act_min = std::max(qmin, tmp_q);
+    TF_LITE_ENSURE_OK(context,
+                      Quantize(context, scale, zero_point, 6.0, tmp_q));
+    *act_max = std::min(qmax, tmp_q);
   } else if (activation == kTfLiteActReluN1To1) {
-    *act_min = std::max(qmin, quantize(-1.0));
-    *act_max = std::min(qmax, quantize(1.0));
+    TF_LITE_ENSURE_OK(context,
+                      Quantize(context, scale, zero_point, -1.0, tmp_q));
+    *act_min = std::max(qmin, tmp_q);
+    TF_LITE_ENSURE_OK(context,
+                      Quantize(context, scale, zero_point, 1.0, tmp_q));
+    *act_max = std::min(qmax, tmp_q);
   } else {
     *act_min = qmin;
     *act_max = qmax;
   }
+  return kTfLiteOk;
 }
 }  // namespace
 
@@ -373,36 +401,59 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
     TF_LITE_ENSURE(context, false);
   }
 
-  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
-                                        act_max);
-  return kTfLiteOk;
+  return CalculateActivationRangeQuantizedImpl(context, activation, qmin, qmax,
+                                               output, act_min, act_max);
 }
 
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
-// TODO(petewarden): Having macros around this is ugly, look at other strategies
-// before replicating this approach elsewhere.
 #ifndef TF_LITE_STATIC_MEMORY
+
+// TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
+// build results in a 6KB size increase, even though the function is unsused for
+// that build. What appears to be happening is that while the linker drops the
+// unsused function, the string library that gets pulled in is not dropped,
+// resulting in the increased binary size.
+std::string GetShapeDebugString(const TfLiteIntArray* shape) {
+  std::string str;
+  for (int d = 0; d < shape->size; ++d) {
+    if (str.empty())
+      str = "[" + std::to_string(shape->data[d]);
+    else
+      str += ", " + std::to_string(shape->data[d]);
+  }
+  str += "]";
+  return str;
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
                                         TfLiteIntArray** output_shape) {
-  int dims1 = NumDimensions(input1);
-  int dims2 = NumDimensions(input2);
-  int out_dims = std::max(dims1, dims2);
-  if (NumElements(input1) == 0) {
-    *output_shape = TfLiteIntArrayCopy(input1->dims);
-    return kTfLiteOk;
-  }
+  const int dims1 = NumDimensions(input1);
+  const int dims2 = NumDimensions(input2);
+  const int out_dims = std::max(dims1, dims2);
+
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
-    TF_LITE_ENSURE(context, d1 == d2 || d1 == 1 || d2 == 1);
-    shape->data[out_dims - i - 1] = std::max(d1, d2);
+    const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    if (!(d1 == d2 || d1 == 1 || d2 == 1)) {
+      context->ReportError(context,
+                           "Given shapes, %s and %s, are not broadcastable.",
+                           GetShapeDebugString(input1->dims).c_str(),
+                           GetShapeDebugString(input2->dims).c_str());
+      return kTfLiteError;
+    }
+
+    if (d1 == 0 || d2 == 0) {
+      shape->data[out_dims - i - 1] = 0;
+    } else {
+      shape->data[out_dims - i - 1] = std::max(d1, d2);
+    }
   }
   *output_shape = shape.release();
   return kTfLiteOk;
@@ -413,20 +464,29 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input2,
                                         const TfLiteTensor* input3,
                                         TfLiteIntArray** output_shape) {
-  int dims1 = NumDimensions(input1);
-  int dims2 = NumDimensions(input2);
-  int dims3 = NumDimensions(input3);
-  int out_dims = std::max(std::max(dims1, dims2), dims3);
+  const int dims1 = NumDimensions(input1);
+  const int dims2 = NumDimensions(input2);
+  const int dims3 = NumDimensions(input3);
+  const int out_dims = std::max(std::max(dims1, dims2), dims3);
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
-    int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    const int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    const int min_value = std::min(std::min(d1, d2), d3);
     int max_value = std::max(std::max(d1, d2), d3);
-    TF_LITE_ENSURE(context, d1 == 1 || d1 == max_value);
-    TF_LITE_ENSURE(context, d2 == 1 || d2 == max_value);
-    TF_LITE_ENSURE(context, d3 == 1 || d3 == max_value);
+    // If one dimention is 0, others must be 0 or 1.
+    if (min_value == 0) max_value = 0;
+    if (!(d1 == 1 || d1 == max_value) || !(d2 == 1 || d2 == max_value) ||
+        !(d3 == 1 || d3 == max_value)) {
+      context->ReportError(
+          context, "Given shapes, %s, %s and %s, are not broadcastable.",
+          GetShapeDebugString(input1->dims).c_str(),
+          GetShapeDebugString(input2->dims).c_str(),
+          GetShapeDebugString(input3->dims).c_str());
+      return kTfLiteError;
+    }
     shape->data[out_dims - i - 1] = max_value;
   }
   *output_shape = shape.release();
@@ -438,40 +498,57 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 int TfLiteTypeGetSize(TfLiteType type) {
   switch (type) {
     case kTfLiteUInt8:
-      TF_LITE_ASSERT_EQ(sizeof(uint8_t), 1);
+      static_assert(sizeof(uint8_t) == 1, "");
       return 1;
     case kTfLiteInt8:
-      TF_LITE_ASSERT_EQ(sizeof(int8_t), 1);
+      static_assert(sizeof(int8_t) == 1, "");
       return 1;
     case kTfLiteBool:
       return sizeof(bool);
     case kTfLiteInt16:
-      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      static_assert(sizeof(int16_t) == 2, "");
       return 2;
     case kTfLiteFloat16:
-      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      static_assert(sizeof(int16_t) == 2, "");
       return 2;
     case kTfLiteFloat32:
-      TF_LITE_ASSERT_EQ(sizeof(float), 4);
+      static_assert(sizeof(float) == 4, "");
       return 4;
     case kTfLiteInt32:
-      TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      static_assert(sizeof(int32_t) == 4, "");
+      return 4;
+    case kTfLiteUInt32:
+      static_assert(sizeof(uint32_t) == 4, "");
       return 4;
     case kTfLiteInt64:
-      TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
+      static_assert(sizeof(int64_t) == 8, "");
+      return 8;
+    case kTfLiteUInt64:
+      static_assert(sizeof(uint64_t) == 8, "");
       return 8;
     case kTfLiteFloat64:
-      TF_LITE_ASSERT_EQ(sizeof(double), 8);
+      static_assert(sizeof(double) == 8, "");
       return 8;
     case kTfLiteComplex64:
-      TF_LITE_ASSERT_EQ(sizeof(std::complex<float>), 8);
+      static_assert(sizeof(std::complex<float>) == 8, "");
       return 8;
     case kTfLiteComplex128:
-      TF_LITE_ASSERT_EQ(sizeof(std::complex<double>), 16);
+      static_assert(sizeof(std::complex<double>) == 16, "");
       return 16;
     default:
       return 0;
   }
+}
+
+bool IsMobilePlatform() {
+#if defined(ANDROID) || defined(__ANDROID__)
+  return true;
+#elif defined(__APPLE__)
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+  return true;
+#endif
+#endif
+  return false;
 }
 
 }  // namespace tflite

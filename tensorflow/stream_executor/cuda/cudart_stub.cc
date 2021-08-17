@@ -59,8 +59,10 @@ cudaError_t GetSymbolNotFoundError() {
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_1.inc"
 #elif CUDART_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_2.inc"
-#else
+#elif CUDART_VERSION < 11020
 #include "tensorflow/stream_executor/cuda/cuda_runtime_11_0.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cuda_runtime_11_2.inc"
 #endif
 #undef __dv
 #undef __CUDA_DEPRECATED

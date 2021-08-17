@@ -106,13 +106,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  int64 NumOperands(const HloInstruction* node) {
+  int64_t NumOperands(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.operand_count;
   }
 
-  int64 NumUsers(const HloInstruction* node) {
+  int64_t NumUsers(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.user_count;
@@ -120,8 +120,8 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
 
  private:
   struct NumOpsAndUsers {
-    int64 operand_count;
-    int64 user_count;
+    int64_t operand_count;
+    int64_t user_count;
   };
 
   // Helper function to count operands and users for the given HLO.
@@ -749,6 +749,64 @@ TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
   EXPECT_TRUE(ShapeUtil::Equal(tuple_clone->shape(), tuple->shape()));
 }
 
+TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
+  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_sharding(sharding);
+  // Compatible with original shape as tuple tree structure and leaf ranks are
+  // identical
+  auto clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
+  auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
+  EXPECT_EQ(tuple_clone->sharding(), sharding);
+}
+
+TEST_F(HloInstructionTest,
+       DoNotPreserveShardingThroughTupleTreeIncompatibleClone) {
+  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_sharding(sharding);
+  // Incompatible with original shape as tuple tree structure is different
+  auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  clone_shape =
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape, clone_shape});
+  auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
+  EXPECT_FALSE(tuple_clone->has_sharding());
+}
+
+TEST_F(HloInstructionTest,
+       DoNotPreserveShardingThroughLeafRankIncompatibleClone) {
+  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_sharding(sharding);
+  // Incompatible with original shape as tuple tree structure is different
+  auto clone_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
+  auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
+  EXPECT_FALSE(tuple_clone->has_sharding());
+}
+
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   // Create a fusion instruction containing a single unary operation.
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -1076,7 +1134,7 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {max, broadcast, div, mul}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = fusion->operand(operand_idx);
     if (operand == p3) {
@@ -1117,7 +1175,7 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {sub, broadcast, min}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     if (fusion->operand(operand_idx) == y) {
       EXPECT_FALSE(fusion->IsElementwiseOnOperand(operand_idx));

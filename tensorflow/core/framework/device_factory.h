@@ -31,8 +31,13 @@ class DeviceFactory {
  public:
   virtual ~DeviceFactory() {}
   static void Register(const std::string& device_type, DeviceFactory* factory,
-                       int priority);
+                       int priority, bool is_pluggable_device);
   static DeviceFactory* GetFactory(const std::string& device_type);
+
+  // Append to "*devices" CPU devices.
+  static Status AddCpuDevices(const SessionOptions& options,
+                              const std::string& name_prefix,
+                              std::vector<std::unique_ptr<Device>>* devices);
 
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
@@ -54,6 +59,10 @@ class DeviceFactory {
   //
   // CPU is are added first.
   static Status ListAllPhysicalDevices(std::vector<string>* devices);
+
+  // Iterate through all device factories and build a list of all of the
+  // possible pluggable physical devices.
+  static Status ListPluggablePhysicalDevices(std::vector<string>* devices);
 
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.
@@ -89,6 +98,10 @@ class DeviceFactory {
   // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
+
+  // Returns true if 'device_type' is registered from plugin. Returns false if
+  // 'device_type' is a first-party device.
+  static bool IsPluggableDevice(const std::string& device_type);
 };
 
 namespace dfactory {
@@ -127,7 +140,8 @@ class Registrar {
   // ThreadPoolDevice: 60
   // Default: 50
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(device_type, new Factory(), priority);
+    DeviceFactory::Register(device_type, new Factory(), priority,
+                            /*is_pluggable_device*/ false);
   }
 };
 

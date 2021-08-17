@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -60,50 +61,36 @@ class RefcountingHashMap {
       const std::function<std::unique_ptr<V>(const K&)>& value_factory) {
     absl::MutexLock lock(&mu_);
     auto it = map_.find(key);
-    // We ensure that the entry has not expired in case deleter was running when
-    // we have entered this block.
     if (it != map_.end()) {
+      // We ensure that the entry has not expired in case deleter was running
+      // when we have entered this block.
       if (std::shared_ptr<V> value = it->second.lock()) {
         return value;
       }
-      map_.erase(it);
     }
 
     // Create entry in the map and then set its value, so the value can
     // contain a pointer back into the map.
     it = map_.emplace(key, std::weak_ptr<V>()).first;
     std::shared_ptr<V> value(value_factory(key).release(),
-                             Deleter{&it->first, this});
+                             Deleter{it->first, *this});
     it->second = value;  // Set the weak ptr to the shared ptr.
     return value;
   }
 
-  // Runs a function over every key/value in the map.
-  //
-  // Touching the map from within this function may deadlock; don't do it.
-  //
-  // Function signature must be compatible with
-  //   void fn(const K&, std::shared_ptr<V>)
-  //
-  template <typename Fn>
-  void ForEach(Fn&& fn) {
-    absl::MutexLock lock(&mu_);
-    for (const auto& kv : map_) {
-      fn(kv.first, kv.second.lock());
-    }
-  }
-
  private:
   struct Deleter {
-    const K* key;  // Points into parent->map_.
-    RefcountingHashMap* parent;
+    const K& key;  // Points into parent->map_.
+    RefcountingHashMap& parent;
 
     void operator()(V* v) {
       delete v;
-      absl::MutexLock lock(&parent->mu_);
-      auto it = parent->map_.find(*key);
-      if (it != parent->map_.end() && it->second.expired()) {
-        parent->map_.erase(it);
+      absl::MutexLock lock(&parent.mu_);
+      // We must check if that the entry is still expired in case the value was
+      // replaced while the deleter was running.
+      auto it = parent.map_.find(key);
+      if (it != parent.map_.end() && it->second.expired()) {
+        parent.map_.erase(it);
       }
     }
   };

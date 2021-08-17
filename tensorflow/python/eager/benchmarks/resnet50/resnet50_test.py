@@ -266,8 +266,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
   def _report(self, label, start, num_iters, device, batch_size, data_format,
               num_replicas=1):
-    resnet50_test_util.report(self, label, start, num_iters, device,
-                              batch_size, data_format, num_replicas=1)
+    resnet50_test_util.report(self, label, start, num_iters, device, batch_size,
+                              data_format, num_replicas)
 
   def _train_batch_sizes(self):
     """Choose batch sizes based on GPU capability."""

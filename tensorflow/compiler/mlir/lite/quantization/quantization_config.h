@@ -26,9 +26,12 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
 namespace TFL {
+
+using ::tflite::optimize::ReducedPrecisionSupport;
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -46,6 +49,10 @@ struct QuantizationSpecs {
   // post-training quantization. We need to deprecate the `weight_quantization`.
   bool post_training_quantization = false;
 
+  // Calculate scales in float to keep quantized values the same with old TOCO
+  // quantizer.
+  bool legacy_float_scale = false;
+
   // When set to true, quantization will be done per-tensor. Currently, this
   // option is only valid when the quantization parameters need to be created by
   // scanning the constant content (post-training quantization or QAT without
@@ -53,10 +60,11 @@ struct QuantizationSpecs {
   bool disable_per_channel = false;
 
   // When set to true, the fixed output ranges of the activation ops (tanh,
-  // sigmoid, etc.) are not enforced. Then, to quantize these ops, quantization
-  // emulation ops should be specified after the ops in the input graph. This
-  // flag should be set to false for post-training quantization.
-  bool disable_enforced_fixed_output_range = false;
+  // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
+  // these ops, quantization emulation ops should be placed after the ops in the
+  // input graph. This flag should be set to false for post-training
+  // quantization.
+  bool disable_infer_tensor_range = false;
 
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
@@ -86,6 +94,8 @@ struct QuantizationSpecs {
   // the tensors with known names.
   std::string serialized_quant_stats = "";
 
+  // A bitmask to encode support for reduced precision inference in the model.
+  ReducedPrecisionSupport support_mask = ReducedPrecisionSupport::None;
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.
@@ -123,6 +133,15 @@ struct QuantizationSpecs {
         return 0;
     }
   }
+
+  // Whether add the NumericVerify ops to verify numbers before and after
+  // quantization.
+  bool verify_numeric = false;
+  // Whether to add verification for layer by layer, or on whole model. When
+  // disabled (per-layer) float and quantized ops will be run from same input
+  // (output of previous quantized layer). When enabled, float and quantized ops
+  // will run with respective float and quantized output of previous ops.
+  bool whole_model_verify = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

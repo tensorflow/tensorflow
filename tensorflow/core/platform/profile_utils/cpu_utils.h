@@ -47,7 +47,7 @@ class CpuUtils {
  public:
   // Constant for invalid frequency.
   // This value is returned when the frequency is not obtained somehow.
-  static constexpr int64 INVALID_FREQUENCY = -1;
+  static constexpr int64_t INVALID_FREQUENCY = -1;
   static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
 
   // Return current clock cycle. This function is designed to
@@ -109,6 +109,12 @@ class CpuUtils {
         "\tbne     0b           \n"
         : "=r"(upper), "=r"(lower), "=r"(tmp));
     return ((static_cast<uint64>(upper) << 32) | lower);
+#elif defined(__s390x__)
+    // TOD Clock of s390x runs at a different frequency than the CPU's.
+    // The stepping is 244 picoseconds (~4Ghz).
+    uint64 t;
+    __asm__ __volatile__("stckf %0" : "=Q"(t));
+    return t;
 #else
     // TODO(satok): Support generic way to emulate clock count.
     // TODO(satok): Support other architectures if wanted.
@@ -125,7 +131,7 @@ class CpuUtils {
     (defined(__s390x__))
   static uint64 GetCycleCounterFrequency();
 #else
-  static int64 GetCycleCounterFrequency();
+  static int64_t GetCycleCounterFrequency();
 #endif
 
   // Return micro second per each clock
@@ -145,7 +151,7 @@ class CpuUtils {
 
   // Return chrono::duration per each clock
   static std::chrono::duration<double> ConvertClockCycleToTime(
-      const int64 clock_cycle);
+      const int64_t clock_cycle);
 
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
@@ -155,7 +161,7 @@ class CpuUtils {
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
     void EnableClockCycleProfiling() final {}
     void DisableClockCycleProfiling() final {}
-    int64 CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
+    int64_t CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
@@ -165,7 +171,7 @@ class CpuUtils {
   // CAVEAT: as this method calls system call and parse the message,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
-  static int64 GetCycleCounterFrequencyImpl();
+  static int64_t GetCycleCounterFrequencyImpl();
 
   // Return a singleton of ICpuUtilsHelper
   // ICpuUtilsHelper is declared as a function-local static variable

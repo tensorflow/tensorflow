@@ -76,23 +76,15 @@ def _create_local_nccl_repository(repository_ctx):
 
     cuda_config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda"])
     cuda_version = cuda_config["cuda_version"].split(".")
-    cuda_major = cuda_version[0]
-    cuda_minor = cuda_version[1]
 
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.
         repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
 
-        config_wrap = {
-            "%{use_bin2c_path}": "False",
-        }
-        if (int(cuda_major), int(cuda_minor)) <= (10, 1):
-            config_wrap["%{use_bin2c_path}"] = "True"
-
         repository_ctx.template(
             "build_defs.bzl",
             _label("build_defs.bzl.tpl"),
-            config_wrap,
+            {"%{cuda_version}": "(%s, %s)" % tuple(cuda_version)},
         )
     else:
         # Create target for locally installed NCCL.

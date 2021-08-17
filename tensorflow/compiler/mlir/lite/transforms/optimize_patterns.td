@@ -39,14 +39,20 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
+// Checks if the value has rank 'n'.
+class HasRank<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
-multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoConvOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                  $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w)),
@@ -62,7 +68,7 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
-multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
                   $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
@@ -84,8 +90,8 @@ multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in {
-  defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+  defm : FuseActFnIntoConvOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
+  defm : FuseActFnIntoPoolOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
 }
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
@@ -95,7 +101,7 @@ class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
 // op with constant bias, we can fuse the binary op into the convolution op by
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
-multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
+multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   def FuseBinaryOpWithConv#binaryOp : Pat<
     (binaryOp (TFL_Conv2DOp:$output $input, $filter,
                 (ConstantOp FloatElementsAttr:$bias), $h_factor, $w_factor,
@@ -118,6 +124,7 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
@@ -143,7 +150,7 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
      (IsNoneType $bias),
      (HasOneUse $output)]>;
 }
-foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
+foreach binaryOp = [TFL_AddOp, TFL_SubOp]<Op> in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
 
 def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
@@ -157,7 +164,7 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // the filter/bias and the div/mul op's constant operand.
 // The following pattern restricts to float constant values for now.
 
-multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
+multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithDepthwiseConv#BinaryOp : Pat<
     (BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
                 (ConstantOp FloatElementsAttr:$filter),
@@ -177,6 +184,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h,
       $stride_w, $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
@@ -230,7 +238,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $output)]>;
 }
 
-foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
+foreach BinaryOp = [TFL_DivOp, TFL_MulOp]<Op> in
   defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
 
@@ -241,13 +249,6 @@ def eliminate_dq_q_pairs : Pat<
   (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
   (replaceWithValue $in),
   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
-
-
-
-
-// Checks if the operand has rank == n
-class OperandHasRank<int n> : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def MatchHardSwishPattern1 : Pat<
@@ -275,9 +276,34 @@ def MatchHardSwishPattern2 : Pat<
      TFL_AF_None),
   (TFL_HardSwishOp $x)>;
 
+def MatchHardSwishPattern3 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     $x,
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     TFL_AF_None),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern4 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+    $x,
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
-// TODO(b/149735743): We should make the placement automatically.
 def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp
@@ -304,7 +330,7 @@ def L2NormValidReduceIndex : Constraint<CPred<
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
-multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
+multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
   // This pattern constructs L2NormalizationOp from
   // Mul->Rsqrt->Sum->Square Or
   // Div->sqrt->Sum->Square
@@ -367,26 +393,41 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
-def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
+def Flatten : NativeCodeCall<
+  "$0.cast<DenseElementsAttr>()"
+    ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
+                                   "$0.getType().cast<ShapedType>().getElementType()))">;
+
+def IsLastDimEqualToNumElements : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() >= 1 && "
+  "$0.getType().cast<ShapedType>().getDimSize($0.getType().cast<ShapedType>().getRank() - 1) == "
+  "$1.getType().cast<ShapedType>().getNumElements()">>;
+
+def IsDefinedByFullyConnectedOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
-multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
+multiclass FuseTileBroadcastIntoFollowingBinary<Op BinaryOp> {
   def FuseTileBroadcastToBinaryOp1#BinaryOp : Pat<
     (BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
      $operand, $act_func),
     (BinaryOp $input, $operand, $act_func),
-  [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
+  [(OperandsBroadcastToOutputType $input, $operand, $result),
+   (HasRankAtMost<4> $input),
+   (HasRankAtMost<4> $operand)]>;
 
   def FuseTileBroadcastToBinaryOp2#BinaryOp : Pat<
     (BinaryOp:$result $operand,
       (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
     (BinaryOp $operand, $input, $act_func),
-  [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
+  [(OperandsBroadcastToOutputType $operand, $input, $result),
+   (HasRankAtMost<4> $operand),
+   (HasRankAtMost<4> $input)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
-multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
+multiclass FusedBinaryActivationFuncOpPat<Op BinaryOp> {
   foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                        [TFL_Relu6Op, TFL_AF_Relu6],
                        [TFL_Relu1Op, TFL_AF_Relu1]] in {
@@ -413,7 +454,7 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a), $act_fn),
     (TFL_ReshapeOp (BinaryOp $input, $rhs, $act_fn), $shape),
@@ -427,8 +468,46 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
      // `input`. In other words, the shape of the `Reshape` op are not
      // changed after the transformation.
      (IsTailOfShape $rhs, $input),
-     (HasRankAtMost<5> $input),
-     (HasRankAtMost<5> $rhs)]>;
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $lhs),
+     (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2)),
+                $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2, $act_fn), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr), $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr)),
+                               $act_fn),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -444,7 +523,7 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a)),
     (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
@@ -457,20 +536,58 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
      // The result of the new "BinaryOp" will have the same shape as
      // `input`. In other words, the shape of the `Reshape` op are not
      // changed after the transformation.
-     (IsTailOfShape $rhs, $input)]>;
+     (IsTailOfShape $rhs, $input),
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $lhs),
+     (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2))),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr)),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr))),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
-      [(HasOneUse $move)]>;
+      [(SameElementType $input, $value), (HasOneUse $move)]>;
   }
 }
 
@@ -524,9 +641,21 @@ def MatchLeakyRelu : Pat<
   [(ConstDoubleValueLessThan<"1"> $alpha),
    (HasOneUse $mul_out)]>;
 
-def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
+// Returns True if all users of this operation are in TF/TFL and don't need
+// shape exact matching. This prevents from removing cast on return values which
+// can break the verifier on function type mismatch.
+def AllUsersInTF : Constraint<CPred<[{
+  llvm::all_of($0.getUsers(), [&](Operation *user) {
+    auto name = user->getName().getDialectNamespace();
+    return name == "tf" || name == "tfl";
+  })
+  }]>, "all users are TF/TFL operations.">;
+
+def RemoveShapeOnlyCast : Pat<(TFL_CastOp:$output $input),
                             (replaceWithValue $input),
-                            [(SameElementType $input, $output)]>;
+                            [(SameElementType $input, $output),
+                             (AllUsersInTF $output)]>;
+
 
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<
@@ -568,7 +697,10 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
     (TFL_AddOp $input,
      (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
      ActFun),
-    [(HasOneUse $first_output)]>;
+    [(HasOneUse $first_output),
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $a),
+     (HasRankAtMost<4> $b)]>;
 }
 
 // We can eliminate Relu from Relu(SquaredDifference(x, y)),
@@ -592,6 +724,18 @@ def OptimizePow2ToSquare : Pat<
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
 
+// Optimize X^(1/2) to √X
+def OptimizePow2ToSqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.5f">)),
+  (TFL_SqrtOp $input)>;
+
+// Optimize X^(-1/2) to 1/√X == rsqrt(x)
+def OptimizePow2ToRsqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "-0.5f">)),
+  (TFL_RsqrtOp $input)>;
+
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
   "$0, $1.cast<DenseIntElementsAttr>())">>;
@@ -611,8 +755,8 @@ def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
 
 // Fold reshapes re-inserting reduced dimensions into the results of a reduction
 // with `keep_dims=false` by changing it to one using `keep_dims=true`.
-foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
-                    TFL_SumOp] in {
+foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
+                    TFL_ReduceProdOp, TFL_SumOp] in {
   def FoldReshapeTo#ReduceOp : Pat<
     (TFL_ReshapeOp
       (ReduceOp:$reduce $input, (ConstantOp I32ElementsAttr: $axes),
@@ -629,8 +773,8 @@ def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
   "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "$0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
-  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+  "($0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValue<int32_t>({0}) == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -657,3 +801,169 @@ def FoldNormalizationIntoSoftmax : Pat<
    (AxesIsLastDimension $axes, $max_input),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
+
+def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
+
+class AllElementsAreF32<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<float>().end(), "
+               "[](float v){ return v == " #val# ";}))">>;
+
+// Optimize X*1 to X
+def OptimizeMul1ToIdentity : Pat<
+  (TFL_MulOp:$result $input,
+             (ConstantOp $constant),
+             TFL_AF_None),
+  (replaceWithValue $input),
+  [(HaveSameType $input, $result),
+   (AllElementsAreF32<"1.0f"> $constant)]>;
+
+class AllElementsAreBool<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(1) && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<bool>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<bool>().end(), "
+               "[](bool v){ return v == " #val# ";}))">>;
+
+// Remove select operators when the result is known in advance.
+foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
+  // select(true_tensor, A, B) -> A
+  def Optimize#SelectOp#True : Pat<
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
+    (replaceWithValue $input1),
+    [(HaveSameType $input1, $result),
+     (AllElementsAreBool<"true"> $constant)]>;
+  // select(false_tensor, A, B) -> B
+  def Optimize#SelectOp#False : Pat<
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
+    (replaceWithValue $input2),
+    [(HaveSameType $input2, $result),
+     (AllElementsAreBool<"false"> $constant)]>;
+}
+
+// Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
+foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
+  def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_SoftmaxOp:$softmax $logits, TFL_FloatNonNegative:$beta),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+
+  def RemoveLogSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_LogSoftmaxOp:$log_softmax $logits),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $log_softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+}
+
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
+
+// Remove Slice ops slicing the whole input tensor, effectively no-op.
+def OptimizeSliceOp : Pat<
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
+  (replaceWithValue $input),
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+
+def IsLastElementEqualsOne : Constraint<CPred<
+  "TFL::IsLastElementEqualsOne($0)">>;
+
+def IsOneHotIndexAttribute : Constraint<CPred<
+  "TFL::IsOneHotIndexAttribute($0)">>;
+
+// Replace
+//   Equal(Reshape(X, shape), indices)
+// With
+//   OneHot(X, N, true, false, -1)
+// where
+//  - last value in shape is 1
+//  - indices is a incrementing series from 0 to N-1. (N elements total.)
+def ReshapeEqualOpToOneHotOp : Pat<
+  (TFL_EqualOp (TFL_ReshapeOp $x, (ConstantOp $shape)),
+               (ConstantOp $series)),
+  (TFL_OneHotOp $x,
+                (ConstantOp (GetNumElementsOrOne $series)),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
+                ConstantAttr<I32Attr, "-1">),
+  [(IsLastElementEqualsOne $shape),
+   (IsOneHotIndexAttribute $series)]>;
+
+def F32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isF32()">,
+  "32 bit float tensor">;
+def I32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "32 bit integer tensor">;
+
+def ConvertSingleElementAttrToFloatAttr :
+  NativeCodeCall<"ConvertSingleElementAttrToFloatAttr($0)">;
+
+// Replace
+//   (float)OneHot(index, depth, on_val, off_val, axis)
+// With
+//   OneHot(index, depth, (float)on_val, (float)off_val, axis)
+def FuseOneHotAndCastToFloat : Pat<
+  (TFL_CastOp:$output (TFL_OneHotOp $indices,
+                                    $depth,
+                                    (ConstantOp $on_val),
+                                    (ConstantOp $off_val),
+                                    $axis)),
+  (TFL_OneHotOp $indices,
+                $depth,
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $on_val)),
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $off_val)),
+                $axis),
+  [(F32ElementsVal $output)]>;
+
+// Replace
+//   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
+// With
+//   EmbeddingLookup(index, Transpose(filter))
+//
+// OneHot with on=1 off=0 axis=-1, where `index` is a single element tensor,
+// creates a tensor of size depth, and all values are 0, except for the element
+// at `index`, which is 1. Multiplying such a tensor with a 2D filter esentially
+// returns the single column in filter as a 1D tensor. If the input has multiple
+// elements, repeat this for every entry, forming the higher dimensions in the
+// result tensor. For instance, if:
+//   input = [1, 2]
+//   depth = 4
+//   filter = [[5, 7, 11, 13], [17, 19, 23, 29]]
+// then:
+//   onehot = [[0, 1, 0, 0], [0, 0, 1, 0]]
+//   result = [[ 7, 19],   # == 1st column in filter
+//             [11, 23]]   # == 2nd column in filter
+// This is exactly what the EmbeddedLookup operator is doing, on the transposed
+// matrix, without doing any arithmetic but only memcpy.
+def ReplaceOneHotFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp
+    (TFL_OneHotOp
+      $indices,
+      (ConstantOp $depth),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    $filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    ConstBoolAttrFalse),
+  (TFL_EmbeddingLookupOp
+    $indices,
+    (TFL_TransposeOp
+      $filter,
+      (ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
+  [(I32ElementsVal $indices),     // lookup is not implemented for i64
+   (HasRank<1> $indices),  // lookup isn't implemented for any other rank
+   (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later

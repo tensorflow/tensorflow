@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -48,7 +49,8 @@ struct EndpointEq {
 static Status ProcessMemoryTypes(
     const DeviceType& device_type, const Graph* g,
     const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
-  if (device_type != DEVICE_GPU) {
+  if (device_type != DEVICE_GPU &&
+      !DeviceFactory::IsPluggableDevice(device_type.type_string())) {
     // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always compatible.
     return Status::OK();
   }
@@ -113,7 +115,7 @@ Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
 // is only used on a TensorFlow graph that is gonna to be executed in
 // a single tf device (hence within a single process).
 static string GetTensorName(const Edge* edge) {
-  static std::atomic<int64> counter(0);
+  static std::atomic<int64_t> counter(0);
   return strings::StrCat("memtype_", counter.fetch_add(1), "_",
                          edge->src()->name());
 }

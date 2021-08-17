@@ -28,10 +28,13 @@ limitations under the License.
 namespace xla {
 namespace sharding_builder {
 // A shaped array used to describe the assignment of tiles to devices.
-using TileAssignment = Array<int64>;
+using TileAssignment = Array<int64_t>;
 
 // Creates a replicated sharding - replicate a tensor on every device.
 OpSharding Replicate();
+
+// Creates a manual sharding - the partitioner will not change the shape.
+OpSharding Manual();
 
 // Creates a sharding that assigns a tensor to just one device.
 OpSharding AssignDevice(int device);
@@ -48,7 +51,7 @@ OpSharding Tile(const Shape& tile_shape, const TileAssignment& tile_assignment);
 // be rank 1 and using devices [0..num_tiles).
 //
 // This is simply a convenience wrapper for Tile().
-OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles);
+OpSharding Tile1D(const Shape& tile_shape, int64_t num_tiles);
 
 // Creates a tuple sharding from the given ShapeTree of element shardings.
 OpSharding Tuple(const ShapeTree<OpSharding>& shardings);

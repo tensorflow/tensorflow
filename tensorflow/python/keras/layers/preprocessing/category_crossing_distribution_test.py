@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for keras.layers.preprocessing.normalization."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Distribution tests for keras.layers.preprocessing.category_crossing."""
 
 import numpy as np
 

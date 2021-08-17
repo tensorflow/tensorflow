@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _memory_checker_test_helper
+from tensorflow.python.framework import _memory_checker_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.memory_checker import MemoryChecker
@@ -102,6 +102,18 @@ class MemoryCheckerTest(test.TestCase):
       tensors = []
       for _ in range(10):
         tensors.append(constant_op.constant(1))
+        memory_checker.record_snapshot()
+
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
+
+  def testLeak4(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+
+    with MemoryChecker() as memory_checker:
+      for i in range(10):
+        helper.list_push_back(i)
         memory_checker.record_snapshot()
 
     memory_checker.report()

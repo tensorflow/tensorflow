@@ -22,11 +22,13 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
+#include <memory>
 #include <set>
+#include <type_traits>
 #include <unordered_map>
 
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
@@ -35,13 +37,55 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
+
+class StreamExecutor;
+
 namespace gpu {
+
+// Pointer-to-implementation object type with virtual destruction for any XLA
+// specific data hanging off of the GpuExecutor.
+class XLAInterface {
+ public:
+  // Default constructor for the abstract interface.
+  explicit XLAInterface() {}
+
+  // Default destructor for the abstract interface.
+  virtual ~XLAInterface() {}
+};
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
 class GpuExecutor : public internal::StreamExecutorInterface {
+  // Helper classes to attach a type erased state to the GpuExecutor. Currently,
+  // we just need to support some XLA specific state.
+  class Object {
+    struct Concept {
+      virtual ~Concept() {}
+    };
+    template <typename T>
+    struct Model : Concept {
+      explicit Model(StreamExecutor* se) : object(se) {}
+      T object;
+    };
+
+   public:
+    template <typename T>
+    T* getOrCreate(StreamExecutor* se) {
+      tensorflow::mutex_lock l(mu_);
+      if (!object_) {
+        object_ = std::make_unique<Model<T>>(se);
+      }
+      return &(dynamic_cast<Model<T>*>(object_.get())->object);
+    }
+
+   private:
+    tensorflow::mutex mu_;
+    std::unique_ptr<Concept> object_ ABSL_GUARDED_BY(mu_);
+  };
+
  public:
   // sub_platform indicates the subplatform used in this executor; it must
   // be a CUDA type.
@@ -75,25 +119,25 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
-                         uint64 registers_per_thread,
-                         uint64 shared_memory_per_block,
+                         uint64_t registers_per_thread,
+                         uint64_t shared_memory_per_block,
                          const ThreadDim& thread_dims, GpuFunctionHandle func);
 
   // (supported on CUDA only)
   int CompareOccupancy(int* initial_blocks,
                        const DeviceDescription& device_description,
-                       uint64 registers_per_thread,
-                       uint64 shared_memory_per_block,
+                       uint64_t registers_per_thread,
+                       uint64_t shared_memory_per_block,
                        const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
-  void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                     uint64 size_bytes) override;
+  void* GetSubBuffer(DeviceMemoryBase* mem, uint64_t offset_bytes,
+                     uint64_t size_bytes) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
 
-  void* UnifiedMemoryAllocate(uint64 size) override {
+  void* UnifiedMemoryAllocate(uint64_t size) override {
     return GpuDriver::UnifiedMemoryAllocate(context_, size);
   }
 
@@ -105,7 +149,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // internally sets up buffers for DMA operations (and page locks them).
   // There's no external interface for us to otherwise control these DMA
   // settings.
-  void* HostMemoryAllocate(uint64 size) override {
+  void* HostMemoryAllocate(uint64_t size) override {
     return GpuDriver::HostAllocate(context_, size);
   }
 
@@ -113,45 +157,45 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return GpuDriver::HostDeallocate(context_, location);
   }
 
-  bool HostMemoryRegister(void* location, uint64 size) override;
+  bool HostMemoryRegister(void* location, uint64_t size) override;
 
   bool HostMemoryUnregister(void* location) override;
 
   bool SynchronizeAllActivity() override;
 
   port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64 size) override;
+                                  uint64_t size) override;
 
   port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64 size) override;
+                                 uint64_t size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                 const void* host_src, uint64 size) override;
+                                 const void* host_src, uint64_t size) override;
 
   port::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
-                                 uint64 size) override;
+                                 uint64_t size) override;
 
   port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
                                                const DeviceMemoryBase& gpu_src,
-                                               uint64 size) override;
+                                               uint64_t size) override;
 
   port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64 size) override;
+                       uint64_t size) override;
   port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-                      uint64 size) override;
+                      uint64_t size) override;
   port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32 pattern, uint64 size) override;
+                        uint32 pattern, uint64_t size) override;
 
   bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
-              uint64 size) override;
+              uint64_t size) override;
 
   bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
-              uint64 size) override;
+              uint64_t size) override;
 
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,
-                            uint64 size) override;
+                            uint64_t size) override;
 
   bool HostCallback(Stream* stream,
                     std::function<port::Status()> callback) override;
@@ -188,7 +232,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override;
 
-  bool DeviceMemoryUsage(int64* free, int64* total) const override;
+  bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   // Search for the symbol and returns a device pointer and size.
   // Returns false if symbol does not exist.
@@ -232,6 +276,20 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   void* GpuContextHack() override;
 
   GpuContext* gpu_context();
+
+  // Provide a type-erased way of attaching arbitrary XLA specific state to the
+  // GpuExecutor. XLA based execution will use this method to attach per-stream
+  // executor XLA specific objects (like the Infeed and Outfeed managers) to the
+  // stream executor, so that their lifetimes can be tied to the lifetime of the
+  // stream executor for which that object is allocated for. This simplifies
+  // memory management as compared to having these objects reside on the side
+  // and then either leaking or having to implement callbacks that the SE
+  // destructors call to deallocate any side state that is associated with that
+  // SE object.
+  template <typename T>
+  T* getOrCreateXLAState(StreamExecutor* se) {
+    return xla_state_.getOrCreate<T>(se);
+  }
 
  private:
   // Attempts to find a more specific version of the file indicated by
@@ -303,7 +361,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::unordered_map<const KernelBase*, const void*> kernel_to_gpu_binary_
       TF_GUARDED_BY(in_memory_modules_mu_);
   // GPU binary (PTX or CUBIN or HSACO) -> {CUDA module, reference count}.
-  std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64>>
+  std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>
       gpu_binary_to_module_ TF_GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
@@ -337,8 +395,15 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // The plugin configuration associated with this instance.
   PluginConfig plugin_config_;
 
+  // Type erased XLA specific state attached to GpuExecutor.
+  Object xla_state_;
+
   SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
 };
+
+inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
+  return static_cast<GpuExecutor*>(stream_exec->implementation());
+}
 
 }  // namespace gpu
 }  // namespace stream_executor

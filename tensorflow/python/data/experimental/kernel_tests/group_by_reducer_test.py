@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -198,6 +199,29 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
     x, y = self.evaluate(get_next())
     self.assertAllEqual(x, np.asarray([x for x in range(10)]))
     self.assertEqual(y, 45)
+
+
+class GroupByReducerCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                   parameterized.TestCase):
+
+  def _build_dataset(self, components):
+    reducer = grouping.Reducer(
+        init_func=lambda _: np.int64(0),
+        reduce_func=lambda x, y: x + y,
+        finalize_func=lambda x: x)
+
+    return dataset_ops.Dataset.from_tensor_slices(components).apply(
+        grouping.group_by_reducer(lambda x: x % 5, reducer))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    components = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.int64)
+    verify_fn(
+        self,
+        lambda: self._build_dataset(components),
+        num_outputs=5)
 
 
 if __name__ == "__main__":

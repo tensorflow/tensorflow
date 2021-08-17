@@ -39,7 +39,7 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
-  Shape(PrimitiveType element_type, absl::Span<const int64> dimensions,
+  Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
         absl::Span<const bool> dynamic_dimensions,
         std::vector<Shape> tuple_shapes)
       : element_type_(element_type),
@@ -57,7 +57,7 @@ class Shape {
 
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
-  int64 rank() const {
+  int64_t rank() const {
     DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
@@ -67,6 +67,10 @@ class Shape {
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
+
+  // Returns whether all elements in the shape are integer.
+  // A nested tuple of integers is considered as integer.
+  bool IsInteger() const;
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -96,7 +100,7 @@ class Shape {
 
   // Removes the given dimension form the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
-  void DeleteDimension(int64 dim_to_delete);
+  void DeleteDimension(int64_t dim_to_delete);
 
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
@@ -110,9 +114,11 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64 dimensions(int index) const { return dimensions_.at(index); }
-  void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
-  void add_dimensions(int64 value) {
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
+  void set_dimensions(int index, int64_t value) {
+    dimensions_.at(index) = value;
+  }
+  void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
     dynamic_dimensions_.push_back(false);
   }
@@ -120,8 +126,10 @@ class Shape {
     dimensions_.clear();
     dynamic_dimensions_.clear();
   }
-  absl::Span<const int64> dimensions() const { return dimensions_; }
-  absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
+  absl::Span<const int64_t> dimensions() const { return dimensions_; }
+  absl::Span<int64_t> mutable_dimensions() {
+    return absl::MakeSpan(dimensions_);
+  }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
@@ -145,7 +153,7 @@ class Shape {
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
-      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+      for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;
       }
       return;
@@ -220,6 +228,10 @@ class Shape {
       ignore_dynamic_dimension_ = true;
       return *this;
     }
+    Equal& IgnoreDimensions() {
+      ignore_dimensions_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -229,6 +241,7 @@ class Shape {
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
+    bool ignore_dimensions_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().
@@ -248,7 +261,7 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  absl::InlinedVector<int64, 6> dimensions_;
+  absl::InlinedVector<int64_t, 6> dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.

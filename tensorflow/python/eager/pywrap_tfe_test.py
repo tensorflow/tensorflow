@@ -249,10 +249,10 @@ class Tests(test.TestCase):
                                         "num_split", 1000000000000)
 
     value = constant_op.constant(value)
-    attrs = ("num_splits", 1000000000000)
+    attrs = ("num_split", 1000000000000, "T", value.dtype.as_datatype_enum)
     with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
-      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [value], attrs,
-                                1000000000000)
+      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [split_dim, value],
+                                attrs, 1000000000000)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -297,8 +297,11 @@ class Tests(test.TestCase):
                                         False)
 
   def testOpDefDefaultType(self):
-    im = np.random.randint(
-        low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
+    im = np.random.randint(  # pylint: disable=too-many-function-args
+        low=0,
+        high=65535,
+        size=100,
+        dtype=np.uint16).reshape(10, 10, 1)
 
     context.ensure_initialized()
 
@@ -367,6 +370,20 @@ class Tests(test.TestCase):
           traceback.format_exception(etype, value, tb))
 
     self.assertNotRegex(full_exception_text, "_FallbackException")
+
+  def testIntAttrThatDoesNotFitIn32Bits(self):
+    # Tests bug where int attributes >= 2**31 raised an exception on platforms
+    # where sizeof(long) = 32 bits.
+    ctx = context.context()
+    ctx.ensure_initialized()
+    shape = constant_op.constant([10])
+    minval = constant_op.constant(0)
+    maxval = constant_op.constant(10)
+    seed = 2**50
+    pywrap_tfe.TFE_Py_FastPathExecute(ctx, "RandomUniformInt", None,
+                                      shape, minval, maxval,
+                                      "seed", seed)
+
 
 if __name__ == "__main__":
   test.main()

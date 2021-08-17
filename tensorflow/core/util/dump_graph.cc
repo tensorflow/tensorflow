@@ -18,6 +18,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include <memory>
+#include <unordered_map>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -112,7 +115,7 @@ class StderrWritableFile : public WritableFile {
 
   Status Sync() override { return Status::OK(); }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
   }
 };
@@ -192,6 +195,25 @@ void SetGraphDumper(
 
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname) {
+  string filepath;
+  std::unique_ptr<WritableFile> file;
+  Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",
+                                     &filepath, &file);
+  if (!status.ok()) {
+    return StrCat("(failed to create writable file: ", status.ToString(), ")");
+  }
+
+  status = WriteTextProtoToUniqueFile(graph_def, file.get());
+  if (!status.ok()) {
+    return StrCat("(failed to dump Graph to '", filepath,
+                  "': ", status.ToString(), ")");
+  }
+  LOG(INFO) << "Dumped Graph to " << filepath;
+  return filepath;
+}
+
+string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
+                              const string& dirname) {
   string filepath;
   std::unique_ptr<WritableFile> file;
   Status status = CreateWritableFile(Env::Default(), dirname, name, ".pbtxt",

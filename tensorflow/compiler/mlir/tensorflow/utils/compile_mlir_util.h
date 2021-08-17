@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
@@ -37,7 +37,7 @@ namespace tensorflow {
 // TF MLIR to XLA HLO MLIR conversion/legalization. Custom legalization passes
 // can be populated in `custom_legalization_passes`.
 void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type,
+    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
 
@@ -60,6 +60,8 @@ void CreateConvertMlirToXlaHloPipeline(
 //   "XLA_GPU_JIT" or "XLA_TPU_JIT".
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
+// prefer_tf2xla: when this is true, prefer tf2xla fallback kernels over MLIR
+//   native kernels for legalization to HLO.
 // return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
 // shape_representation_fn: when this is set, this shape representation function
@@ -67,10 +69,12 @@ void CreateConvertMlirToXlaHloPipeline(
 //   original shape will be used as is.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
+//
+// TODO(hinsu): Migrate options to a separate struct.
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
-    bool return_tuple,
+    bool prefer_tf2xla, bool return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn = nullptr,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
@@ -81,12 +85,39 @@ struct TensorOrResourceShape {
   bool is_resource = false;
 };
 
+// Refine MLIR types based on new shape information.
+Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                    mlir::ModuleOp module);
+
+// Lower TF to MHLO and insert HLO into the XlaBuilder. xla_params are HLO-level
+// inputs to module_op that have already been added to the XlaBuilder. returns
+// are the returned XlaOps.
+Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
+                      llvm::ArrayRef<xla::XlaOp> xla_params,
+                      std::vector<xla::XlaOp>& returns,
+                      llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                      llvm::StringRef device_type,
+                      llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+                          custom_legalization_passes);
+
+// Apply shape, description, and resource information to inputs and outputs
+// in the XlaCompilationResult. This should be called after
+// compilation_result->computation was set.
+Status PopulateResultIOInfo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+    bool use_tuple_args, bool use_resource_updates_for_aliases,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result);
+
 // Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
 // stores them in CompilationResult.
+//
+// If analyse_graph is set to true, graph is legalized only if the graph
+// analysis for the graph is successful. Otherwise, an error is returned.
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
-    bool use_resource_updates_for_aliases,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -96,7 +127,7 @@ Status CompileMlirToXlaHlo(
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -109,7 +140,8 @@ Status CompileSerializedMlirToXlaHlo(
 // `CompileMlirToXlaHlo`.
 Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    bool use_return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -120,13 +152,31 @@ Status CompileGraphToXlaHlo(
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info,
+    bool use_tuple_args, bool analyse_graph,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
 
+// Compiles a Graph from TF to HLO and adds the resulting HLO to the
+// XlaBuilder. This function adds HLO to a larger HLO computation, so
+// HLO-level inputs are supplied, and HLO-level outputs are produced.
+// xla_params is the HLO-level inputs and returns is the HLO-level outputs.
+Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
+                         llvm::ArrayRef<xla::XlaOp> xla_params,
+                         std::vector<xla::XlaOp>& returns,
+                         llvm::ArrayRef<XlaArgument> args,
+                         llvm::ArrayRef<std::string> control_rets,
+                         llvm::StringRef device_type,
+                         const FunctionLibraryDefinition& flib_def,
+                         const GraphDebugInfo& debug_info,
+                         llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+                             custom_legalization_passes = {});
+
+static inline Status CompileToHloGraphAnalysisFailedError() {
+  return errors::Internal("disabled after graph analysis");
+}
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_COMPILE_MLIR_UTIL_H_

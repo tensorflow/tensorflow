@@ -37,8 +37,9 @@ from __future__ import print_function
 
 import six as _six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
+from tensorflow.python.util import _pywrap_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
@@ -50,35 +51,16 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
-def _sequence_like(instance, args):
-  """Converts the sequence `args` to the same type as `instance`.
+def _yield_value(iterable):
+  """Yield elements of `iterable` in a deterministic order.
 
   Args:
-    instance: an instance of `tuple`, `list`, or a `namedtuple` class.
-    args: elements to be converted to a sequence.
+    iterable: an iterable.
 
-  Returns:
-    `args` with the type of `instance`.
+  Yields:
+    The iterable elements in a deterministic order.
   """
-  if isinstance(instance, _collections_abc.Mapping):
-    # Pack dictionaries in a deterministic order by sorting the keys.
-    # Notice this means that we ignore the original order of `OrderedDict`
-    # instances. This is intentional, to avoid potential bugs caused by mixing
-    # ordered and plain dicts (e.g., flattening a dict but using a
-    # corresponding `OrderedDict` to pack it back).
-    result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in instance)
-  elif (isinstance(instance, tuple) and hasattr(instance, "_fields") and
-        isinstance(instance._fields, _collections_abc.Sequence) and
-        all(isinstance(f, _six.string_types) for f in instance._fields)):
-    # This is a namedtuple
-    return type(instance)(*args)
-  else:
-    # Not a namedtuple
-    return type(instance)(args)
-
-
-def _yield_value(iterable):
+  # pylint: disable=protected-access
   if isinstance(iterable, _collections_abc.Mapping):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
@@ -89,6 +71,9 @@ def _yield_value(iterable):
       yield iterable[key]
   elif isinstance(iterable, _sparse_tensor.SparseTensorValue):
     yield iterable
+  elif nest._is_attrs(iterable):
+    for _, attr in nest._get_attrs_items(iterable):
+      yield attr
   else:
     for value in iterable:
       yield value
@@ -146,7 +131,7 @@ def _packed_nest_with_indices(structure, flat, index):
   for s in _yield_value(structure):
     if is_sequence(s):
       new_index, child = _packed_nest_with_indices(s, flat, index)
-      packed.append(_sequence_like(s, child))
+      packed.append(nest._sequence_like(s, child))  # pylint: disable=protected-access
       index = new_index
     else:
       packed.append(flat[index])
@@ -189,7 +174,7 @@ def pack_sequence_as(structure, flat_sequence):
         % (len(flat_structure), len(flat_sequence), structure, flat_sequence))
 
   _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
-  return _sequence_like(structure, packed)
+  return nest._sequence_like(structure, packed)  # pylint: disable=protected-access
 
 
 def map_structure(func, *structure, **check_types_dict):

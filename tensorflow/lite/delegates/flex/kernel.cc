@@ -245,7 +245,9 @@ class OpNode {
 
   // Build thew new EagerOperation. In case of error, the returned 'op' is
   // guaranteed to be 'nullptr'.
-  tensorflow::Status BuildEagerOp(tensorflow::EagerContext* eager_context) {
+  tensorflow::Status BuildEagerOp(
+      tensorflow::EagerContext* eager_context,
+      tensorflow::CancellationManager* cancellation_manager) {
     op_.reset(new tensorflow::EagerOperation(eager_context));
     TF_RETURN_IF_ERROR(op_->Reset(name_.c_str(), nullptr, false, nullptr));
     if (op_->is_function()) {
@@ -265,17 +267,16 @@ class OpNode {
     // small models.
     op_->MutableAttrs()->CacheKey(op_->DeviceName());
 
+    op_->SetCancellationManager(cancellation_manager);
+
     return tensorflow::Status::OK();
   }
 
-  void ClearEagerInputs() {
-    for (tensorflow::TensorHandle* h : *op_->MutableInputs()) {
-      if (h) h->Unref();
-    }
-    op_->MutableInputs()->clear();
-  }
+  void ClearEagerInputs() { op_->Clear(); }
 
   tensorflow::Status BuildEagerInputs(const BufferMap* buffer_map) {
+    absl::InlinedVector<tensorflow::TensorHandle*, 4>* op_inputs;
+    TF_RETURN_IF_ERROR(op_->MutableTensorHandleInputs(&op_inputs));
     for (int i = 0; i < inputs_.Size(); ++i) {
       int input_index = inputs_.TfLiteIndex(i);
       TensorSource s = inputs_.GetTensorSource(i);
@@ -290,14 +291,14 @@ class OpNode {
         tensorflow::TensorHandle* handle =
             tensorflow::TensorHandle::CreateLocalHandle(
                 buffer_map->GetTensor(input_index));
-        op_->MutableInputs()->push_back(handle);
+        op_inputs->push_back(handle);
       } else {
         // If this is a forwardable tensor, we will remove it from the previous
         // op's list, giving TF the opportunity to reuse its buffer.
         bool unref_handle = inputs_.IsForwardable(i);
         auto* handle =
             s.node->outputs_.GetHandle(s.node_output_index, unref_handle);
-        op_->MutableInputs()->push_back(handle);
+        op_inputs->push_back(handle);
       }
     }
     return tensorflow::Status::OK();
@@ -369,6 +370,7 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
 // The larger 'op', which contains all the nodes in a supported subgraph.
 struct OpData {
   tensorflow::EagerContext* eager_context;
+  tensorflow::CancellationManager* cancellation_manager;
   BufferMap* buffer_map;
   std::vector<std::unique_ptr<OpNode>> nodes;
   std::vector<int> subgraph_inputs;
@@ -383,6 +385,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   auto* flex_delegate_data =
       reinterpret_cast<FlexDelegate*>(params->delegate->data_)->mutable_data();
   op_data_->eager_context = flex_delegate_data->GetEagerContext();
+  op_data_->cancellation_manager = flex_delegate_data->GetCancellationManager();
   op_data_->buffer_map = flex_delegate_data->GetBufferMap(context);
 
   CHECK(params->output_tensors);
@@ -415,7 +418,8 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     status = node_data.InitializeNodeDef(node->custom_initial_data,
                                          node->custom_initial_data_size);
     if (!status.ok()) break;
-    status = node_data.BuildEagerOp(op_data_->eager_context);
+    status = node_data.BuildEagerOp(op_data_->eager_context,
+                                    op_data_->cancellation_manager);
     if (!status.ok()) break;
   }
 
@@ -459,7 +463,7 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (auto tensor_index : op_data_->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (IsConstantTensor(tensor)) {
-      if (!buffer_map->HasTensor(tensor_index)) {
+      if (!tensor->data_is_stale || !buffer_map->HasTensor(tensor_index)) {
         buffer_map->SetFromTfLite(tensor_index, tensor);
       }
     }
@@ -605,7 +609,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
       // If this tensor is part of an earlier TF subgraph we should not add it
       // to the BufferMap again, because TF already knows about it and its
       // contents are kept automatically up-to-date.
-      if (!buffer_map->IsTensorFlowTensor(tensor_index)) {
+      if (!tensor->data_is_stale || !buffer_map->HasTensor(tensor_index)) {
         buffer_map->SetFromTfLite(tensor_index, tensor);
       }
     }
@@ -616,6 +620,12 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
     TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
         reinterpret_cast<Profiler*>(context->profiler),
         node_data->name().c_str(), node_data->index());
+
+    if (op_data_->cancellation_manager != nullptr &&
+        op_data_->cancellation_manager->IsCancelled()) {
+      TF_LITE_KERNEL_LOG(context, "Client requested cancel during Invoke()");
+      return kTfLiteError;
+    }
 
     auto status = ExecuteFlexOp(context, buffer_map, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));

@@ -23,6 +23,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct StridedSliceShapeSpec {
+  // Begin mask canonlized in dense form.
+  int32 begin_dense_mask;
+  // End mask canonlized in dense form.
+  int32 end_dense_mask;
+  // Shrink axis mask canonlized in dense form.
+  int32 shrink_axis_dense_mask;
+  // output_to_sparse_mapping[i] represents output[i]'s the corresponding dim
+  // index in the begin_tensor. If
+  // output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up
+  // in sparse_mapping.
+  gtl::InlinedVector<int64_t, 4> output_to_sparse_mapping;
+  // output_to_processing_mapping is similar to output_to_sparse_mapping, but
+  // for processing shape.
+  gtl::InlinedVector<int64_t, 4> output_to_processing_mapping;
+  // processing_to_sparse_mapping[i] represents input_shape[i]'s corresponding
+  // dim index in the begin_tensor.
+  gtl::InlinedVector<int64_t, 4> processing_to_sparse_mapping;
+};
+
 // Runs validation on the strided slice op parameters.
 //
 // Is a separate translation unit from the kernel so that:
@@ -41,39 +61,28 @@ namespace tensorflow {
 // (-1). Any validation that can be done without complete information is
 // performed.
 //
-// This function changes the orders of dimensions, output_to_sparse_mapping and
-// output_to_processing_mapping are used to track the order change.
-//
-// output_to_sparse_mapping[i] represents output[i]'s the corresponding dim
-// index in the begin_tensor. If
-// output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up in
-// sparse_mapping.
-//
-// output_to_processing_mapping is similar to output_to_sparse_mapping, but for
-// processing_shape.
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
-    gtl::InlinedVector<int64, 4>* strides,
-    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping = nullptr,
-    gtl::InlinedVector<int64, 4>* output_to_processing_mapping = nullptr);
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Same as above, but the outputs are TensorShape, not PartialTensorShape
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides,
-    gtl::InlinedVector<int64, 4>* output_to_sparse_mapping = nullptr,
-    gtl::InlinedVector<int64, 4>* output_to_processing_mapping = nullptr);
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
+    gtl::InlinedVector<int64_t, 4>* strides,
+    StridedSliceShapeSpec* shape_spec = nullptr);
 
 }  // namespace tensorflow
 

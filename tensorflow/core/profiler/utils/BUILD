@@ -5,7 +5,7 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -114,6 +115,7 @@ cc_library(
     deps = [
         ":op_metrics_db_utils",
         ":tf_op_utils",
+        ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
@@ -209,10 +211,12 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":time_utils",
+        ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -261,6 +265,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -420,6 +425,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -466,6 +472,7 @@ tf_cc_test(
         ":kernel_stats_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/internal/gpu:cupti_collector_header",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
     ],
 )
@@ -553,13 +560,31 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
-        "//tensorflow/core:platform_base",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "buffer_pool",
+    srcs = ["buffer_pool.cc"],
+    hdrs = ["buffer_pool.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "buffer_pool_test",
+    srcs = ["buffer_pool_test.cc"],
+    deps = [
+        ":buffer_pool",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

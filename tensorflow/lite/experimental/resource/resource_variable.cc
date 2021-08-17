@@ -69,6 +69,8 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
   tensor_.data.raw = old_raw;
   if (old_bytes != tensor->bytes) {
     TfLiteTensorRealloc(tensor->bytes, &tensor_);
+  } else {
+    tensor_.bytes = old_bytes;
   }
 
   memcpy(tensor_.data.raw, tensor->data.raw, tensor_.bytes);
@@ -82,8 +84,8 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
   if (resources->count(resource_id) != 0) {
     return;
   }
-  resources->emplace(
-      resource_id, std::unique_ptr<ResourceVariable>(new ResourceVariable()));
+  resources->emplace(resource_id,
+                     std::unique_ptr<ResourceVariable>(new ResourceVariable()));
 }
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {

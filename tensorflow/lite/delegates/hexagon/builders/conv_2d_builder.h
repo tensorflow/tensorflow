@@ -23,6 +23,19 @@ namespace tflite {
 namespace delegates {
 namespace hexagon {
 
+// Stores quantization data for Conv/TransposeConv nodes.
+// This information is used to handle the per-channel quantized weights & biases
+// correctly in the Hexagon delegate.
+struct PerChannelQuantData {
+  // This is initialized while processing quantized weights, and acts as an
+  // input to Hexagon Conv nodes.
+  OpBuilder* channel_scales_node = nullptr;
+  // Scale information is obtained from TfLiteAffineQuantization in the weights
+  // tensor.
+  float* scales_data = nullptr;
+  int num_scale_values = 1;
+};
+
 class Conv2dOpBuilder : public OpBuilder {
  public:
   explicit Conv2dOpBuilder(GraphBuilder* graph_builder, int op_type)
@@ -37,22 +50,10 @@ class Conv2dOpBuilder : public OpBuilder {
   ~Conv2dOpBuilder() override;
 
  private:
-  // TODO(b/142009955): Combine into common util for all types of Conv.
-  TfLiteStatus ProcessPerChannelQuantizedWeights(const TfLiteIntArray* inputs,
-                                                 const TfLiteIntArray* outputs,
-                                                 TfLiteContext* context,
-                                                 float* weights_min,
-                                                 float* weights_max);
-
   TfLiteStatus InitializeWeightsNodes(const TfLiteIntArray* inputs,
                                       const TfLiteIntArray* outputs,
                                       TfLiteContext* context,
                                       const int input_depth);
-
-  TfLiteStatus ProcessPerChannelQuantizedBias(const TfLiteIntArray* inputs,
-                                              const TfLiteIntArray* outputs,
-                                              TfLiteContext* context,
-                                              float* bias_min, float* bias_max);
 
   TfLiteStatus InitializeBiasNodes(const TfLiteIntArray* inputs,
                                    const TfLiteIntArray* outputs,
@@ -67,16 +68,31 @@ class Conv2dOpBuilder : public OpBuilder {
   OpBuilder* bias_min_node_ = nullptr;
   OpBuilder* bias_max_node_ = nullptr;
 
-  // Non-null only if node has per-channel quantized weights/biases.
-  OpBuilder* channel_scales_node_ = nullptr;
-  float* scales_data_ = nullptr;
-  int num_scale_values_ = 1;
+  // Modified only if node has per-channel quantized weights/biases.
+  PerChannelQuantData per_channel_quant_;
 
   // Only used for dilated Depthwise Conv.
   std::vector<int> dilation_factors_h_w_;
   std::vector<int> space_to_batch_paddings_;
   std::vector<int> batch_to_space_crops_;
 };
+
+// ProcessPerChannelQuantizedWeights & ProcessPerChannelQuantizedBias can be
+// used to pre-process per-channel quantized weights & biases for Hexagon.
+// NOTE: ProcessPerChannelQuantizedWeights should be run before
+// ProcessPerChannelQuantizedBias. This is becase we set PerChannelQuantData
+// based on the weights tensor, which is utilized while preprocessing bias.
+
+TfLiteStatus ProcessPerChannelQuantizedWeights(
+    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
+    TfLiteContext* context, float* weights_min, float* weights_max,
+    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant);
+
+TfLiteStatus ProcessPerChannelQuantizedBias(
+    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
+    TfLiteContext* context, float* bias_min, float* bias_max,
+    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant,
+    OpBuilder** bias_const_node = nullptr);
 
 }  // namespace hexagon
 }  // namespace delegates

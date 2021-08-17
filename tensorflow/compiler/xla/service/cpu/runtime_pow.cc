@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 template <typename T>
-static T Powi(T a, tensorflow::int32 b) {
+static T Powi(T a, int32_t b) {
   const bool recip = b < 0;
   T r = 1;
   while (true) {
@@ -30,10 +30,6 @@ static T Powi(T a, tensorflow::int32 b) {
   return recip ? 1 / r : r;
 }
 
-float TF_ATTRIBUTE_WEAK __powisf2(float a, tensorflow::int32 b) {
-  return Powi(a, b);
-}
+float TF_ATTRIBUTE_WEAK __powisf2(float a, int32_t b) { return Powi(a, b); }
 
-double TF_ATTRIBUTE_WEAK __powidf2(double a, tensorflow::int32 b) {
-  return Powi(a, b);
-}
+double TF_ATTRIBUTE_WEAK __powidf2(double a, int32_t b) { return Powi(a, b); }

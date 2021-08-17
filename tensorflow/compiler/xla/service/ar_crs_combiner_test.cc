@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/ar_crs_combiner.h"
+
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -375,18 +376,18 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
   EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
 }
 
-void CompareReplicaGroups(const std::vector<ReplicaGroup>& groups_before,
-                          const std::vector<ReplicaGroup>& groups_after) {
+void CompareReplicaGroups(absl::Span<const ReplicaGroup> groups_before,
+                          absl::Span<const ReplicaGroup> groups_after) {
   ASSERT_EQ(groups_before.size(), groups_after.size());
   for (int i = 0; i < groups_before.size(); ++i) {
     // Somewhat verbose way to compare the replica_ids, because EqualsProto
     // is not available in the open-source build.
     auto group_before = groups_before[i];
-    std::vector<int64> ids_before(group_before.replica_ids().begin(),
-                                  group_before.replica_ids().end());
+    std::vector<int64_t> ids_before(group_before.replica_ids().begin(),
+                                    group_before.replica_ids().end());
     auto group_after = groups_after[i];
-    std::vector<int64> ids_after(group_after.replica_ids().begin(),
-                                 group_after.replica_ids().end());
+    std::vector<int64_t> ids_after(group_after.replica_ids().begin(),
+                                   group_after.replica_ids().end());
     EXPECT_EQ(ids_before, ids_after);
   }
 }
@@ -561,7 +562,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
       to_apply=%sum.2,
       sharding={maximal device=1}
 
-  ROOT %tuple = (f32[], f32[])
+  ROOT %tuple = (f32[2], f32[2])
       tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
@@ -1809,7 +1810,8 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
+      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                   /*num_partitions=*/4));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/4, /*num_replicas=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();

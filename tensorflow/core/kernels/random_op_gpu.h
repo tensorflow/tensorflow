@@ -145,7 +145,7 @@ PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, false>::Run(
 
   const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_thread_count = gridDim.x * blockDim.x;
-  int32 offset = thread_id * kGroupSize;
+  int64 offset = thread_id * kGroupSize;
   if (key != nullptr && counter != nullptr) {
     gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
   }

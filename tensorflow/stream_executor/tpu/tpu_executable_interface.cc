@@ -52,15 +52,27 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
 
 StatusOr<ExecutionOutput>
 TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
-    const Shape& host_shape, const HloInputOutputAliasConfig& alias_config,
+    const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
   auto device_ordinal = stream_exec->device_ordinal();
   VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
-          << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);
-  Shape device_shape = HostShapeToDeviceShape(host_shape);
+          << " shape = " << ShapeUtil::HumanStringWithLayout(shape);
+  auto update_layout = [this](xla::Shape* subshape,
+                              const xla::ShapeIndex& index) {
+    if (subshape->IsArray()) {
+      CHECK(subshape->has_layout());
+      if (!subshape->layout().tiles().empty()) {
+        // Already in device shape.
+        return;
+      }
+      *subshape = HostShapeToDeviceShape(*subshape);
+    }
+  };
+  Shape device_shape = shape;
+  xla::ShapeUtil::ForEachMutableSubshape(&device_shape, update_layout);
 
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
@@ -82,10 +94,10 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
-            << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);
-    if (!Shape::Equal().MinorToMajorOnlyInLayout()(host_shape, device_shape)) {
-      VLOG(3) << "Rewrote host_shape to device_shape: "
-              << ShapeUtil::HumanStringWithLayout(host_shape) << " -> "
+            << " shape = " << ShapeUtil::HumanStringWithLayout(shape);
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(shape, device_shape)) {
+      VLOG(3) << "Rewrote shape to device_shape: "
+              << ShapeUtil::HumanStringWithLayout(shape) << " -> "
               << ShapeUtil::HumanStringWithLayout(device_shape);
     }
   }
@@ -93,12 +105,12 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   ExecutionOutput result(std::move(device_shape), allocator, device_ordinal);
   // Iterate through and allocate a buffer for each shape index, checking for
   // possible input buffer reuse.
-  int64 reused_buffer_bytes = 0;
-  int64 total_result_buffer_bytes = 0;
+  int64_t reused_buffer_bytes = 0;
+  int64_t total_result_buffer_bytes = 0;
   for (auto& pair : result.MutableResult()->buffers()) {
     const ShapeIndex& result_index = pair.first;
     se::DeviceMemoryBase& result_buffer = pair.second;
-    int64 allocation_bytes = ShapeSize(ShapeUtil::GetSubshape(
+    int64_t allocation_bytes = ShapeSize(ShapeUtil::GetSubshape(
         result.Result().on_device_shape(), result_index));
     total_result_buffer_bytes += allocation_bytes;
 
@@ -133,6 +145,9 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
         // which will be using the indices to drop the addresses from its own
         // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
         result.AddAliasedIndex(result_index);
+      } else {
+        VLOG(2) << "An input was not reused since it is not donated "
+                << alias->ToString();
       }
     }
 

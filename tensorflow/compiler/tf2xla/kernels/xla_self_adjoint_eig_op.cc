@@ -57,10 +57,8 @@ class SelfAdjointEigV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("XlaSelfAdjointEig").TypeConstraint("T", kFloatTypes),
-                XlaSelfAdjointEigOp);
-REGISTER_XLA_OP(Name("SelfAdjointEigV2").TypeConstraint("T", kFloatTypes),
-                SelfAdjointEigV2Op);
+REGISTER_XLA_OP(Name("XlaSelfAdjointEig"), XlaSelfAdjointEigOp);
+REGISTER_XLA_OP(Name("SelfAdjointEigV2"), SelfAdjointEigV2Op);
 
 }  // namespace
 }  // namespace tensorflow

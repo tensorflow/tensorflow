@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for saving and loading using tf's saved_model APIs with DS."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations

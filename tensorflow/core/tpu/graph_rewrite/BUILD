@@ -1,13 +1,18 @@
 # Contains graph rewrites for TPU runtimes and optimizations.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
+        "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -83,6 +88,11 @@ cc_library(
         "encapsulate_tpu_computations_pass.h",
     ],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:encapsulate_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -93,16 +103,15 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:function",
-        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_defs",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_static(
+        [
+            "//tensorflow/core/common_runtime:function",
+            "//tensorflow/core/common_runtime:optimization_registry",
+        ],
+        [],
+    ),
 )
 
 cc_library(
@@ -129,6 +138,12 @@ cc_library(
         ":distributed_tpu_rewrite_pass_internal",
         ":host_training_loop_optimization_util",
         ":incomplete_nodedef_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/jit:encapsulate_util",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
@@ -146,26 +161,29 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:function",
-        "//tensorflow/core/common_runtime:graph_constructor",
-        "//tensorflow/core/common_runtime:lower_function_call_op",
-        "//tensorflow/core/common_runtime:lower_functional_ops",
-        "//tensorflow/core/common_runtime:lower_if_op",
-        "//tensorflow/core/common_runtime:lower_while_op",
-        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_fingerprint_utils",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + if_static(
+        [
+            "//tensorflow/core/common_runtime:function",
+            "//tensorflow/core/common_runtime:graph_constructor",
+            "//tensorflow/core/common_runtime:lower_function_call_op",
+            "//tensorflow/core/common_runtime:lower_functional_ops",
+            "//tensorflow/core/common_runtime:lower_if_op",
+            "//tensorflow/core/common_runtime:lower_while_op",
+            "//tensorflow/core/common_runtime:optimization_registry",
+        ],
+        [
+            "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
+        ],
+    ),
 )
 
 cc_library(

@@ -12,45 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for keras.layers.preprocessing.normalization."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Distribution tests for keras.layers.preprocessing.text_vectorization."""
 
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.eager import context
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return text_vectorization.TextVectorization
-  else:
-    return text_vectorization_v1.TextVectorization
 
 
 @ds_combinations.generate(
     combinations.combine(
-        distribution=all_strategies,
-        mode=["eager", "graph"]))
+        strategy=strategy_combinations.all_strategies +
+        strategy_combinations.multi_worker_mirrored_strategies,
+        mode=["eager"]))
 class TextVectorizationDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_distribution_strategy_output(self, distribution):
+  def test_distribution_strategy_output(self, strategy):
+    # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
+    if backend.is_tpu_strategy(strategy):
+      self.skipTest("This test needs MLIR bridge on TPU.")
+
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -61,9 +56,9 @@ class TextVectorizationDistributionTest(
 
     config.set_soft_device_placement(True)
 
-    with distribution.scope():
+    with strategy.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-      layer = get_layer_class()(
+      layer = text_vectorization.TextVectorization(
           max_tokens=None,
           standardize=None,
           split=None,
@@ -75,7 +70,12 @@ class TextVectorizationDistributionTest(
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_distribution_strategy_output_with_adapt(self, distribution):
+  def test_distribution_strategy_output_with_adapt(self, strategy):
+    # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
+    if backend.is_tpu_strategy(strategy):
+      self.skipTest("This test needs MLIR bridge on TPU.")
+    if test.is_built_with_rocm():
+      self.skipTest("MultiworkerMirroredGPU2x fails with ROCm")
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"
@@ -90,9 +90,9 @@ class TextVectorizationDistributionTest(
 
     config.set_soft_device_placement(True)
 
-    with distribution.scope():
+    with strategy.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-      layer = get_layer_class()(
+      layer = text_vectorization.TextVectorization(
           max_tokens=None,
           standardize=None,
           split=None,
@@ -103,5 +103,7 @@ class TextVectorizationDistributionTest(
 
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
+
 if __name__ == "__main__":
-  test.main()
+  v2_compat.enable_v2_behavior()
+  multi_process_runner.test_main()

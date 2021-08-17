@@ -98,6 +98,18 @@ class DequantizeOp : public OpKernel {
     if (axis_ > -1) {
       num_slices = input.dim_size(axis_);
     }
+    OP_REQUIRES(ctx, input_min_tensor.NumElements() == num_slices,
+                errors::InvalidArgument(
+                    "input_min_tensor must have as many elements as input on "
+                    "the dequantization axis (",
+                    axis_, "), got ", input_min_tensor.NumElements(),
+                    ", expected ", num_slices));
+    OP_REQUIRES(ctx, input_max_tensor.NumElements() == num_slices,
+                errors::InvalidArgument(
+                    "input_max_tensor must have as many elements as input on "
+                    "the dequantization axis (",
+                    axis_, "), got ", input_max_tensor.NumElements(),
+                    ", expected ", num_slices));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
@@ -112,7 +124,7 @@ class DequantizeOp : public OpKernel {
                   errors::Unimplemented("MIN_FIRST mode is not implemented for "
                                         "Dequantize with axis != -1."));
 
-      int64 pre_dim = 1, post_dim = 1;
+      int64_t pre_dim = 1, post_dim = 1;
       for (int i = 0; i < axis_; ++i) {
         pre_dim *= float_output.dim_size(i);
       }
@@ -134,7 +146,7 @@ class DequantizeOp : public OpKernel {
     if (need_cast_) {
       S* out_ptr = output->flat<S>().data();
       float* in_ptr = float_output.flat<float>().data();
-      for (int64 i = 0; i < float_output.NumElements(); ++i) {
+      for (int64_t i = 0; i < float_output.NumElements(); ++i) {
         out_ptr[i] = static_cast<S>(in_ptr[i]);
       }
     }

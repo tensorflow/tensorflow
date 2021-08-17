@@ -294,6 +294,28 @@ TEST(GatherNdOpTest, Int8Int64) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({-2, 2, 2, 3, 3, -3}));
 }
 
+TEST(GatherNdOpTest, Int16Int32) {
+  GatherNdOpModel m({TensorType_INT16, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<int16_t>({1, -1, 1, -2, 2, 2,   //
+                       3, 3, -3, -4, -4, 4,  //
+                       5, -5, 5, 6, -6, 6});
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({-2, 2, 2, 3, 3, -3}));
+}
+
+TEST(GatherNdOpTest, Int16Int64) {
+  GatherNdOpModel m({TensorType_INT16, {3, 2, 3}}, {TensorType_INT64, {2, 2}});
+  m.SetInput<int16_t>({1, -1, 1, -2, 2, 2,   //
+                       3, 3, -3, -4, -4, 4,  //
+                       5, -5, 5, 6, -6, 6});
+  m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({-2, 2, 2, 3, 3, -3}));
+}
+
 TEST(GatherNdOpTest, Int64Int32) {
   GatherNdOpModel m({TensorType_INT64, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
   m.SetInput<int64_t>({1LL, -1LL, 1LL, -2LL, 2LL, 2LL,   //

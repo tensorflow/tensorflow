@@ -628,15 +628,13 @@ ENTRY entry {
     use_global_device_ids=true, channel_id=2
   ag3 = f32[4] all-gather(param), replica_groups={{0,1,2,3}}, dimensions={0},
     use_global_device_ids=true, channel_id=3
-  ROOT tuple = (f32[], f32[], f32[]) tuple(ag1, ag2, ag3)
+  ROOT tuple = (f32[2], f32[2], f32[4]) tuple(ag1, ag2, ag3)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/2));
-  auto config = module->config();
-  config.set_num_partitions(2);
-  module->set_config(config);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                                /*num_partitions=*/2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> replica_analysis,
       HloReplicationAnalysis::Run(module.get(),

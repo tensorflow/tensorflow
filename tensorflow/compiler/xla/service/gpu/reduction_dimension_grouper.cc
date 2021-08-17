@@ -44,8 +44,8 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       return Status::OK();
     }
 
-    std::vector<int64> new_grouped_dims;
-    std::vector<int64> reduced_dims_grouped;
+    std::vector<int64_t> new_grouped_dims;
+    std::vector<int64_t> reduced_dims_grouped;
     HloInstruction *operand = reduce->mutable_operand(0);
     const Shape &shape = operand->shape();
     CHECK(shape == LayoutUtil::GetWithDefaultLayout(shape))
@@ -55,7 +55,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
     };
 
     bool changed = false;
-    int64 next_dim_size = 1;
+    int64_t next_dim_size = 1;
 
     // Since we have enforced the standard layout, iteration over logical
     // dimensions is equivalent to iteration over the major-to-minor order.

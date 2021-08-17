@@ -15,10 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TFE_CANCELLATION_MANAGER_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_TFE_CANCELLATION_MANAGER_INTERNAL_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/core/framework/cancellation.h"
 
-struct TFE_CancellationManager {
-  tensorflow::CancellationManager cancellation_manager;
-};
+struct TFE_CancellationManager;
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+
+namespace tensorflow {
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::CancellationManager,
+                            TFE_CancellationManager);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::CancellationManager*,
+                            TFE_CancellationManager*);
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_TFE_CANCELLATION_MANAGER_INTERNAL_H_

@@ -18,12 +18,13 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
+#include "tensorflow/core/profiler/utils/buffer_pool.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -50,6 +51,8 @@ struct CuptiTracerOptions {
   bool cupti_finalize = false;
   // Whether to call cuCtxSynchronize for each device before Stop().
   bool sync_devices_before_stop = false;
+  // Whether to enable NVTX tracking, we need this for TensorRT tracking.
+  bool enable_nvtx_tracking = false;
 };
 
 class CuptiDriverApiHook {
@@ -77,6 +80,10 @@ class CuptiDriverApiHook {
 // per process.
 class CuptiTracer {
  public:
+  // Not copyable or movable
+  CuptiTracer(const CuptiTracer&) = delete;
+  CuptiTracer& operator=(const CuptiTracer&) = delete;
+
   // Returns a pointer to singleton CuptiTracer.
   static CuptiTracer* GetCuptiTracerSingleton();
 
@@ -90,7 +97,13 @@ class CuptiTracer {
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
                         const CUpti_CallbackData* callback_info);
 
-  // This function is public because called from registered callback.
+  // Returns a buffer and its size for CUPTI to store activities. This buffer
+  // will be reclaimed when CUPTI makes a callback to ProcessActivityBuffer.
+  void RequestActivityBuffer(uint8_t** buffer, size_t* size);
+
+  // Parses CUPTI activity events from activity buffer, and emits events for
+  // CuptiTraceCollector. This function is public because called from registered
+  // callback.
   Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                uint8_t* buffer, size_t size);
 
@@ -101,16 +114,20 @@ class CuptiTracer {
 
  protected:
   // protected constructor for injecting mock cupti interface for testing.
-  explicit CuptiTracer(CuptiInterface* cupti_interface)
-      : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
+  explicit CuptiTracer(CuptiInterface* cupti_interface);
 
  private:
+  // Buffer size and alignment, 32K and 8 as in CUPTI samples.
+  static constexpr size_t kBufferSizeInBytes = 32 * 1024;
+
   Status EnableApiTracing();
   Status EnableActivityTracing();
   Status DisableApiTracing();
   Status DisableActivityTracing();
   Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
+  Status HandleNVTXCallback(CUpti_CallbackId cbid,
+                            const CUpti_CallbackData* cbdata);
 
   int num_gpus_;
   absl::optional<CuptiTracerOptions> option_;
@@ -130,7 +147,7 @@ class CuptiTracer {
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiTracer);
+  BufferPool buffer_pool_;
 };
 
 }  // namespace profiler

@@ -76,7 +76,11 @@ void GenericTransferManager::TransferLiteralFromDevice(
             stream->ThenMemcpy(
                 /*host_dst=*/literal.untyped_data(index),
                 /*gpu_src=*/device_buffer.buffer(index),
-                /*size=*/GetByteSizeRequirement(subshape));
+                // With bounded dynamic shapes, the shape of the device buffer
+                // (bounded allocation) can be bigger than the literal.
+                /*size=*/
+                GetByteSizeRequirement(
+                    ShapeUtil::GetSubshape(literal.shape(), index)));
           }
           return Status::OK();
         }));
@@ -145,8 +149,7 @@ Status GenericTransferManager::TransferLiteralToInfeed(
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* executor, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return Unimplemented("Generic transfer from Outfeed");
 }
 
@@ -157,8 +160,13 @@ Status GenericTransferManager::ResetDevices(
       "Device reset is not yet supported on this platform (b/30481585)");
 }
 
-int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+int64_t GenericTransferManager::GetByteSizeRequirement(
+    const Shape& shape) const {
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  }
+  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 
 }  // namespace xla

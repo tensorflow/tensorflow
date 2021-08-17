@@ -113,8 +113,7 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
               nrows=[0, 20, 23],
               batch_size=[4],
               drop_remainder=[True, False])))
-  def testRaggedBatchDataset(self, make_dataset, nrows, batch_size,
-                             drop_remainder):
+  def testBasic(self, make_dataset, nrows, batch_size, drop_remainder):
     dataset = make_dataset(nrows)
 
     # Get the unbatched rows (so we can check expected values).
@@ -141,7 +140,8 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  def testRaggedBatchDatasetWithStructuredElements(self):
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithStructuredElements(self):
     nrows = 20
     batch_size = 4
 

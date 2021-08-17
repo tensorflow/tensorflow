@@ -20,6 +20,12 @@ limitations under the License.
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/profiling/atrace_profiler.h"
+#elif defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_OS_IOS
+#define SIGNPOST_PLATFORM_PROFILER
+#include "tensorflow/lite/profiling/signpost_profiler.h"
+#endif
 #endif
 
 namespace tflite {
@@ -28,6 +34,8 @@ namespace profiling {
 std::unique_ptr<tflite::Profiler> MaybeCreatePlatformProfiler() {
 #if defined(__ANDROID__)
   return MaybeCreateATraceProfiler();
+#elif defined(SIGNPOST_PLATFORM_PROFILER)
+  return MaybeCreateSignpostProfiler();
 #else
   return nullptr;
 #endif

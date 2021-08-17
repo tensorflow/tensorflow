@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -85,15 +85,18 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
 ARG HOROVOD_WITHOUT_PYTORCH=1
 ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
-ARG HOROVOD_VERSION=
+ARG HOROVOD_VERSION=v0.21.1
 
 RUN yum update -y && yum install -y \
+    cmake \
     gcc \
     gcc-c++ \
-    python36-devel && \
+    git \
+    make \
+    ${PYTHON}-devel && \
     yum clean all
 
-RUN ${PYTHON} -m pip install --no-cache-dir horovod${HOROVOD_VERSION:+==${HOROVOD_VERSION}}
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

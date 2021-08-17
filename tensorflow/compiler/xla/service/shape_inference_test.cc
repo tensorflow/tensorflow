@@ -60,9 +60,9 @@ class ReduceShapeInferenceTest : public ShapeInferenceTest {
   // Helper that runs reduce shape inference with the input 'arg' and given
   // dimensions to reduce, and checks the inferred shape is as expected. The
   // element type here is hard-coded to F32.
-  void ExpectInferredReduceShape(const Shape& expected_inferred_shape,
-                                 const Shape& arg,
-                                 absl::Span<const int64> dimensions_to_reduce) {
+  void ExpectInferredReduceShape(
+      const Shape& expected_inferred_shape, const Shape& arg,
+      absl::Span<const int64_t> dimensions_to_reduce) {
     ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
     auto inferred_status = ShapeInference::InferReduceShape(
         {&arg, &f32_}, dimensions_to_reduce, to_apply);
@@ -264,7 +264,7 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
 
 TEST_F(ShapeInferenceTest, Complex) {
   auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
-                           absl::Span<const int64> bcast) {
+                           absl::Span<const int64_t> bcast) {
     return ShapeInference::InferBinaryOpShape(HloOpcode::kComplex, lhs, rhs,
                                               bcast);
   };
@@ -399,6 +399,30 @@ TEST_F(SelectAndScatterShapeInferenceTest, SelectAndScatterWrongSelectShape4) {
               HasSubstr("Select function's second parameter"));
 }
 
+TEST_F(ShapeInferenceTest, AllGatherStart) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {1, 8, 4});
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {operand, ShapeUtil::MakeShape(F32, {8, 8, 4})});
+
+  auto inferred_ag_shape = ShapeInference::InferAllGatherStartShape(
+      {&operand}, /*all_gather_dimension=*/0, /*shard_count=*/8);
+  EXPECT_TRUE(inferred_ag_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.ValueOrDie(), expected_shape));
+}
+
+TEST_F(ShapeInferenceTest, AllGatherDone) {
+  const Shape input_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 8, 4}),
+                                 ShapeUtil::MakeShape(F32, {8, 8, 4})});
+  const Shape expected_shape = ShapeUtil::MakeShape(F32, {8, 8, 4});
+
+  auto inferred_ag_done_shape =
+      ShapeInference::InferAllGatherDoneShape(input_shape);
+  EXPECT_TRUE(inferred_ag_done_shape.ok());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_ag_done_shape.ValueOrDie(), expected_shape));
+}
+
 TEST_F(ShapeInferenceTest, Convolve) {
   ConvolutionDimensionNumbers dnums;
 
@@ -437,7 +461,7 @@ TEST_F(ShapeInferenceTest, Convolve) {
   dim1->set_base_dilation(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums);
+      window, dnums, /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
@@ -483,7 +507,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
   dim1->set_base_dilation(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums);
+      window, dnums, /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 31, 5}),
@@ -529,7 +553,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
   dim1->set_base_dilation(2);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums);
+      window, dnums, /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 4, 9}),
@@ -568,7 +592,7 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   dim1->set_padding_high(1);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
-      window, dnums);
+      window, dnums, /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("each dimension exactly once"));
@@ -605,10 +629,193 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
   dim1->set_window_dilation(2);
   auto inferred_status = ShapeInference::InferConvolveShape(
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/6,
-      window, dnums);
+      window, dnums, /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("to be a multiple of batch group count"));
+}
+
+struct ConvolveArgs {
+  Shape lhs_shape;
+  Shape rhs_shape;
+  ConvolutionDimensionNumbers dnums;
+  Window window;
+};
+
+ConvolveArgs MakeConvolveArgs(PrimitiveType lhs_type, PrimitiveType rhs_type) {
+  ConvolveArgs args;
+  ConvolutionDimensionNumbers& dnums = args.dnums;
+
+  // Dimension order: batch, feature, x0, x1
+  args.lhs_shape = ShapeUtil::MakeShape(lhs_type, {10, 11, 3, 4});
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
+
+  // Dimension order: x1, batch, feature, x0
+  args.rhs_shape = ShapeUtil::MakeShape(rhs_type, {2, 12, 11, 3});
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.add_kernel_spatial_dimensions(3);
+  dnums.add_kernel_spatial_dimensions(0);
+
+  auto dim0 = args.window.add_dimensions();
+  auto dim1 = args.window.add_dimensions();
+  dim0->set_size(3);
+  dim0->set_stride(2);
+  dim0->set_padding_low(1);
+  dim0->set_padding_high(1);
+  dim0->set_window_dilation(1);
+  dim0->set_base_dilation(1);
+  dim1->set_size(2);
+  dim1->set_stride(1);
+  dim1->set_padding_low(0);
+  dim1->set_padding_high(0);
+  dim1->set_window_dilation(1);
+  dim1->set_base_dilation(1);
+  return args;
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithBF16_F16) {
+  ConvolveArgs args = MakeConvolveArgs(BF16, F16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithF16_BF16) {
+  ConvolveArgs args = MakeConvolveArgs(F16, BF16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithS32_U32) {
+  ConvolveArgs args = MakeConvolveArgs(S32, U32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithU32_S32) {
+  ConvolveArgs args = MakeConvolveArgs(U32, S32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/absl::nullopt))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithPreferredElementType) {
+  ConvolveArgs args = MakeConvolveArgs(S8, S16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/S16))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithPreferredElementTypeSameAsInferredType) {
+  ConvolveArgs args = MakeConvolveArgs(S8, S16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/S32))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest,
+       FloatingPointConvolveWithNarrowerPreferredElementType) {
+  ConvolveArgs args = MakeConvolveArgs(F32, F32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/BF16))
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest,
+       FloatingPointConvolveWithIntegralPreferredElementType) {
+  ConvolveArgs args = MakeConvolveArgs(BF16, BF16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/S32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest,
+       IntegralConvolveWithFloatingPointPreferredElementType) {
+  ConvolveArgs args = MakeConvolveArgs(S8, S16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/F32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest,
+       ConvolveWithPreferredElementTypeWithDifferentSignedness) {
+  ConvolveArgs args = MakeConvolveArgs(S8, S16);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/U32));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(U32, {10, 12, 2, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWithNarrowerPreferredElementType) {
+  ConvolveArgs args = MakeConvolveArgs(S8, S16);
+  auto inferred_status =
+      ShapeInference::InferConvolveShape(
+          args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*preferred_element_type=*/S8)
+          .status();
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.error_message(),
+              HasSubstr("must not be narrower than the original type"));
 }
 
 namespace fft {
@@ -622,7 +829,8 @@ static const char* innermost_dimension_matches =
     "innermost dimension matches fft_length/2+1";
 
 static void Pass(const Shape& shape, FftType type,
-                 absl::Span<const int64> length, const Shape& expected_shape) {
+                 absl::Span<const int64_t> length,
+                 const Shape& expected_shape) {
   auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
   ASSERT_IS_OK(inferred_status.status());
   Shape inferred_shape = inferred_status.ValueOrDie();
@@ -630,7 +838,7 @@ static void Pass(const Shape& shape, FftType type,
 }
 
 static void Fail(const Shape& shape, FftType type,
-                 absl::Span<const int64> length, absl::string_view message) {
+                 absl::Span<const int64_t> length, absl::string_view message) {
   auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
@@ -920,9 +1128,9 @@ TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
   std::vector<const Shape*> inits = {&f32_, &s32_};
   ProgramShape to_apply = ShapeUtil::MakeProgramShape(
       {f32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
-  std::vector<int64> window_dimensions = {1, 2, 4};
-  std::vector<int64> window_strides = {1, 1, 1};
-  std::vector<std::pair<int64, int64>> padding_values =
+  std::vector<int64_t> window_dimensions = {1, 2, 4};
+  std::vector<int64_t> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64_t, int64_t>> padding_values =
       MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
                   window_strides, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -982,9 +1190,9 @@ TEST_F(ReduceShapeInferenceTest, ErrorBadReduceWindowInput) {
   std::vector<const Shape*> inits = {&f32_, &s32_};
   ProgramShape to_apply = ShapeUtil::MakeProgramShape(
       {f32_, f32_, f32_, f32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
-  std::vector<int64> window_dimensions = {1, 2, 4};
-  std::vector<int64> window_strides = {1, 1, 1};
-  std::vector<std::pair<int64, int64>> padding_values =
+  std::vector<int64_t> window_dimensions = {1, 2, 4};
+  std::vector<int64_t> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64_t, int64_t>> padding_values =
       MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
                   window_strides, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1282,8 +1490,8 @@ TEST_F(ShapeInferenceTest, BroadcastScalar) {
 // scalar <dot> vector: ok
 TEST_F(ShapeInferenceTest, ScalarDotVector) {
   DotDimensionNumbers dot_dnums;
-  auto inferred_status =
-      ShapeInference::InferDotOpShape(f32_, vector_32_, dot_dnums);
+  auto inferred_status = ShapeInference::InferDotOpShape(
+      f32_, vector_32_, dot_dnums, /*preferred_element_type=*/absl::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_EQ(inferred_status.ValueOrDie(), vector_32_);
 }
@@ -1294,7 +1502,8 @@ TEST_F(ShapeInferenceTest, DotWithRankHigherThanTwo) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status = ShapeInference::InferDotOpShape(
-      ShapeUtil::MakeShape(F32, {32, 32, 32}), matrix_32_64_, dot_dnums);
+      ShapeUtil::MakeShape(F32, {32, 32, 32}), matrix_32_64_, dot_dnums,
+      /*preferred_element_type=*/absl::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(),
                                ShapeUtil::MakeShape(F32, {32, 32, 64})));
@@ -1306,11 +1515,13 @@ TEST_F(ShapeInferenceTest, VectorDotVector) {
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
-      ShapeInference::InferDotOpShape(vector_64_, vector_64_, dot_dnums);
+      ShapeInference::InferDotOpShape(vector_64_, vector_64_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.ValueOrDie()));
   auto inferred_status_mismatch =
-      ShapeInference::InferDotOpShape(vector_64_, vector_32_, dot_dnums);
+      ShapeInference::InferDotOpShape(vector_64_, vector_32_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1320,11 +1531,13 @@ TEST_F(ShapeInferenceTest, MatrixDotVector) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
-      ShapeInference::InferDotOpShape(matrix_32_64_, vector_64_, dot_dnums);
+      ShapeInference::InferDotOpShape(matrix_32_64_, vector_64_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), vector_32_));
   auto inferred_status_mismatch =
-      ShapeInference::InferDotOpShape(matrix_32_64_, vector_32_, dot_dnums);
+      ShapeInference::InferDotOpShape(matrix_32_64_, vector_32_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1334,11 +1547,13 @@ TEST_F(ShapeInferenceTest, VectorDotMatrix) {
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
-      ShapeInference::InferDotOpShape(vector_32_, matrix_32_64_, dot_dnums);
+      ShapeInference::InferDotOpShape(vector_32_, matrix_32_64_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), vector_64_));
   auto inferred_status_mismatch =
-      ShapeInference::InferDotOpShape(vector_64_, matrix_32_64_, dot_dnums);
+      ShapeInference::InferDotOpShape(vector_64_, matrix_32_64_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1348,7 +1563,8 @@ TEST_F(ShapeInferenceTest, MatrixDotMatrix) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status_match =
-      ShapeInference::InferDotOpShape(matrix_32_64_, matrix_64_48_, dot_dnums);
+      ShapeInference::InferDotOpShape(matrix_32_64_, matrix_64_48_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(
       ShapeUtil::Equal(inferred_status_match.ValueOrDie(), matrix_32_48_))
@@ -1356,7 +1572,8 @@ TEST_F(ShapeInferenceTest, MatrixDotMatrix) {
       << ShapeUtil::HumanString(inferred_status_match.ValueOrDie())
       << " expected: " << ShapeUtil::HumanString(matrix_64_48_);
   auto inferred_status_mismatch =
-      ShapeInference::InferDotOpShape(matrix_32_64_, matrix_32_64_, dot_dnums);
+      ShapeInference::InferDotOpShape(matrix_32_64_, matrix_32_64_, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status_mismatch.ok());
 }
 
@@ -1376,7 +1593,8 @@ TEST_F(ShapeInferenceTest, DotGeneral) {
   dot_dnums.add_rhs_batch_dimensions(1);
 
   auto inferred_status_match =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
   ASSERT_TRUE(
       ShapeUtil::Equal(inferred_status_match.ValueOrDie(), output_shape))
@@ -1399,7 +1617,8 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsFails) {
   dot_dnums.add_rhs_batch_dimensions(0);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("Must specify the same number of contracting "
@@ -1421,7 +1640,8 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
   dot_dnums.add_rhs_batch_dimensions(0);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   EXPECT_TRUE(inferred_status.ok());
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), output_shape));
 }
@@ -1461,7 +1681,8 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   dot_dnums.add_rhs_batch_dimensions(0);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("Batch dimension sizes must match"));
@@ -1480,7 +1701,8 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
   dot_dnums.add_rhs_batch_dimensions(1);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_TRUE(inferred_status.ok());
   ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(),
                                ShapeUtil::MakeShape(F32, {2, 11, 14})));
@@ -1499,7 +1721,8 @@ TEST_F(ShapeInferenceTest, DotWithContractingDimNumberOutOfRange) {
   dot_dnums.add_rhs_batch_dimensions(1);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("A dimension number is out of range"));
@@ -1518,10 +1741,103 @@ TEST_F(ShapeInferenceTest, DotWithContractingNonUniqueDimNumber) {
   dot_dnums.add_rhs_batch_dimensions(1);
 
   auto inferred_status =
-      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
+      ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
+                                      /*preferred_element_type=*/absl::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("A dimension number is not unique"));
+}
+
+TEST_F(ShapeInferenceTest, DotWithIntegralPreferredElementType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/S32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S32, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithPreferredElementTypeSameAsInferredType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(BF16, {32, 32}),
+                              ShapeUtil::MakeShape(F32, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/F32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, FloatingPointDotWithNarrowerPreferredElementType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(BF16, {32, 32}),
+                              ShapeUtil::MakeShape(F32, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/BF16));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(BF16, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, FloatingPointDotWithIntegralPreferredElementType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(BF16, {32, 32}),
+                              ShapeUtil::MakeShape(BF16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/S32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S32, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, IntegralDotWithFloatingPointPreferredElementType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/F32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithPreferredElementTypeWithDifferentSignedness) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/U32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U32, {32, 32})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithNarrowerPreferredElementType) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto inferred_status = ShapeInference::InferDotOpShape(
+                             ShapeUtil::MakeShape(S8, {32, 32}),
+                             ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                             /*preferred_element_type=*/S8)
+                             .status();
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.error_message(),
+              HasSubstr("must not be narrower than the original type"));
 }
 
 TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
@@ -2049,6 +2365,29 @@ TEST_F(ShapeInferenceTest, ConditionalIndexed) {
   EXPECT_FALSE(inferred_status_error4.ok());
   EXPECT_THAT(inferred_status_error4.status().error_message(),
               HasSubstr("!branch_computations.empty()"));
+}
+
+TEST_F(ShapeInferenceTest, ConditionalDynamic) {
+  auto r0s32 = ShapeUtil::MakeShape(S32, {});
+  auto static_shape = ShapeUtil::MakeShape(S32, {4}, {false});
+  auto dynamic_shape = ShapeUtil::MakeShape(S32, {4}, {true});
+  auto inferred_status0 = ShapeInference::InferConditionalShape(
+      r0s32,
+      {ShapeUtil::MakeProgramShape({vector_32_}, static_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
+      {vector_32_, vector_64_, vector_64_});
+  EXPECT_IS_OK(inferred_status0.status());
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status0.ValueOrDie()));
+
+  auto inferred_status1 = ShapeInference::InferConditionalShape(
+      r0s32,
+      {ShapeUtil::MakeProgramShape({vector_32_}, dynamic_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, static_shape),
+       ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
+      {vector_32_, vector_64_, vector_64_});
+  EXPECT_IS_OK(inferred_status1.status());
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status1.ValueOrDie()));
 }
 
 TEST_F(ShapeInferenceTest, BadSlice) {

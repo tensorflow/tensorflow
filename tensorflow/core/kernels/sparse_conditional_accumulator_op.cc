@@ -50,7 +50,7 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
 
   void SetHandleToOutput(OpKernelContext* ctx)
       TF_SHARED_LOCKS_REQUIRED(mu_) override {
-    ctx->set_output_ref(0, &mu_, accumulator_handle_.AccessTensor(ctx));
+    ctx->set_output_ref(0, &mu_, &accumulator_);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(SparseConditionalAccumulatorOp);

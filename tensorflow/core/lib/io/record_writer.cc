@@ -61,7 +61,7 @@ RecordWriter::RecordWriter(WritableFile* dest,
                            const RecordWriterOptions& options)
     : dest_(dest), options_(options) {
 #if defined(IS_SLIM_BUILD)
-  if (compression_type != compression::kNone) {
+  if (options.compression_type != RecordWriterOptions::NONE) {
     LOG(FATAL) << "Compression is unsupported on mobile platforms.";
   }
 #else
@@ -115,7 +115,7 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   return dest_->Append(StringPiece(footer, sizeof(footer)));
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status RecordWriter::WriteRecord(const absl::Cord& data) {
   if (dest_ == nullptr) {
     return Status(::tensorflow::error::FAILED_PRECONDITION,

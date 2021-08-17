@@ -12,20 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Conversion of plain Python into TensorFlow graph code.
+"""Conversion of eager-style Python into TensorFlow graph code.
 
 NOTE: In TensorFlow 2.0, AutoGraph is automatically applied when using
 `tf.function`. This module contains lower-level APIs for advanced use.
 
-For more information, see the
-[AutoGraph guide](https://www.tensorflow.org/guide/autograph).
+AutoGraph transforms a subset of Python which operates on TensorFlow objects
+into equivalent TensorFlow graph code. When executing the graph, it has the same
+effect as if you ran the original code in eager mode.
+Python code which doesn't operate on TensorFlow objects remains functionally
+unchanged, but keep in mind that `tf.function` only executes such code at trace
+time, and generally will not be consistent with eager execution.
 
-By equivalent graph code we mean code that generates a TensorFlow graph when
-run. The generated graph has the same effects as the original code when executed
-(for example with `tf.function` or `tf.compat.v1.Session.run`). In other words,
-using AutoGraph can be thought of as running Python in TensorFlow.
+For more information, see the
+[AutoGraph reference documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/index.md),
+and the [tf.function guide](https://www.tensorflow.org/guide/function#autograph_transformations).
 """
-# TODO(b/119833526): Link to the new tf.function + autograph tutorial.
 
 from __future__ import absolute_import
 from __future__ import division

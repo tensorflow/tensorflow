@@ -247,12 +247,6 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void MapAndFilterFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                  const GraphDef& optimize_output,
-                                  double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndFilterFusion, "map_and_filter_fusion");
 
 }  // namespace grappler

@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_gen_op_wrapper_py(
@@ -27,7 +27,7 @@ py_library(
         "sparse_csr_matrix_grad.py",
         "sparse_csr_matrix_ops.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":gen_sparse_csr_matrix_ops",
         "//third_party/py/numpy",

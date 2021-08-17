@@ -30,14 +30,17 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-constexpr std::array<const char*, 7> kAsyncDatasetOps = {
-    "ExperimentalMapAndBatchDataset", "MapAndBatchDataset",
-    "ParallelInterleaveDatasetV2",    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4",    "ParallelMapDataset",
+constexpr std::array<const char*, 8> kAsyncDatasetOps = {
+    "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
+    "ParallelBatchDataset",
+    "ParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDataset",
     "ParallelMapDatasetV2",
 };
 
@@ -68,7 +71,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
       NodeDef* buffer_size_node = graph.GetNode(node.input(1));
       // We only consider to rewrite if `buffer_size` is constant.
       if (buffer_size_node->op() == "Const") {
-        int64 initial_buffer_size =
+        int64_t initial_buffer_size =
             buffer_size_node->attr().at("value").tensor().int64_val(0);
         if (initial_buffer_size != data::model::kAutotune) {
           TF_RETURN_IF_ERROR(graph.UpdateFanin(node.name(),
@@ -129,12 +132,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   return Status::OK();
-}
-
-void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");

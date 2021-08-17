@@ -75,7 +75,7 @@ FunctionDef NonZero() {
 }
 
 FunctionDef IsZero() {
-  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kZero = test::AsScalar<int64_t>(0);
   return FDH::Define(
       // Name
       "IsZero",
@@ -93,7 +93,7 @@ FunctionDef IsZero() {
 }
 
 FunctionDef RandomUniform() {
-  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kZero = test::AsScalar<int64_t>(0);
 
   return FDH::Define(
       // Name
@@ -118,7 +118,7 @@ FunctionDef RandomUniform() {
 }
 
 FunctionDef XTimesTwo() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FDH::Define(
       // Name
       "XTimesTwo",
@@ -137,8 +137,8 @@ FunctionDef XTimesTwo() {
 }
 
 FunctionDef TwoDeviceMult() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
-  const Tensor kThree = test::AsScalar<int64>(3);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const Tensor kThree = test::AsScalar<int64_t>(3);
   return FDH::Create(
       // Name
       "TwoDeviceMult",
@@ -277,7 +277,7 @@ FunctionDef XAddY() {
 }
 
 FunctionDef XTimesTwoInt32() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FDH::Define(
       // Name
       "XTimesTwoInt32",
@@ -450,8 +450,8 @@ FunctionDef InvalidControlFlow() {
       {{"o", "add:z"}});
 }
 
-FunctionDef LessThanOrEqualToN(int64 N) {
-  const Tensor kN = test::AsScalar<int64>(N);
+FunctionDef LessThanOrEqualToN(int64_t N) {
+  const Tensor kN = test::AsScalar<int64_t>(N);
   return FDH::Define(
       // Name
       "LessThanOrEqualToN",
@@ -470,7 +470,7 @@ FunctionDef LessThanOrEqualToN(int64 N) {
 }
 
 FunctionDef XPlusOneXTimesY() {
-  const Tensor kOne = test::AsScalar<int64>(1);
+  const Tensor kOne = test::AsScalar<int64_t>(1);
   return FDH::Define(
       // Name
       "XPlusOneXTimesY",
@@ -487,8 +487,8 @@ FunctionDef XPlusOneXTimesY() {
        {{"t"}, "Mul", {"x", "y"}, {{"T", "$T"}}}});
 }
 
-FunctionDef XYXLessThanOrEqualToN(int64 N) {
-  const Tensor kN = test::AsScalar<int64>(N);
+FunctionDef XYXLessThanOrEqualToN(int64_t N) {
+  const Tensor kN = test::AsScalar<int64_t>(N);
   return FDH::Define(
       // Name
       "XYXLessThanOrEqualToN",

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/dlpack.h"
 
+#include <functional>
 #include <memory>
+#include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,15 +28,10 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/platform.h"
 
 namespace py = pybind11;
 
@@ -45,18 +43,14 @@ const char* const kDlTensorCapsuleName = "dltensor";
 struct DLPackTensor {
   ~DLPackTensor();
 
-  // At most one of buffer and buffer_reference/scoped_hold is populated.
-
-  // `buffer` is populated if we have exclusive (read-write) access.
-  std::shared_ptr<TrackedDeviceBuffer> buffer;
-
-  // `buffer_reference` and `scoped_hold` are populated if we have
-  // shared (read-only) access.
+  // `buffer_reference` is populated if we have shared (read-only) access.
   py::object buffer_reference;
-  absl::optional<PjRtBuffer::ScopedHold> scoped_hold;
 
-  std::vector<int64> shape;
-  std::vector<int64> strides;
+  // `external_reference` is always populated.
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
+
+  std::vector<int64_t> shape;
+  std::vector<int64_t> strides;
   DLManagedTensor tensor;
 };
 
@@ -100,6 +94,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
     case PRED:
+      return DLDataType{kDLUInt, 8, 1};
     case C64:
     case C128:
     default:
@@ -170,13 +165,13 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<int64> StridesForShape(const Shape& shape) {
-  std::vector<int64> strides;
+std::vector<int64_t> StridesForShape(const Shape& shape) {
+  std::vector<int64_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
 
   strides.resize(shape.dimensions_size());
-  int64 stride = 1;
+  int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
@@ -184,10 +179,10 @@ std::vector<int64> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
-                                             absl::Span<int64 const> strides) {
+StatusOr<std::vector<int64_t>> StridesToLayout(
+    absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
   CHECK_EQ(dims.size(), strides.size());
-  std::vector<int64> minor_to_major(dims.size());
+  std::vector<int64_t> minor_to_major(dims.size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   absl::c_sort(minor_to_major, [&](int a, int b) {
     if (strides[a] < strides[b]) {
@@ -198,8 +193,8 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
     }
     return dims[a] == 1 && dims[b] != 1;
   });
-  int64 stride = 1;
-  for (int64 d : minor_to_major) {
+  int64_t stride = 1;
+  for (int64_t d : minor_to_major) {
     if (strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "
@@ -214,11 +209,9 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-  const se::Platform* platform =
-      device.local_device_state()->executor()->platform();
-  if (platform->id() == se::host::kHostPlatformId) {
+  if (device.client()->platform_id() == kCpuId) {
     return kDLCPU;
-  } else if (platform->id() == se::cuda::kCudaPlatformId) {
+  } else if (device.client()->platform_id() == kGpuId) {
     return kDLGPU;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
@@ -228,27 +221,28 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
 StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   DLContext context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
-  context.device_id = device.local_device_id();
+  context.device_id = device.local_hardware_id();
   return context;
 }
 
-StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
+StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
+                                         const PjRtClient* gpu_client,
                                          const DLContext& context) {
   switch (context.device_type) {
     case kDLCPU:
-      if (client.platform_id() != kCpuId) {
+      if (cpu_client == nullptr) {
         return InvalidArgument(
-            "DLPack CPU device type mismatch with PjRtClient platform %s",
-            client.platform_name());
+            "DLPack tensor is on CPU, but no CPU backend was provided.");
       }
-      return client.LookupLocalDevice(context.device_id);
+      TF_RET_CHECK(cpu_client->platform_id() == kCpuId);
+      return cpu_client->LookupAddressableDevice(context.device_id);
     case kDLGPU:
-      if (client.platform_id() != kGpuId) {
+      if (gpu_client == nullptr) {
         return InvalidArgument(
-            "DLPack GPU device type mismatch with PjRtClient platform %s",
-            client.platform_name());
+            "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      return client.LookupLocalDevice(context.device_id);
+      TF_RET_CHECK(gpu_client->platform_id() == kGpuId);
+      return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
@@ -259,54 +253,56 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
-  PyBuffer* buffer = py::cast<PyBuffer*>(py_buffer);
+  TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
   auto pack = std::make_unique<DLPackTensor>();
   if (buffer->buffer()->on_device_shape().IsTuple()) {
     return Unimplemented(
         "unsafe_buffer_pointer is not implemented for tuple "
         "buffers.");
   }
+  if (buffer->buffer()->on_device_shape().is_dynamic()) {
+    return Unimplemented("DynamicShape is not implemented in DLPack.");
+  }
 
   DLTensor& dt = pack->tensor.dl_tensor;
   if (take_ownership) {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or =
-        buffer->buffer()->Release(/*wait_for_operations_to_complete=*/true);
+    StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> buffer_or =
+        buffer->buffer()->ReleaseDeviceMemoryOwnership(
+            /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
       return InvalidArgument(
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    pack->buffer = buffer_or.ConsumeValueOrDie();
-    if (!pack->buffer) {
+    pack->external_reference = buffer_or.ConsumeValueOrDie();
+    if (!pack->external_reference) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
-    TF_RET_CHECK(pack->buffer->device_memory().size() == 1);
-    dt.data = pack->buffer->device_memory().front().opaque();
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    pack->scoped_hold.emplace(
-        buffer->buffer()->GetBufferWithExternalReference());
-    dt.data = pack->scoped_hold->buffer()->device_memory().front().opaque();
+    TF_ASSIGN_OR_RETURN(pack->external_reference,
+                        buffer->buffer()->AcquireExternalReference());
   }
+  dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
-  dt.ctx.device_id = buffer->buffer()->device()->local_device_id();
-  dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
+  dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
+  dt.ndim = buffer->buffer()->on_device_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
-                          buffer->buffer()->on_host_shape().element_type()));
+                          buffer->buffer()->on_device_shape().element_type()));
 
-  pack->shape =
-      std::vector<int64>(buffer->buffer()->on_host_shape().dimensions().begin(),
-                         buffer->buffer()->on_host_shape().dimensions().end());
-  pack->strides = StridesForShape(buffer->buffer()->on_host_shape());
+  pack->shape = std::vector<int64_t>(
+      buffer->buffer()->on_device_shape().dimensions().begin(),
+      buffer->buffer()->on_device_shape().dimensions().end());
+  pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
@@ -326,8 +322,20 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   return capsule;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
+StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
+    std::shared_ptr<PyClient> gpu_client) {
+  // Backward compatibility: if only one client is passed, it may be from any
+  // platform. Drop this support after dropping support for jax <= 0.2.14.
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() == kGpuId) {
+    gpu_client = std::move(cpu_client);
+    cpu_client = nullptr;
+  }
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() != kCpuId) {
+    return InvalidArgument("DLPack does not support platform %s",
+                           cpu_client->pjrt_client()->platform_name());
+  }
+
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -342,17 +350,19 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(
       PjRtDevice * device,
-      DeviceForDLContext(*client->pjrt_client(), dlmt->dl_tensor.ctx));
-  absl::Span<int64 const> dimensions(
-      reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
+      DeviceForDLContext(cpu_client ? cpu_client->pjrt_client() : nullptr,
+                         gpu_client ? gpu_client->pjrt_client() : nullptr,
+                         dlmt->dl_tensor.ctx));
+  absl::Span<int64_t const> dimensions(
+      reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
                       DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
 
-  std::vector<int64> minor_to_major;
+  std::vector<int64_t> minor_to_major;
   if (dlmt->dl_tensor.strides &&
       absl::c_find(dimensions, 0) == dimensions.end()) {
-    absl::Span<int64 const> strides(
-        reinterpret_cast<int64*>(dlmt->dl_tensor.strides),
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<int64_t*>(dlmt->dl_tensor.strides),
         dlmt->dl_tensor.ndim);
     TF_ASSIGN_OR_RETURN(minor_to_major, StridesToLayout(dimensions, strides));
   } else {
@@ -361,28 +371,27 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   }
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
-  se::DeviceMemoryBase buffer(
-      static_cast<char*>(dlmt->dl_tensor.data) + dlmt->dl_tensor.byte_offset,
-      ShapeUtil::ByteSizeOf(shape));
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
-  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, dlmt->dl_tensor.ctx.device_id,
-      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
-      std::move(on_delete_callback));
-
+  TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
+                      device->client()->CreateViewOfDeviceBuffer(
+                          static_cast<char*>(dlmt->dl_tensor.data) +
+                              dlmt->dl_tensor.byte_offset,
+                          shape, device, on_delete_callback));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  auto pjrt_buffer = std::make_unique<PjRtBuffer>(
-      shape, shape, std::move(device_buffer), client->pjrt_client(), device);
-  return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
-                                    Traceback::Get());
+  // TODO(phawkins): simplify the expression below once we know cpu_client is
+  // always non-null.
+  return PyBuffer::Make(
+      (cpu_client && device->client() == cpu_client->pjrt_client())
+          ? std::move(cpu_client)
+          : std::move(gpu_client),
+      std::move(pjrt_buffer), Traceback::Get());
 }
 
 }  // namespace xla

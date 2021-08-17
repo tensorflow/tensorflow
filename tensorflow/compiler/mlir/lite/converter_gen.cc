@@ -241,9 +241,9 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
 
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
+    auto operator_name = GetOperatorName(*def);
     os << "  if (isa<mlir::TFL::" << op_name << ">(op))\n"
-       << "    return tflite::BuiltinOperator_" << GetOperatorName(*def)
-       << ";\n";
+       << "    return tflite::BuiltinOperator_" << operator_name << ";\n";
   }
 
   os << "  return llvm::None;\n"

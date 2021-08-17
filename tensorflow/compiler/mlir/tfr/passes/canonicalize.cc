@@ -46,8 +46,10 @@ namespace TFR {
 
 namespace {
 
-struct UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
+class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+
+ public:
   LogicalResult matchAndRewrite(scf::ForOp for_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = for_op.getLoc();
@@ -103,8 +105,10 @@ struct UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
 };
 
 // TODO(fengliuai): up stream this pattern.
-struct SimplifySCFIfOp : public OpRewritePattern<scf::IfOp> {
+class SimplifySCFIfOp : public OpRewritePattern<scf::IfOp> {
   using OpRewritePattern<scf::IfOp>::OpRewritePattern;
+
+ public:
   LogicalResult matchAndRewrite(scf::IfOp if_op,
                                 PatternRewriter &rewriter) const override {
     // Then branch
@@ -151,9 +155,21 @@ LogicalResult SimplifySCFIfOp::InlineRegion(Location loc,
 
 }  // namespace
 
-void populateSCFOpsCanonicalizationPatterns(OwningRewritePatternList &results,
-                                            MLIRContext *context) {
-  results.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
+void populateCanonicalizationPatterns(FuncOp func,
+                                      OwningRewritePatternList &patterns) {
+  MLIRContext *context = func.getContext();
+  mlir::Dialect *tf = context->getLoadedDialect<mlir::TF::TensorFlowDialect>();
+  // Load all official canonicalization patterns. Here we skip the
+  // canonicalization of the ops in the tf dialect, because they couldn't
+  // propagate the attributes correctly. These optimization will be played by
+  // bridge.
+  func->walk([&](Operation *op) {
+    if (op->getDialect() != tf) {
+      op->getAbstractOperation()->getCanonicalizationPatterns(patterns,
+                                                              context);
+    }
+  });
+  patterns.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
 }
 
 }  // namespace TFR

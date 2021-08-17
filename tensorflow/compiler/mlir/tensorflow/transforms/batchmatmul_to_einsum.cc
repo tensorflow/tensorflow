@@ -26,9 +26,9 @@ limitations under the License.
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -84,22 +84,26 @@ class ConvertTFBatchMatMulToEinsumOp
 
 struct BatchMatMulToEinsumPass
     : public PassWrapper<BatchMatMulToEinsumPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-batch-matmul-to-tf-einsum"; }
+
+  StringRef getDescription() const final {
+    return "Replace TF BatchMatMul op by TF Einsum op.";
+  }
+
   void runOnFunction() override;
 };
 
 void BatchMatMulToEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-PassRegistration<BatchMatMulToEinsumPass> pass(
-    "tf-batch-matmul-to-tf-einsum",
-    "Replace TF BatchMatMul op by TF Einsum op.");
+PassRegistration<BatchMatMulToEinsumPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -26,45 +27,43 @@ namespace {
 class GPUCompatibilityTest : public ::testing::Test {
  protected:
   GPUCompatibilityTest() {
-    list_ = absl::make_unique<tflite::acceleration::GPUCompatibilityList>(
-        g_tflite_acceleration_devicedb_sample_binary);
+    list_ = tflite::acceleration::GPUCompatibilityList::Create(
+        g_tflite_acceleration_devicedb_sample_binary,
+        g_tflite_acceleration_devicedb_sample_binary_len);
   }
 
   std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list_;
 };
 
 TEST_F(GPUCompatibilityTest, ReturnsSupportedForFullMatch) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
+  ASSERT_TRUE(list_ != nullptr);
 
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "24",
                                                     .model = "m712c"};
 
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .major_version = 3,
-      .minor_version = 1,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 1;
 
   EXPECT_TRUE(list_->Includes(android_info, tflite_gpu_info));
 }
 
 TEST_F(GPUCompatibilityTest, ReturnsUnsupportedForFullMatch) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
+  ASSERT_TRUE(list_ != nullptr);
 
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "28",
                                                     .model = "SM-G960F",
                                                     .device = "starlte",
                                                     .manufacturer = "Samsung"};
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .renderer_name = "Mali-G72",
-      .major_version = 3,
-      .minor_version = 2,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.renderer_name = "Mali-G72";
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 2;
   EXPECT_FALSE(list_->Includes(android_info, tflite_gpu_info));
 }
 
 TEST_F(GPUCompatibilityTest, ReturnsDefaultOptions) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
-
+  ASSERT_TRUE(list_ != nullptr);
   tflite::acceleration::AndroidInfo android_info;
   tflite::gpu::GpuInfo tflite_gpu_info;
   auto default_options = TfLiteGpuDelegateOptionsV2Default();
@@ -96,6 +95,20 @@ TEST(GPUCompatibility, RecogniseInvalidCompatibilityListFlatbuffer) {
   std::fill(invalid_buffer, invalid_buffer + 100, ' ');
   EXPECT_FALSE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
       invalid_buffer, 100));
+}
+
+TEST(GPUCompatibility, CreationWithInvalidCompatibilityListFlatbuffer) {
+  unsigned char invalid_buffer[10];
+  std::fill(invalid_buffer, invalid_buffer + 10, ' ');
+  std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list =
+      tflite::acceleration::GPUCompatibilityList::Create(invalid_buffer, 10);
+  EXPECT_EQ(list, nullptr);
+}
+
+TEST(GPUCompatibility, CreationWithNullCompatibilityListFlatbuffer) {
+  std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list =
+      tflite::acceleration::GPUCompatibilityList::Create(nullptr, 0);
+  EXPECT_EQ(list, nullptr);
 }
 
 }  // namespace

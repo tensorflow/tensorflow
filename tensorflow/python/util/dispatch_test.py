@@ -128,36 +128,38 @@ class TensorTracerOpDispatcher(dispatch.GlobalOpDispatcher):
 class DispatchTest(test_util.TensorFlowTestCase):
 
   def testAddDispatchForTypes_With_CppOp(self):
-    original_handlers = gen_math_ops.add._tf_dispatchers[:]
+    original_handlers = gen_math_ops.atan2._tf_dispatchers[:]
 
-    # Override the behavior of gen_math_ops.add.
-    @dispatch.dispatch_for_types(gen_math_ops.add, CustomTensor)
-    def custom_add(x, y, name=None):  # pylint: disable=unused-variable
-      return CustomTensor(gen_math_ops.add(x.tensor, y.tensor, name),
-                          (x.score+y.score) / 2.0)
-    self.assertEqual(len(math_ops.add._tf_dispatchers),
-                     len(original_handlers) + 1)
+    # Override the behavior of gen_math_ops.atan2 and make it look like add.
+    @dispatch.dispatch_for_types(gen_math_ops.atan2, CustomTensor)
+    def custom_atan2(y, x, name=None):  # pylint: disable=unused-variable
+      return CustomTensor(
+          gen_math_ops.add(y.tensor, x.tensor, name), (x.score + y.score) / 2.0)
+
+    self.assertEqual(
+        len(math_ops.atan2._tf_dispatchers),
+        len(original_handlers) + 1)
 
     # Test that we see the overridden behavior when using CustomTensors.
-    x = CustomTensor([1, 2, 3], 2.0)
-    y = CustomTensor([7, 8, 2], 0.0)
-    x_plus_y = gen_math_ops.add(x, y)
+    x = CustomTensor([1., 2., 3.], 2.0)
+    y = CustomTensor([7., 8., 2.], 0.0)
+    x_plus_y = gen_math_ops.atan2(y, x)
     self.assertAllEqual(self.evaluate(x_plus_y.tensor), [8, 10, 5])
     self.assertNear(x_plus_y.score, 1.0, 0.001)
 
     # Test that we still get the right behavior when using normal Tensors.
-    a = [1, 2, 3]
-    b = [4, 5, 6]
-    a_plus_b = gen_math_ops.add(a, b)
-    self.assertAllEqual(a_plus_b, [5, 7, 9])
+    a = [1., 2., 3.]
+    b = [7., 8., 2.]
+    a_plus_b = gen_math_ops.atan2(a, b)
+    self.assertAllClose(a_plus_b, [0.14189707, 0.24497867, 0.98279375])
 
     # Test that we still get a TypeError or ValueError if we pass some
     # type that's not supported by any dispatcher.
     with self.assertRaises((TypeError, ValueError)):
-      gen_math_ops.add(a, None)
+      gen_math_ops.atan2(a, None)
 
     # Clean up
-    gen_math_ops.add._tf_dispatchers = original_handlers
+    gen_math_ops.atan2._tf_dispatchers = original_handlers
 
   def testAddDispatchForTypes_With_PythonOp(self):
     original_handlers = test_op._tf_dispatchers[:]
@@ -221,8 +223,7 @@ class DispatchTest(test_util.TensorFlowTestCase):
       y = TensorTracer("y")
       trace = math_ops.reduce_sum(math_ops.add(math_ops.abs(x), y), axis=3)
       self.assertEqual(
-          str(trace),
-          "math.reduce_sum(math.add(name=None, x=math.abs(x), y=y), axis=3)")
+          str(trace), "math.reduce_sum(math.add(math.abs(x), y), axis=3)")
 
       proto_val = TensorTracer("proto")
       trace = decode_proto(proto_val, "message_type", ["field"], ["float32"])
@@ -242,8 +243,7 @@ class DispatchTest(test_util.TensorFlowTestCase):
       trace = math_ops.add(math_ops.abs(
           ops.convert_to_tensor_v2_with_dispatch(x)), y)
       self.assertEqual(
-          str(trace),
-          "math.add(name=None, x=math.abs(convert_to_tensor(x)), y=y)")
+          str(trace), "math.add(math.abs(convert_to_tensor(x)), y)")
 
     finally:
       # Clean up.

@@ -14,10 +14,7 @@
 # ==============================================================================
 """Classes and functions implementing to Network SavedModel serialization."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import model_serialization
 
 
@@ -27,4 +24,4 @@ class NetworkSavedModelSaver(model_serialization.ModelSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_network'
+    return constants.NETWORK_IDENTIFIER

@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 distribute_py_test(
@@ -11,6 +11,7 @@ distribute_py_test(
     srcs = ["saved_model_test.py"],
     tags = [
         "no_windows",  # TODO(b/171350360)
+        "notsan",  # b/195248428
     ],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -36,6 +37,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # b/195248428
     ],
     deps = [
         "//tensorflow:tensorflow_py",

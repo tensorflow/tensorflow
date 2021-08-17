@@ -29,7 +29,9 @@ import sys
 import types
 import unittest
 
+from absl import app
 import six
+
 
 from tensorflow.python.client import session
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -37,7 +39,9 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations as framework_combinations
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
 from tensorflow.python.framework import test_util
@@ -92,6 +96,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       has_chief = strategy.has_chief
       num_workers = strategy.num_workers
       runner = strategy.runner
+      share_gpu = strategy.share_gpu
+      num_ps = strategy.num_ps
       if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
         raise ValueError(
             "both has_chief and strategy specified but are not compatible")
@@ -102,6 +108,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       has_chief = kwargs.get("has_chief", False)
       num_workers = kwargs.get("num_workers", 1)
       runner = kwargs.get("runner", None)
+      share_gpu = kwargs.get("share_gpu", True)
+      num_ps = kwargs.get("num_ps", 0)
 
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
@@ -112,6 +120,10 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       update["num_workers"] = num_workers
     if "runner" in requested_parameters:
       update["runner"] = runner
+    if "share_gpu" in requested_parameters:
+      update["share_gpu"] = share_gpu
+    if "num_ps" in requested_parameters:
+      update["num_ps"] = num_ps
     return update
 
 
@@ -156,32 +168,48 @@ class GPUCombination(combinations_lib.TestCombination):
               the name of the program contains "test_gpu" or "test_xla_gpu".
   """
 
-  GPU_TEST = re.search(r"(test_gpu|test_xla_gpu)$", sys.argv[0])
+  GPU_TEST = re.search(r"(test_2?gpu|test_xla_2?gpu)$", sys.argv[0])
 
   def should_execute_combination(self, kwargs):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    required_gpus = kwargs.get("required_gpus", None)
+    required_gpus = kwargs.get("required_gpus", 0)
+    required_physical_gpus = kwargs.get("required_physical_gpus", 0)
 
     if distributions and required_gpus:
       raise ValueError("Do not use `required_gpus` and arguments of type "
                        "NamedDistribution together.")
 
-    number_of_required_gpus = max([required_gpus or 0] +
-                                  [d.required_gpus or 0 for d in distributions])
+    number_of_required_gpus = max(
+        [required_gpus] + [required_physical_gpus] +
+        [d.required_physical_gpus or 0 for d in distributions] +
+        [d.required_gpus or 0 for d in distributions])
+    number_of_required_physical_gpus = max(
+        [required_physical_gpus] +
+        [d.required_physical_gpus or 0 for d in distributions])
 
+    if (required_physical_gpus and required_gpus):
+      raise ValueError("Only one of `required_physical_gpus`(number of physical"
+                       " GPUs required) and `required_gpus`(total number of "
+                       "GPUs required) should be set. ")
     if not number_of_required_gpus and GPUCombination.GPU_TEST:
       return (False, "Test that doesn't require GPUs.")
     elif (number_of_required_gpus > 0
           and context.num_gpus() < number_of_required_gpus):
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
+    elif number_of_required_physical_gpus > len(
+        config.list_physical_devices("GPU")):
+      return (False,
+              ("Only {} of {} required physical GPUs are available.".format(
+                  config.list_physical_devices("GPU"), required_physical_gpus)))
     else:
       return (True, None)
 
   def parameter_modifiers(self):
-    return [combinations_lib.OptionalParameter("required_gpus")]
+    return [combinations_lib.OptionalParameter("required_gpus"),
+            combinations_lib.OptionalParameter("required_physical_gpus")]
 
 
 class TPUCombination(combinations_lib.TestCombination):
@@ -253,10 +281,13 @@ class NamedDistribution(object):
                name,
                distribution_fn,
                required_gpus=None,
+               required_physical_gpus=0,
                required_tpu=False,
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
+               num_ps=0,
+               share_gpu=True,
                pool_runner_fn=None,
                no_xla=False):
     """Initialize NamedDistribution.
@@ -264,11 +295,16 @@ class NamedDistribution(object):
     Args:
       name: Name that will be a part of the name of the test case.
       distribution_fn: A callable that creates a `tf.distribute.Strategy`.
-      required_gpus: The number of GPUs that the strategy requires.
+      required_gpus: The number of GPUs that the strategy requires. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
+      required_physical_gpus: Number of physical GPUs required. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
       required_tpu: Whether the strategy requires TPU.
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
+      num_ps: The number of parameter servers.
+      share_gpu: Whether to share GPUs among workers.
       pool_runner_fn: An optional callable that returns a MultiProcessPoolRunner
         to run the test.
       no_xla: Whether to skip in XLA tests.
@@ -277,10 +313,13 @@ class NamedDistribution(object):
     self._name = name
     self._distribution_fn = distribution_fn
     self.required_gpus = required_gpus
+    self.required_physical_gpus = required_physical_gpus
     self.required_tpu = required_tpu
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.num_ps = num_ps
+    self.share_gpu = share_gpu
     self._pool_runner_fn = pool_runner_fn
     self.no_xla = no_xla
 
@@ -296,6 +335,24 @@ class NamedDistribution(object):
 
   def __repr__(self):
     return self._name
+
+
+# This is to allow adding combinations that runs a function both as a
+# tf.function and eagerly.
+#
+# @combinations.generate(
+#   combinations.combine(
+#     tf_function = [combinations.tf_function, combinations.no_tf_function]
+#   )
+# )
+# def testXXX(tf_function):
+#   @tf_function
+#   def foo():
+#     tf.add(1., 1.)
+#
+#   foo()
+tf_function = combinations_lib.NamedObject("TfFunction", def_function.function)
+no_tf_function = combinations_lib.NamedObject("NoTfFunction", lambda f: f)
 
 
 def concat(*combined):
@@ -359,10 +416,63 @@ NamedObject = combinations_lib.NamedObject
 _running_in_worker = False
 
 
+def in_main_process():
+  """Whether it's in the main test process.
+
+  This is normally used to prepare the test environment which should only happen
+  in the main process.
+
+  Returns:
+    A boolean.
+  """
+  return not _running_in_worker
+
+
+class TestEnvironment(object):
+
+  def __init__(self):
+    self.tf_data_service_dispatcher = None
+    # Note that this includes GPUs that may not be visible to the current
+    # worker.
+    self.total_phsyical_gpus = None
+
+  def __setattr__(self, name, value):
+    if not in_main_process():
+      raise ValueError(
+          "combinations.env() should only be modified in the main process. "
+          "Condition your code on combinations.in_main_process().")
+    super().__setattr__(name, value)
+
+
+_env = TestEnvironment()
+
+
+def env():
+  """Returns the object holds the test environment information.
+
+  Tests should modifies this in the main process if needed, and it will be
+  passed to the worker processes each time a test case is ran.
+
+  Returns:
+    a TestEnvironment object.
+  """
+  return _env
+
+
+def _set_total_phsyical_gpus():
+  if in_main_process():
+    env().total_phsyical_gpus = len(
+        context.context().list_physical_devices("GPU"))
+
+
+# This is needed in case CUDA is lazily loaded.
+app.call_after_init(_set_total_phsyical_gpus)
+
+
 _TestResult = collections.namedtuple("_TestResult", ["status", "message"])
 
 
-def _test_runner(test_id):
+def _test_runner(test_id, test_env):
   """Executes the test with the given test_id.
 
   This is a simple wrapper around TestRunner to be used with
@@ -372,14 +482,16 @@ def _test_runner(test_id):
 
   Args:
     test_id: TestCase.id()
+    test_env: a TestEnvironment object.
 
   Returns:
     A boolean indicates whether the test succeeds.
   """
-  global _running_in_worker
+  global _running_in_worker, _env
   # No need to restore the value of _running_in_worker since it should always be
   # True in worker processes.
   _running_in_worker = True
+  _env = test_env
   test = unittest.defaultTestLoader.loadTestsFromName(test_id)
   runner = unittest.TextTestRunner()
   result = runner.run(test)
@@ -420,8 +532,13 @@ def _multi_worker_test(test_method):
     arguments.
   """
 
-  def decorator(self, has_chief, num_workers, runner, **kwargs):
-    if _num_total_workers(has_chief, num_workers) == 1 or _running_in_worker:
+  def decorator(self, has_chief, num_workers, num_ps, share_gpu, runner,
+                **kwargs):
+    if _num_total_workers(has_chief,
+                          num_workers) == 1 or _running_in_worker or (
+                              # Use in-process cluster for PS combinations
+                              # when XLA is enabled.
+                              test_util.is_xla_enabled() and num_ps > 0):
       # We're in worker process or the test is for single worker. Either case we
       # execute the test method directly instead of spawning subprocesses.
 
@@ -453,15 +570,21 @@ def _multi_worker_test(test_method):
     #                   [sub process]test_method()
     test_id = self.id()
     if runner:
-      results = runner.run(_test_runner, args=(test_id,))
+      results = runner.run(_test_runner, args=(test_id, _env))
     else:
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
           num_workers=num_workers,
-          num_ps=0,
+          num_ps=num_ps,
           has_eval=False)
-      results = multi_process_runner.run(
-          _test_runner, cluster_spec, args=(test_id,)).return_value
+      ephemeral_runner = multi_process_runner.MultiProcessRunner(
+          _test_runner,
+          cluster_spec,
+          share_gpu=share_gpu,
+          args=(test_id, _env),
+          dependence_on_chief=has_chief)
+      ephemeral_runner.start()
+      results = ephemeral_runner.join().return_value
 
     skip_reason = None
     for result in results:
@@ -478,7 +601,9 @@ def _multi_worker_test(test_method):
       self.skipTest(skip_reason)
 
   argspec = tf_inspect.getfullargspec(test_method)
-  decorator_args = (argspec.args or []) + ["has_chief", "num_workers", "runner"]
+  decorator_args = (argspec.args or []) + [
+      "has_chief", "num_workers", "num_ps", "share_gpu", "runner"
+  ]
   decorator_argspec = argspec._replace(args=decorator_args)
   return tf_decorator.make_decorator(
       test_method, decorator, decorator_argspec=decorator_argspec)

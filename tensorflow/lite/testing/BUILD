@@ -1,3 +1,4 @@
+# copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
@@ -12,16 +13,16 @@ load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_features_nolayering_check_if_android_or_ios",
 )
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -43,9 +44,17 @@ exports_files([
         ),
     },
     conversion_mode = conversion_mode,
-    data = [
-        ":zip_%s" % test_name,
-    ],
+    # copybara:uncomment_begin(no special handling for Android in OSS)
+    # data = select({
+    # "//tensorflow:android": [],
+    # "//conditions:default": [
+    # ":zip_%s" % test_name,
+    # "//third_party/unzip",
+    # ],
+    # }),
+    # copybara:uncomment_end_and_comment_begin
+    data = [":zip_%s" % test_name],
+    # copybara:comment_end
     shard_count = 20,
     test_args = args + select({
         "//tensorflow:android": [],
@@ -99,6 +108,7 @@ py_library(
     data = [
         "//tensorflow/lite/toco",
     ],
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//tensorflow:tensorflow_py",
@@ -109,18 +119,21 @@ py_library(
 py_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
-        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
+        # copybara:uncomment_begin(b/186563810)
+        # "//third_party/py/tensorflow_addons",
+        # copybara:uncomment_end
     ],
 )
 
 py_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -131,7 +144,7 @@ py_library(
 py_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_string_util",
         ":generate_examples_report",
@@ -144,7 +157,7 @@ py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
         ":toco_convert",
@@ -157,7 +170,7 @@ py_binary(
 py_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 cc_library(
@@ -237,9 +250,11 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
+        "//tensorflow/lite/kernels/gradient:gradient_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
-        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/parse_example:parse_example",
+        "//tensorflow/lite/kernels/perception:perception_ops",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [],
@@ -312,7 +327,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
     ],
@@ -341,6 +356,7 @@ cc_library(
     name = "tf_driver",
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":join",
         ":split",
@@ -383,6 +399,7 @@ cc_library(
     name = "generate_testspec",
     srcs = ["generate_testspec.cc"],
     hdrs = ["generate_testspec.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":join",
         ":split",
@@ -424,6 +441,9 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        # copybara:uncomment_begin(internal brella benchmark)
+        # "//learning/brain/mobile/lite/brella_benchmark:__subpackages__",
+        # copybara:uncomment_end
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
@@ -458,6 +478,7 @@ cc_library(
 cc_library(
     name = "tflite_diff_flags",
     hdrs = ["tflite_diff_flags.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
         ":split",
         ":tflite_diff_util",
@@ -568,7 +589,7 @@ cc_test(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -582,6 +603,7 @@ pybind_extension(
     module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -635,11 +657,18 @@ edgetpu_ops = [
     "transpose_conv",
 ]
 
-[gen_zipped_test_file(
-    name = "zip_%s_edgetpu" % op_name,
-    file = "%s_edgetpu.zip" % op_name,
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
-) for op_name in edgetpu_ops]
-
-edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+# copybara:uncomment_begin(google-only)
+# [gen_zipped_test_file(
+#     name = "zip_%s_edgetpu" % op_name,
+#     file = "%s_edgetpu.zip" % op_name,
+#     flags = " --make_edgetpu_tests",
+#     toco = "//tensorflow/lite/toco:toco",  # Unused
+# ) for op_name in edgetpu_ops]
+#
+# edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]
+#
+# build_test(
+#     name = "gen_edgetpu_tests",
+#     targets = edgetpu_targets,
+# )
+# copybara:uncomment_end

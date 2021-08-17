@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -80,7 +80,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       return "TakeWhileDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return kUnknownCardinality; }
+    int64_t Cardinality() const override { return kUnknownCardinality; }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {

@@ -46,7 +46,7 @@ static constexpr float kZLimitBfloat16 = 20.0;
 template <class Distribution>
 void FillRandomsWithSingles(PhiloxRandom gen,
                             typename Distribution::ResultElementType* p,
-                            int64 size) {
+                            int64_t size) {
   int granularity = Distribution::kResultElementCount;
 
   CHECK(size % granularity == 0)

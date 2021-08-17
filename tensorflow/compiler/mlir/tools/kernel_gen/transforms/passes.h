@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -31,7 +31,13 @@ namespace tf_framework {
 // * adds tf_framework::OpKernelContextType argument to the function
 // * std.alloc becomes tf_framework.alloc_raw
 // * std.dealloc becomes tf_framework.dealloc_raw
-std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
+// * std.assert becomes tf_framework.assert
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedTFFrameworkPass();
+
+// Pass to convert tf_framework.assert operations to calls to
+// tf_framework.report_error and create the required control flow to abort the
+// function on failed execution.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRewriteTFFrameworkAssert();
 
 }  // namespace tf_framework
 
@@ -40,30 +46,41 @@ namespace transforms {
 // Pass to find and annotate candidates for buffer reuse.
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
+// Pass to rewrite all TF operations to JIT invocations through the TF
+// framework.
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+    llvm::ArrayRef<std::string> architectures = {},
+    llvm::ArrayRef<int64_t> tile_sizes = {},
+    llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
+    bool enable_ftz = false, bool cpu_codegen = false);
+
 // Pass for applying LLVM legalization patterns.
-std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
+    mlir::StringRef blob_annotation = {});
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.
-std::unique_ptr<OperationPass<ModuleOp> > CreateShapeToDescriptorsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
+
+// Pass to tranform compute computations (hlo and linalg) on values to their
+// corresponding counterparts on buffers. Also bufferizes function signatures.
+std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
-std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
-// Pass to materialize broadcasts.
-std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
 
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation = "",
-    ArrayRef<std::string> architectures = {}, bool generate_fatbin = true);
-
-// Pass to unfuse batch norm.
-std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
+    mlir::StringRef blob_annotation = {},
+    ArrayRef<std::string> architectures = {}, bool print_ptx = false,
+    bool print_llvmir = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
@@ -73,6 +90,37 @@ std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
 
 // Pass to print content of memrefs.
 std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
+
+/// Greedily maps loops to GPU hardware dimensions.
+std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass();
+
+/// We need to direct fusion to the inner loops. This cannot be done with
+/// a passmanager alone ATM, as nested pass managers require operations to
+/// be closed from above.
+std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass();
+
+/// Pass that transforms gpu modules in standard dialect to NNVM.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToNvvmPass();
+
+/// Pass that transforms gpu modules in standard dialect to ROCDL.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToRocdlPass();
+
+// Pass to lower index cast on tensors to tensor dialect.
+std::unique_ptr<FunctionPass> CreateLowerIndexCastPass();
+
+// Pass to simplify shape ops.
+std::unique_ptr<FunctionPass> CreateShapeSimplification();
+
+// Pass to create vectorized code for CPU.
+std::unique_ptr<FunctionPass> CreateVectorizationPass();
+
+// Pass to remove unneeded code generated in VectorizationPass.
+std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
+
+// Pass to remove copies which are consumed by a GenericOp.
+std::unique_ptr<FunctionPass> CreateCopyCleanupPass();
 
 }  // namespace transforms
 

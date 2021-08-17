@@ -23,15 +23,20 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -167,6 +172,121 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output.append([i])
       expected_output.append([-i])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+
+class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    # Complicated way of saying range(start, start+25).
+    def build_ds(start):
+
+      def map_fn(x):
+        return dataset_ops.Dataset.range(x, x + 5)
+
+      return dataset_ops.Dataset.range(start, start + 5 * 5, 5).flat_map(map_fn)
+
+    verify_fn(self, lambda: build_ds(0), num_outputs=25)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testNested(self, verify_fn):
+
+    def build_ds():
+
+      inner_ds = dataset_ops.Dataset.from_tensor_slices(range(42))
+      ds = dataset_ops.Dataset.from_tensors(inner_ds)
+      return ds.flat_map(lambda x: x)
+
+    verify_fn(self, build_ds, num_outputs=42)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testMapThenFlatMap(self, verify_fn):
+
+    def build_ds():
+
+      def flat_map_fn(_):
+
+        def map_fn(y):
+          return 10 * math_ops.cast(y, dtypes.int32)
+
+        return dataset_ops.Dataset.range(100).map(map_fn)
+
+      return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
+
+    verify_fn(self, build_ds, num_outputs=500)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testCaptureDefunInMapFn(self, verify_fn):
+
+    def build_ds():
+
+      def map_fn(x):
+
+        @function.Defun(dtypes.int64)
+        def defun_fn(x):
+          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
+
+        return dataset_ops.Dataset.from_tensor_slices([defun_fn(x)])
+
+      return dataset_ops.Dataset.range(100).flat_map(map_fn)
+
+    verify_fn(self, build_ds, num_outputs=100)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDisallowVariableCapture(self):
+
+    def build_ds():
+      test_var = variable_scope.get_variable(
+          name="test_var", shape=(), use_resource=True)
+      return dataset_ops.Dataset.range(5).flat_map(
+          lambda _: dataset_ops.Dataset.from_tensor_slices([test_var]))
+
+    self.verify_error_on_save(build_ds, 5, errors.FailedPreconditionError)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDisallowCapturingStatefulOps(self):
+
+    def build_ds():
+
+      def flat_map_fn(_):
+
+        def map_fn(x):
+          return random_ops.random_uniform(
+              (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
+
+        return dataset_ops.Dataset.range(100).map(map_fn)
+
+      return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
+
+    self.verify_error_on_save(build_ds, 500, errors.FailedPreconditionError)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _flat_map_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    def _build_ds():
+      return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+
+    verify_fn(self, _build_ds, num_outputs=20)
+
 
 if __name__ == "__main__":
   test.main()

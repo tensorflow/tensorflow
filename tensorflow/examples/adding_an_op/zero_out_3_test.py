@@ -21,36 +21,25 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tensorflow.examples.adding_an_op import zero_out_op_3
-from tensorflow.python.framework import test_util
 
 
 class ZeroOut3Test(tf.test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test(self):
-    with self.cached_session():
-      result = zero_out_op_3.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result, [5, 0, 0, 0, 0])
+    result = zero_out_op_3.zero_out([5, 4, 3, 2, 1])
+    self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
-  @test_util.run_deprecated_v1
   def testAttr(self):
-    with self.cached_session():
-      result = zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=3)
-      self.assertAllEqual(result, [0, 0, 0, 2, 0])
+    result = zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=3)
+    self.assertAllEqual(result, [0, 0, 0, 2, 0])
 
-  @test_util.run_deprecated_v1
   def testNegative(self):
-    with self.cached_session():
-      result = zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=-1)
-      with self.assertRaisesOpError("Need preserve_index >= 0, got -1"):
-        self.evaluate(result)
+    with self.assertRaisesOpError("Need preserve_index >= 0, got -1"):
+      self.evaluate(zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=-1))
 
-  @test_util.run_deprecated_v1
   def testLarge(self):
-    with self.cached_session():
-      result = zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=17)
-      with self.assertRaisesOpError("preserve_index out of range"):
-        self.evaluate(result)
+    with self.assertRaisesOpError("preserve_index out of range"):
+      self.evaluate(zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=17))
 
 
 if __name__ == "__main__":

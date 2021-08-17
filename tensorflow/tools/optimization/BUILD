@@ -10,7 +10,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cuda_library(

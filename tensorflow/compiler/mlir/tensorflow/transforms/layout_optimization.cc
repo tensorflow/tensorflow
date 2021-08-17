@@ -18,8 +18,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -76,6 +75,10 @@ class LayoutAssignmentPass
 
   LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
 
+  StringRef getArgument() const final { return "tf-layout-assignment"; }
+
+  StringRef getDescription() const final { return "Layout assignment pass"; }
+
   void runOnFunction() final;
 
  private:
@@ -94,12 +97,24 @@ class MoveTransposesPass
   enum class Direction { kBegin, kEnd };
 
   MoveTransposesPass() = default;
-  explicit MoveTransposesPass(Direction direction) { direction_ = direction; }
+  explicit MoveTransposesPass(Direction direction, bool fold_transpose_in_ops) {
+    direction_ = direction;
+    fold_transpose_in_ops_ = fold_transpose_in_ops;
+  }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
+
+  StringRef getArgument() const final { return "tf-move-transposes"; }
+  StringRef getDescription() const final { return "Move transposes pass"; }
 
   void runOnFunction() final;
 
  private:
+  Option<bool> fold_transpose_in_ops_{
+      *this, "fold-transpose-in-ops",
+      llvm::cl::desc(
+          "Whether to fold transposes in ops which can support folding."),
+      llvm::cl::init(true)};
+
   Option<Direction> direction_{
       *this, "direction",
       llvm::cl::desc("Move transposes to the beginning or the end of the block "
@@ -116,7 +131,7 @@ void LayoutAssignmentPass::runOnFunction() {
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+  if (failed(::tensorflow::GetDevicesFromOp(func->getParentOfType<ModuleOp>(),
                                             &devices)))
     return signalPassFailure();
 
@@ -285,8 +300,26 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   }
 }
 
+// Revert the permutation applied in `type`.
+static mlir::ShapedType ReversePermuteShapedType(
+    mlir::ShapedType type, ArrayRef<int64_t> permutation) {
+  if (!type.hasRank()) return type;
+
+  auto shape = type.getShape();
+  SmallVector<int64_t, 4> new_shape(shape.size());
+
+  for (int i = 0; i < permutation.size(); ++i) {
+    int64_t index = permutation[i];
+    assert(index < shape.size());
+    new_shape[index] = shape[i];
+  }
+
+  return type.clone(new_shape);
+}
+
 // Move Transpose operations that permute `op` operands after the `op`.
-void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
+void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
+                        bool fold_transpose_in_ops) {
   // Indices of operands and results that depend on data layout.
   SmallVector<unsigned, 4> layout_dependent_operands;
   SmallVector<unsigned, 4> layout_dependent_results;
@@ -294,7 +327,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   auto fold_operands = dyn_cast<FoldOperandsTransposeInterface>(op);
   bool layout_agnostic = op->hasTrait<OpTrait::TF::LayoutAgnostic>();
 
-  if (fold_operands) {
+  if (fold_operands && fold_transpose_in_ops) {
     layout_dependent_operands = fold_operands.GetLayoutDependentArgs();
     layout_dependent_results = fold_operands.GetLayoutDependentResults();
 
@@ -349,14 +382,14 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   for (unsigned idx : layout_dependent_results)
     original_type[idx] = op->getResult(idx).getType();
 
+  SmallVector<int64_t, 8> permutation;
+
+  auto attr = permutation_op.value().cast<DenseElementsAttr>();
+  for (const auto& value : attr.getIntValues())
+    permutation.push_back(value.getSExtValue());
+
   // Check if we can fold transpose into the operation.
-  if (fold_operands) {
-    SmallVector<int64_t, 8> permutation;
-
-    auto attr = permutation_op.value().cast<DenseElementsAttr>();
-    for (const auto& value : attr.getIntValues())
-      permutation.push_back(value.getSExtValue());
-
+  if (fold_operands && fold_transpose_in_ops) {
     if (failed(fold_operands.FoldOperandsPermutation(permutation))) return;
   }
 
@@ -378,17 +411,22 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Maybe add Transpose nodes for layout dependent results
   // (or reuse existing transposes).
   OpBuilder builder(op);
-  builder.setInsertionPoint(op);
+  builder.setInsertionPointAfter(op);
 
   for (unsigned idx : layout_dependent_results) {
     OpResult result = op->getResult(idx);
 
-    // Forward operand type only for layout agnostic operations, operations with
-    // custom folding will update the result type in `FoldOperandsPermutation`.
-    if (layout_agnostic) result.setType(op->getOperand(0).getType());
+    // If the op is layout agnostic, the new result type can be generated by
+    // reverting `permutation`. Otherwise, operations with custom folding will
+    // update the result type in `FoldOperandsPermutation`.
+    if (layout_agnostic)
+      result.setType(ReversePermuteShapedType(
+          result.getType().cast<ShapedType>(), permutation));
 
     // Try to push transpose further down.
-    for (Operation* user : result.getUsers()) work_list->push_back(user);
+    for (Operation* user : result.getUsers()) {
+      if (!llvm::isa<TransposeOp>(user)) work_list->push_back(user);
+    }
 
     // Try to reuse operand transposes.
     TransposeOp transpose;
@@ -428,7 +466,7 @@ void MoveTransposesPass::runOnFunction() {
     } else {
       // Try to push transpose after the user operation.
       for (Operation* user : transpose.y().getUsers()) {
-        work_list.push_back(user);
+        if (!llvm::isa<TransposeOp>(user)) work_list.push_back(user);
       }
     }
   });
@@ -438,7 +476,7 @@ void MoveTransposesPass::runOnFunction() {
     if (direction_ == Direction::kBegin) {
       MoveTransposeBefore(op, &work_list);
     } else if (direction_ == Direction::kEnd) {
-      MoveTransposeAfter(op, &work_list);
+      MoveTransposeAfter(op, &work_list, fold_transpose_in_ops_);
     }
   }
 
@@ -463,16 +501,16 @@ void CreateLayoutOptimizationPipeline(
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
 
   // Move transposes to the beginning of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kBegin));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kBegin, !options.skip_fold_transpose_in_ops));
 
   // Move transposes to the end of the block and try to fold them.
-  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
+  pm.addPass(std::make_unique<MoveTransposesPass>(
+      Direction::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-static PassRegistration<LayoutAssignmentPass> layout_assignment(
-    "tf-layout-assignment", "Layout assignment pass");
-static PassRegistration<MoveTransposesPass> move_transposes(
-    "tf-move-transposes", "Move transposes pass");
+static PassRegistration<LayoutAssignmentPass> layout_assignment;
+static PassRegistration<MoveTransposesPass> move_transposes;
 
 static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
     pipeline("tf-layout-optimization",

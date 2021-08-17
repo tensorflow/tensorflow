@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -243,15 +244,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     ExecutableBuildOptions build_opts;
     *build_opts.mutable_debug_options() = *mutable_debug_options();
 
-    std::vector<const Shape*> input_shapes;
-    absl::c_transform(
-        input_literals, std::back_inserter(input_shapes),
-        [&](const Literal* input_literal) { return &input_literal->shape(); });
-
-    TF_ASSIGN_OR_RETURN(
-        auto executables,
-        client_->Compile(computation, input_shapes, build_opts));
-
     std::vector<ScopedShapedBuffer> input_buffers;
     absl::c_transform(input_literals, std::back_inserter(input_buffers),
                       [&](const Literal* input_literal) {
@@ -260,6 +252,15 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                                                     /*device_ordinal=*/0)
                             .ConsumeValueOrDie();
                       });
+    std::vector<const Shape*> input_shapes;
+    absl::c_transform(input_buffers, std::back_inserter(input_shapes),
+                      [&](const ScopedShapedBuffer& buffer) {
+                        return &buffer.on_device_shape();
+                      });
+
+    TF_ASSIGN_OR_RETURN(
+        auto executables,
+        client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<const ShapedBuffer*> input_buffer_pointers;
     absl::c_transform(
@@ -281,7 +282,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   const string& Platform() { return platform_; }
 
   // Returns the number of elements in each input literal.
-  virtual int64 GetInputSize() = 0;
+  virtual int64_t GetInputSize() = 0;
 
   // Fills the literals with values to test for.
   virtual void FillInput(InputLiterals* literals) = 0;
@@ -507,7 +508,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
   // argument to the function is the raw bits for the data being test, zero
   // extended to 64 bits if the data type is less than 64 bits.
-  std::function<bool(int64)> known_incorrect_fn_;
+  std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
@@ -539,7 +540,7 @@ class BitChunks {
       : public std::iterator<std::input_iterator_tag,  // iterator_category
                              uint64,                   // value_type
                              uint64,                   // difference_type
-                             const uint64*,            // pointer
+                             const uint64_t*,          // pointer
                              uint64                    // reference
                              > {
    public:
@@ -622,7 +623,7 @@ class BitChunks {
     CHECK_NE(spacing, 0) << ToString();
   }
 
-  int64 GetTotalBitChunks() const {
+  int64_t GetTotalBitChunks() const {
     if (start_ == end_) {
       return 1;
     }
@@ -659,7 +660,7 @@ class FpValues {
       : public std::iterator<std::input_iterator_tag,  // iterator_category
                              uint64,                   // value_type
                              uint64,                   // difference_type
-                             const uint64*,            // pointer
+                             const uint64_t*,          // pointer
                              uint64                    // reference
                              > {
    public:
@@ -764,8 +765,8 @@ class FpValues {
     return end.MoveToEnd();
   }
 
-  int64 GetTotalNumValues() const {
-    int64 total = 1;
+  int64_t GetTotalNumValues() const {
+    int64_t total = 1;
     absl::c_for_each(bit_chunks_, [&](const BitChunks& chunks) {
       total *= chunks.GetTotalBitChunks();
     });
@@ -925,12 +926,12 @@ std::vector<FpValues> CreateFpValuesForBoundaryTest() {
           GetNans<T>(1000)};
 }
 
-inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak
   // memory usage low.
-  std::vector<std::pair<int64, int64>> result;
-  const int64 step = 1 << 25;
-  for (int64 i = 0; i < (1l << 32); i += step) {
+  std::vector<std::pair<int64_t, int64_t>> result;
+  const int64_t step = 1 << 25;
+  for (int64_t i = 0; i < (1l << 32); i += step) {
     result.push_back({i, i + step});
   }
   return result;
@@ -1037,7 +1038,8 @@ T ReferenceMin(T x, T y) {
 // Returns a wrapper of the given build method, which build an HLO operation
 // with an empty broadcast dimension.
 inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
-    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
+    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64_t>)>
+        build_method) {
   return [&](XlaOp src0, XlaOp src1) -> XlaOp {
     return build_method(src0, src1, {});
   };

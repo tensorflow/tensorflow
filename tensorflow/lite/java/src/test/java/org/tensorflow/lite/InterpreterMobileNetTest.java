@@ -38,11 +38,11 @@ public final class InterpreterMobileNetTest {
 
   private static final ByteBuffer MOBILENET_FLOAT_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224.tflite");
 
   private static final ByteBuffer MOBILENET_QUANTIZED_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
 
   @Test
   public void testMobileNet() {

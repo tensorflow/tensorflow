@@ -1,0 +1,17 @@
+path: "tensorflow.types.experimental.GenericFunction"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "experimental_get_compiler_ir"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "get_concrete_function"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

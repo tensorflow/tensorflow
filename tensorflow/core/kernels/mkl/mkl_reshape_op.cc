@@ -53,7 +53,6 @@ class MklReshapeOp : public OpKernel {
     // @todo: Future do not force skip reorder for all blocked format. Use
     // blocking_desc_is_equal() for checking all the stride arrays in
     // mkl-dnn/blob/master/src/common/type_helpers.hpp
-    auto input_mkl_md = mkl_shape_input.GetMklLayout();
     return (mkl_shape_input.GetTfDataFormat() ==
             MklTensorFormat::FORMAT_BLOCKED);
   }

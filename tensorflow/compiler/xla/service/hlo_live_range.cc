@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 
 namespace xla {
 /*static*/
@@ -48,7 +50,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
                  std::forward_as_tuple(live_range2.start, live_range2.end);
         });
 
-    for (int64 i = 0; i + 1 < aliased_buffers.size(); ++i) {
+    for (int64_t i = 0; i + 1 < aliased_buffers.size(); ++i) {
       const HloValue* value1 = aliased_buffers[i];
       const HloValue* value2 = aliased_buffers[i + 1];
       TimeBound& live_range1 = buffer_live_ranges_[value1];
@@ -87,8 +89,8 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                    int64 start_time) {
+int64_t HloLiveRange::FlattenSchedule(const HloComputation& computation,
+                                      int64_t start_time) {
   if (!schedule_.is_computation_scheduled(&computation)) {
     total_order_scheduled_ = false;
     return start_time;
@@ -96,7 +98,7 @@ int64 HloLiveRange::FlattenSchedule(const HloComputation& computation,
 
   const HloInstructionSequence& instruction_sequence =
       schedule_.sequence(&computation);
-  int64 time = start_time;
+  int64_t time = start_time;
   for (HloInstruction* instruction : instruction_sequence.instructions()) {
     if (module_scoped_analysis_) {
       // Recurse into sub computations if running with module scoped analysis
@@ -134,9 +136,9 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       continue;
     }
 
-    int64 buffer_start_time = instruction_schedule_[value->instruction()];
+    int64_t buffer_start_time = instruction_schedule_[value->instruction()];
 
-    int64 buffer_end_time = -1;
+    int64_t buffer_end_time = -1;
     for (const HloUse& use : value->uses()) {
       const HloInstruction* used = use.instruction;
       // As an optimization, we deem a while's init value's live range ends as
@@ -173,7 +175,13 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       buffer_end_time = buffer_start_time;
     }
 
+    HloPosition end_position;
+    int64_t max_end_time = 0;
     for (const HloPosition& position : value->positions()) {
+      if (instruction_schedule_[position.instruction] >= max_end_time) {
+        max_end_time = instruction_schedule_[value->instruction()];
+        end_position = position;
+      }
       const HloComputation* position_comp = position.instruction->parent();
       // If this instruction lives out, the live range of the instruction
       // should be extended to the end of the computation.
@@ -182,7 +190,10 @@ void HloLiveRange::CalculateBufferStartEndMap() {
         if (it == computation_span_times_.end()) {
           continue;
         }
-        buffer_end_time = std::max(buffer_end_time, it->second.end);
+        if (buffer_end_time < it->second.end) {
+          buffer_end_time = it->second.end;
+          end_position = position;
+        }
       }
     }
 
@@ -204,7 +215,42 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto& live_range = buffer_live_ranges_[value];
     live_range.start = buffer_start_time;
     live_range.end = buffer_end_time;
+    live_range.end_position = end_position;
   }
+}
+
+int64_t HloLiveRange::ComputePeakMemoryMoment() const {
+  std::vector<std::tuple<int64_t /*time*/, bool /*is_end*/, const HloValue*>>
+      events;
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    auto it = buffer_live_ranges_.find(value);
+    if (it != buffer_live_ranges_.end()) {
+      events.emplace_back(it->second.start, false, value);
+      events.emplace_back(it->second.end + 1, true, value);
+    }
+  }
+  std::sort(events.begin(), events.end());
+
+  int64_t memory_usage = 0;
+  int64_t peak_usage = 0;
+  absl::optional<int64_t> peak_time;
+  for (const auto& event : events) {
+    int64_t time;
+    bool is_end;
+    const HloValue* value;
+    std::tie(time, is_end, value) = event;
+    auto buffer_size = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+    if (is_end) {
+      memory_usage -= buffer_size;
+    } else {
+      memory_usage += buffer_size;
+    }
+    if (peak_usage < memory_usage) {
+      peak_usage = memory_usage;
+      peak_time = time;
+    }
+  }
+  return peak_time.value_or(0);
 }
 
 std::string HloLiveRange::ToString() const {
@@ -213,7 +259,7 @@ std::string HloLiveRange::ToString() const {
                         schedule_end_time_);
   absl::StrAppendFormat(&output, "  InstructionSequence:\n");
   auto& instructions = flattened_instruction_sequence().instructions();
-  for (int64 i = 0; i < instructions.size(); ++i) {
+  for (int64_t i = 0; i < instructions.size(); ++i) {
     absl::StrAppendFormat(&output, "    %d:%s\n", i, instructions[i]->name());
   }
 
@@ -225,6 +271,21 @@ std::string HloLiveRange::ToString() const {
       absl::StrAppendFormat(
           &output, "    %s%s:%d-%d\n", value->instruction()->name(),
           value->index().ToString(), it->second.start, it->second.end);
+    }
+  }
+
+  int64_t peak_moment = ComputePeakMemoryMoment();
+
+  absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
+                        peak_moment);
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    auto it = buffer_live_ranges_.find(value);
+    if (it != buffer_live_ranges_.end()) {
+      if (it->second.start <= peak_moment && peak_moment <= it->second.end) {
+        int64_t bytes = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+        absl::StrAppendFormat(&output, "    %s: %lld bytes\n",
+                              value->instruction()->name(), bytes);
+      }
     }
   }
 

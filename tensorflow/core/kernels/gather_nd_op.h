@@ -61,10 +61,10 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
   }
 
   const TensorShape& indices_shape(indices.shape());
-  const int64 indices_nd = indices_shape.dim_size(indices_shape.dims() - 1);
+  const int64_t indices_nd = indices_shape.dim_size(indices_shape.dims() - 1);
 
   // Check that we have enough index space
-  int64 N_big = 1;
+  int64_t N_big = 1;
   for (int i = 0; i < indices_shape.dims() - 1; ++i) {
     N_big *= indices_shape.dim_size(i);
   }
@@ -93,7 +93,7 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
   TensorShape result_shape(indices_shape);
   result_shape.RemoveLastDims(1);
 
-  int64 slice_size_big = 1;
+  int64_t slice_size_big = 1;
   for (Index i = indices_nd; i < total_nd; ++i) {
     slice_size_big *= params_shape.dim_size(i);
     result_shape.AddDim(params_shape.dim_size(i));
@@ -161,7 +161,8 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
           "indices", SliceDebugString(shape, bad_i), " = [",
           str_util::Join(
               gtl::ArraySlice<Index>(&indices_mat(bad_i, 0), indices_nd), ", "),
-          "] does not index into param shape ", params.shape().DebugString());
+          "] does not index into param shape ", params.shape().DebugString(),
+          ", node name: ", c->op_kernel().name());
     }
   }
   return Status::OK();

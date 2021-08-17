@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <cstddef>
 #include <deque>
 #include <vector>
 
@@ -39,10 +40,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
+class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
  public:
-  RandomShuffleQueue(int32 capacity, int32 min_after_dequeue, int64 seed,
-                     int64 seed2, const DataTypeVector& component_dtypes,
+  RandomShuffleQueue(int32_t capacity, int32_t min_after_dequeue, int64_t seed,
+                     int64_t seed2, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
                      const string& name);
 
@@ -71,14 +72,14 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  static Status GetElementComponentFromBatch(const Tuple& tuple, int64 index,
+  static Status GetElementComponentFromBatch(const Tuple& tuple, int64_t index,
                                              int component,
                                              OpKernelContext* ctx,
-                                             PersistentTensor* out_tensor);
+                                             Tensor* out_tensor);
 
   const int32 min_after_dequeue_;
-  const int64 original_seed_;
-  const int64 original_seed2_;
+  const int64_t original_seed_;
+  const int64_t original_seed2_;
 
   random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
   random::SingleSampleAdapter<random::PhiloxRandom> generator_
@@ -88,7 +89,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
 };
 
 RandomShuffleQueue::RandomShuffleQueue(
-    int32 capacity, int32 min_after_dequeue, int64 seed, int64 seed2,
+    int32_t capacity, int32_t min_after_dequeue, int64_t seed, int64_t seed2,
     const DataTypeVector& component_dtypes,
     const std::vector<TensorShape>& component_shapes, const string& name)
     : TypedQueue(capacity, component_dtypes, component_shapes, name),
@@ -116,10 +117,10 @@ Status RandomShuffleQueue::Initialize() {
 
 void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
   DCHECK_GT(queues_[0].size(), size_t{0});
-  int64 index = generator_() % queues_[0].size();
+  int64_t index = generator_() % queues_[0].size();
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
-    (*tuple).push_back(*queues_[i][index].AccessTensor(ctx));
+    (*tuple).push_back(queues_[i][index]);
     queues_[i][index] = queues_[i].back();
     queues_[i].pop_back();
   }
@@ -145,7 +146,7 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
               for (int i = 0; i < num_components(); ++i) {
-                queues_[i].push_back(PersistentTensor(tuple[i]));
+                queues_[i].push_back(tuple[i]);
               }
               return kComplete;
             } else {
@@ -163,23 +164,24 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
 }
 
 /* static */
-Status RandomShuffleQueue::GetElementComponentFromBatch(
-    const Tuple& tuple, int64 index, int component, OpKernelContext* ctx,
-    PersistentTensor* out_tensor) {
+Status RandomShuffleQueue::GetElementComponentFromBatch(const Tuple& tuple,
+                                                        int64_t index,
+                                                        int component,
+                                                        OpKernelContext* ctx,
+                                                        Tensor* out_tensor) {
   TensorShape element_shape(tuple[component].shape());
   element_shape.RemoveDim(0);
-  Tensor* element_access = nullptr;
-  TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-      tuple[component].dtype(), element_shape, out_tensor, &element_access));
   TF_RETURN_IF_ERROR(
-      batch_util::CopySliceToElement(tuple[component], element_access, index));
+      ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
+  TF_RETURN_IF_ERROR(
+      batch_util::CopySliceToElement(tuple[component], out_tensor, index));
   return Status::OK();
 }
 
 void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
                                         OpKernelContext* ctx,
                                         DoneCallback callback) {
-  const int64 batch_size = tuple[0].dim_size(0);
+  const int64_t batch_size = tuple[0].dim_size(0);
   if (batch_size == 0) {
     callback();
     return;
@@ -207,7 +209,7 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
               const int index =
                   tuple[0].dim_size(0) - attempt->elements_requested;
               for (int i = 0; i < num_components(); ++i) {
-                PersistentTensor element;
+                Tensor element;
                 attempt->context->SetStatus(GetElementComponentFromBatch(
                     tuple, index, i, attempt->context, &element));
                 if (!attempt->context->status().ok()) return kComplete;
@@ -244,7 +246,7 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 queue_size = queues_[0].size();
+            int32_t queue_size = queues_[0].size();
             if (closed_ && queue_size == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
                   "RandomShuffleQueue '", name_, "' is closed and has ",
@@ -337,17 +339,17 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
            this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 queue_size = queues_[0].size();
+            int32_t queue_size = queues_[0].size();
             if (closed_ && queue_size < attempt->elements_requested) {
               // If we don't have enough for a full dequeue, we have
               // to reset the attempt tuple.
               if (!attempt->tuple.empty()) {
                 // Restore already-dequeued elements to the queue.
-                for (int64 i = attempt->tuple[0].dim_size(0) -
-                               attempt->elements_requested - 1;
+                for (int64_t i = attempt->tuple[0].dim_size(0) -
+                                 attempt->elements_requested - 1;
                      i >= 0; --i) {
                   for (int j = 0; j < num_components(); ++j) {
-                    PersistentTensor element;
+                    Tensor element;
                     Status s = GetElementComponentFromBatch(
                         attempt->tuple, i, j, attempt->context, &element);
                     if (!s.ok()) {
@@ -442,7 +444,7 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
 
-  int32 min_after_dequeue = -1;
+  int32_t min_after_dequeue = -1;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(node_def, "min_after_dequeue", &min_after_dequeue));
   if (min_after_dequeue != min_after_dequeue_) {
@@ -451,8 +453,8 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
         " but requested min_after_dequeue was ", min_after_dequeue, ".");
   }
 
-  int64 seed = -1;
-  int64 seed2 = -1;
+  int64_t seed = -1;
+  int64_t seed2 = -1;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "seed", &seed));
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "seed2", &seed2));
   if ((seed != 0 || seed2 != 0) &&
@@ -502,8 +504,8 @@ class RandomShuffleQueueOp : public TypedQueueOp {
   }
 
   int32 min_after_dequeue_;
-  int64 seed_;
-  int64 seed2_;
+  int64_t seed_;
+  int64_t seed2_;
   std::vector<TensorShape> component_shapes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueueOp);

@@ -25,8 +25,8 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     HloInstruction* batch_dot) {
   // This pass assumes the lhs and rhs batch dimensions are equal and strictly
   // ascending.
-  const auto& is_iota = [](absl::Span<const int64> dims) {
-    for (int64 i = 0; i < dims.size(); ++i) {
+  const auto& is_iota = [](absl::Span<const int64_t> dims) {
+    for (int64_t i = 0; i < dims.size(); ++i) {
       if (dims[i] != i) {
         return false;
       }
@@ -53,8 +53,8 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     return false;
   }
 
-  std::vector<int64> degenerate_dims;
-  for (int64 batch_dim : dim_numbers.lhs_batch_dimensions()) {
+  std::vector<int64_t> degenerate_dims;
+  for (int64_t batch_dim : dim_numbers.lhs_batch_dimensions()) {
     if (lhs_shape.dimensions(batch_dim) == 1) {
       degenerate_dims.push_back(batch_dim);
     }
@@ -73,8 +73,8 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
   new_dim_numbers.clear_lhs_batch_dimensions();
   new_dim_numbers.clear_rhs_batch_dimensions();
 
-  for (int64 i = 0, e = dim_numbers.lhs_batch_dimensions_size() -
-                        degenerate_dims.size();
+  for (int64_t i = 0, e = dim_numbers.lhs_batch_dimensions_size() -
+                          degenerate_dims.size();
        i < e; i++) {
     new_dim_numbers.add_lhs_batch_dimensions(i);
     new_dim_numbers.add_rhs_batch_dimensions(i);
@@ -87,9 +87,11 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
       0,
       new_dim_numbers.rhs_contracting_dimensions(0) - degenerate_dims.size());
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
-                                 batch_dot->precision_config()));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_dot,
+      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
+                 batch_dot->precision_config(),
+                 /*preferred_element_type=*/batch_dot->shape().element_type()));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_dot_reshaped,
                       MakeReshapeHlo(batch_dot->shape(), new_dot));

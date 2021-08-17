@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -34,7 +35,7 @@ class SlowOperationAlarm {
   // If `counter` is not null, this alarm will throttle itself to logging
   // once-every-power-of-two occurrences. The counter must outlive this object.
   SlowOperationAlarm(absl::Duration timeout, std::string msg,
-                     std::atomic<int64>* counter = nullptr);
+                     std::atomic<int64_t>* counter = nullptr);
   ~SlowOperationAlarm();
 
   // Not copyable or movable, because the constructor stores a pointer to `this`
@@ -46,14 +47,14 @@ class SlowOperationAlarm {
 
   absl::Time deadline() const { return deadline_; }
   absl::string_view msg() const { return msg_; }
-  std::atomic<int64>* counter() { return counter_; }
+  std::atomic<int64_t>* counter() { return counter_; }
 
  private:
   absl::Time deadline_;
   std::string msg_;
   // counter_ may be null.  If it's not, this alarm prints something only once
   // every power of two occurrences.
-  std::atomic<int64>* counter_;
+  std::atomic<int64_t>* counter_;
 };
 
 // Returns an object which prints a warning about slow compilation after a
@@ -64,7 +65,8 @@ class SlowOperationAlarm {
 // In opt builds, recommends filing a bug.
 //
 // This is throttled to once-every-power-of-two occurrences, globally.
-ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm();
+ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
+    absl::string_view msg = "");
 
 }  // namespace xla
 

@@ -47,12 +47,12 @@ class RemoteProfilerSession {
   // This is a non-blocking call and does not wait for a response.
   // Response must outlive the instantiation.
   static std::unique_ptr<RemoteProfilerSession> Create(
-      std::string service_address, absl::Time deadline,
-      ProfileRequest profile_request);
+      const std::string& service_address, absl::Time deadline,
+      const ProfileRequest& profile_request);
 
   // Not copyable or movable.
   RemoteProfilerSession(const RemoteProfilerSession&) = delete;
-  RemoteProfilerSession operator=(const RemoteProfilerSession&) = delete;
+  RemoteProfilerSession& operator=(const RemoteProfilerSession&) = delete;
 
   ~RemoteProfilerSession();
 
@@ -64,8 +64,9 @@ class RemoteProfilerSession {
   std::unique_ptr<ProfileResponse> WaitForCompletion(Status& out_status);
 
  private:
-  explicit RemoteProfilerSession(std::string service_addr, absl::Time deadline,
-                                 ProfileRequest profile_request);
+  explicit RemoteProfilerSession(const std::string& service_addr,
+                                 absl::Time deadline,
+                                 const ProfileRequest& profile_request);
 
   // Starts a remote profiling session. This is a non-blocking call.
   // Will be called exactly once during instantiation.

@@ -4,12 +4,11 @@ package(
     default_visibility = [
         ":friends",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",

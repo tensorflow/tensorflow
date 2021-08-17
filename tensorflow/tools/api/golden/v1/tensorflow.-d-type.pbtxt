@@ -1,7 +1,7 @@
 path: "tensorflow.DType"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.dtypes.DType\'>"
-  is_instance: "<class \'tensorflow.python._dtypes.DType\'>"
+  is_instance: "<class \'tensorflow.python.framework._dtypes.DType\'>"
   is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "as_datatype_enum"

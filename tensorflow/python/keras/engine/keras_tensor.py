@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras Input Tensor used to track functional API Topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,25 +28,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 
 # pylint: disable=g-classes-have-attributes
-
-_KERAS_TENSORS_ENABLED = True
-
-
-def enable_keras_tensors():
-  """Enable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = True
-
-
-def disable_keras_tensors():
-  """Disable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = False
-
-
-def keras_tensors_enabled():
-  """Return a bool specifying if KerasTensors are enabled."""
-  return _KERAS_TENSORS_ENABLED and ops.executing_eagerly_outside_functions()
 
 
 # Tensorflow tensors have a maximum rank of 254
@@ -204,6 +181,10 @@ class KerasTensor(object):
       name = getattr(tensor, 'name', None)
       type_spec = type_spec_module.type_spec_from_value(tensor)
       return cls(type_spec, name=name)
+
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    return cls(type_spec=type_spec, name=name)
 
   def _to_placeholder(self):
     """Convert this KerasTensor to a placeholder in a graph."""
@@ -481,6 +462,10 @@ class RaggedKerasTensor(KerasTensor):
   def ragged_rank(self):
     return self.type_spec.ragged_rank
 
+# Overload slicing
+RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__getitem__')  # pylint: disable=protected-access
+
+# Overload math ops
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__add__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__radd__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__mul__')  # pylint: disable=protected-access
@@ -538,6 +523,11 @@ class UserRegisteredTypeKerasTensor(KerasTensor):
   def from_tensor(cls, tensor):
     return cls(tensor)
 
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    raise NotImplementedError('You cannot instantiate a KerasTensor '
+                              'directly from TypeSpec: %s' % type_spec)
+
   def _to_placeholder(self):
     return self._user_registered_symbolic_object
 
@@ -559,8 +549,6 @@ class _KerasTensorIterator(object):
     result = self._tensor[self._index]
     self._index += 1
     return result
-
-  next = __next__  # python2.x compatibility.
 
 
 # Specify the mappings of tensor class to KerasTensor class.
@@ -608,3 +596,17 @@ def keras_tensor_from_tensor(tensor):
   if hasattr(tensor, '_keras_mask'):
     out._keras_mask = keras_tensor_from_tensor(tensor._keras_mask)  # pylint: disable=protected-access
   return out
+
+
+def keras_tensor_from_type_spec(type_spec, name=None):
+  """Convert a TypeSpec to a representative KerasTensor."""
+  # Create a specialized KerasTensor that supports instance methods,
+  # operators, and additional value inference if possible
+  keras_tensor_cls = None
+  value_type = type_spec.value_type
+  for tensor_type, cls in keras_tensor_classes:
+    if issubclass(value_type, tensor_type):
+      keras_tensor_cls = cls
+      break
+
+  return keras_tensor_cls.from_type_spec(type_spec, name=name)

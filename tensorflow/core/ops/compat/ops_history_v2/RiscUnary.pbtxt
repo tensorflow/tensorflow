@@ -1,0 +1,41 @@
+op {
+  name: "RiscUnary"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "op_type"
+    type: "string"
+    allowed_values {
+      list {
+        s: "ABL"
+        s: "CEIL"
+        s: "COS"
+        s: "EXP"
+        s: "FLOOR"
+        s: "IMAG"
+        s: "LOG"
+        s: "NEG"
+        s: "REAL"
+        s: "SIGN"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

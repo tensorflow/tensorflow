@@ -20,73 +20,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_texture_helper.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
-
-GLenum ToTextureFormat(DataType type) {
-  switch (type) {
-    case DataType::INT8:
-    case DataType::UINT16:
-    case DataType::UINT32:
-    case DataType::INT16:
-    case DataType::INT32:
-      return GL_RGBA_INTEGER;
-    case DataType::FLOAT16:
-    case DataType::FLOAT32:
-    case DataType::UINT8:  // this requires GL_RGBA8 internal format
-      return GL_RGBA;
-    default:
-      return 0;
-  }
-}
-
-GLenum ToTextureInternalFormat(DataType type) {
-  switch (type) {
-    case DataType::UINT8:
-      return GL_RGBA8;  // this requires GL_RGBA format
-    case DataType::INT8:
-      return GL_RGBA8I;
-    case DataType::UINT16:
-      return GL_RGBA16UI;
-    case DataType::UINT32:
-      return GL_RGBA32UI;
-    case DataType::INT16:
-      return GL_RGBA16I;
-    case DataType::INT32:
-      return GL_RGBA32I;
-    case DataType::FLOAT16:
-      return GL_RGBA16F;
-    case DataType::FLOAT32:
-      return GL_RGBA32F;
-    default:
-      return 0;
-  }
-}
-
-GLenum ToTextureDataType(DataType type) {
-  switch (type) {
-    case DataType::UINT8:
-      return GL_UNSIGNED_BYTE;
-    case DataType::INT8:
-      return GL_BYTE;
-    case DataType::UINT16:
-      return GL_UNSIGNED_SHORT;
-    case DataType::UINT32:
-      return GL_UNSIGNED_INT;
-    case DataType::INT16:
-      return GL_SHORT;
-    case DataType::INT32:
-      return GL_INT;
-    case DataType::FLOAT16:
-      return GL_HALF_FLOAT;
-    case DataType::FLOAT32:
-      return GL_FLOAT;
-    default:
-      return 0;
-  }
-}
 
 GlTexture::GlTexture(GlTexture&& texture)
     : GlTexture(texture.target_, texture.id_, texture.format_,

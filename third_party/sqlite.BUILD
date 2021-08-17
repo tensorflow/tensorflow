@@ -58,6 +58,6 @@ cc_library(
 # This is a Copybara sync helper for Google.
 py_library(
     name = "python",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

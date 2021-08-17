@@ -232,8 +232,8 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   def testEagerOpExecution(self):
     instrument = _NumpyFunctionCallback()
 
-    op_callbacks.add_op_callback(instrument.callback)
     x = constant_op.constant(6.0)
+    op_callbacks.add_op_callback(instrument.callback)
     y = math_ops.square(math_ops.log(x))
     self.assertAllClose(y, np.square(np.log(6.0)))
 
@@ -262,8 +262,8 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     instrument_1 = _NumpyFunctionCallback()
 
     def thread_1_job():
-      op_callbacks.add_op_callback(instrument_1.callback)
       x = constant_op.constant(6.0)
+      op_callbacks.add_op_callback(instrument_1.callback)
       y = math_ops.square(math_ops.log(x))
       op_callbacks.remove_op_callback(instrument_1.callback)
       return y
@@ -272,8 +272,8 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     thread_1.start()
 
     # While thread_1 is ongoing, do something on the main thread.
-    op_callbacks.add_op_callback(instrument_0.callback)
     x = constant_op.constant(2.0)
+    op_callbacks.add_op_callback(instrument_0.callback)
     y = math_ops.cos(x)
     self.assertAllClose(y, np.cos(2.0))
     op_callbacks.remove_op_callback(instrument_0.callback)
@@ -546,9 +546,9 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
   def testEagerOpAttributesAreCapture(self):
     instrument = _NumpyFunctionCallback()
-    op_callbacks.add_op_callback(instrument.callback)
     m = constant_op.constant([[1.0, -1.0], [0.0, 1.0]])
     x = constant_op.constant([[-2.0], [3.0]])
+    op_callbacks.add_op_callback(instrument.callback)
     y = math_ops.matmul(m, x, transpose_a=True, transpose_b=False)
     self.assertAllClose(y, [[-2.0], [5.0]])
 
@@ -565,7 +565,6 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testGraphOpAttributesAreCapture(self):
     instrument = _NumpyFunctionCallback()
-    op_callbacks.add_op_callback(instrument.callback)
 
     @def_function.function
     def my_matmul(m, x):
@@ -573,6 +572,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
     m = constant_op.constant([[1.0, -1.0], [0.0, 1.0]])
     x = constant_op.constant([[-2.0], [3.0]])
+    op_callbacks.add_op_callback(instrument.callback)
     y = my_matmul(m, x)
     self.assertAllClose(y, [[-2.0], [5.0]])
 
@@ -743,10 +743,10 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
   def testNoOutputOpUnderEagerExecution(self):
     instrument = _NumpyFunctionCallback()
-    op_callbacks.add_op_callback(instrument.callback)
 
     x = constant_op.constant(10.0)
     y = constant_op.constant(20.0)
+    op_callbacks.add_op_callback(instrument.callback)
     z = x + y
     w = control_flow_ops.group([z])
     self.assertIsNone(w)
@@ -827,13 +827,12 @@ class OpCallbacksErrorConditionsTest(test_util.TensorFlowTestCase):
       del op_type, inputs, attrs, op_name, graph  # Unused.
       return outputs[0], math_ops.negative(outputs[0])
 
-    op_callbacks.add_op_callback(wrong_outputs_callback)
-
     @def_function.function
     def log1p(x):
       return math_ops.log(1.0 + x)
 
     x = constant_op.constant(3.0)
+    op_callbacks.add_op_callback(wrong_outputs_callback)
     with self.assertRaisesRegex(
         ValueError,
         r"returned 2 tensors, .* does not match .* \(1\)"):

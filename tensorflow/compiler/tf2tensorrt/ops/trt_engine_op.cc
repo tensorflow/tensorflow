@@ -56,7 +56,8 @@ REGISTER_OP("TRTEngineOp")
     .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
     .Attr("output_shapes: list(shape) = []")
-    .Attr("static_engine: bool = true");
+    .Attr("static_engine: bool = true")
+    .Attr("profile_strategy: string = ''");
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

@@ -32,8 +32,15 @@ command and retrieve results by using the `adb logcat` command.
 Download the nightly pre-built Android benchmark apps using the links below:
 
 *   [android_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_aarch64_benchmark_model.apk)
-
 *   [android_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_arm_benchmark_model.apk)
+
+As for Android benchmark apps that support [TF ops](https://www.tensorflow.org/lite/guide/ops_select)
+via [Flex delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/flex),
+use the links below:
+
+*   [android_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_aarch64_benchmark_model_plus_flex.apk)
+*   [android_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_arm_benchmark_model_plus_flex.apk)
+
 
 You can also build the app from source by following these
 [instructions](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/android).
@@ -114,6 +121,16 @@ links below:
 *   [linux_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/linux_arm_benchmark_model)
 *   [android_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_aarch64_benchmark_model)
 *   [android_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_arm_benchmark_model)
+
+As for nightly pre-built binaries that support [TF ops](https://www.tensorflow.org/lite/guide/ops_select)
+via [Flex delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/flex),
+use the links below:
+
+*   [linux_x86-64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/linux_x86-64_benchmark_model_plus_flex)
+*   [linux_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/linux_aarch64_benchmark_model_plus_flex)
+*   [linux_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/linux_arm_benchmark_model_plus_flex)
+*   [android_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_aarch64_benchmark_model_plus_flex)
+*   [android_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_arm_benchmark_model_plus_flex)
 
 You can also build the native benchmark binary from
 [source](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
@@ -404,16 +421,16 @@ were also added to `benchmark_params.json`.
   </tr>
  </table>
 
-## Trace TensorFlow Lite internals in Android
+## Trace TensorFlow Lite internals
 
-Note: This feature is experimental and available only when the Android app is
-built with the nightly released Tensorflow Lite library. Stable libraries up to
-v2.3 do not support this.
+### Trace TensorFlow Lite internals in Android
+
+Note: This feature is available from Tensorflow Lite v2.4.
 
 Internal events from the TensorFlow Lite interpreter of an Android app can be
 captured by
 [Android tracing tools](https://developer.android.com/topic/performance/tracing).
-It is the same event with Android
+They are the same events with Android
 [Trace](https://developer.android.com/reference/android/os/Trace) API, so the
 captured events from Java/Kotlin code are seen together with TensorFlow Lite
 internal events.
@@ -431,7 +448,7 @@ or
 [Systrace command-line tool](https://developer.android.com/topic/performance/tracing/command-line)
 for other options.
 
-### Adding trace events in Java code
+#### Adding trace events in Java code
 
 This is a code snippet from the
 [Image Classification](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android)
@@ -451,10 +468,10 @@ help notice where the inference call is made.
 
 ```
 
-### Enable TensorFlow Lite tracing
+#### Enable TensorFlow Lite tracing
 
 To enable TensorFlow Lite tracing, set the Android system property
-`debug.tflite.tracing` to 1 before starting the Android app.
+`debug.tflite.trace` to 1 before starting the Android app.
 
 ```shell
 adb shell setprop debug.tflite.trace 1
@@ -470,7 +487,7 @@ to 0.
 adb shell setprop debug.tflite.trace 0
 ```
 
-### Android Studio CPU Profiler
+#### Android Studio CPU Profiler
 
 Capture traces with the
 [Android Studio CPU Profiler](https://developer.android.com/studio/profile/cpu-profiler)
@@ -496,7 +513,7 @@ In this example, you can see the hierarchy of events in a thread and statistics
 for each operator time and also see the data flow of the whole app among
 threads.
 
-### System Tracing app
+#### System Tracing app
 
 Capture traces without Android Studio by following the steps detailed in
 [System Tracing app](https://developer.android.com/topic/performance/tracing/on-device).
@@ -506,6 +523,65 @@ or Systrace format depending on the version of Android device. The captured
 trace files can be opened in the [Perfetto UI](https://ui.perfetto.dev/#!/).
 
 ![Perfetto trace](images/perfetto_traces.png)
+
+### Trace TensorFlow Lite internals in iOS
+
+Note: This feature is available from Tensorflow Lite v2.5.
+
+Internal events from the TensorFlow Lite interpreter of an iOS app can be
+captured by
+[Instruments](https://developer.apple.com/library/archive/documentation/ToolsLanguages/Conceptual/Xcode_Overview/MeasuringPerformance.html#//apple_ref/doc/uid/TP40010215-CH60-SW1)
+tool included with Xcode. They are the iOS
+[signpost](https://developer.apple.com/documentation/os/logging/recording_performance_data)
+events, so the captured events from Swift/Objective-C code are seen together
+with TensorFlow Lite internal events.
+
+Some examples of events are:
+
+*   Operator invocation
+*   Graph modification by delegate
+*   Tensor allocation
+
+#### Enable TensorFlow Lite tracing
+
+Set the environment variable `debug.tflite.trace` by following the steps below:
+
+1.  Select **Product > Scheme > Edit Scheme...** from the top menus of Xcode.
+
+2.  Click 'Profile' in the left pane.
+
+3.  Deselect 'Use the Run action's arguments and environment variables'
+    checkbox.
+
+4.  Add `debug.tflite.trace` under 'Environment Variables' section.
+
+    ![Set environment variable](images/xcode_profile_environment.png)
+
+If you want to exclude TensorFlow Lite events when profiling the iOS app,
+disable tracing by removing the environment variable.
+
+#### XCode Instruments
+
+Capture traces by following the steps below:
+
+1.  Select **Product > Profile** from the top menus of Xcode.
+
+2.  Click **Logging** among profiling templates when Instruments tool launches.
+
+3.  Press 'Start' button.
+
+4.  Press 'Stop' button.
+
+5.  Click 'os_signpost' to expand OS Logging subsystem items.
+
+6.  Click 'org.tensorflow.lite' OS Logging subsystem.
+
+7.  Investigate the trace result.
+
+    ![Xcode Instruments trace](images/xcode_traces.png)
+
+In this example, you can see the hierarchy of events and statistics for each
+operator time.
 
 ### Using the tracing data
 

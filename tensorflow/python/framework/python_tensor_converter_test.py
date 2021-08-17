@@ -23,8 +23,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _pywrap_python_tensor_converter
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_tensor_converter
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -163,7 +163,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
 
   def testConvertNumpyArrayWithUnsupportedDtype(self):
     converter = self.makePythonTensorConverter()
-    x = np.array([[1, 2], ["a", "b"]], np.object)
+    x = np.array([[1, 2], ["a", "b"]], np.object_)
     with self.assertRaises((ValueError, TypeError)):
       converter.Convert(x, types_pb2.DT_INVALID)
 

@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -221,7 +223,7 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
   // GetTupleElement forwards a pointer to a particular element of the tuple
   // operand.
-  int64 element_index = get_tuple_element->tuple_index();
+  int64_t element_index = get_tuple_element->tuple_index();
 
   PointsToSet& points_to_set = CreateEmptyPointsToSet(get_tuple_element);
   const PointsToSet& operand_points_to_set =
@@ -410,7 +412,7 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   // A tuple contains references to all input operands and transitively any
   // references in those operands.
-  for (int64 i = 0; i < operands.size(); ++i) {
+  for (int64_t i = 0; i < operands.size(); ++i) {
     const PointsToSet& operand_points_to_set =
         *PerInst(operands[i])->points_to_set;
 
@@ -470,6 +472,37 @@ Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   points_to_set.AddPointedToBuffer(
       logical_buffer_analysis_->GetBuffer(tuple_select, /*index=*/{}),
       /*index=*/{});
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+  auto ccall = Cast<HloCustomCallInstruction>(custom_call);
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    auto it = aliased_outputs.find(index);
+    if (it == aliased_outputs.end()) {
+      points_to_set.AddPointedToBuffer(
+          logical_buffer_analysis_->GetBuffer(custom_call, index), index);
+    } else {
+      const PointsToSet& input_set =
+          *PerInst(ccall->operand(it->second.first))->points_to_set;
+      for (const LogicalBuffer* input_buffer :
+           input_set.element(it->second.second)) {
+        points_to_set.AddPointedToBuffer(*input_buffer, index);
+      }
+
+      for (HloInstruction* tuple : input_set.tuple_sources(it->second.second)) {
+        points_to_set.add_tuple_source(index, tuple);
+      }
+    }
+  });
+  points_to_set.add_tuple_source({}, custom_call);
   return Status::OK();
 }
 
@@ -674,14 +707,14 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
 }
 
 // Returns all uses of all aliases of 'instruction' at 'index' in 'uses'.
-// Each use in 'uses' is a pair (HloInstruction* user, int64 operand_index)
+// Each use in 'uses' is a pair (HloInstruction* user, int64_t operand_index)
 // where 'user' is a user of an alias of 'instruction' at 'index', and
 // 'operand_index' is the operand index at which the alias appears in the
 // operand list of 'user'.
-std::vector<std::pair<HloInstruction*, int64>>
+std::vector<std::pair<HloInstruction*, int64_t>>
 TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
     HloInstruction* instruction, const ShapeIndex& index) const {
-  std::vector<std::pair<HloInstruction*, int64>> uses;
+  std::vector<std::pair<HloInstruction*, int64_t>> uses;
   const PointsToSet::BufferList& points_to =
       GetPointsToSet(instruction).element(index);
   for (const LogicalBuffer* buffer : points_to) {
@@ -691,7 +724,7 @@ TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
                                     alias_user)) {
           continue;
         }
-        for (int64 op_idx : alias_user->OperandIndices(alias.instruction())) {
+        for (int64_t op_idx : alias_user->OperandIndices(alias.instruction())) {
           uses.emplace_back(alias_user, op_idx);
         }
       }
@@ -707,7 +740,7 @@ TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
 // REQUIRES: 'fusion' opcode is a kFusion instruction.
 bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
     HloInstruction* operand, const ShapeIndex& operand_index,
-    HloInstruction* fusion, const int64 use_operand_index) const {
+    HloInstruction* fusion, const int64_t use_operand_index) const {
   CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
   // Check that 'operand' is unique in the operand list of 'fusion'.
   if (fusion->OperandIndices(operand).size() > 1) {

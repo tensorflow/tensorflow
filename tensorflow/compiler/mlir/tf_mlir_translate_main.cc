@@ -128,15 +128,19 @@ int main(int argc, char** argv) {
     module_or.ConsumeValueOrDie()->print(output->os());
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
+    tensorflow::MLIRImportOptions import_options;
+    import_options.upgrade_legacy = upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, &context, upgrade_legacy);
+        input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
     module_or.ConsumeValueOrDie()->print(output->os());
   } else if (import_saved_model_signature_defs_lite) {
     mlir::MLIRContext context;
+    tensorflow::MLIRImportOptions import_options;
+    import_options.upgrade_legacy = upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImportLite(
-        input_filename, tags, exported_names, &context, upgrade_legacy);
+        input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
     module_or.ConsumeValueOrDie()->print(output->os());

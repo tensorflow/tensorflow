@@ -17,7 +17,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -56,8 +56,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:fuchsia": [],
-        "//tensorflow:windows": [],
+        "//tensorflow:linux_armhf": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         ],

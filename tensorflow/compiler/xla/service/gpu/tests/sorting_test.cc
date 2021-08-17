@@ -35,6 +35,8 @@ namespace {
 
 class SortingTest : public GpuCodegenTest {
  protected:
+  SortingTest() { setenv("XLA_FLAGS", "--xla_dump_hlo_as_text", 0); }
+
   HloModuleConfig ConfigWithoutLayoutAssignment() {
     HloModuleConfig config;
     auto debug_options = HloTestBase::GetDebugOptionsForTest();

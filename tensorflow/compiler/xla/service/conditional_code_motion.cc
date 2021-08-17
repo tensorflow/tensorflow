@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -99,7 +100,7 @@ class BoundaryVisitor {
 };
 
 template <class OpCollection>
-int64 CountNonLeafOps(const OpCollection& ops) {
+int64_t CountNonLeafOps(const OpCollection& ops) {
   absl::flat_hash_set<HloInstruction*> op_set;
   for (auto op : ops) {
     if (!op_set.contains(op) && op->opcode() != HloOpcode::kConstant) {
@@ -113,16 +114,14 @@ int64 CountNonLeafOps(const OpCollection& ops) {
 // instructions.  Use different integers to classify different levels
 // of reuses This is used as a placeholder only, assuming all
 // instructions can be fused to enable data reuses
-int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+int64_t ReusesCarriedBy(HloOpcode op, HloOpcode user) {
   // Reuses in some way work like forces that pull instructions
   // towards each other. We use a number 0-10 to classify how strong the force
   // is between a pair of operations. Given a group of instructions that can be
   // moved together, if the forces inside a conditional are stronger, the group
   // will be moved incide or remain inside the conditional; otherwise, it will
   // be moved outside to or remain outside of the conditional.
-  VLOG(2) << "ConditionalCodeMotion: Add reuses carried by instr: "
-          << op->ToString() << "=>" << user->ToString() << "\n";
-  switch (user->opcode()) {
+  switch (user) {
     case HloOpcode::kGetTupleElement:
       return 0;
     case HloOpcode::kConvert:
@@ -130,7 +129,7 @@ int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
       // convolution, here if op is dot or convolution, they must be separated
       // by a conditional boundary. Here we do not try to pull convert inside
       // conditionals to be together with the dot or convolution.
-      switch (op->opcode()) {
+      switch (op) {
         case HloOpcode::kConvolution:
         case HloOpcode::kDot:
           return 0;
@@ -141,7 +140,7 @@ int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
     default:
       break;
   }
-  switch (op->opcode()) {
+  switch (op) {
       // These instructions do not carry weight of reuse themselves.
     case HloOpcode::kParameter:
     case HloOpcode::kConstant:
@@ -149,12 +148,58 @@ int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
       return 0;
     case HloOpcode::kConditional:
       return 10;
-    default: {
-      // Assume the reuse decreases with increasing user count.
-      int count1 = CountNonLeafOps(op->users());
-      int count2 = CountNonLeafOps(user->operands());
-      return 10 / count1 / count2;
-    }
+    default:
+      return -10;
+  }
+}
+
+// Returns true if `op` is worth hoisting.
+bool WorthHoisting(HloOpcode op, HloOpcode child_op) {
+  // TOOD[b/169182921] The following cost model is rather incomplete. Will
+  // need to extend to cover most of element-wise ops.
+  switch (op) {
+    case HloOpcode::kConvert:
+      // If Convert is after AllReduce, it is worth moving out AllReduce
+      // out of conditional for AR/CRS combine. If Convert is after other
+      // ops such as Dot or Convolutional, it is better to keep convert
+      // within conditional so that convert can be fused with Dot or
+      // Convolutional.
+      switch (child_op) {
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kReshape:
+        case HloOpcode::kGetTupleElement:
+          return true;
+        default:
+          return false;
+      }
+    case HloOpcode::kGetTupleElement:
+      switch (child_op) {
+        // do not move GTE if its operand is a parameter
+        case HloOpcode::kParameter:
+          return false;
+        default:
+          return true;
+      }
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAbs:
+    case HloOpcode::kReduce:
+    case HloOpcode::kAdd:
+    case HloOpcode::kPower:
+    case HloOpcode::kCopy:
+    case HloOpcode::kConstant:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kDivide:
+    case HloOpcode::kTuple:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kReshape:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMaximum:
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -205,7 +250,7 @@ bool InstructionWithinBranchIdentical(
 // Copy the ith instruction in boundary to outside of conditional, or do the
 // opposite (for moving in).
 Status CopyInOrOutOfConditional(
-    Boundary& boundary, int64 dest_index, HloComputation* parent,
+    Boundary& boundary, int64_t dest_index, HloComputation* parent,
     absl::flat_hash_map<HloInstruction*, Boundary>& hoisted_instructions) {
   CHECK(dest_index == 0 || boundary.IsOutsideBranch());
   HloInstruction* op = boundary.operands()[0];
@@ -228,7 +273,7 @@ Status CopyInOrOutOfConditional(
         }
         case HloOpcode::kGetTupleElement: {
           auto gte = Cast<HloGetTupleElementInstruction>(op_i);
-          int64 index = gte->tuple_index();
+          int64_t index = gte->tuple_index();
           HloInstruction* root = parent->root_instruction();
           CHECK(root->opcode() == HloOpcode::kTuple &&
                 index < root->operand_count());
@@ -262,12 +307,12 @@ Status CopyInOrOutOfConditional(
 
 // Identify converts to be hoisted/rematerialized out of the branch
 // computations.
-absl::flat_hash_set<int64> FindSpecialConverts(HloInstruction* old_root,
-                                               int branch_count,
-                                               HloInstruction* conditional,
-                                               bool is_layout_sensitive) {
-  absl::flat_hash_set<int64> kspecial_convert;
-  for (int64 operand_num = 0; operand_num < old_root->operand_count();
+absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
+                                                 int branch_count,
+                                                 HloInstruction* conditional,
+                                                 bool is_layout_sensitive) {
+  absl::flat_hash_set<int64_t> kspecial_convert;
+  for (int64_t operand_num = 0; operand_num < old_root->operand_count();
        ++operand_num) {
     if (old_root->operand(operand_num)->opcode() != HloOpcode::kConvert) {
       continue;
@@ -365,7 +410,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
   VLOG(2) << "BEFORE :" << conditional->parent()->parent()->ToString();
   // Identify the gte using `index'.
   auto find_gte = [](const HloInstruction* conditional_result,
-                     int64 index) -> HloInstruction* {
+                     int64_t index) -> HloInstruction* {
     for (HloInstruction* instr : conditional_result->users()) {
       if (instr->opcode() != HloOpcode::kGetTupleElement) {
         return nullptr;
@@ -378,7 +423,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
   };
 
   // Captures tuple indices refering to converts to be rematerialized/hoisted.
-  absl::flat_hash_set<int64> kspecial_convert = FindSpecialConverts(
+  absl::flat_hash_set<int64_t> kspecial_convert = FindSpecialConverts(
       old_root, branch_count, conditional, is_layout_sensitive);
 
   // Exit if we cannot find any converts to be hoisted.
@@ -391,16 +436,16 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
 
   for (int branch = 0; branch < branch_count; branch++) {
     old_root = conditional->branch_computation(branch)->root_instruction();
-    absl::flat_hash_map<HloInstruction*, int64> map_inst_to_tuple_index;
+    absl::flat_hash_map<HloInstruction*, int64_t> map_inst_to_tuple_index;
     std::vector<HloInstruction*> new_operands(old_root->operand_count());
     absl::flat_hash_set<HloInstruction*> to_hoist_set;
 
-    for (int64 operand_num = 0; operand_num < old_root->operand_count();
+    for (int64_t operand_num = 0; operand_num < old_root->operand_count();
          ++operand_num) {
       map_inst_to_tuple_index[old_root->mutable_operand(operand_num)] =
           operand_num;
     }
-    for (int64 operand_num = 0; operand_num < old_root->operand_count();
+    for (int64_t operand_num = 0; operand_num < old_root->operand_count();
          ++operand_num) {
       HloInstruction* hoist = old_root->mutable_operand(operand_num);
       if (!kspecial_convert.contains(operand_num)) {
@@ -409,7 +454,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
       }
 
       to_hoist_set.insert(hoist);
-      int64 new_tuple_count = old_root->operand_count();
+      int64_t new_tuple_count = old_root->operand_count();
 
       // Replace the hoisted instr in the tuple with the operand/operands.
       // We will replace at least one of the operands of the hoist at the
@@ -456,7 +501,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
     // Add the hoisted instructions in the parent.
     for (HloInstruction* hoist : to_hoist_set) {
       VLOG(2) << "Hoisting instruction:" << hoist->ToString();
-      int64 hoist_index = map_inst_to_tuple_index[hoist];
+      int64_t hoist_index = map_inst_to_tuple_index[hoist];
       // Find out the gte that captured the hoisted instr result.
       HloInstruction* gte_hoist = find_gte(conditional, hoist_index);
       CHECK(gte_hoist != nullptr);
@@ -503,7 +548,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   VLOG(1) << "before opt:"
           << conditional_parent->ToString(HloPrintOptions::Fingerprint())
           << "\n";
-  int64 op_index = 0;
+  int64_t op_index = 0;
   for (const Boundary& b : new_boundaries) {
     HloInstruction* op = b.operands()[0];
     CHECK(op != nullptr);
@@ -518,7 +563,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   // Copy boundary instructions out of the conditional.
   // Visit the operands before its users and copy it, so that the copied
   // user will point to the correct operand.
-  for (int64 i = to_move_out.size() - 1; i >= 0; i--) {
+  for (int64_t i = to_move_out.size() - 1; i >= 0; i--) {
     TF_RETURN_IF_ERROR(CopyInOrOutOfConditional(
         to_move_out[i], 0, conditional_parent, hoisted_instructions));
   }
@@ -532,7 +577,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     VLOG(2) << "Checking conditional user: " << user_instr->ToString() << "\n";
     CHECK(user_instr->opcode() == HloOpcode::kGetTupleElement);
     auto tuple_opd = static_cast<HloGetTupleElementInstruction*>(user_instr);
-    int64 index = tuple_opd->tuple_index();
+    int64_t index = tuple_opd->tuple_index();
     CHECK(old_root->operands().size() > index);
     HloInstruction* old_opd = old_root->operands()[index];
     VLOG(2) << "old opd = " << old_opd << "\n";
@@ -547,7 +592,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   VLOG(2) << "Done changing conditional users\n"
           << conditional_parent->ToString() << "\n";
   // Create tuple element within each branch and set it as root.
-  int64 branch_count = conditional->branch_count();
+  int64_t branch_count = conditional->branch_count();
   for (int i = 0; i < branch_count; i++) {
     auto computation = conditional->branch_computation(i);
     std::vector<HloInstruction*> elements;
@@ -579,8 +624,6 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
-
-  //
   VLOG(1) << "done moving instructions out of branches\n"
           << conditional_parent->ToString(HloPrintOptions::Fingerprint())
           << "\n";
@@ -601,8 +644,8 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
           << "\n";
   // Mapping instructions to be moved to their new representations.
   absl::flat_hash_map<HloInstruction*, Boundary> hoisted_instructions;
-  int64 to_move_in_size = to_move_in.size();
-  int64 branch_count = conditional->branch_count();
+  int64_t to_move_in_size = to_move_in.size();
+  int64_t branch_count = conditional->branch_count();
   HloGetTupleElementInstruction* tuple_use =
       DynCast<HloGetTupleElementInstruction>(to_move_in[0].operands()[0]);
   // If use_index is -1, the old conditional root entry used by to_move_in
@@ -611,14 +654,14 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   // need to be added as an extra entry of the modified root; otherwise, the
   // old root entry will be replaced with the new result in the modified root.
   // The entry replacement should be allowed only if tuple_use has <=1 users.
-  int64 use_index = (tuple_use != nullptr && tuple_use->user_count() == 1)
-                        ? tuple_use->tuple_index()
-                        : -1;
+  int64_t use_index = (tuple_use != nullptr && tuple_use->user_count() == 1)
+                          ? tuple_use->tuple_index()
+                          : -1;
   VLOG(2) << "Tuple use index = " << use_index << "\n";
   // Number of old conditional entries still to be used outside.
   // If conditional shape is not tuple, will create a tuple and use subscript
   // 0 to save the old operand being used.
-  int64 op_index =
+  int64_t op_index =
       conditional->shape().IsTuple()
           ? ((use_index >= 0) ? conditional->shape().tuple_shapes_size() - 1
                               : conditional->shape().tuple_shapes_size())
@@ -645,7 +688,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
       // If old_root is not a kTuple but has tuple shape, elements within the
       // tuple must be extracted first to be used by the new instructions.
       const Shape& old_shape = old_root->shape();
-      for (int64 i = 0; i < old_shape.tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < old_shape.tuple_shapes_size(); ++i) {
         auto element =
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_shape.tuple_shapes(i), old_root, i));
@@ -681,13 +724,13 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
     }
   }
   hoisted_instructions[conditional] = b_old_root;
-  int64 cp_start = 0;
+  int64_t cp_start = 0;
   if (use_index >= 0) {
     VLOG(2) << "Mapping GTE: " << tuple_use->ToString() << "\n";
     hoisted_instructions[tuple_use] = b_opd_use;
   }
   cp_start = (tuple_use != nullptr) ? 1 : 0;
-  for (int64 to_move_index = cp_start; to_move_index < to_move_in_size;
+  for (int64_t to_move_index = cp_start; to_move_index < to_move_in_size;
        to_move_index++) {
     Boundary b_to_move = to_move_in[to_move_index];
     HloInstruction* op = b_to_move.operands()[0];
@@ -737,7 +780,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
   VLOG(2) << "Before removing instructions:"
           << conditional->parent()->ToString() << "\n";
   // Remove hoisted instructions from the branches.
-  for (int64 i = to_move_in_size - 1; i >= 0; i--) {
+  for (int64_t i = to_move_in_size - 1; i >= 0; i--) {
     Boundary boundary_to_move_in = to_move_in[i];
     HloInstruction* op = boundary_to_move_in.operands()[0];
     if (op->user_count() == 0) {
@@ -772,15 +815,123 @@ class GroupConnectedBoundaries {
   bool is_layout_sensitive_;
   // Instructions that have been visited but are not going to be moved.
   absl::flat_hash_map<HloInstruction*, int>& visited_count_;
+  // The following four lines are configurations of the cost model, which will
+  // be used to determine whether to move an instruction (move_config_) and how
+  // strongly preferred it is to keep a pair of ops together (reuse_config_).
+  // The search_config_ is used to control how to navigate the search space of
+  // the cost model in the context of auto/manual tuning. The flipped array is
+  // used to save which entries in the configuration have been changed in the
+  // search/tuning process.
+  std::vector<std::vector<int64_t>>& move_config_;
+  std::vector<std::vector<int64_t>>& reuse_config_;
+  std::vector<int64_t>& search_config_vec_;
+  int64_t* search_config_;
+  int64_t search_subscript_;
+  absl::flat_hash_map<const int64_t*, int64_t> flipped_;
+
+  // The FlipMutation function serves to implement the search of alternative
+  // cost models by deciding whether to flip a given configuration, saved in
+  // the loc parameter. The non_zero parameter provides the new value to use
+  // to flip a zero. The msg parameter is only used for debugging purpposes.
+  int64_t FlipMutation(int64_t* loc, const int64_t non_zero,
+                       const std::string& msg) {
+    if (search_config_ == 0 || ContainsKey(flipped_, loc)) {
+      VLOG(2) << "Configured not to search or loc is already flipped.";
+      return *loc;
+    }
+    // The last 8 digits control when to start the first flip.
+    int c = ConditionalCodeMotion::flip_start(*search_config_);
+    VLOG(2) << "flip start index = " << c << "\n";
+    // Only flip the decision if c reaches 0.
+    if (c > 0) {
+      (*search_config_)--;
+      return *loc;
+    }
+    // The 8-16 digits control the maximum number of times to flip a config.
+    auto flip_count = ConditionalCodeMotion::DecrementMaxFlip(search_config_);
+    VLOG(2) << "max flip count = " << flip_count << "\n";
+    VLOG(2) << "Updating max Flipping configuration = " << *search_config_
+            << "\n";
+    if (flip_count == 0) {
+      VLOG(2) << "Maximum flip count has reached. ";
+      if (search_subscript_ + 1 < search_config_vec_.size()) {
+        VLOG(2) << "search_subscript_ = " << search_subscript_;
+        VLOG(2) << "search config vec size = " << search_config_vec_.size();
+        search_config_ = &search_config_vec_[++search_subscript_];
+      } else {
+        return *loc;
+      }
+    }
+    // Reload the 16-23 digits of the configuration, which controls how
+    // frequently a configuration should be flipped.
+    auto flip_stride = ConditionalCodeMotion::flip_stride(*search_config_);
+    *search_config_ += flip_stride;
+    VLOG(2) << "flip stride = " << flip_stride << "\n";
+    VLOG(2) << "Updating Flipping Stride = " << *search_config_ << "\n";
+
+    flipped_[loc] = *loc;
+    // Copy the last 8 bits back to the first 8 bits of configuration.
+    switch (*loc) {
+      case 0:
+        *loc = non_zero;
+        break;
+      default:
+        *loc = 0;
+        break;
+    }
+    VLOG(2) << "Flipping decision for: " << msg << ": from " << flipped_[loc]
+            << " to " << *loc << "\n";
+    return *loc;
+  }
 
  public:
   explicit GroupConnectedBoundaries(
       HloInstruction* conditional, bool is_layout_sensitive,
-      absl::flat_hash_map<HloInstruction*, int>& visited_count)
+      absl::flat_hash_map<HloInstruction*, int>& visited_count,
+      std::vector<std::vector<int64_t>>* move_config,
+      std::vector<std::vector<int64_t>>* reuse_config,
+      std::vector<int64_t>* search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
-        visited_count_(visited_count) {}
+        visited_count_(visited_count),
+        move_config_(*move_config),
+        reuse_config_(*reuse_config),
+        search_config_vec_(*search_config),
+        search_subscript_(0) {
+    VLOG(2) << "Initializing Group Connected Boundaries\n";
+    CHECK_NE(search_config, nullptr);
+    if (search_config_vec_.empty()) {
+      search_config_vec_.push_back(0);
+    }
+    search_config_ = &search_config_vec_[0];
+  }
+  // Returns estimation of potential reuses carried by a given pair of
+  // instructions. Use different integers to classify different levels
+  // of reuses. Assume all instructions can be fused to enable data reuses.
+  int64_t ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+    std::vector<int64_t>& curconfig =
+        reuse_config_[static_cast<uint32>(op->opcode())];
+    // Flip the reuse configuration if tuning the cost model.
+    // When flipping, use -10 if flipping to the default reuse model. Other
+    // values can be specified if needed to fine-control the decision making.
+    int64_t config =
+        ((*search_config_) < 0)
+            ? FlipMutation(&curconfig[static_cast<uint32>(user->opcode())], -10,
+                           HloOpcodeString(op->opcode()) + "->" +
+                               HloOpcodeString(user->opcode()))
+            : curconfig[static_cast<uint32>(user->opcode())];
+    VLOG(2) << "ConditionalCodeMotion: Add reuses carried by instr: "
+            << op->ToString() << "=>" << user->ToString() << " : " << config
+            << "\n";
+    if (config < 0) {
+      // Assume the reuse decreases with increasing user count.
+      int count1 = CountNonLeafOps(op->users());
+      int count2 = CountNonLeafOps(user->operands());
+      return (-config) / count1 / count2;
+    }
+    return config;
+  }
   void clear_recently_visited() {
     for (const auto& boundary : new_boundaries_) {
       visited_count_.erase(boundary.operands()[0]);
@@ -791,65 +942,44 @@ class GroupConnectedBoundaries {
     // This is needed for the "moving-in" transformation, to prevent the root
     // of the parent computation (which contains the conditional) to be moved
     // inside the conditional.
-    if (instruction->opcode() == HloOpcode::kTuple &&
+    HloOpcode opcode = instruction->opcode();
+    if (opcode == HloOpcode::kTuple &&
         instruction == conditional_parent_->root_instruction()) {
       return false;
     }
-    // TOOD[b/169182921] The following cost model is rather incomplete. Will
-    // need to extend to cover most of element-wise ops.
-    switch (instruction->opcode()) {
-      case HloOpcode::kConvert:
-        // If Convert is after AllReduce, it is worth moving out AllReduce
-        // out of conditional for AR/CRS combine. If Convert is after other
-        // ops such as Dot or Convolutional, it is better to keep convert
-        // within conditional so that convert can be fused with Dot or
-        // Convolutional.
-        switch (instruction->operand(0)->opcode()) {
-          case HloOpcode::kAllReduce:
-          case HloOpcode::kReshape:
-          case HloOpcode::kGetTupleElement:
-            return true;
-          default:
-            VLOG(2) << "Instruction is convert and its operand is not known to "
-                       "be worth hoisting\n";
-            return false;
-        }
-      case HloOpcode::kGetTupleElement:
-        switch (instruction->operand(0)->opcode()) {
-          // do not move GTE if its operand is a parameter
-          case HloOpcode::kParameter:
-            return false;
-          default:
-            return true;
-        }
-      case HloOpcode::kAllReduce:
-        // It is not safe to move collective ops from outside to inside
-        // conditional branches, as it may cause synchronization problems,
-        // when different layouts are assigned to different branches.
-        return is_inside_branch;
-      case HloOpcode::kAbs:
-      case HloOpcode::kReduce:
-      case HloOpcode::kAdd:
-      case HloOpcode::kPower:
-      case HloOpcode::kCopy:
-      case HloOpcode::kConstant:
-      case HloOpcode::kSubtract:
-      case HloOpcode::kMultiply:
-      case HloOpcode::kDivide:
-      case HloOpcode::kTuple:
-      case HloOpcode::kSqrt:
-      case HloOpcode::kRsqrt:
-      case HloOpcode::kReshape:
-      case HloOpcode::kMinimum:
-      case HloOpcode::kMaximum:
-        return true;
-      default:
-        VLOG(2) << "Instruction is not known to be worth hoisting\n";
-        return false;
+    // It is not safe to move collective ops from outside to inside
+    // conditional branches, as it may cause synchronization problems,
+    // when different layouts are assigned to different branches.
+    if (DynCast<HloCollectiveInstruction>(instruction) && !is_inside_branch) {
+      return false;
     }
+
+    // It is not legal to move the parameter instructions.
+    if (opcode == HloOpcode::kParameter) {
+      return false;
+    }
+
+    // Use configuration given from outside (e.g., by autotuner).
+    std::vector<int64_t>& curconfig = move_config_[static_cast<uint32>(opcode)];
+    auto col = (curconfig.size() == 1) ? 0
+               : (instruction->operand_count() > 0)
+                   ? static_cast<uint32>(instruction->operand(0)->opcode())
+                   : 0;
+    VLOG(2) << "column = " << col << "\n";
+    VLOG(2) << "config size = " << curconfig.size() << "\n";
+    VLOG(2) << "search_config = " << *search_config_ << "\n";
+    CHECK(col < curconfig.size());
+    uint32 config = ((*search_config_) > 0)
+                        ? FlipMutation(&curconfig[col], 1,
+                                       "Move-" + HloOpcodeString(opcode))
+                        : curconfig[col];
+    VLOG(2) << "Checking instruction is worth moving: " << config << "\n";
+    VLOG(2) << "after checking search_config = " << *search_config_ << "\n";
+    return (config != 0);
   }
-  int64 ReusesBeforeBoundary(HloInstruction* user) {
-    int64 reuses = 0;
+
+  int64_t ReusesBeforeBoundary(HloInstruction* user) {
+    int64_t reuses = 0;
     for (auto op : user->operands()) {
       // The operand must be an instruction that is not going to be moved (if
       // user is inside the conditional); otherwise it must be the conditional
@@ -876,7 +1006,7 @@ class GroupConnectedBoundaries {
     return reuses;
   }
 
-  int64 ReusesAfterBoundary(HloInstruction* user) {
+  int64_t ReusesAfterBoundary(HloInstruction* user) {
     CHECK(user != nullptr);
     auto all_users = user->users();
     // For now, assume that if an instruction has multiple-consumers, it
@@ -890,10 +1020,10 @@ class GroupConnectedBoundaries {
     }
     if (!all_users.empty()) {
       auto op = all_users[0];
-      int64 reuses = 0;
+      int64_t reuses = 0;
       // Only count reuses that run through the conditional root.
       if (op == conditional_->branch_computation(0)->root_instruction()) {
-        int64 index = op->operand_index(user);
+        int64_t index = op->operand_index(user);
         for (auto op2 : conditional_->users()) {
           // If the use is not get tuple, right now do not consider it.
           if (op2->opcode() == HloOpcode::kGetTupleElement) {
@@ -917,12 +1047,25 @@ class GroupConnectedBoundaries {
     return 0;
   }
 
-  int64 BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries) {
-    int64 reuses_before = 0, reuses_after = 0;
-    if (boundaries.size() == 1 && boundaries[0].IsOutsideBranch() &&
-        boundaries[0].operands()[0]->opcode() == HloOpcode::kGetTupleElement) {
-      // The only boundary of moving-in is the get_tuple_element op.
-      return -1;
+  int64_t BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries,
+                                     bool perform_reuse_analysis = true) {
+    int64_t reuses_before = 0, reuses_after = 0;
+    if (boundaries.size() == 1) {
+      if (boundaries[0].IsOutsideBranch() &&
+          boundaries[0].operands()[0]->opcode() ==
+              HloOpcode::kGetTupleElement) {
+        // The only boundary of moving-in is the get_tuple_element op.
+        return -1;
+      }
+      if (boundaries[0].IsInsideBranch() &&
+          boundaries[0].operands()[0]->opcode() == HloOpcode::kTuple) {
+        // The only boundary of moving-out is the tuple op inside branches.
+        return -1;
+      }
+    }
+    // If trying alternative moving configurations, turn off reuse analysis.
+    if (!perform_reuse_analysis) {
+      return 1;
     }
     // For cases like :
     // branch0 {
@@ -935,7 +1078,7 @@ class GroupConnectedBoundaries {
     // copy = copy(cond)
     //
     // We can fold the two copies thus reducing computation.
-    auto get_copy_folding_benefit = [&](HloInstruction* hlo) -> int64 {
+    auto get_copy_folding_benefit = [&](HloInstruction* hlo) -> int64_t {
       if (hlo->opcode() != HloOpcode::kCopy) {
         return 0;
       }
@@ -948,7 +1091,7 @@ class GroupConnectedBoundaries {
       if (conditional != conditional_) {
         return 0;
       }
-      int64 benefit = 0;
+      int64_t benefit = 0;
       for (auto* branch : conditional->called_computations()) {
         HloInstruction* root = branch->root_instruction();
         if (root->opcode() == HloOpcode::kTuple) {
@@ -975,7 +1118,7 @@ class GroupConnectedBoundaries {
       VLOG(2) << "Reuese after boundary so far : " << reuses_after << "\n";
     }
 
-    int64 copy_folding_benefit = 0;
+    int64_t copy_folding_benefit = 0;
     if (boundaries[0].IsOutsideBranch()) {
       for (const Boundary& b : boundaries) {
         auto op = b.operands()[0];
@@ -993,7 +1136,7 @@ class GroupConnectedBoundaries {
     }
   }
 
-  Boundary GetNextBoundary(const Boundary& b, int64 op_index) {
+  Boundary GetNextBoundary(const Boundary& b, int64_t op_index) {
     Boundary b2(b.GetPosition());
     for (int j = 0; j < b.operands().size(); ++j) {
       HloInstruction* inst = b.operands()[j];
@@ -1009,7 +1152,7 @@ class GroupConnectedBoundaries {
   // Checking whether it is safe to move a boundary when visited through a
   // dependent already considered for moving.
   bool IsSafeToMoveBoundary(const Boundary& next_boundary) {
-    int64 next_boundary_count =
+    int64_t next_boundary_count =
         (next_boundary.IsInsideBranch())
             ? next_boundary.operands()[0]->user_count()
             : CountNonLeafOps(next_boundary.operands()[0]->operands());
@@ -1066,9 +1209,9 @@ class GroupConnectedBoundaries {
           WorthHoisting(b.operands()[0], b.IsInsideBranch())) {
         connected_boundaries_.push_back(b);
         VLOG(2) << "boundary can be moved\n";
-        int64 operand_count = (b.IsInsideBranch())
-                                  ? b.operands()[0]->operand_count()
-                                  : b.operands()[0]->users().size();
+        int64_t operand_count = (b.IsInsideBranch())
+                                    ? b.operands()[0]->operand_count()
+                                    : b.operands()[0]->users().size();
         for (int i = 0; i < operand_count; i++) {
           Boundary next_boundary = GetNextBoundary(b, i);
           VLOG(2) << "Add operand/user " << i << " to visit later\n";
@@ -1121,11 +1264,13 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
     absl::flat_hash_map<HloInstruction*, int>& visited_count) {
   GroupConnectedBoundaries connect(conditional, is_layout_sensitive_,
-                                   visited_count);
+                                   visited_count, &move_config_, &reuse_config_,
+                                   &search_config_);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.empty()) {
-    auto benefit = connect.BenefitForMovingBoundaries(move_in_or_out);
+    auto benefit = connect.BenefitForMovingBoundaries(
+        move_in_or_out, search_config_map_.empty());
     VLOG(2) << "benefit of moving in or out "
             << cur_boundary.operands()[0]->ToString() << ":" << benefit << "\n";
     if (benefit >= 0) {
@@ -1202,9 +1347,23 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
   }
 
+  int64_t conditional_index = 0;
   // Use to collect mappings between cloned instructions.
   HloCloneContext clone_context(module);
   for (HloInstruction* conditional : conditional_ops) {
+    if (conditional_index == 0 || !search_config_map_.empty()) {
+      auto config_entry = search_config_map_.find(conditional_index);
+      if (config_entry != search_config_map_.end()) {
+        search_config_ = (*config_entry).second;
+        VLOG(2) << "config entry value extracted:" << search_config_.size();
+        search_config_index_ = 0;
+      }
+      VLOG(2) << "Obtaining default configuration for conditional "
+              << conditional_index << "\n";
+      SetDefaultMoveConfig();
+      VLOG(2) << "Done obtaining default configuration\n";
+      conditional_index++;
+    }
     int branch_count = conditional->branch_count();
     // check for shared conditional computations
     bool conditional_is_shared = false;
@@ -1217,9 +1376,9 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
 
     // Boundaries to move out or to move into the branches.
-    std::vector<std::vector<Boundary> > to_move_out, to_move_in;
-    std::vector<std::vector<Boundary> > new_boundaries_for_moveout;
-    std::vector<std::vector<Boundary> > new_boundaries_for_movein;
+    std::vector<std::vector<Boundary>> to_move_out, to_move_in;
+    std::vector<std::vector<Boundary>> new_boundaries_for_moveout;
+    std::vector<std::vector<Boundary>> new_boundaries_for_movein;
     // Number of times each instruction has been visited for moving.
     absl::flat_hash_map<HloInstruction*, int> visited_count;
     int benefit_move_out = 0, benefit_move_in = 0;
@@ -1390,6 +1549,93 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
   }
   return changed;
 }
+
+void ConditionalCodeMotion::SetDefaultMoveConfig() {
+  VLOG(2) << "search_config_index = " << search_config_index_ << "\n";
+  VLOG(2) << "search_config_ size = " << search_config_.size() << "\n";
+  int64_t cur_search_config = (search_config_index_ < 0 ||
+                               search_config_index_ >= search_config_.size())
+                                  ? 0
+                                  : search_config_[search_config_index_];
+  enum class TuningOption {
+    kDoNotTune = 0,
+    kTuneTransformationDecision = 1,
+    kTuneReuseModel = 2,
+  };
+  TuningOption tuning_option =
+      (cur_search_config == 0)  ? TuningOption::kDoNotTune
+      : (cur_search_config > 0) ? TuningOption::kTuneTransformationDecision
+                                : TuningOption::kTuneReuseModel;
+
+  auto row = HloOpcodeCount();
+  auto col = row;
+  VLOG(2) << "Start setting default configuration\n";
+  reuse_config_.clear();
+  move_config_.clear();
+  reuse_config_.reserve(row);
+  move_config_.reserve(row);
+  for (int64_t opcode = 0; opcode < row; ++opcode) {
+    // To save whether an instruction is preferred to be moved.
+    std::vector<int64_t> reuse_vec(col, 0);
+    for (uint32 j = 0; j < col; ++j) {
+      reuse_vec[j] = ReusesCarriedBy(static_cast<HloOpcode>(opcode),
+                                     static_cast<HloOpcode>(j));
+    }
+    reuse_config_.push_back(reuse_vec);
+    std::vector<int64_t> move_vec;
+    switch (tuning_option) {
+      case TuningOption::kTuneTransformationDecision:
+        // Tuning transformation decision --- start with all yes.
+        // Only a single entry is needed if we don't consider operands of an op
+        // when searching/tuning transformation decisions.
+        move_vec.push_back(1);
+        break;
+        // Tune the ReusesCarriedBy results only.
+      case TuningOption::kTuneReuseModel:
+      case TuningOption::kDoNotTune:
+        // No tuning --- use the default configuration.
+        // Use the opcode of first operand to configure default.
+        move_vec.reserve(col);
+        for (uint32 j = 0; j < col; ++j) {
+          move_vec.push_back(WorthHoisting(static_cast<HloOpcode>(opcode),
+                                           static_cast<HloOpcode>(j)));
+        }
+        break;
+    }
+    move_config_.push_back(move_vec);
+  }
+}
+
+// The search configuration is specified using a string in the format of
+// 'config1;config2; ...;config_n', where each config_i is in the format of
+// 'index,start,max,stride' (four integers separated by comma), which specify
+// the index number of the conditional being configured, the index of the first
+// transformation decision to flip for the conditional, the max number of
+// decisions to flip, and how many decisions to skip in between the flips.
+void ConditionalCodeMotion::ParseSearchConfiguration(
+    const std::string& search_config) {
+  if (search_config.empty()) {
+    return;
+  }
+  search_config_index_ = 0;
+  std::vector<std::string> configs = absl::StrSplit(search_config, ';');
+  for (const std::string& config : configs) {
+    std::vector<std::string> specs = absl::StrSplit(config, ',');
+    CHECK_EQ(specs.size(), 4);
+    int64_t condition_index;
+    CHECK(absl::SimpleAtoi(specs[0], &condition_index));
+    auto& cur_config_entry = search_config_map_[condition_index];
+    int64_t flip_start, max_flip, flip_stride;
+    CHECK(absl::SimpleAtoi(specs[1], &flip_start));
+    CHECK(absl::SimpleAtoi(specs[2], &max_flip));
+    CHECK(absl::SimpleAtoi(specs[3], &flip_stride));
+    int64_t cur_config = MakeSearchConfig(flip_start, max_flip, flip_stride);
+    cur_config_entry.push_back(cur_config);
+    VLOG(2) << "Setting search config " << condition_index << "->" << cur_config
+            << "\n";
+  }
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla

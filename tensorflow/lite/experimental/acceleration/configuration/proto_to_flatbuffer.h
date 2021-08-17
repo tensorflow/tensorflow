@@ -15,17 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_
 
-#include "flatbuffers/idl.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
 
-// Converts the protobuf version ComputeSettings to the flatbuffer version, via
-// json. The parser is used for state - the returned pointer is valid only as
-// long as the parser is kept alive and unmutated.
+// Converts the provided ComputeSettings from proto to flatbuffer format.
 const ComputeSettings* ConvertFromProto(
-    flatbuffers::Parser* parser, const proto::ComputeSettings& proto_settings);
+    const proto::ComputeSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder);
+
+// Converts the provided MiniBenchmarkSettings from proto to flatbuffer format.
+const MinibenchmarkSettings* ConvertFromProto(
+    const proto::MinibenchmarkSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder);
 
 }  // namespace tflite
 

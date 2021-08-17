@@ -15,6 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/sparse_reorder_op.h"
+
 #include <algorithm>
 #include <numeric>
 #include <unordered_map>
@@ -30,33 +32,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+using CPUDevice = Eigen::ThreadPoolDevice;
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+using GPUDevice = Eigen::GpuDevice;
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+namespace functor {
+
 template <typename T>
-class SparseReorderOp : public OpKernel {
- public:
-  explicit SparseReorderOp(OpKernelConstruction* context) : OpKernel(context) {}
+struct SparseReorderFunctor<CPUDevice, T> {
+  void operator()(OpKernelContext* context, const Tensor& input_ind,
+                  const Tensor& input_val, const Tensor& input_shape_in) {
+    gtl::ArraySlice<int64_t> input_shape(input_shape_in.vec<int64_t>().data(),
+                                         input_shape_in.NumElements());
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input_ind = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_ind.shape()),
-                errors::InvalidArgument(
-                    "Input indices should be a matrix but received shape ",
-                    input_ind.shape().DebugString()));
-
-    const Tensor& input_val = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_val.shape()),
-                errors::InvalidArgument(
-                    "Input values should be a vector but received shape ",
-                    input_val.shape().DebugString()));
-
-    const Tensor& input_shape_in = context->input(2);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
-                errors::InvalidArgument(
-                    "Input shape should be a vector but received shape ",
-                    input_shape_in.shape().DebugString()));
-
-    const TensorShape input_shape(input_shape_in.vec<int64>());
-
-    gtl::InlinedVector<int64, 8> std_order(input_shape.dims());
+    gtl::InlinedVector<int64_t, 8> std_order(input_shape.size());
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly
@@ -82,11 +73,57 @@ class SparseReorderOp : public OpKernel {
   }
 };
 
+}  // namespace functor
+
+template <typename Device, typename T>
+class SparseReorderOp : public OpKernel {
+ public:
+  explicit SparseReorderOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input_ind = context->input(0);
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_ind.shape()),
+                errors::InvalidArgument(
+                    "Input indices should be a matrix but received shape ",
+                    input_ind.shape().DebugString()));
+
+    const Tensor& input_val = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_val.shape()),
+                errors::InvalidArgument(
+                    "Input values should be a vector but received shape ",
+                    input_val.shape().DebugString()));
+
+    const Tensor& input_shape_in = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
+                errors::InvalidArgument(
+                    "Input shape should be a vector but received shape ",
+                    input_shape_in.shape().DebugString()));
+
+    functor::SparseReorderFunctor<Device, T>()(context, input_ind, input_val,
+                                               input_shape_in);
+  }
+};
+
 #define REGISTER_KERNELS(type)                                            \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("SparseReorder").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseReorderOp<type>)
+      SparseReorderOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_GPU_KERNELS(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("SparseReorder").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SparseReorderOp<GPUDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS);
+REGISTER_GPU_KERNELS(bool);
+#undef REGISTER_GPU_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

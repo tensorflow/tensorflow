@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <limits>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -52,8 +54,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, axis >= 0);
   TF_LITE_ENSURE(context, axis < t0->dims->size);
 
-  // TODO(ahentz): These are limitations of our implementation that could be
-  // removed with a bit of effort.
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
@@ -71,6 +71,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, t->type, input_type);
     for (int d = 0; d < t0->dims->size; ++d) {
       if (d == axis) {
+        // Avoid integer overflow in sum_axis below
+        TF_LITE_ENSURE(context, t->dims->data[axis] >= 0);
+        TF_LITE_ENSURE(context, t->dims->data[axis] <=
+                                    std::numeric_limits<int>::max() - sum_axis);
         sum_axis += t->dims->data[axis];
       } else {
         TF_LITE_ENSURE_EQ(context, t->dims->data[d], t0->dims->data[d]);
@@ -123,7 +127,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // TODO(ahentz): Creating 'all_inputs' below is not very efficient. We should
 // allocate and populate these during Prepare().
-// TODO(ycling): Activation function parameter is ignored. For now we dont have
+// TODO(ycling): Activation function parameter is ignored. For now we don't have
 // a model with a Concatenation with fused activation function.
 #define TF_LITE_CONCATENATION(scalar)                                         \
   {                                                                           \

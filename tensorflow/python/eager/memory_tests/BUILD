@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # NOTE: Do not add sharding to these tests. If tests run concurrently, they
@@ -11,6 +11,7 @@ package(
 py_library(
     name = "memory_test_util",
     srcs = ["memory_test_util.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = ["@six_archive//:six"],
 )

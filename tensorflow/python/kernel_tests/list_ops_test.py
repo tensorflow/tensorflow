@@ -22,7 +22,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np  # pylint: disable=unused-import
 
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -970,6 +970,29 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                 [[1.0, 2.0]] * 4)
     self.assertAllEqual(self.evaluate(updated_v_stacked), expected)
 
+  def testResourceVariableScatterGatherInt64(self):
+    c = constant_op.constant([1, 2], dtype=dtypes.int64)
+    l = list_ops.tensor_list_from_tensor(c, element_shape=[])
+    v = vs.get_variable("var", initializer=[l] * 10, use_resource=True)
+    v_r_0_stacked = list_ops.tensor_list_stack(v[0], dtypes.int64)
+    self.evaluate(v.initializer)
+    self.assertAllEqual([1, 2], self.evaluate(v_r_0_stacked))
+    v_r_sparse_stacked = list_ops.tensor_list_stack(
+        v.sparse_read(0), dtypes.int64)
+    self.assertAllEqual([1, 2], self.evaluate(v_r_sparse_stacked))
+    c34 = constant_op.constant([3, 4], dtype=dtypes.int64)
+    l_new_0 = list_ops.tensor_list_from_tensor(c34, element_shape=[])
+    c56 = constant_op.constant([5, 6], dtype=dtypes.int64)
+    l_new_1 = list_ops.tensor_list_from_tensor(c56, element_shape=[])
+    updated_v = state_ops.scatter_update(v, [3, 5], [l_new_0, l_new_1])
+    updated_v_elems = array_ops.unstack(updated_v)
+    updated_v_stacked = [
+        list_ops.tensor_list_stack(el, dtypes.int64) for el in updated_v_elems
+    ]
+    expected = ([[1, 2]] * 3 + [[3, 4], [1, 2], [5, 6]] +
+                [[1, 2]] * 4)
+    self.assertAllEqual(self.evaluate(updated_v_stacked), expected)
+
   @test_util.run_deprecated_v1
   def testConcat(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
@@ -1425,7 +1448,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r"Trying to concat list with only uninitialized tensors "
-        r"but element_shape_except_first_dim_ is not fully defined"):
+        r"but element_shape_except_first_dim is not fully defined"):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -1604,16 +1627,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_from_tensor(t, element_shape=[])
       handle_data = resource_variable_ops.get_eager_safe_handle_data(l)
       self.assertTrue(handle_data.is_set)
-      self.assertEqual(types_pb2.ST_TENSOR_LIST,
-                       handle_data.shape_and_type[0].specialized_type)
+      self.assertEqual(handle_data.shape_and_type[0].type.type_id,
+                       full_type_pb2.TFT_ARRAY)
       return l
 
     tensor_list = func()
     handle_data = resource_variable_ops.get_eager_safe_handle_data(tensor_list)
     self.assertTrue(handle_data.is_set)
     self.assertEqual(dtypes.float32, handle_data.shape_and_type[0].dtype)
-    self.assertEqual(types_pb2.ST_TENSOR_LIST,
-                     handle_data.shape_and_type[0].specialized_type)
+    self.assertEqual(handle_data.shape_and_type[0].type.type_id,
+                     full_type_pb2.TFT_ARRAY)
     element = list_ops.tensor_list_get_item(
         tensor_list, 0, element_dtype=dtypes.float32)
     self.assertAllEqual(element.shape.as_list(), [])
@@ -1710,6 +1733,20 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return list_ops.tensor_list_pop_back(shape_l, dtypes.int32)[1]
 
     self.assertAllEqual(f(), -1)
+
+  def testElementShapeArgOfTensorListFromTensor(self):
+
+    @def_function.function
+    def f():
+      t = array_ops.ones([3, 3])
+      l = list_ops.tensor_list_from_tensor(t, element_shape=[-1])
+      l = list_ops.tensor_list_push_back(l, array_ops.ones([4]))
+      read_val = list_ops.tensor_list_get_item(
+          l, 3, element_dtype=dtypes.float32)
+      self.assertAllEqual(read_val.shape.as_list(), [None])
+      return read_val
+
+    self.assertAllEqual(f(), [1.0, 1.0, 1.0, 1.0])
 
 
 if __name__ == "__main__":

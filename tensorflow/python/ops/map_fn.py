@@ -38,14 +38,8 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-np_arrays = lazy_loader.LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 @tf_export(v1=["map_fn"])
@@ -239,7 +233,7 @@ def map_fn(fn,
            [2, 3, 4]], dtype=int32)>
 
   In some cases, `tf.vectorized_map` can be used to automatically convert a
-  function to a vectorized eqivalent.
+  function to a vectorized equivalent.
 
   #### Eager execution
 
@@ -363,7 +357,8 @@ def map_fn(fn,
     fn_output_signature = dtype
 
   if not callable(fn):
-    raise TypeError("fn must be callable.")
+    raise TypeError(f"The provided function {fn.__name__} is not callable."
+                    "fn must be callable.")
 
   in_graph_mode = not context.executing_eagerly()
   # Set the default number of parallel_iterations depending on graph/eager mode.
@@ -426,16 +421,10 @@ def map_fn(fn,
 
     # Check that inputs are not scalars.
     first_elem = elems_flat[0]
-    if isinstance(first_elem, np_arrays.ndarray):
-      first_elem = first_elem.data
     elems_static_shape = first_elem.shape
     if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
-      if len(elems_flat) == 1:
-        raise ValueError("elems must be a 1+ dimensional Tensor, not a scalar")
-      else:
-        raise ValueError(
-            "elements in elems must be 1+ dimensional Tensors, not scalars"
-        )
+      raise ValueError(
+          "Elements in elems must be 1+ dimensional Tensors, not scalars")
 
     # Box any composite tensors into tensor lists.
     elems_batchable = _elems_flat_to_batchable(elems_flat)

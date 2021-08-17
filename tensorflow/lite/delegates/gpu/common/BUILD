@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -27,7 +27,6 @@ exports_files(
         "custom_parsers.h",
         "custom_transformations.h",
     ],
-    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -40,8 +39,14 @@ cc_library(
     srcs = ["gpu_info.cc"],
     hdrs = ["gpu_info.h"],
     deps = [
+        ":data_type",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "kernel_info",
+    hdrs = ["kernel_info.h"],
 )
 
 cc_library(
@@ -75,6 +80,7 @@ cc_library(
         ":shape",
         ":status",
         ":types",
+        ":util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -136,7 +142,10 @@ cc_library(
 cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
-    hdrs = ["model_builder.h"],
+    hdrs = [
+        "model_builder.h",
+        "model_builder_internal.h",
+    ],
     deps = [
         ":data_type",
         ":lstm_parser",
@@ -144,6 +153,7 @@ cc_library(
         ":model_builder_helper",
         ":model_transformer",
         ":object_reader",
+        ":operation_parser",
         ":operations",
         ":shape",
         ":status",
@@ -152,10 +162,13 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
@@ -169,6 +182,7 @@ cc_test(
     deps = [
         ":data_type",
         ":model_builder",
+        ":operation_parser",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
@@ -202,6 +216,11 @@ cc_library(
 )
 
 cc_library(
+    name = "model_hints",
+    hdrs = ["model_hints.h"],
+)
+
+cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
@@ -226,6 +245,8 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "@FP16",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -361,6 +382,34 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "operation_parser",
+    srcs = ["operation_parser.cc"],
+    hdrs = ["operation_parser.h"],
+    deps = [
+        ":model",
+        ":object_reader",
+        ":operations",
+        ":shape",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "unimplemented_operation_parser",
+    hdrs = ["unimplemented_operation_parser.h"],
+    deps = [
+        ":operation_parser",
+        ":status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
 cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
@@ -376,8 +425,18 @@ cc_library(
     hdrs = ["winograd_util.h"],
     deps = [
         ":data_type",
+        ":operations",
         ":shape",
         ":tensor",
+    ],
+)
+
+cc_test(
+    name = "winograd_util_test",
+    srcs = ["winograd_util_test.cc"],
+    deps = [
+        ":winograd_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -30,8 +30,7 @@ TfLiteStatus GetRegistrationFromOpCode(
   auto builtin_code = GetBuiltinCode(opcode);
   int version = opcode->version();
 
-  if (builtin_code > BuiltinOperator_MAX ||
-      builtin_code < BuiltinOperator_MIN) {
+  if (builtin_code > BuiltinOperator_MAX) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "Op builtin_code out of range: %d. Are you using old TFLite binary "
@@ -43,7 +42,9 @@ TfLiteStatus GetRegistrationFromOpCode(
     if (*registration == nullptr) {
       TF_LITE_REPORT_ERROR(
           error_reporter,
-          "Didn't find op for builtin opcode '%s' version '%d'\n",
+          "Didn't find op for builtin opcode '%s' version '%d'. "
+          "An older version of this builtin might be supported. "
+          "Are you using an old TFLite binary with a newer model?\n",
           EnumNameBuiltinOperator(builtin_code), version);
       status = kTfLiteError;
     }

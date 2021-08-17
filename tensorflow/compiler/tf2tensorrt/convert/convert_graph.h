@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -46,6 +47,7 @@ struct ConversionParams {
   int max_cached_engines = 1;
   bool use_calibration = true;
   bool use_implicit_batch = true;
+  ProfileStrategy profile_strategy = ProfileStrategy::kRange;
   bool allow_build_at_runtime = true;
 };
 
@@ -57,9 +59,12 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
 
 // Helper method that registers `segment_graph` as a function to the function
-// library in `graph`.
+// library in `graph`. When `has_int32_input` is true, the routine will informs
+// TensorFlow that int32 _Arg node inputs are on device memory during native
+// segment execution.
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
-                                      Graph* graph, const string& engine_name);
+                                      Graph* graph, const string& engine_name,
+                                      bool has_int32_input = false);
 
 }  // namespace convert
 }  // namespace tensorrt

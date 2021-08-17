@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "llvm/ADT/StringMap.h"
@@ -25,13 +26,16 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 
-namespace tensorflow {
+using llvm::raw_ostream;
 
+namespace tensorflow {
 namespace {
+
 struct NameCounts {
   mutex counts_mutex;
   llvm::StringMap<int64_t> counts;
@@ -94,10 +98,49 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   // The file being written to.
   std::unique_ptr<WritableFile> file;
 };
+
+struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
+  CrashReproducerStream(llvm::StringRef name,
+                        std::unique_ptr<llvm::raw_ostream> file)
+      : name(name), ostream(std::move(file)) {}
+
+  llvm::StringRef description() override { return name; }
+  raw_ostream& os() override { return *ostream; }
+
+ private:
+  std::string name;
+  std::unique_ptr<llvm::raw_ostream> ostream;
+};
+
+// MLIR crash reproducer which reports failures to the crash analysis system.
+struct CrashAnalysisCrashReproducerStream
+    : public mlir::PassManager::ReproducerStream {
+ public:
+  CrashAnalysisCrashReproducerStream()
+      : internal_str(""), string_stream(internal_str) {}
+
+  ~CrashAnalysisCrashReproducerStream() override {
+    crash_analysis::ReportEvent(
+        "mlir_crash_reproducer.mlir",
+        "Pass pipeline failure; crash reproducer attached",
+        string_stream.str());
+  }
+
+  llvm::StringRef description() override { return "mlir_crash_reproducer"; }
+  raw_ostream& os() override { return string_stream; }
+
+ private:
+  std::string internal_str;
+  llvm::raw_string_ostream string_stream;
+};
+
 }  // namespace
 
+const char kCrashReproducerStdErr[] = "-";
+const char kCrashReproducerCrashAnalysis[] = "crash_analysis";
+
 Status CreateFileForDumping(llvm::StringRef name,
-                            std::unique_ptr<llvm::raw_ostream>* os,
+                            std::unique_ptr<raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {
   std::string dir;
   if (!dirname.empty())
@@ -110,7 +153,7 @@ Status CreateFileForDumping(llvm::StringRef name,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
-  if (dir == "-") {
+  if (dir == kCrashReproducerStdErr) {
     *os = std::make_unique<LogInfoRawStream>();
     *filepath = "(stderr)";
     return Status();
@@ -139,7 +182,7 @@ Status CreateFileForDumping(llvm::StringRef name,
 
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
                              llvm::StringRef dirname) {
-  std::unique_ptr<llvm::raw_ostream> os;
+  std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
@@ -155,7 +198,7 @@ std::string GetDumpDirFromEnvVar() {
   if (!prefix_env) {
     LOG(WARNING)
         << "Failed to dump MLIR module because dump location is not "
-        << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
+        << "specified through TF_DUMP_GRAPH_PREFIX environment variable.";
     return "";
   }
 
@@ -172,7 +215,7 @@ std::string GetDumpDirFromEnvVar() {
 
 std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
                                 llvm::StringRef dirname) {
-  std::unique_ptr<llvm::raw_ostream> os;
+  std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
@@ -184,7 +227,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
 
 void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
   std::string path = dir_path.str();
-  if (path.empty()) {
+  if (path.empty() || path == kCrashReproducerCrashAnalysis) {
     if (getenv("MLIR_CRASH_REPRODUCER_DIRECTORY"))
       path = getenv("MLIR_CRASH_REPRODUCER_DIRECTORY");
     else if (getenv("TEST_UNDECLARED_OUTPUTS_DIR"))
@@ -209,22 +252,48 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     }
   }
 
-  auto* env = tensorflow::Env::Default();
-  auto status = env->RecursivelyCreateDir(path);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + path +
-                        "': " + status.error_message();
-    return;
+  // kCrashReproducerStdErr and kCrashReproducerCrashAnalysis settings do not
+  // require explicit file creation.
+  if (path != kCrashReproducerStdErr && path != kCrashReproducerCrashAnalysis) {
+    auto* env = tensorflow::Env::Default();
+    auto status = env->RecursivelyCreateDir(path);
+    if (!status.ok()) {
+      LOG(WARNING) << "cannot create directory '" + path +
+                          "': " + status.error_message();
+      return;
+    }
+
+    path += "/mlir_reproducer_";
+
+    if (!tensorflow::Env::Default()->CreateUniqueFileName(&path, ".mlir")) {
+      LOG(WARNING) << "cannot create unique filename, won't enable MLIR crash "
+                      "reproducer.";
+      return;
+    }
   }
 
-  path += "/mlir_reproducer_";
+  mlir::PassManager::ReproducerStreamFactory factory =
+      [path](std::string& error)
+      -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
+    if (path == kCrashReproducerStdErr)
+      return std::make_unique<CrashReproducerStream>(
+          "(stderr)", std::make_unique<LogInfoRawStream>());
+    if (path == kCrashReproducerCrashAnalysis) {
+      return std::make_unique<CrashAnalysisCrashReproducerStream>();
+    }
 
-  if (!tensorflow::Env::Default()->CreateUniqueFileName(&path, ".mlir")) {
-    LOG(WARNING)
-        << "cannot create unique filename, won't enable MLIR crash reproducer.";
-    return;
-  }
-  pm.enableCrashReproducerGeneration(path, /*genLocalReproducer=*/false);
+    // Try to open the file and generate a raw_ostream.
+    std::unique_ptr<WritableFile> file;
+    Status status = tensorflow::Env::Default()->NewWritableFile(path, &file);
+    if (!status.ok()) {
+      error = absl::StrCat("Failed to create file '", path,
+                           "': ", status.error_message());
+      return nullptr;
+    }
+    return std::make_unique<CrashReproducerStream>(
+        path, std::make_unique<WritableFileRawStream>(std::move(file)));
+  };
+  pm.enableCrashReproducerGeneration(factory, /*genLocalReproducer=*/false);
 }
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,

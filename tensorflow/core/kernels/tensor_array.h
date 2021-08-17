@@ -97,8 +97,8 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 
 }  // namespace tensor_array
 
-// The TensorArray object keeps an array of PersistentTensors.  It
-// allows reading from the array and writing to the array.
+// The TensorArray object keeps an array of Tensors.  It allows reading from the
+// array and writing to the array.
 //
 // Important properties:
 //   * Usually, writing to a particular index in the TensorArray is allowed at
@@ -106,9 +106,9 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //     multiple_writes_aggregate allow multiple writes to the same
 //     index.  In this case, the writes are summed.
 //   * Multiple reads are supported.
-//   * Deep copies of PersistentTensors are rarely made.  The only
-//     time they are made is when WriteOrAggregate is called at least twice
-//     on the same index with the flag multiple_writes_aggregate = True.
+//   * Deep copies of Tensors are rarely made.  The only time they are made is
+//     when WriteOrAggregate is called at least twice on the same index with the
+//     flag multiple_writes_aggregate = True.
 //   * Reading and Writing to the array is protected by a mutex.
 //     All operations on a TensorArray are thread-safe.
 //   * A TensorArray may be preemptively closed, which releases all
@@ -129,16 +129,16 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //
 class TensorArray : public ResourceBase {
  public:
-  static std::atomic<int64> tensor_array_counter;
+  static std::atomic<int64_t> tensor_array_counter;
 
   // Construct a TensorArray for holding Tensors of type 'dtype' with
   // 'N' elements.  While the underlying storage is a std::vector and
   // can hold more than MAX_INT entries, in practice we do not expect
   // users to construct this many Tensors for storage in a TensorArray.
   TensorArray(const string& key, const DataType& dtype, const Tensor& handle,
-              int32 N, const PartialTensorShape& element_shape,
+              int32_t N, const PartialTensorShape& element_shape,
               bool identical_element_shapes, bool dynamic_size,
-              bool multiple_writes_aggregate, bool is_grad, int32 marked_size,
+              bool multiple_writes_aggregate, bool is_grad, int32_t marked_size,
               bool clear_after_read)
       : key_(key),
         dtype_(dtype),
@@ -154,7 +154,7 @@ class TensorArray : public ResourceBase {
         identical_element_shapes_(identical_element_shapes),
         tensors_(N) {}
 
-  // Write PersistentTensor 'value' to index 'index'.
+  // Write Tensor 'value' to index 'index'.
   //
   // Preconditions:
   //  * The TensorArray is not closed
@@ -176,7 +176,7 @@ class TensorArray : public ResourceBase {
   //    raise an InvalidArgument error.
   //  * If multiple_writes_aggregate is true, subsequent writes to 'index':
   //    - The underlying Tensors in 'value' and from the first write
-  //      are released and a local PersistentTensor is created.
+  //      are released and a local Tensor is created.
   //    - Index 'index' is also marked as local_copy.
   //    - The gradients_disallowed flag is set true (GradientsAllowed()
   //      will now return false).
@@ -184,8 +184,8 @@ class TensorArray : public ResourceBase {
   // Note, value is passed as a pointer because we its underlying
   // Tensor's shape is accessed.  Otherwise it is not modified.
   template <typename Device, typename T>
-  Status WriteOrAggregate(OpKernelContext* ctx, const int32 index,
-                          PersistentTensor* value) {
+  Status WriteOrAggregate(OpKernelContext* ctx, const int32_t index,
+                          const Tensor* value) {
     mutex_lock l(mu_);
     return LockedWriteOrAggregate<Device, T>(ctx, index, value);
   }
@@ -193,10 +193,10 @@ class TensorArray : public ResourceBase {
   template <typename Device, typename T>
   Status WriteOrAggregateMany(OpKernelContext* ctx,
                               const std::vector<int32>& indices,
-                              std::vector<PersistentTensor>* values) {
+                              std::vector<Tensor>* values) {
     mutex_lock l(mu_);
-    int32 i = 0;
-    for (const int32 ix : indices) {
+    int32_t i = 0;
+    for (const int32_t ix : indices) {
       Status s = LockedWriteOrAggregate<Device, T>(ctx, ix, &(*values)[i]);
       ++i;
       TF_RETURN_IF_ERROR(s);
@@ -204,7 +204,7 @@ class TensorArray : public ResourceBase {
     return Status::OK();
   }
 
-  // Read from index 'index' into PersistentTensor 'value'.
+  // Read from index 'index' into Tensor 'value'.
   //
   // Preconditions:
   //  * The TensorArray is not closed
@@ -220,20 +220,19 @@ class TensorArray : public ResourceBase {
   //    the returned '*value'.
   //  * The index is marked as read (it cannot be rewritten to).
   template <typename Device, typename T>
-  Status Read(OpKernelContext* ctx, const int32 index,
-              PersistentTensor* value) {
+  Status Read(OpKernelContext* ctx, const int32_t index, Tensor* value) {
     mutex_lock l(mu_);
     return LockedRead<Device, T>(ctx, index, value);
   }
 
   template <typename Device, typename T>
   Status ReadMany(OpKernelContext* ctx, const std::vector<int32>& indices,
-                  std::vector<PersistentTensor>* values) {
+                  std::vector<Tensor>* values) {
     mutex_lock l(mu_);
     values->clear();
     values->resize(indices.size());
-    int32 i = 0;
-    for (const int32 ix : indices) {
+    int32_t i = 0;
+    for (const int32_t ix : indices) {
       Status s = LockedRead<Device, T>(ctx, ix, &(*values)[i]);
       ++i;
       if (!s.ok()) return s;
@@ -279,7 +278,7 @@ class TensorArray : public ResourceBase {
   }
 
   // Record the size of the TensorArray after an unpack or split.
-  Status SetMarkedSize(int32 size) {
+  Status SetMarkedSize(int32_t size) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(LockedReturnIfClosed());
     if (!is_grad_) {
@@ -350,17 +349,17 @@ class TensorArray : public ResourceBase {
   }
 
  private:
-  Status LockedWrite(OpKernelContext* ctx, const int32 index,
-                     PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  template <typename Device, typename T>
-  Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32 index,
-                                PersistentTensor* value)
+  Status LockedWrite(OpKernelContext* ctx, const int32_t index, Tensor* value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
-  Status LockedRead(OpKernelContext* ctx, const int32 index,
-                    PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32_t index,
+                                const Tensor* value)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  template <typename Device, typename T>
+  Status LockedRead(OpKernelContext* ctx, const int32_t index, Tensor* value)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status LockedReturnIfClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
@@ -391,8 +390,7 @@ class TensorArray : public ResourceBase {
   // multiple_writes_aggregate), then gradients are disallowed.
   bool gradients_disallowed_ TF_GUARDED_BY(mu_);
 
-  // After a read at an index, clear away its PersistentTensor to
-  // release memory.
+  // After a read at an index, clear away its Tensor to release memory.
   const bool clear_after_read_;
 
   // True iff this is a gradient tensor array.
@@ -413,13 +411,13 @@ class TensorArray : public ResourceBase {
   // was not fully defined.
   const bool identical_element_shapes_;
 
-  // TensorAndState is used to keep track of the PersistentTensors
-  // stored in the TensorArray, along with their shapes, and a boolean
-  // that determines whether they have already been read or not.
+  // TensorAndState is used to keep track of the Tensors stored in the
+  // TensorArray, along with their shapes, and a boolean that determines whether
+  // they have already been read or not.
   struct TensorAndState {
     TensorAndState()
         : written(false), read(false), cleared(false), local_copy(false) {}
-    PersistentTensor tensor;
+    Tensor tensor;
     TensorShape shape;
     bool written;  // True if a Tensor has been written to the index.
     bool read;  // True if a Tensor has been written to and read from the index.
@@ -434,14 +432,14 @@ class TensorArray : public ResourceBase {
     // used.  All future writes will aggregate to the existing local Tensor.
     bool local_copy;
   };
-  // The list of underlying PersistentTensors and states.
+  // The list of underlying Tensors and states.
   std::vector<TensorAndState> tensors_ TF_GUARDED_BY(mu_);
 };
 
 template <typename Device, typename T>
 Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
-                                           const int32 index,
-                                           PersistentTensor* value) {
+                                           const int32_t index,
+                                           const Tensor* value) {
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
   size_t index_size = static_cast<size_t>(index);
   if (index < 0 || (!dynamic_size_ && index_size >= tensors_.size())) {
@@ -460,24 +458,23 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
   }
   TensorAndState& t = tensors_[index];
 
-  Tensor* value_t = value->AccessTensor(ctx);
-  if (value_t->dtype() != dtype_) {
+  if (value->dtype() != dtype_) {
     return errors::InvalidArgument(
         "TensorArray ", handle_.vec<tstring>()(1),
         ": Could not write to TensorArray index ", index,
-        " because the value dtype is ", DataTypeString(value_t->dtype()),
+        " because the value dtype is ", DataTypeString(value->dtype()),
         " but TensorArray dtype is ", DataTypeString(dtype_), ".");
   }
-  if (!element_shape_.IsCompatibleWith(value_t->shape())) {
+  if (!element_shape_.IsCompatibleWith(value->shape())) {
     return errors::InvalidArgument(
         "TensorArray ", handle_.vec<tstring>()(1),
         ": Could not write to TensorArray index ", index,
-        " because the value shape is ", value_t->shape().DebugString(),
+        " because the value shape is ", value->shape().DebugString(),
         " which is incompatible with the TensorArray's inferred element "
         "shape: ",
         element_shape_.DebugString(), " (consider setting infer_shape=False).");
   } else if (identical_element_shapes_ && !element_shape_.IsFullyDefined()) {
-    element_shape_ = PartialTensorShape(value_t->shape().dim_sizes());
+    element_shape_ = PartialTensorShape(value->shape().dim_sizes());
   }
 
   if (t.read) {
@@ -496,13 +493,13 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
   if (t.written) {
     DCHECK(multiple_writes_aggregate_);
 
-    // Check that value_t shape matches t.shape
-    if (value_t->shape() != t.shape) {
+    // Check that value shape matches t.shape
+    if (value->shape() != t.shape) {
       return errors::InvalidArgument(
           "TensorArray ", handle_.vec<tstring>()(1),
           ": Could not aggregate to TensorArray index ", index,
           " because the existing shape is ", t.shape.DebugString(),
-          " but the new input shape is ", value_t->shape().DebugString(), ".");
+          " but the new input shape is ", value->shape().DebugString(), ".");
     }
 
     if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
@@ -513,19 +510,18 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
       return Status::OK();
     }
 
-    Tensor* existing_t = t.tensor.AccessTensor(ctx);
+    Tensor* existing_t = &t.tensor;
 
     if (t.local_copy) {
       Status s = tensor_array::AddToTensor<Device, T>(ctx, existing_t,
-                                                      existing_t, value_t);
+                                                      existing_t, value);
       TF_RETURN_IF_ERROR(s);
     } else {
-      PersistentTensor local_tensor;
-      Tensor* local_tensor_t;
-      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-          dtype_, existing_t->shape(), &local_tensor, &local_tensor_t));
-      Status s = tensor_array::AddToTensor<Device, T>(ctx, local_tensor_t,
-                                                      existing_t, value_t);
+      Tensor local_tensor;
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_temp(dtype_, existing_t->shape(), &local_tensor));
+      Status s = tensor_array::AddToTensor<Device, T>(ctx, &local_tensor,
+                                                      existing_t, value);
       TF_RETURN_IF_ERROR(s);
       t.tensor = local_tensor;
       t.local_copy = true;
@@ -536,15 +532,15 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
     gradients_disallowed_ = true;
   } else {
     t.tensor = *value;
-    t.shape = value_t->shape();
+    t.shape = value->shape();
     t.written = true;
   }
   return Status::OK();
 }
 
 template <typename Device, typename T>
-Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
-                               PersistentTensor* value) {
+Status TensorArray::LockedRead(OpKernelContext* ctx, const int32_t index,
+                               Tensor* value) {
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
   if ((index < 0) ||
       (!is_grad_ && (static_cast<size_t>(index) >= tensors_.size()))) {
@@ -607,11 +603,9 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
   if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
     // We stored just a shape, but no value.  This means create and
     // return zeros of the appropriate shape.
-    Tensor* tensor_t;
-    TF_RETURN_IF_ERROR(
-        ctx->allocate_persistent(dtype_, t.shape, &t.tensor, &tensor_t));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(dtype_, t.shape, &t.tensor));
     if (t.shape.num_elements() > 0) {
-      Status s = tensor_array::TensorSetZero<Device, T>(ctx, tensor_t);
+      Status s = tensor_array::TensorSetZero<Device, T>(ctx, &t.tensor);
       if (!s.ok()) return s;
     }
   }
@@ -620,7 +614,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
   *value = t.tensor;
 
   if (clear_after_read_) {
-    t.tensor = PersistentTensor();
+    t.tensor = Tensor();
     t.cleared = true;
   }
   t.read = true;

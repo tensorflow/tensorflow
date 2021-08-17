@@ -141,7 +141,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
         /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
         Rendezvous::Factory{
-            [this](const int64 step_id, const DeviceMgr* device_mgr,
+            [this](const int64_t step_id, const DeviceMgr* device_mgr,
                    Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
               if (rendezvous_ref_counts_.find(step_id) !=
@@ -152,7 +152,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
               }
               return Status::OK();
             },
-            [this](const int64 step_id) {
+            [this](const int64_t step_id) {
               CHECK(rendezvous_ref_counts_.find(step_id) !=
                     rendezvous_ref_counts_.end());
               rendezvous_ref_counts_[step_id]--;
@@ -224,13 +224,10 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     TF_CHECK_OK(pflr->IsCrossProcess(handle, &is_cross_process));
     EXPECT_FALSE(is_cross_process);
 
-    std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
-
     Notification done;
     opts.runner = &runner;
     std::vector<K> out;
@@ -246,8 +243,6 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-
-    EXPECT_GE(call_count, 1);  // Test runner is used.
 
     // Release the handle and then try running the function. It shouldn't
     // succeed.
@@ -290,10 +285,8 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                          FunctionLibraryRuntime::Options opts,
                          const std::vector<Tensor>& args,
                          std::vector<Tensor*> rets) {
-    std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
 
@@ -313,7 +306,6 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    EXPECT_GE(call_count, 1);  // Test runner is used.
     return Status::OK();
   }
 
@@ -328,7 +320,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
 
   // To ensure that we are cleaning up the rendezvous properly.
-  std::unordered_map<int64, int> rendezvous_ref_counts_;
+  std::unordered_map<int64_t, int> rendezvous_ref_counts_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -366,7 +358,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetDeviceIncarnation) {
   Init({});
-  int64 incarnation;
+  int64_t incarnation;
   TF_EXPECT_OK(proc_flr_->GetDeviceIncarnation("/job:a/replica:0/task:0/cpu:1",
                                                &incarnation));
   // Incarnation is a random number other than 0.
@@ -1163,7 +1155,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataAbsent) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   TF_CHECK_OK(
       Run("SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y}));
@@ -1178,7 +1170,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresent) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   TF_CHECK_OK(
       Run("SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y}));
@@ -1225,7 +1217,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
-  const auto x = test::AsTensor<int64>({17});
+  const auto x = test::AsTensor<int64_t>({17});
   Tensor y;
   Status s = RunWithRuntime<std::vector<Tensor>, Tensor>(
       "SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y},

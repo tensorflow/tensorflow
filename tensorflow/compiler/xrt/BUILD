@@ -11,13 +11,17 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+)
 
 package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(
@@ -31,6 +35,25 @@ tf_proto_library(
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "xrt_tpu_utils",
+    srcs = [
+        "xrt_tpu_device.cc",
+    ],
+    hdrs = [
+        "xrt_tpu_device.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
 )
 
 cc_library(
@@ -52,6 +75,7 @@ cc_library(
         "xrt_state.h",
         "xrt_util.h",
     ],
+    copts = if_cuda(["-DGOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":xrt_proto_cc",
@@ -74,10 +98,14 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
@@ -124,3 +152,12 @@ cc_library(
         "//tensorflow/compiler/xrt/kernels:xrt_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xrt_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xrt_proto"],
+# )
+# copybara:uncomment_end

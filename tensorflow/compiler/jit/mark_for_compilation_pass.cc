@@ -61,7 +61,6 @@ namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
 using jit::DeviceId;
 using jit::DeviceSet;
-using xla::StatusOr;
 
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
@@ -103,7 +102,7 @@ class MarkForCompilationPassImpl {
     // effectively acts as a "cap" for how much we cluster and we can bisect
     // over this initial value to discover clustering decisions that cause a
     // miscompile or a performance regression.
-    std::atomic<int64>* fuel;
+    std::atomic<int64_t>* fuel;
 
     bool dump_graphs;
   };
@@ -438,7 +437,7 @@ class MarkForCompilationPassImpl {
   GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
-  int64 iteration_count_ = 0;
+  int64_t iteration_count_ = 0;
   absl::flat_hash_set<std::pair<int, int>> unsafe_resource_deps_;
 };
 
@@ -637,7 +636,7 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
 template <typename FnTy>
 StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   bool changed = false;
-  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+  for (int32_t node : cycles_graph_.AllNodesInPostOrder()) {
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
     if (!cluster_from) {
       continue;
@@ -840,9 +839,9 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
-std::atomic<int64> cluster_sequence_num;
+std::atomic<int64_t> cluster_sequence_num;
 
-int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+int64_t GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
 
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
@@ -1146,7 +1145,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   }
   std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
 
-  if (*debug_options_.fuel >= std::numeric_limits<int64>::max() / 2) {
+  if (*debug_options_.fuel >= std::numeric_limits<int64_t>::max() / 2) {
     // The assumption is that if fuel started out as INT64_MAX, it will forever
     // stay greater than INT64_MAX / 2.
     VLOG(2) << "Starting fuel: infinity";
@@ -1199,12 +1198,23 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
+    filter.allow_string_consts = false;
+    filter.allow_collective_reduce_v2 = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
 
     if (!checker.IsCompilableNode(*node, lib_runtime)) {
       continue;
+    }
+
+    if (node->type_string() == "Const") {
+      // Skip Const op with type DT_STRING, since XLA autoclustering doesn't
+      // support it.
+      const AttrValue* attr = node->attrs().Find("dtype");
+      if (attr != nullptr && attr->type() == DT_STRING) {
+        continue;
+      }
     }
 
     if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
@@ -1518,7 +1528,7 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     }
   };
 
-  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64>>;
+  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64_t>>;
 
   EdgeInfoMap incoming_edge_infos;
   EdgeInfoMap outgoing_edge_infos;
@@ -1686,9 +1696,16 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
+    // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
+    // and doesn't require auto clustering.
+    if (n->type_string() == "TPUExecute" ||
+        n->type_string() == "TPUExecuteAndUpdateVariables") {
       return Status::OK();
     }
   }
@@ -1701,8 +1718,8 @@ Status MarkForCompilation(
       .Run();
 }
 
-std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
-  static std::atomic<int64>* fuel = [&]() {
+std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
+  static std::atomic<int64_t>* fuel = [&]() {
     std::atomic<int64>* fuel = new std::atomic<int64>;
     *fuel = initial_value;
     return fuel;
@@ -1775,10 +1792,10 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
-            "_UnaryOpsComposition",
-            // The following 4 operations are converted to identity
+            "_UnaryOpsComposition", "CollectiveReduceV2",
+            // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
-            "Snapshot"}},
+            "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
      {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
@@ -1805,7 +1822,8 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
       "PadV2", "Reverse", "ReverseV2", "ReverseSequence", "Slice", "Split",
       "SplitV", "StridedSlice", "StridedSliceGrad",
       "ResourceStridedSliceAssign", "Tile", "Transpose", "InvertPermutation",
-      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate",
+      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate", "XlaConcatND",
+      "XlaSplitND",
      }}};
   // clang-format on
   return result;
@@ -1823,12 +1841,14 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "AssignAddVariableOp",
                                      "AssignSubVariableOp",
                                      "AssignVariableOp",
+                                     "AssignVariableXlaConcatND",
                                      "AvgPool",
                                      "AvgPool3D",
                                      "AvgPool3DGrad",
                                      "AvgPoolGrad",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
+                                     "BatchMatMulV3",
                                      "BatchToSpace",
                                      "BatchToSpaceND",
                                      "BesselI0e",
@@ -1858,6 +1878,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Dequantize",
                                      "Diag",
                                      "DynamicStitch",
+                                     "DynamicPartition",
                                      "Einsum",
                                      "EmptyTensorList",
                                      "EnsureShape",
@@ -1926,6 +1947,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
+                                     "QuantizeAndDequantizeV4",
                                      "RFFT",
                                      "RFFT2D",
                                      "RFFT3D",
@@ -1935,6 +1957,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "RandomUniform",
                                      "RandomUniformInt",
                                      "ReadVariableOp",
+                                     "ReadVariableXlaSplitND",
                                      "ResizeBilinear",
                                      "ResizeBilinearGrad",
                                      "ResizeNearestNeighbor",
@@ -2033,8 +2056,10 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
+                                     "ToBool",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
+                                     "Unique",
                                      "UpperBound",
                                      "UnsortedSegmentMax",
                                      "UnsortedSegmentMin",
@@ -2045,9 +2070,12 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Where",
                                      "While",
                                      "XlaBroadcastHelper",
+                                     "XlaConcatND",
                                      "XlaConv",
+                                     "XlaConvV2",
                                      "XlaDequantize",
                                      "XlaDot",
+                                     "XlaDotV2",
                                      "XlaDynamicSlice",
                                      "XlaDynamicUpdateSlice",
                                      "XlaEinsum",
@@ -2058,7 +2086,9 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaRecv",
                                      "XlaReduce",
                                      "XlaReduceWindow",
+                                     "XlaRemoveDynamicDimensionSize",
                                      "XlaReplicaId",
+                                     "XlaRngBitGenerator",
                                      "XlaScatter",
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
@@ -2067,10 +2097,13 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSetDynamicDimensionSize",
                                      "XlaSharding",
                                      "XlaSort",
+                                     "XlaSplitND",
                                      "XlaSpmdFullToShardShape",
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaVariadicReduce",
+                                     "XlaVariadicReduceV2",
+                                     "XlaVariadicSort",
                                      "XlaWhile",
                                      "Zeta",
                                      "_Arg",

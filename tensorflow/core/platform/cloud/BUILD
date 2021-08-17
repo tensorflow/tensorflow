@@ -13,7 +13,7 @@ package(
     default_visibility = [
         ":dependency_whitelist",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

@@ -14,11 +14,7 @@
 # ==============================================================================
 """Utilities for unit-testing Keras."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections.abc as collections_abc
+import collections
 import functools
 import itertools
 import unittest
@@ -386,14 +382,10 @@ def run_all_keras_modes(test_or_class=None,
     ImportError: If abseil parameterized is not installed or not included as
       a target dependency.
   """
-  skip_keras_tensors = kwargs.pop('skip_keras_tensors', False)
   if kwargs:
     raise ValueError('Unrecognized keyword args: {}'.format(kwargs))
 
   params = [('_v2_function', 'v2_function')]
-  if not skip_keras_tensors:
-    params.append(('_v2_function_use_keras_tensors',
-                   'v2_function_use_keras_tensors'))
   if not always_skip_eager:
     params.append(('_v2_eager', 'v2_eager'))
   if not (always_skip_v1 or tf2.enabled()):
@@ -413,8 +405,6 @@ def run_all_keras_modes(test_or_class=None,
         _v2_eager_test(f, self, *args, **kwargs)
       elif run_mode == 'v2_function':
         _v2_function_test(f, self, *args, **kwargs)
-      elif run_mode == 'v2_function_use_keras_tensors':
-        _v2_function_and_kerastensors_test(f, self, *args, **kwargs)
       else:
         return ValueError('Unknown run mode %s' % run_mode)
 
@@ -426,7 +416,7 @@ def run_all_keras_modes(test_or_class=None,
 def _v1_session_test(f, test_or_class, config, *args, **kwargs):
   with ops.get_default_graph().as_default():
     with testing_utils.run_eagerly_scope(False):
-      with test_or_class.test_session(use_gpu=True, config=config):
+      with test_or_class.test_session(config=config):
         f(test_or_class, *args, **kwargs)
 
 
@@ -440,13 +430,6 @@ def _v2_function_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
       f(test_or_class, *args, **kwargs)
-
-
-def _v2_function_and_kerastensors_test(f, test_or_class, *args, **kwargs):
-  with context.eager_mode():
-    with testing_utils.run_eagerly_scope(False):
-      with testing_utils.use_keras_tensors_scope(True):
-        f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):
@@ -473,7 +456,7 @@ def _test_or_class_decorator(test_or_class, single_method_decorator):
     The decorated result.
   """
   def _decorate_test_or_class(obj):
-    if isinstance(obj, collections_abc.Iterable):
+    if isinstance(obj, collections.abc.Iterable):
       return itertools.chain.from_iterable(
           single_method_decorator(method) for method in obj)
     if isinstance(obj, type):

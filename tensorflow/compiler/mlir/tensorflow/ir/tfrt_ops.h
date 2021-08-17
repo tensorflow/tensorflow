@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_
 
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"

@@ -26,11 +26,13 @@ REGISTER_VARIANT(UnaryVariantOp, CPU, "Conj", CONJ_VARIANT_UNARY_OP);
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<Variant>("T"),
     UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
     UnaryOp<GPUDevice, functor::conj<complex64>>);
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex128>("T"),
     UnaryOp<GPUDevice, functor::conj<complex128>>);
+#endif
 #endif
 }  // namespace tensorflow

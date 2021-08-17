@@ -27,19 +27,27 @@ namespace tflite {
 namespace benchmark {
 using tensorflow::Stat;
 
+constexpr int kMemoryCheckIntervalMs = 50;
+
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
   params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(50));
   params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("run_frequency", BenchmarkParam::Create<float>(-1.0f));
+  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(-1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("verbose", BenchmarkParam::Create<bool>(false));
+  params.AddParam("dry_run", BenchmarkParam::Create<bool>(false));
+  params.AddParam("report_peak_memory_footprint",
+                  BenchmarkParam::Create<bool>(false));
+  params.AddParam("memory_footprint_check_interval_ms",
+                  BenchmarkParam::Create<int32_t>(kMemoryCheckIntervalMs));
   return params;
 }
 
@@ -62,9 +70,16 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
       << "Note: as the benchmark tool itself affects memory footprint, the "
          "following is only APPROXIMATE to the actual memory footprint of the "
          "model at runtime. Take the information at your discretion.";
-  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
-                   << init_mem_usage.max_rss_kb / 1024.0
+  TFLITE_LOG(INFO) << "Memory footprint delta from the start of the tool (MB): "
+                   << "init=" << init_mem_usage.max_rss_kb / 1024.0
                    << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
+
+  auto peak_mem_mb = results.peak_mem_mb();
+  if (peak_mem_mb > 0) {
+    TFLITE_LOG(INFO)
+        << "Overall peak memory footprint (MB) via periodic monitoring: "
+        << peak_mem_mb;
+  }
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -83,6 +98,12 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
           "is exceeded in the middle of a run, the benchmark will continue to "
           "the end of the run but will not start the next run."),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
+      CreateFlag<float>(
+          "run_frequency", &params_,
+          "Execute at a fixed frequency, instead of a fixed delay."
+          "Note if the targeted rate per second cannot be reached, the "
+          "benchmark would start the next run immediately, trying its best to "
+          "catch up. If set, this will override run_delay."),
       CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
       CreateFlag<bool>(
           "use_caching", &params_,
@@ -105,7 +126,20 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
                        "Whether to log parameters whose values are not set. "
                        "By default, only log those parameters that are set by "
                        "parsing their values from the commandline flags."),
-  };
+      CreateFlag<bool>("dry_run", &params_,
+                       "Whether to run the tool just with simply loading the "
+                       "model, allocating tensors etc. but without actually "
+                       "invoking any op kernels."),
+      CreateFlag<bool>(
+          "report_peak_memory_footprint", &params_,
+          "Report the peak memory footprint by periodically checking the "
+          "memory footprint. Internally, a separate thread will be spawned for "
+          "this periodic check. Therefore, the performance benchmark result "
+          "could be affected."),
+      CreateFlag<int32_t>("memory_footprint_check_interval_ms", &params_,
+                          "The interval in millisecond between two consecutive "
+                          "memory footprint checks. This is only used when "
+                          "--report_peak_memory_footprint is set to true.")};
 }
 
 void BenchmarkModel::LogParams() {
@@ -118,6 +152,8 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(float, "max_secs", "Max runs duration (seconds)",
                       verbose);
   LOG_BENCHMARK_PARAM(float, "run_delay", "Inter-run delay (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(float, "run_frequency",
+                      "Number of prorated runs per second", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "num_threads", "Num threads", verbose);
   LOG_BENCHMARK_PARAM(bool, "use_caching", "Use caching", verbose);
   LOG_BENCHMARK_PARAM(std::string, "benchmark_name", "Benchmark name", verbose);
@@ -125,6 +161,11 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(int32_t, "warmup_runs", "Min warmup runs", verbose);
   LOG_BENCHMARK_PARAM(float, "warmup_min_secs",
                       "Min warmup runs duration (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(bool, "dry_run", "Run w/o invoking kernels", verbose);
+  LOG_BENCHMARK_PARAM(bool, "report_peak_memory_footprint",
+                      "Report the peak memory footprint", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "memory_footprint_check_interval_ms",
+                      "Memory footprint check interval (ms)", verbose);
 }
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
@@ -143,6 +184,11 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   int64_t max_finish_us = now_us + static_cast<int64_t>(max_secs * 1.e6f);
 
   *invoke_status = kTfLiteOk;
+  float inter_run_sleep_time = params_.Get<float>("run_delay");
+  auto run_frequency = params_.Get<float>("run_frequency");
+  double manual_inter_run_gap = 1.0 / run_frequency;
+  // float doesn't have sufficient precision for storing this number
+  double next_run_finish_time = now_us * 1e-6 + manual_inter_run_gap;
   for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
                     now_us <= max_finish_us;
        run++) {
@@ -154,7 +200,14 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    util::SleepForSeconds(params_.Get<float>("run_delay"));
+    if (run_frequency > 0) {
+      inter_run_sleep_time =
+          next_run_finish_time - profiling::time::NowMicros() * 1e-6;
+      next_run_finish_time += manual_inter_run_gap;
+    }
+    // Note when "inter_run_sleep_time" is negative or 0.0,
+    // the function will return immediately.
+    util::SleepForSeconds(inter_run_sleep_time);
     now_us = profiling::time::NowMicros();
 
     if (status != kTfLiteOk) {
@@ -169,7 +222,22 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   return run_stats;
 }
 
-TfLiteStatus BenchmarkModel::ValidateParams() { return kTfLiteOk; }
+TfLiteStatus BenchmarkModel::ValidateParams() {
+  if (params_.Get<bool>("report_peak_memory_footprint")) {
+    const int32_t interval =
+        params_.Get<int32_t>("memory_footprint_check_interval_ms");
+    if (interval <= 0) {
+      TFLITE_LOG(WARN) << "--memory_footprint_check_interval_ms is set to "
+                       << interval
+                       << " (ms), This value is invalid, and it will be set to "
+                          "the default value "
+                       << kMemoryCheckIntervalMs << " (ms).";
+      params_.Set<int32_t>("memory_footprint_check_interval_ms",
+                           kMemoryCheckIntervalMs);
+    }
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus BenchmarkModel::Run(int argc, char** argv) {
   TF_LITE_ENSURE_STATUS(ParseFlags(argc, argv));
@@ -181,6 +249,8 @@ TfLiteStatus BenchmarkModel::Run() {
 
   LogParams();
 
+  auto peak_memory_reporter = MayCreateMemoryUsageMonitor();
+  if (peak_memory_reporter != nullptr) peak_memory_reporter->Start();
   const double model_size_mb = MayGetModelFileSize() / 1e6;
   const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
@@ -200,6 +270,15 @@ TfLiteStatus BenchmarkModel::Run() {
 
   TfLiteStatus status = kTfLiteOk;
   uint64_t input_bytes = ComputeInputBytes();
+
+  // Overwrite certain parameters when --dry_run=true is set.
+  if (params_.Get<bool>("dry_run")) {
+    params_.Set("warmup_runs", 0);
+    params_.Set("warmup_min_secs", -1.0f);
+    params_.Set("num_runs", 0);
+    params_.Set("min_secs", -1.0f);
+  }
+
   listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =
       Run(params_.Get<int32_t>("warmup_runs"),
@@ -215,9 +294,15 @@ TfLiteStatus BenchmarkModel::Run() {
   const auto overall_mem_usage =
       profiling::memory::GetMemoryUsage() - start_mem_usage;
 
+  float peak_mem_mb = profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  if (peak_memory_reporter != nullptr) {
+    peak_memory_reporter->Stop();
+    peak_mem_mb = peak_memory_reporter->GetPeakMemUsageInMB();
+  }
+
   listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
                              warmup_time_us, inference_time_us, init_mem_usage,
-                             overall_mem_usage});
+                             overall_mem_usage, peak_mem_mb});
   return status;
 }
 
@@ -225,9 +310,16 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  if (!parse_result) {
+  // "--help" flag is added in tools/delegates/default_execution_provider.cc. As
+  // this is an optional dependency, we need to check whether "--help" exists or
+  // not first.
+  if (!parse_result ||
+      (params_.HasParam("help") && params_.Get<bool>("help"))) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
+    // Returning kTfLiteError intentionally when "--help=true" is specified so
+    // that the caller could check the return value to decide stopping the
+    // execution.
     return kTfLiteError;
   }
 
@@ -238,6 +330,15 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   }
 
   return kTfLiteOk;
+}
+
+std::unique_ptr<profiling::memory::MemoryUsageMonitor>
+BenchmarkModel::MayCreateMemoryUsageMonitor() const {
+  if (!params_.Get<bool>("report_peak_memory_footprint")) return nullptr;
+
+  return std::unique_ptr<profiling::memory::MemoryUsageMonitor>(
+      new profiling::memory::MemoryUsageMonitor(
+          params_.Get<int32_t>("memory_footprint_check_interval_ms")));
 }
 
 }  // namespace benchmark

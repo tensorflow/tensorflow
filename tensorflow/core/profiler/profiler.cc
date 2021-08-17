@@ -45,7 +45,7 @@ namespace tensorflow {
 namespace tfprof {
 void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
-  if (buf_str.find(" ") == buf_str.npos) {
+  if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
       if (string(opt).find(buf_str) == 0) {
         linenoiseAddCompletion(lc, opt);
@@ -73,18 +73,18 @@ int Run(int argc, char** argv) {
   string FLAGS_run_meta_path = "";
   string FLAGS_op_log_path = "";
   string FLAGS_checkpoint_path = "";
-  int32 FLAGS_max_depth = 10;
-  int64 FLAGS_min_bytes = 0;
-  int64 FLAGS_min_peak_bytes = 0;
-  int64 FLAGS_min_residual_bytes = 0;
-  int64 FLAGS_min_output_bytes = 0;
-  int64 FLAGS_min_micros = 0;
-  int64 FLAGS_min_accelerator_micros = 0;
-  int64 FLAGS_min_cpu_micros = 0;
-  int64 FLAGS_min_params = 0;
-  int64 FLAGS_min_float_ops = 0;
-  int64 FLAGS_min_occurrence = 0;
-  int64 FLAGS_step = -1;
+  int32_t FLAGS_max_depth = 10;
+  int64_t FLAGS_min_bytes = 0;
+  int64_t FLAGS_min_peak_bytes = 0;
+  int64_t FLAGS_min_residual_bytes = 0;
+  int64_t FLAGS_min_output_bytes = 0;
+  int64_t FLAGS_min_micros = 0;
+  int64_t FLAGS_min_accelerator_micros = 0;
+  int64_t FLAGS_min_cpu_micros = 0;
+  int64_t FLAGS_min_params = 0;
+  int64_t FLAGS_min_float_ops = 0;
+  int64_t FLAGS_min_occurrence = 0;
+  int64_t FLAGS_step = -1;
   string FLAGS_order_by = "name";
   string FLAGS_account_type_regexes = ".*";
   string FLAGS_start_name_regexes = ".*";

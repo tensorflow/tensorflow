@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -40,16 +42,17 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     has_token_input_output_ = false;
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
+    if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                      &original_node_name_)
+             .ok())
+      original_node_name_ = name();
   }
-  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
-                                     &propagate_compile_time_consts_));
-  }
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
 }
 
 // Populates tensor array gradients for compiled branches, returns whether the
 // set of found tensor array gradients is non-empty.
-static xla::StatusOr<bool> PopulateTensorArrayGradients(
+static StatusOr<bool> PopulateTensorArrayGradients(
     XlaOpKernelContext* ctx, xla::XlaBuilder* b,
     absl::Span<XlaCompiler::Argument> arguments,
     XlaCompiler::CompilationResult* then_result,
@@ -84,9 +87,10 @@ static xla::StatusOr<bool> PopulateTensorArrayGradients(
 }
 
 // Checks that shapes matches on both sides of the conditional.
-static Status ValidateShapes(
-    XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& then_result,
-    const XlaCompiler::CompilationResult& else_result) {
+static Status ValidateShapes(XlaOpKernelContext* ctx,
+                             const XlaCompiler::CompilationResult& then_result,
+                             const XlaCompiler::CompilationResult& else_result,
+                             std::vector<PartialTensorShape>& output_shapes) {
   // Check that both branches have identical input shapes.
   if (then_result.xla_input_shapes.size() != 1) {
     return errors::FailedPrecondition("Expected one input shape");
@@ -112,8 +116,23 @@ static Status ValidateShapes(
   }
 
   // Check that both branches have identical output shapes.
-  if (!xla::ShapeUtil::Compatible(then_result.xla_output_shape,
-                                  else_result.xla_output_shape)) {
+  if (!xla::ShapeUtil::DynamicShapeIsCompatible(then_result.xla_output_shape,
+                                                else_result.xla_output_shape) &&
+      !xla::ShapeUtil::DynamicShapeIsCompatible(else_result.xla_output_shape,
+                                                then_result.xla_output_shape)) {
+    // Check if it is a currently unsupported case to report a different error
+    // message.
+    for (const PartialTensorShape& shape : output_shapes) {
+      if (!shape.IsFullyDefined()) {
+        return errors::InvalidArgument(
+            "Output shapes of then and else branches do not match: ",
+            xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
+            xla::ShapeUtil::HumanString(else_result.xla_output_shape),
+            "; this TF operation has dynamic output dimensions and TF and HLO "
+            "have different requirements wrt shape constraints. This cannot be "
+            "handled currently.");
+      }
+    }
     return errors::InvalidArgument(
         "Output shapes of then and else branches do not match: ",
         xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
@@ -208,35 +227,33 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  if (propagate_compile_time_consts_) {
-    std::vector<bool> then_branch_must_be_const_nodes;
-    const FunctionBody* then_body;
-    std::vector<bool> else_branch_must_be_const_nodes;
-    const FunctionBody* else_body;
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
-                                             &then_branch_must_be_const_nodes,
-                                             &then_body));
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
-                                             &else_branch_must_be_const_nodes,
-                                             &else_body));
+  std::vector<bool> then_branch_must_be_const_nodes;
+  const FunctionBody* then_body;
+  std::vector<bool> else_branch_must_be_const_nodes;
+  const FunctionBody* else_body;
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, then_branch_,
+                                &then_branch_must_be_const_nodes, &then_body));
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, else_branch_,
+                                &else_branch_must_be_const_nodes, &else_body));
 
-    auto should_resolve_const = [&](int arg_idx) {
-      XlaCompiler::Argument& arg = arguments[arg_idx];
-      return arg.kind == XlaCompiler::Argument::kParameter &&
-             (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
-                                                  ->id()] ||
-              else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
-                                                  ->id()]);
-    };
+  auto should_resolve_const = [&](int arg_idx) {
+    XlaCompiler::Argument& arg = arguments[arg_idx];
+    return arg.kind == XlaCompiler::Argument::kParameter &&
+           (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
+                                                ->id()] ||
+            else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
+                                                ->id()]);
+  };
 
-    // Replaces `kParameter` type args in `arguments` with `kConstant` if
-    // the op input corresponding to that arg is a compile-time const. This
-    // is necessary to propagate compile time consts to ops in the branch
-    // functions.
-    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
-                                            /*xla_expression_offset=*/1,
-                                            should_resolve_const);
-  }
+  // Replaces `kParameter` type args in `arguments` with `kConstant` if
+  // the op input corresponding to that arg is a compile-time const. This
+  // is necessary to propagate compile time consts to ops in the branch
+  // functions.
+  ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                          /*xla_expression_offset=*/1,
+                                          should_resolve_const);
 
   // Compile both branches of the conditional.
   XlaCompiler::CompileOptions options;
@@ -253,7 +270,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
-  xla::StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
+  StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
       ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);
   OP_REQUIRES_OK(ctx, has_tensor_array_gradients.status());
 
@@ -267,7 +284,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
                                                   arguments, &else_result));
   }
 
-  OP_REQUIRES_OK(ctx, ValidateShapes(ctx, then_result, else_result));
+  OP_REQUIRES_OK(ctx,
+                 ValidateShapes(ctx, then_result, else_result, output_shapes_));
 
   int num_inputs = then_result.input_mapping.size();
   std::vector<xla::XlaOp> inputs(num_inputs);
@@ -292,15 +310,15 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   xla::XlaOp input_tuple = xla::Tuple(b, inputs);
-  xla::XlaOp outputs =
-      xla::Conditional(ctx->Input(0), input_tuple, *then_result.computation,
-                       input_tuple, *else_result.computation);
+  xla::XlaOp outputs = xla::DynamicConditional(
+      ctx->builder(), ctx->Input(0), input_tuple, *then_result.computation,
+      input_tuple, *else_result.computation);
 
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
     if (VLOG_IS_ON(2)) {
-      xla::StatusOr<xla::Shape> shape = b->GetShape(output_handle);
+      StatusOr<xla::Shape> shape = b->GetShape(output_handle);
       VLOG(2) << "Setting output " << i << " with shape "
               << (shape.ok() ? shape->ToString() : "<unknown>");
     }
@@ -326,7 +344,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional

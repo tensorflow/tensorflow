@@ -90,7 +90,9 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
   } else if (builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
              builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
-             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
+             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
+             builtin_op_code == BuiltinOperator_TRANSPOSE_CONV) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/svdf.cc
@@ -145,6 +147,7 @@ bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
       return custom_op_info->second.is_hybrid;
     }
   } else if (builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
              builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_SVDF ||
              builtin_op_code == BuiltinOperator_RNN ||
@@ -255,6 +258,10 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
           op->builtin_options.AsFullyConnectedOptions()
               ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
           break;
+        case BuiltinOperator_BATCH_MATMUL:
+          op->builtin_options.AsBatchMatMulOptions()
+              ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
+          break;
         case BuiltinOperator_LSTM:
           op->builtin_options.AsLSTMOptions()->asymmetric_quantize_inputs =
               use_updated_hybrid_scheme;
@@ -350,6 +357,8 @@ void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 5 : 2;
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 9 : 3;
+    } else if (op_code == BuiltinOperator_BATCH_MATMUL) {
+      model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 1;
     } else if (op_code == BuiltinOperator_SVDF) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 2;
     } else if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
@@ -410,12 +419,16 @@ PassQuantizationAndGetConsumers(
       GetTensorConsumers(model, subgraph, output_tensor_idx));
 }
 
-TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
-                                 const Model* input_model,
-                                 bool use_hybrid_evaluation,
-                                 uint64_t weights_min_num_elements,
-                                 const CustomOpMap& custom_op_map,
-                                 bool use_updated_hybrid_scheme) {
+inline bool IsOpDenylisted(const flat_hash_set<BuiltinOperator>& op_denylist,
+                           const BuiltinOperator op_code) {
+  return op_denylist.find(op_code) != op_denylist.end();
+}
+
+TfLiteStatus QuantizeWeightsInt8(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    bool use_hybrid_evaluation, uint64_t weights_min_num_elements,
+    const CustomOpMap& custom_op_map, bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist = {}) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -469,6 +482,7 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
         // dequantization we need to add a Dequantize op.
         bool eval_hybrid =
             use_hybrid_evaluation &&
+            !IsOpDenylisted(op_denylist, GetBuiltinCode(consumer_op_code)) &&
             IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map,
                                  use_updated_hybrid_scheme) &&
             CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
@@ -639,7 +653,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
 }
 
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model, BufferType quant_type) {
+                             const Model* input_model, BufferType quant_type,
+                             bool use_updated_hybrid_scheme) {
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
       // By default we require that only weights with more than
@@ -647,7 +662,7 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
       CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
-                                 kUseUpdatedHybridSchemeDefault);
+                                 use_updated_hybrid_scheme);
     }
     case BufferType::QUANTIZED_FLOAT16:
       return QuantizeWeightsFloat16(builder, input_model);
@@ -663,15 +678,15 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              kUseUpdatedHybridSchemeDefault);
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model,
-                             uint64_t weights_min_num_elements,
-                             const CustomOpMap& custom_op_map,
-                             bool use_updated_hybrid_scheme) {
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
+    bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist) {
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,
                              weights_min_num_elements, custom_op_map,
-                             use_updated_hybrid_scheme);
+                             use_updated_hybrid_scheme, op_denylist);
 }
 
 }  // namespace optimize

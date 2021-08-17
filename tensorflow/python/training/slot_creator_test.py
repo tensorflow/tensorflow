@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -173,6 +176,31 @@ class SlotCreatorTest(test.TestCase):
         self.assertEqual([], slot.get_shape().as_list())
         self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
         self.assertAllEqual(1.0, slot)
+
+  def testCreateSlotFromVariableCopyXlaSharding(self):
+    # slot_creator is used only in optimizer V1.
+    with ops.Graph().as_default(), self.cached_session():
+      v = variables.Variable([1.0, 2.5], name="var")
+      v = xla_sharding.mesh_split(
+          v, np.array([0, 1]), [0], use_sharding_op=False)
+      slot = slot_creator.create_slot(
+          v, v.initialized_value(), name="slot", copy_xla_sharding=True)
+      self.assertEqual(
+          xla_sharding.get_tensor_sharding(v),
+          xla_sharding.get_tensor_sharding(slot))
+
+  def testCreateZerosSlotFromVariableCopyXlaSharding(self):
+    # slot_creator is used only in optimizer V1.
+    with ops.Graph().as_default(), self.cached_session():
+      v = variables.Variable([1.0, 2.5], name="var")
+      v = xla_sharding.mesh_split(
+          v, np.array([0, 1]), [0], use_sharding_op=False)
+      with ops.control_dependencies(None):
+        slot = slot_creator.create_zeros_slot(
+            v, name="slot", dtype=dtypes.float64, copy_xla_sharding=True)
+      self.assertEqual(
+          xla_sharding.get_tensor_sharding(v),
+          xla_sharding.get_tensor_sharding(slot))
 
 
 if __name__ == "__main__":

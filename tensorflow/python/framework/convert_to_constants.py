@@ -28,12 +28,16 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
@@ -45,6 +49,8 @@ wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
 
+# Used in _FunctionConverterDataInGraph().
+VAR_ASSIGN_COLLECTION = "extra_var_assign_ops"
 _CONDITIONAL_OPS = set(["If", "StatelessIf"])
 _LOOP_OPS = set(["While", "StatelessWhile"])
 _CONTROL_FLOW_OPS = _CONDITIONAL_OPS.union(_LOOP_OPS)
@@ -224,6 +230,8 @@ class _Node(_Convertible):
     elif node.op == "Merge":
       return _Merge(node, function, enclosing_graph)
     elif node.op == "PartitionedCall":
+      return _PartitionedCall(node, function, enclosing_graph)
+    elif node.op == "StatefulPartitionedCall":
       return _PartitionedCall(node, function, enclosing_graph)
     elif node.op == "ReadVariableOp":
       return _ReadVariable(node, function, enclosing_graph)
@@ -803,7 +811,13 @@ class _FunctionConverterData(_ConverterData):
         graph_def,
         variable_names_allowlist=variable_names_allowlist,
         variable_names_denylist=variable_names_denylist)
+
     self._build_tensor_data()
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    raise errors.UnimplementedError(
+        "The evaluation method should be implemented in sub-classes.")
 
   def _build_tensor_data(self):
     """Caches the tensor data for all Placeholders in the given function."""
@@ -820,9 +834,13 @@ class _FunctionConverterData(_ConverterData):
       if not self._should_convert(tensor_name):
         continue
       if idx in map_index_to_variable:
-        data = map_index_to_variable[idx].numpy()
+        data = self._eval(map_index_to_variable[idx])
       else:
-        data = val_tensor.numpy()
+        if val_tensor.dtype == dtypes.resource:
+          logging.vlog(1, "Skip converting resource tensor %s" % tensor_name)
+          continue
+        data = np.array(self._eval(val_tensor))
+
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
           dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
@@ -842,6 +860,59 @@ class _FunctionConverterData(_ConverterData):
               numpy=pruned_graph.numpy(),
               dtype=node.attr["dtype"].type,
               index=None)
+
+
+class _FunctionConverterDataInEager(_FunctionConverterData):
+  """Container for ConcreteFunction-based conversion data in Eager mode."""
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    return tensor.numpy()
+
+
+class _FunctionConverterDataInGraph(_FunctionConverterData):
+  """Container for ConcreteFunction-based conversion data in Graph mode."""
+
+  def __init__(self,
+               func,
+               lower_control_flow,
+               aggressive_inlining,
+               variable_names_allowlist=None,
+               variable_names_denylist=None,
+               session=None):
+    """Creates the conversion data for the given function.
+
+    Args:
+      func: ConcreteFunction.
+      lower_control_flow: Boolean indicating whether or not to lower control
+        flow ops such as If and While.
+      aggressive_inlining: Boolean indicating whether or not to do aggressive
+        function inlining (might be unsafe if function has stateful ops, not
+        properly connected to control outputs).
+      variable_names_allowlist: The set of variable names to convert (by
+        default, all variables are converted).
+      variable_names_denylist: The set of variable names to omit converting to
+        constants.
+      session: Session object.
+    """
+    self._session = session
+
+    session.run(variables.global_variables_initializer())
+    # Run extra assignment ops if needed.
+    # These assignments are run sequentially to ensure order.
+    for op in ops.get_default_graph().get_collection(VAR_ASSIGN_COLLECTION):
+      session.run(op)
+
+    super(_FunctionConverterDataInGraph, self).__init__(
+        func,
+        lower_control_flow,
+        aggressive_inlining,
+        variable_names_allowlist,
+        variable_names_denylist)
+
+  def _eval(self, tensor):
+    """Returns the value in the tensor. Must be implemented in sub-classes."""
+    return self._session.run(tensor)
 
 
 class _SessionConverterData(_ConverterData):
@@ -998,6 +1069,12 @@ def _construct_concrete_function(func, output_graph_def,
 
   new_input_names = [tensor.name for tensor in not_converted_inputs]
   new_output_names = [tensor.name for tensor in func.outputs]
+
+  # Remove old functions to use updated functions from graph def.
+  for f in output_graph_def.library.function:
+    if context.context().has_function(f.signature.name):
+      context.context().remove_function(f.signature.name)
+
   new_func = wrap_function.function_from_graph_def(output_graph_def,
                                                    new_input_names,
                                                    new_output_names)
@@ -1065,10 +1142,57 @@ def convert_variables_to_constants_v2(func,
     ConcreteFunction containing a simplified version of the original.
   """
 
-  converter_data = _FunctionConverterData(
+  converter_data = _FunctionConverterDataInEager(
       func=func,
       lower_control_flow=lower_control_flow,
       aggressive_inlining=aggressive_inlining)
+
+  output_graph_def, converted_input_indices = _replace_variables_by_constants(
+      converter_data=converter_data)
+
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_input_indices)
+
+
+def convert_var_to_const_function_in_v1(func,
+                                        lower_control_flow=True,
+                                        aggressive_inlining=False):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  This function works as same as convert_variables_to_constants_v2, but it
+  should be used in Graph mode. It is a temporary solution when users want to
+  integrate their models written in TF2 with infra that requires TF1 mode.
+
+  The current implementation only works for graphs that do not contain any
+  control flow or embedding related ops.
+
+  The function must be called in a Session context.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
+      function inlining (might be unsafe if function has stateful ops, not
+      properly connected to control outputs). (default False)
+
+  Raises:
+      RuntimeError: If no Session context is present.
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original.
+  """
+
+  session = ops.get_default_session()
+  if session is None:
+    raise RuntimeError(
+        "The conversion must be carried out in a Session context.")
+
+  converter_data = _FunctionConverterDataInGraph(
+      func=func,
+      lower_control_flow=lower_control_flow,
+      aggressive_inlining=aggressive_inlining,
+      session=session)
 
   output_graph_def, converted_input_indices = _replace_variables_by_constants(
       converter_data=converter_data)
@@ -1099,7 +1223,7 @@ def convert_variables_to_constants_v2_as_graph(func,
     the intermediate GraphDef containing the node debug information for the
     transformations in the frozen phase.
   """
-  converter_data = _FunctionConverterData(
+  converter_data = _FunctionConverterDataInEager(
       func=func,
       lower_control_flow=lower_control_flow,
       aggressive_inlining=aggressive_inlining)
@@ -1139,6 +1263,16 @@ def convert_variables_to_constants_from_session_graph(
   Returns:
     An optimized GraphDef.
   """
+  # TODO(b/176982859): Find a more satisfying way to update shape information
+  # than clearing it, or migrate users to a workflow that does not require
+  # freezing.
+  for function in graph_def.library.function:
+    if "_input_shapes" in function.attr:
+      for input_arg, shape_attribute in zip(
+          function.signature.input_arg,
+          function.attr["_input_shapes"].list.shape):
+        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
+          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,

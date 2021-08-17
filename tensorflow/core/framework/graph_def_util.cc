@@ -188,10 +188,11 @@ void StripDefaultAttributes(const OpRegistryInterface& op_registry,
         auto iter = attrs->find(name);
         if (iter != attrs->end()) {
           const AttrValue& default_value = attr_def.default_value();
-          // The "Fast*" version can return false negatives for very large
-          // AttrValues containing Tensors. There should never be an attribute
-          // whose default value is a tensor larger than 32MB.
-          if (FastAreAttrValuesEqual(iter->second, default_value)) {
+          // There should never be an attribute whose default value is a tensor
+          // larger than 32MB so allow false negatives  for efficient
+          // comparison.
+          if (AreAttrValuesEqual(iter->second, default_value,
+                                 /*allow_false_negatives=*/true)) {
             attrs->erase(name);
           }
         }

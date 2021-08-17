@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "categorical_column_with_vocabulary_file"
-    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'dtype\', \'default_value\', \'num_oov_buckets\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\", \'None\', \'0\'], "
+    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'dtype\', \'default_value\', \'num_oov_buckets\', \'file_format\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\", \'None\', \'0\', \'None\'], "
   }
   member_method {
     name: "categorical_column_with_vocabulary_list"

@@ -1845,7 +1845,10 @@ def _dropout_transformer(parent, node, full_name, name, logs):
                  "automatic fix was disabled. tf.nn.dropout has changed "
                  "the semantics of the second argument."))
   else:
-    _replace_keep_prob_node(node, node.args[1])
+    rate_arg = ast.keyword(arg="rate", value=node.args[1])
+    _replace_keep_prob_node(rate_arg, rate_arg.value)
+    node.keywords.append(rate_arg)
+    del node.args[1]
     logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                  "Changing keep_prob arg of tf.nn.dropout to rate, and "
                  "recomputing value.\n"))

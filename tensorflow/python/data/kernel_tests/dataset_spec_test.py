@@ -49,6 +49,12 @@ class DatasetSpecTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     fn(dataset)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetSpecInnerSpec(self):
+    inner_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32)
+    ds_spec = dataset_ops.DatasetSpec(inner_spec)
+    self.assertEqual(ds_spec.element_spec, inner_spec)
+
 
 if __name__ == "__main__":
   test.main()

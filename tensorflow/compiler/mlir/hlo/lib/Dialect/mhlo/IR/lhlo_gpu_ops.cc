@@ -28,9 +28,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
+#include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -39,13 +43,14 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 
 namespace mlir {
 namespace lmhlo_gpu {
+
+using mhlo::TokenType;
 
 LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloGpuDialect>()) {
@@ -56,6 +61,17 @@ LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
 }
 
 // TODO(jurahul): Add verification for operand shapes and ranks.
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
+//===----------------------------------------------------------------------===//
+// AllReduceStartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllReduceStartOp op) {
+  return lmhlo::VerifyAllReduce(op);
+}
 
 }  // namespace lmhlo_gpu
 }  // namespace mlir

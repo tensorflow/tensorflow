@@ -65,7 +65,9 @@ TF_CALL_int8(REGISTER_POPULATION_COUNT);
 TF_CALL_uint16(REGISTER_POPULATION_COUNT);
 TF_CALL_int16(REGISTER_POPULATION_COUNT);
 TF_CALL_int32(REGISTER_POPULATION_COUNT);
+TF_CALL_uint32(REGISTER_POPULATION_COUNT);
 TF_CALL_int64(REGISTER_POPULATION_COUNT);
+TF_CALL_uint64(REGISTER_POPULATION_COUNT);
 
 #undef REGISTER_POPULATION_COUNT
 
@@ -82,12 +84,14 @@ inline uint8 PopCnt(const T v);
     return std::bitset<N>(v).count(); \
   }
 
-POPCNT(int8, 8);
+POPCNT(int8_t, 8);
 POPCNT(uint8, 8);
-POPCNT(int16, 16);
+POPCNT(int16_t, 16);
 POPCNT(uint16, 16);
-POPCNT(int32, 32);
-POPCNT(int64, 64);
+POPCNT(int32_t, 32);
+POPCNT(uint32, 32);
+POPCNT(int64_t, 64);
+POPCNT(uint64, 64);
 
 #undef POPCNT
 
@@ -99,20 +103,20 @@ struct PopulationCount<CPUDevice, T> {
                   TTypes<uint8>::Flat output) {
     const T* input_ptr = input.data();
     uint8* output_ptr = output.data();
-    auto shard = [input_ptr, output_ptr](int64 start, int64 limit) {
-      for (int64 i = start; i < limit; ++i) {
+    auto shard = [input_ptr, output_ptr](int64_t start, int64_t limit) {
+      for (int64_t i = start; i < limit; ++i) {
         output_ptr[i] = PopCnt<T>(input_ptr[i]);
       }
     };
-    int64 total_shards = input.size();
+    int64_t total_shards = input.size();
     // Approximating cost of popcnt: convert T to int64
     // (std::bitset constructor) and convert int64 to uint8
     // (bitset.count() -> output).  The .count() itself is relatively cheap.
     const double total_cost = (Eigen::TensorOpCost::CastCost<T, uint8>() +
-                               Eigen::TensorOpCost::CastCost<int64, uint8>());
-    const int64 shard_cost = (total_cost >= static_cast<double>(kint64max))
-                                 ? kint64max
-                                 : static_cast<int64>(total_cost);
+                               Eigen::TensorOpCost::CastCost<int64_t, uint8>());
+    const int64_t shard_cost = (total_cost >= static_cast<double>(kint64max))
+                                   ? kint64max
+                                   : static_cast<int64_t>(total_cost);
 
     auto worker_threads = *(c->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,

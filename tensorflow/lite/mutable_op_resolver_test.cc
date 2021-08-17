@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/mutable_op_resolver.h"
 
+#include <stddef.h>
+
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -204,9 +208,10 @@ TEST(MutableOpResolverTest, AddAll) {
   resolver2.AddBuiltin(BuiltinOperator_SUB, GetDummyRegistration());
   resolver2.AddBuiltin(BuiltinOperator_ADD, GetDummy2Registration());
 
+  resolver1.AddAll(resolver2);
+
   // resolver2's ADD op should replace resolver1's ADD op, while augmenting
   // non-overlapping ops.
-  resolver1.AddAll(resolver2);
   ASSERT_EQ(resolver1.FindOp(BuiltinOperator_ADD, 1)->invoke,
             GetDummy2Registration()->invoke);
   ASSERT_EQ(resolver1.FindOp(BuiltinOperator_MUL, 1)->invoke,
@@ -215,11 +220,162 @@ TEST(MutableOpResolverTest, AddAll) {
             GetDummyRegistration()->invoke);
 }
 
+class ChainingMutableOpResolver : public MutableOpResolver {
+ public:
+  using MutableOpResolver::ChainOpResolver;
+};
+
+TEST(MutableOpResolverTest, ChainOpResolver) {
+  ChainingMutableOpResolver resolver1;
+  resolver1.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+  resolver1.AddBuiltin(BuiltinOperator_MUL, GetDummy2Registration());
+
+  MutableOpResolver resolver2;
+  resolver2.AddBuiltin(BuiltinOperator_SUB, GetDummyRegistration());
+  resolver2.AddBuiltin(BuiltinOperator_ADD, GetDummy2Registration());
+
+  resolver1.ChainOpResolver(&resolver2);
+
+  // resolver2's ADD op should NOT replace resolver1's ADD op;
+  // but resolver2's non-overlapping ops should augment resolver1's.
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummyRegistration()->invoke);
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_MUL, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_SUB, 1)->invoke,
+            GetDummyRegistration()->invoke);
+}
+
+TEST(MutableOpResolverTest, CopyConstructChainedOpResolver) {
+  MutableOpResolver resolver;
+  resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+  resolver.AddBuiltin(BuiltinOperator_SUB, GetDummy2Registration());
+  resolver.AddCustom("MyCustom", GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver2;
+  resolver2.ChainOpResolver(&resolver);
+
+  MutableOpResolver resolver3(resolver2);
+
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummyRegistration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_SUB, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_MUL, 1), nullptr);
+  ASSERT_EQ(resolver3.FindOp("MyCustom", 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp("NotMyCustom", 1), nullptr);
+}
+
+TEST(MutableOpResolverTest, AssignChainedOpResolver) {
+  MutableOpResolver resolver;
+  resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+  resolver.AddBuiltin(BuiltinOperator_SUB, GetDummy2Registration());
+  resolver.AddCustom("MyCustom", GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver2;
+  resolver2.ChainOpResolver(&resolver);
+
+  MutableOpResolver resolver3;
+  resolver3 = resolver2;
+
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummyRegistration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_SUB, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_MUL, 1), nullptr);
+  ASSERT_EQ(resolver3.FindOp("MyCustom", 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp("NotMyCustom", 1), nullptr);
+}
+
+TEST(MutableOpResolverTest, AddAllChainedOpResolver) {
+  MutableOpResolver resolver;
+  resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+  resolver.AddBuiltin(BuiltinOperator_SUB, GetDummy2Registration());
+  resolver.AddCustom("MyCustom", GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver2;
+  resolver2.ChainOpResolver(&resolver);
+
+  MutableOpResolver resolver3;
+  resolver3.AddAll(resolver2);
+
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummyRegistration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_SUB, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_MUL, 1), nullptr);
+  ASSERT_EQ(resolver3.FindOp("MyCustom", 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver3.FindOp("NotMyCustom", 1), nullptr);
+}
+
+TEST(MutableOpResolverTest, ChainOpResolverCustomOpPrecedence) {
+  MutableOpResolver resolver1;
+  resolver1.AddCustom("MyCustom", GetDummyRegistration());
+
+  MutableOpResolver resolver2;
+  resolver2.AddCustom("MyCustom", GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver3;
+  resolver3.ChainOpResolver(&resolver1);
+  resolver3.ChainOpResolver(&resolver2);
+
+  ASSERT_EQ(resolver3.FindOp("MyCustom", 1)->invoke,
+            GetDummyRegistration()->invoke);
+}
+
+TEST(MutableOpResolverTest, ChainOpResolverBuiltinOpPrecedence) {
+  MutableOpResolver resolver1;
+  resolver1.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+
+  MutableOpResolver resolver2;
+  resolver2.AddBuiltin(BuiltinOperator_ADD, GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver3;
+  resolver3.ChainOpResolver(&resolver1);
+  resolver3.ChainOpResolver(&resolver2);
+
+  ASSERT_EQ(resolver3.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummyRegistration()->invoke);
+}
+
+TEST(MutableOpResolverTest, ChainOpResolverAddVersusChainPrecedence) {
+  MutableOpResolver resolver1;
+  resolver1.AddCustom("MyCustom", GetDummyRegistration());
+
+  ChainingMutableOpResolver resolver2;
+  resolver2.ChainOpResolver(&resolver1);
+
+  MutableOpResolver resolver3;
+  resolver3.AddCustom("MyCustom", GetDummy2Registration());
+
+  ChainingMutableOpResolver resolver4;
+  resolver4.ChainOpResolver(&resolver2);
+  resolver4.ChainOpResolver(&resolver3);
+
+  ASSERT_EQ(resolver4.FindOp("MyCustom", 1)->invoke,
+            GetDummyRegistration()->invoke);
+}
+
+TEST(MutableOpResolverTest, AddAllAddVersusChainPrecedence) {
+  MutableOpResolver resolver1;
+  resolver1.AddCustom("MyCustom", GetDummyRegistration());
+
+  ChainingMutableOpResolver resolver2;
+  resolver2.ChainOpResolver(&resolver1);
+
+  MutableOpResolver resolver3;
+  resolver3.AddCustom("MyCustom", GetDummy2Registration());
+
+  MutableOpResolver resolver4;
+  resolver4.AddAll(resolver2);
+  resolver4.AddAll(resolver3);
+
+  ASSERT_EQ(resolver4.FindOp("MyCustom", 1)->invoke,
+            GetDummy2Registration()->invoke);
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

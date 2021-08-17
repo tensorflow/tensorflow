@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras timeseries dataset utilities."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -26,7 +23,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.preprocessing.timeseries_dataset_from_array', v1=[])
+@keras_export('keras.utils.timeseries_dataset_from_array',
+              'keras.preprocessing.timeseries_dataset_from_array',
+              v1=[])
 def timeseries_dataset_from_array(
     data,
     targets,
@@ -45,12 +44,12 @@ def timeseries_dataset_from_array(
   length of the sequences/windows, spacing between two sequence/windows, etc.,
   to produce batches of timeseries inputs and targets.
 
-  Arguments:
+  Args:
     data: Numpy array or eager tensor
       containing consecutive data points (timesteps).
       Axis 0 is expected to be the time dimension.
     targets: Targets corresponding to timesteps in `data`.
-      It should have same length as `data`. `targets[i]` should be the target
+      `targets[i]` should be the target
       corresponding to the window that starts at index `i`
       (see example 2 below).
       Pass None if you don't have target data (in this case the dataset will
@@ -82,10 +81,11 @@ def timeseries_dataset_from_array(
     only `batch_of_sequences`.
 
   Example 1:
-    Consider indices `[0, 1, ... 99]`.
-    With `sequence_length=10,  sampling_rate=2, sequence_stride=3`,
-    `shuffle=False`, the dataset will yield batches of sequences
-    composed of the following indices:
+
+  Consider indices `[0, 1, ... 99]`.
+  With `sequence_length=10,  sampling_rate=2, sequence_stride=3`,
+  `shuffle=False`, the dataset will yield batches of sequences
+  composed of the following indices:
 
   ```
   First sequence:  [0  2  4  6  8 10 12 14 16 18]
@@ -99,8 +99,10 @@ def timeseries_dataset_from_array(
   can be generated to include them (the next sequence would have started
   at index 81, and thus its last step would have gone over 99).
 
-  Example 2: temporal regression. Consider an array `data` of scalar
-  values, of shape `(steps,)`. To generate a dataset that uses the past 10
+  Example 2: Temporal regression.
+
+  Consider an array `data` of scalar values, of shape `(steps,)`.
+  To generate a dataset that uses the past 10
   timesteps to predict the next timestep, you would use:
 
   ```python
@@ -114,13 +116,34 @@ def timeseries_dataset_from_array(
     assert np.array_equal(targets[0], data[10])  # Corresponding target: step 10
     break
   ```
+
+  Example 3: Temporal regression for many-to-many architectures.
+
+  Consider two arrays of scalar values `X` and `Y`,
+  both of shape `(100,)`. The resulting dataset should consist samples with
+  20 timestamps each. The samples should not overlap.
+  To generate a dataset that uses the current timestamp
+  to predict the corresponding target timestep, you would use:
+
+  ```python
+  X = np.arange(100)
+  Y = X*2
+
+  sample_length = 20
+  input_dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+    X, None, sequence_length=sample_length, sequence_stride=sample_length)
+  target_dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+    Y, None, sequence_length=sample_length, sequence_stride=sample_length)
+
+  for batch in zip(input_dataset, target_dataset):
+    inputs, targets = batch
+    assert np.array_equal(inputs[0], X[:sample_length])
+
+    # second sample equals output timestamps 20-40
+    assert np.array_equal(targets[1], Y[sample_length:2*sample_length])
+    break
+  ```
   """
-  # Validate the shape of data and targets
-  if targets is not None and len(targets) != len(data):
-    raise ValueError('Expected data and targets to have the same number of '
-                     'time steps (axis 0) but got '
-                     'shape(data) = %s; shape(targets) = %s.' %
-                     (data.shape, targets.shape))
   if start_index and (start_index < 0 or start_index >= len(data)):
     raise ValueError('start_index must be higher than 0 and lower than the '
                      'length of the data. Got: start_index=%s '
@@ -156,6 +179,8 @@ def timeseries_dataset_from_array(
 
   # Determine the lowest dtype to store start positions (to lower memory usage).
   num_seqs = end_index - start_index - (sequence_length * sampling_rate) + 1
+  if targets is not None:
+    num_seqs = min(num_seqs, len(targets))
   if num_seqs < 2147483647:
     index_dtype = 'int32'
   else:

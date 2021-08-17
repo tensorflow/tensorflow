@@ -55,7 +55,6 @@ def make_identity_tests(options):
     # Reshape when input has shape. However, currently TOCO can't distinguish
     # between missing shape and scalar shape. As a result, when input has scalar
     # shape, this conversion still fails.
-    # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     inputs_doubled = [input_tensor * 2.0 for input_tensor in input_tensors]
     if parameters["op_to_use"] == "identity":
       identity_outputs = [tf.identity(inputs_doubled[0])]

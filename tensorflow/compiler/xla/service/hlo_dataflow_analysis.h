@@ -133,7 +133,7 @@ class HloDataflowAnalysis {
   HloValue& GetValue(HloValue::Id value_id);
 
   // Returns the total number of HloValues.
-  int64 value_count() const { return values_.size(); }
+  int64_t value_count() const { return values_.size(); }
 
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
@@ -166,6 +166,12 @@ class HloDataflowAnalysis {
   // Returns true if the operation is an in-place operation and its operand 0
   // must alias with the output.
   static bool IsInPlaceOperation(HloOpcode opcode);
+
+  // Returns true if the operation is the start/done of an asynchronous
+  // operation, where the buffer used/produced by the op needs to stay alive
+  // until the asynchronous operation completes.
+  static bool IsAsynchronousOperationStart(HloOpcode opcode);
+  static bool IsAsynchronousOperationDone(HloOpcode opcode);
 
   // Returns a vector consisting of the HloUse (operand number and shape index)
   // and output shape index of the in-place operations within this HLO.
@@ -229,6 +235,10 @@ class HloDataflowAnalysis {
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
+  bool UpdateAllGatherStartValueSet(HloInstruction* all_gather_start);
+  bool UpdateAllGatherDoneValueSet(HloInstruction* all_gather_done);
+  bool UpdateAllReduceStartValueSet(HloInstruction* all_reduce_start);
+  bool UpdateAllReduceDoneValueSet(HloInstruction* all_reduce_done);
   bool UpdateCollectivePermuteStartValueSet(
       HloInstruction* collective_permute_start);
   bool UpdateCollectivePermuteDoneValueSet(

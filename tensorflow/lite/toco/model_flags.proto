@@ -18,7 +18,13 @@ package toco;
 import "tensorflow/lite/toco/types.proto";
 
 message InputArrayShape {
+  // Dimensions of the tensor.
   repeated int32 dims = 2;
+
+  // If true, the number of dimensions in the shape is unknown.
+  //
+  // If true, "dims.size()" must be 0.
+  optional bool unknown_rank = 3;
 }
 
 // Next ID to USE: 7.
@@ -131,7 +137,7 @@ message ArraysExtraInfo {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 24.
+// Next ID to USE: 27.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -140,6 +146,9 @@ message ModelFlags {
   // Name of the output arrays, i.e. the arrays into which output activations
   // will be written.
   repeated string output_arrays = 2;
+
+  // Name of the control outputs.
+  repeated string control_output_arrays = 24;
 
   // If true, the model accepts an arbitrary batch size. Mutually exclusive with
   // the 'batch' field: at most one of these two fields can be set.
@@ -200,4 +209,17 @@ message ModelFlags {
   // is on. This value will be set only when the SavedModel import path will be
   // used.
   repeated string saved_model_exported_names = 23;
+
+  // Whether or not to use hlo import.
+  optional bool use_hlo_import = 25;
+
+  // The hlo file type enum.
+  enum HloFileType {
+    UNKNOWN = 0;
+    HLO_TEXT = 1;
+    HLO_PROTO = 2;
+  }
+
+  // Hlo file type, this will be used for hlo import.
+  optional HloFileType hlo_file_type = 26;
 }

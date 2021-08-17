@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -184,6 +186,21 @@ Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
   NewLogicalBuffer(tuple_select, /*index=*/{});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+  auto ccall = Cast<HloCustomCallInstruction>(custom_call);
+  absl::flat_hash_set<ShapeIndex> aliased_outputs;
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
+  }
+  ShapeUtil::ForEachSubshape(ccall->shape(),
+                             [&](const Shape& shape, const ShapeIndex& index) {
+                               if (!aliased_outputs.contains(index)) {
+                                 NewLogicalBuffer(custom_call, index);
+                               }
+                             });
   return Status::OK();
 }
 

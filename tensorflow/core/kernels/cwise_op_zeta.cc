@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+
 REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
 REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(BinaryOp, GPU, "Zeta", functor::zeta, float, double);
 REGISTER2(BinaryOp, GPU, "Polygamma", functor::polygamma, float, double);
 #endif
+#endif
+
 }  // namespace tensorflow

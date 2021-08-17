@@ -23,6 +23,7 @@ namespace Eigen {
 
 namespace internal {
 
+#if !EIGEN_ALTIVEC_USE_CUSTOM_PACK
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see
 // TensorContraction.h).
@@ -1232,6 +1233,15 @@ struct gemm_pack_rhs<
     }
 
     // copy the remaining columns one at a time (nr==1)
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
+    // remaining columns are handled different for PPC
+    for (Index k = 0; k < depth; k++) {
+      for (Index j2 = packet_cols4; j2 < cols; ++j2) {
+        *block = rhs(k, j2);
+        block += 1;
+      }
+    }
+#else
     for (Index j2 = packet_cols4; j2 < cols; ++j2) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2);
       for (Index k = 0; k < depth; k++) {
@@ -1239,6 +1249,7 @@ struct gemm_pack_rhs<
         block += 1;
       }
     }
+#endif
   }
 };
 
@@ -1532,6 +1543,7 @@ struct gemm_pack_rhs<
     }
   }
 };
+#endif
 }  // end namespace internal
 
 /** SpatialConvolution
@@ -1605,8 +1617,8 @@ EIGEN_DEVICE_FUNC
                        Index padding_top = 0, Index padding_bottom = 0,
                        Index padding_left = 0, Index padding_right = 0) {
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
+  typedef typename internal::traits<Input>::Scalar InputScalar;
+  TensorRef<Tensor<InputScalar, internal::traits<Input>::NumDimensions,
                    internal::traits<Input>::Layout, TensorIndex> >
       in(input);
   TensorRef<Tensor<typename internal::traits<Kernel>::Scalar,
@@ -1733,17 +1745,18 @@ EIGEN_DEVICE_FUNC
                               /*row_inflate_stride=*/1,
                               /*col_inflate_stride=*/1, padding_top,
                               padding_bottom, padding_left, padding_right,
-                              /*padding_value=*/0)
+                              /*padding_value=*/static_cast<InputScalar>(0))
                           .reshape(pre_contract_dims),
                       contract_dims, output_kernel)
             .reshape(post_contract_dims),
         input
-            .extract_image_patches(kernelRows, kernelCols, row_stride,
-                                   col_stride, row_in_stride, col_in_stride,
-                                   /*row_inflate_stride=*/1,
-                                   /*col_inflate_stride=*/1, padding_top,
-                                   padding_bottom, padding_left, padding_right,
-                                   /*padding_value=*/0)
+            .extract_image_patches(
+                kernelRows, kernelCols, row_stride, col_stride, row_in_stride,
+                col_in_stride,
+                /*row_inflate_stride=*/1,
+                /*col_inflate_stride=*/1, padding_top, padding_bottom,
+                padding_left, padding_right,
+                /*padding_value=*/static_cast<InputScalar>(0))
             .reshape(pre_contract_dims)
             .contract(kernel.reshape(kernel_dims), contract_dims, output_kernel)
             .reshape(post_contract_dims));

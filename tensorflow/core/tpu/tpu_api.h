@@ -25,7 +25,7 @@ namespace tpu {
 
 TfTpu_BaseFn* InitializeApiFn();
 
-TfTpu_OpsApiFn* OpsApiFn();
+const TfTpu_OpsApiFn* OpsApiFn();
 
 }  // namespace tpu
 }  // namespace tensorflow

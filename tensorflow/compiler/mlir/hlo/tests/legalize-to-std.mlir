@@ -53,17 +53,17 @@ func @unary_ops_float(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // CHECK-LABEL: func @compare_int
 func @compare_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>) {
-  // CHECK-NEXT: %0 = cmpi "eq", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %0 = cmpi eq, %arg0, %arg1 : tensor<4xi32>
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
-  // CHECK-NEXT: %1 = cmpi "ne", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %1 = cmpi ne, %arg0, %arg1 : tensor<4xi32>
   %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
-  // CHECK-NEXT: %2 = cmpi "slt", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %2 = cmpi slt, %arg0, %arg1 : tensor<4xi32>
   %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
-  // CHECK-NEXT: %3 = cmpi "sle", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %3 = cmpi sle, %arg0, %arg1 : tensor<4xi32>
   %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
-  // CHECK-NEXT: %4 = cmpi "sgt", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %4 = cmpi sgt, %arg0, %arg1 : tensor<4xi32>
   %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
-  // CHECK-NEXT: %5 = cmpi "sge", %arg0, %arg1 : tensor<4xi32>
+  // CHECK-NEXT: %5 = cmpi sge, %arg0, %arg1 : tensor<4xi32>
   %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: return %0, %1, %2, %3, %4, %5 : tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
   return %0, %1, %2, %3, %4, %5 : tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
@@ -71,42 +71,42 @@ func @compare_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi1>,t
 
 // CHECK-LABEL: func @compare_float
 func @compare_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>) {
-  // CHECK-NEXT: %0 = cmpf "oeq", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %0 = cmpf oeq, %arg0, %arg1 : tensor<4xf32>
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  // CHECK-NEXT: %1 = cmpf "une", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %1 = cmpf une, %arg0, %arg1 : tensor<4xf32>
   %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  // CHECK-NEXT: %2 = cmpf "olt", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %2 = cmpf olt, %arg0, %arg1 : tensor<4xf32>
   %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  // CHECK-NEXT: %3 = cmpf "ole", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %3 = cmpf ole, %arg0, %arg1 : tensor<4xf32>
   %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  // CHECK-NEXT: %4 = cmpf "ogt", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %4 = cmpf ogt, %arg0, %arg1 : tensor<4xf32>
   %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  // CHECK-NEXT: %5 = cmpf "oge", %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: %5 = cmpf oge, %arg0, %arg1 : tensor<4xf32>
   %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   return %0, %1, %2, %3, %4, %5: tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
 }
 
 // CHECK-LABEL: func @int_constant
 func @int_constant() -> (tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>) {
-  // CHECK-NEXT: [[CST0:%.+]] = constant {{.+}} : tensor<i32>
+  // CHECK-DAG: [[CST0:%.+]] = constant dense<0>
   %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
-  // CHECK-NEXT: [[CST1:%.+]] = constant {{.+}} : tensor<2x3xi32>
+  // CHECK-DAG: [[CST1:%.+]] = constant dense<1>
   %1 = "mhlo.constant"() {value = dense<1> : tensor<2x3xi32>} : () -> (tensor<2x3xi32>)
-  // CHECK-NEXT: [[CST2:%.+]] = constant {{.+}} : tensor<2x3xi32>
+  // CHECK-DAG: [[CST2:%.+]] = constant dense<[
   %2 = "mhlo.constant"() {value = dense<[[1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>} : () -> (tensor<2x3xi32>)
-  // CHECK-NEXT: return [[CST0]], [[CST1]], [[CST2]] : tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>
+  // CHECK: return [[CST0]], [[CST1]], [[CST2]] : tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>
   return %0, %1, %2: tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>
 }
 
 // CHECK-LABEL: func @float_constant
 func @float_constant() -> (tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>) {
-  // CHECK-NEXT: [[CST0:%.+]] = constant {{.+}} : tensor<f32>
+  // CHECK-DAG: [[CST0:%.+]] = constant  dense<0.000000e+00>
   %0 = "mhlo.constant"() {value = dense<0.0> : tensor<f32>} : () -> (tensor<f32>)
-  // CHECK-NEXT: [[CST1:%.+]] = constant {{.+}} : tensor<2x3xf32>
+  // CHECK-DAG: [[CST1:%.+]] = constant  dense<1.000000e+00>
   %1 = "mhlo.constant"() {value = dense<1.0> : tensor<2x3xf32>} : () -> (tensor<2x3xf32>)
-  // CHECK-NEXT: [[CST2:%.+]] = constant {{.+}} : tensor<2x3xf32>
+  // CHECK-DAG: [[CST2:%.+]] = constant dense<[
   %2 = "mhlo.constant"() {value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf32>} : () -> (tensor<2x3xf32>)
-  // CHECK-NEXT: return [[CST0]], [[CST1]], [[CST2]] : tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>
+  // CHECK: return [[CST0]], [[CST1]], [[CST2]] : tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>
   return %0, %1, %2: tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>
 }
 

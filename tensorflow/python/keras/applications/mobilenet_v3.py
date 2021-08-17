@@ -15,10 +15,6 @@
 # pylint: disable=invalid-name
 # pylint: disable=missing-function-docstring
 """MobileNet v3 models for Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import models
@@ -58,10 +54,10 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   - [Searching for MobileNetV3](
       https://arxiv.org/pdf/1905.02244.pdf) (ICCV 2019)
 
-  The following table describes the performance of MobileNets:
+  The following table describes the performance of MobileNets v3:
   ------------------------------------------------------------------------
   MACs stands for Multiply Adds
-  
+
   |Classification Checkpoint|MACs(M)|Parameters(M)|Top1 Accuracy|Pixel1 CPU(ms)|
   |---|---|---|---|---|
   | mobilenet_v3_large_1.0_224              | 217 | 5.4 |   75.6   |   51.2  |
@@ -71,18 +67,26 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   | mobilenet_v3_small_0.75_224             | 44  | 2.4 |   65.4   |   12.8  |
   | mobilenet_v3_small_minimalistic_1.0_224 | 65  | 2.0 |   61.9   |   12.2  |
 
-  The weights for all 6 models are obtained and translated from the Tensorflow
-  checkpoints from TensorFlow checkpoints found [here]
-  (https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet/README.md).
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
 
-  Optionally loads weights pre-trained on ImageNet.
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
-  For MobileNetV3, call
-  `tf.keras.applications.mobilenet_v3.preprocess_input` on your
-  inputs before passing them to the model.
+  For ModelNetV3, by default input preprocessing is included as a part of the
+  model (as a `Rescaling` layer), and thus
+  `tf.keras.applications.mobilenet_v3.preprocess_input` is actually a
+  pass-through function. In this use case, ModelNetV3 models expect their inputs
+  to be float tensors of pixels with values in the [0-255] range.
+  At the same time, preprocessing as a part of the model (i.e. `Rescaling`
+  layer) can be disabled by setting `include_preprocessing` argument to False.
+  With preprocessing disabled ModelNetV3 models expect their inputs to be float
+  tensors of pixels with values in the [-1, 1] range.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, to be specified if you would
       like to use a model with an input image resolution that is not
       (224, 224, 3).
@@ -135,16 +139,18 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
+    include_preprocessing: Boolean, whether to include the preprocessing
+      layer (`Rescaling`) at the bottom of the network. Defaults to `True`.
+
+  Call arguments:
+    inputs: A floating point `numpy.array` or a `tf.Tensor`, 4D with 3 color
+      channels, with values in the range [0, 255] if `include_preprocessing`
+      is True and in the range [-1, 1] otherwise.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape or invalid alpha, rows when
-      weights='imagenet'
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
 """
 
 
@@ -160,7 +166,8 @@ def MobileNetV3(stack_fn,
                 classes=1000,
                 pooling=None,
                 dropout_rate=0.2,
-                classifier_activation='softmax'):
+                classifier_activation='softmax',
+                include_preprocessing=True):
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
@@ -184,7 +191,7 @@ def MobileNetV3(stack_fn,
         raise ValueError('input_tensor: ', input_tensor,
                          'is not type input_tensor')
     if is_input_t_tensor:
-      if backend.image_data_format == 'channels_first':
+      if backend.image_data_format() == 'channels_first':
         if backend.int_shape(input_tensor)[1] != input_shape[1]:
           raise ValueError('input_shape: ', input_shape, 'and input_tensor: ',
                            input_tensor,
@@ -262,7 +269,8 @@ def MobileNetV3(stack_fn,
     se_ratio = 0.25
 
   x = img_input
-  x = layers.Rescaling(1. / 255.)(x)
+  if include_preprocessing:
+    x = layers.Rescaling(scale=1. / 127.5, offset=-1.)(x)
   x = layers.Conv2D(
       16,
       kernel_size=3,
@@ -293,6 +301,7 @@ def MobileNetV3(stack_fn,
       axis=channel_axis, epsilon=1e-3,
       momentum=0.999, name='Conv_1/BatchNorm')(x)
   x = activation(x)
+  x = layers.GlobalAveragePooling2D(keepdims=True)(x)
   x = layers.Conv2D(
       last_point_ch,
       kernel_size=1,
@@ -302,11 +311,6 @@ def MobileNetV3(stack_fn,
   x = activation(x)
 
   if include_top:
-    x = layers.GlobalAveragePooling2D()(x)
-    if channel_axis == 1:
-      x = layers.Reshape((last_point_ch, 1, 1))(x)
-    else:
-      x = layers.Reshape((1, 1, last_point_ch))(x)
     if dropout_rate > 0:
       x = layers.Dropout(dropout_rate)(x)
     x = layers.Conv2D(classes, kernel_size=1, padding='same', name='Logits')(x)
@@ -361,7 +365,8 @@ def MobileNetV3Small(input_shape=None,
                      classes=1000,
                      pooling=None,
                      dropout_rate=0.2,
-                     classifier_activation='softmax'):
+                     classifier_activation='softmax',
+                     include_preprocessing=True):
 
   def stack_fn(x, kernel, activation, se_ratio):
 
@@ -384,7 +389,7 @@ def MobileNetV3Small(input_shape=None,
 
   return MobileNetV3(stack_fn, 1024, input_shape, alpha, 'small', minimalistic,
                      include_top, weights, input_tensor, classes, pooling,
-                     dropout_rate, classifier_activation)
+                     dropout_rate, classifier_activation, include_preprocessing)
 
 
 @keras_export('keras.applications.MobileNetV3Large')
@@ -397,7 +402,8 @@ def MobileNetV3Large(input_shape=None,
                      classes=1000,
                      pooling=None,
                      dropout_rate=0.2,
-                     classifier_activation='softmax'):
+                     classifier_activation='softmax',
+                     include_preprocessing=True):
 
   def stack_fn(x, kernel, activation, se_ratio):
 
@@ -426,7 +432,7 @@ def MobileNetV3Large(input_shape=None,
 
   return MobileNetV3(stack_fn, 1280, input_shape, alpha, 'large', minimalistic,
                      include_top, weights, input_tensor, classes, pooling,
-                     dropout_rate, classifier_activation)
+                     dropout_rate, classifier_activation, include_preprocessing)
 
 
 MobileNetV3Small.__doc__ = BASE_DOCSTRING.format(name='MobileNetV3Small')
@@ -442,7 +448,7 @@ def hard_sigmoid(x):
 
 
 def hard_swish(x):
-  return layers.Multiply()([hard_sigmoid(x), x])
+  return layers.Multiply()([x, hard_sigmoid(x)])
 
 
 # This function is taken from the original tf repo.
@@ -463,12 +469,9 @@ def _depth(v, divisor=8, min_value=None):
 
 
 def _se_block(inputs, filters, se_ratio, prefix):
-  x = layers.GlobalAveragePooling2D(name=prefix + 'squeeze_excite/AvgPool')(
-      inputs)
-  if backend.image_data_format() == 'channels_first':
-    x = layers.Reshape((filters, 1, 1))(x)
-  else:
-    x = layers.Reshape((1, 1, filters))(x)
+  x = layers.GlobalAveragePooling2D(
+      keepdims=True, name=prefix + 'squeeze_excite/AvgPool')(
+          inputs)
   x = layers.Conv2D(
       _depth(filters * se_ratio),
       kernel_size=1,
@@ -555,6 +558,23 @@ def _inverted_res_block(x, expansion, filters, kernel_size, stride, se_ratio,
 
 @keras_export('keras.applications.mobilenet_v3.preprocess_input')
 def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
+  """A placeholder method for backward compatibility.
+
+  The preprocessing logic has been included in the mobilenet_v3 model
+  implementation. Users are no longer required to call this method to normalize
+  the input data. This method does nothing and only kept as a placeholder to
+  align the API surface between old and new version of model.
+
+  Args:
+    x: A floating point `numpy.array` or a `tf.Tensor`.
+    data_format: Optional data format of the image tensor/array. Defaults to
+      None, in which case the global setting
+      `tf.keras.backend.image_data_format()` is used (unless you changed it,
+      it defaults to "channels_last").{mode}
+
+  Returns:
+    Unchanged `numpy.array` or `tf.Tensor`.
+  """
   return x
 
 
@@ -563,8 +583,4 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
-preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='',
-    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
-    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

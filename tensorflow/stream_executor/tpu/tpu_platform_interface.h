@@ -49,13 +49,15 @@ class TpuPlatformInterface : public stream_executor::Platform {
 
   Status Reset() { return Reset(false, {}); }
 
-  virtual int64 TpuMemoryLimit() = 0;
+  virtual int64_t TpuMemoryLimit() = 0;
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 
   virtual const TpuTopologyPtr GetTopologyPtr() = 0;
 
   virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
+
+  virtual TpuRuntimeVersion version() const = 0;
 
   TpuTopologyExternal topology() {
     return TpuTopologyExternal(GetTopologyPtr());

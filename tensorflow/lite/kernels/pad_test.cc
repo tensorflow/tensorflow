@@ -264,6 +264,18 @@ TEST(PadOpTest, SimpleConst1DTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
 }
 
+TEST(PadOpTest, SimpleConst1DDim0Test) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadOpConstModel m({TensorType_FLOAT32, {0}}, {1, 2}, {1, 2},
+                    {TensorType_FLOAT32});
+  // NumElements(input) = 0, so there is no input data.
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+}
+
 TEST(PadOpTest, SimpleDynamicTest) {
   PadOpDynamicModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
                       {TensorType_FLOAT32});
@@ -280,8 +292,9 @@ TEST(PadOpTest, DynamicUnequalDimensions) {
     return;
   }
   PadOpDynamicModel m({TensorType_FLOAT32, {}}, {3, 2}, {TensorType_FLOAT32});
-  m.SetInput({1, 2, 3, 4});
-  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  // Skip invoking m.SetInput() since the method doesn't work with dynamic
+  // shapes.
+  m.SetPaddings({0, 0, 1, 1, 1, 1});
   ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
 }
 
@@ -576,7 +589,8 @@ TEST(PadV2OpTest, DynamicUnequalDimensions) {
   }
   PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {}}, {4, 2}, 0.0,
                                {TensorType_FLOAT32});
-  m.SetInput({1, 2, 3, 4});
+  // Skip invoking m.SetInput() since the method doesn't work with dynamic
+  // shapes.
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
 }
@@ -590,6 +604,61 @@ TEST(PadV2OpTest, SimpleDynamicValuedTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, SimpleTensorWithDim0Test) {
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 0}}, {4, 2}, 5,
+                               {TensorType_FLOAT32});
+  // NumElements(input) = 0, so there is no input data.
+  m.SetPaddings({0, 0, 1, 1, 0, 0, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                                               5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 2, 2}));
+
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  // Since NumElements(output) = 0 in this case, there is no data.
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 0}));
+}
+
+TEST(PadV2OpTest, Simple5DConstFloat32ValuedTest) {
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 1, 2, 1, 1}}, {5, 2},
+                             {0, 1, 0, 0, 1, 1, 0, 0, 0, 1}, 5,
+                             {TensorType_FLOAT32});
+  m.SetInput({3, 3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 4, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 3, 5, 3, 5, 5, 5, 5, 5, 5,
+                                               5, 5, 5, 5, 5}));
+}
+
+TEST(PadV2OpTest, Simple5DConstInt32ValuedTest) {
+  PadV2OpConstModel<int32_t> m({TensorType_INT32, {1, 2, 2, 1, 1}}, {5, 2},
+                               {0, 0, 1, 1, 1, 1, 0, 0, 1, 1}, 5,
+                               {TensorType_INT32});
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1, 3}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                        1, 5, 5, 2, 5, 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 4,
+                        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}));
+}
+
+TEST(PadV2OpTest, Simple5DDynamicValuedTest) {
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1, 1}}, {5, 2}, 5,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1, 3}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                        1, 5, 5, 2, 5, 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 4,
+                        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
 TEST(PadV2OpTest, AdvancedConstTest) {

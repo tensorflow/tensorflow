@@ -169,7 +169,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
       {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
        ShapeUtil::MakeShape(F32, {11})});
   auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
-  Array<int64> assignment({2});
+  Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
       tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),
@@ -298,6 +298,29 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
               "f32[16]{0:S(1)}, u32[]) "
               "%copy-start)) "
               "is in the memory space 1, expected 3");
+}
+
+TEST_F(HloMatchersTest, ConstantMatcher) {
+  string hlo_string = R"(
+HloModule Constant
+
+ENTRY main {
+  ROOT x = u32[2] constant({1, 2})
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 2})));
+  EXPECT_THAT(root, ::testing::Not(
+                        op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 1}))));
+
+  EXPECT_THAT(Explain(root, op::Constant(LiteralUtil::CreateR0<uint32_t>(1))),
+              "(%x = u32[2]{0} constant({1, 2})) has wrong value (got u32[2] "
+              "{1, 2}, want u32[] 1)");
 }
 
 }  // namespace

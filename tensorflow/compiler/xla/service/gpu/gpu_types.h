@@ -16,15 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
-// GpuVersion is used to abstract Gpu hardware version. On Cuda platform,
-// it comprises a pair of integers denoting major and minor version.
-// On ROCm platform, it comprises one integer for AMD GCN ISA version.
-using GpuVersion = absl::variant<std::pair<int, int>, int>;
+// GpuVersion is used to abstract Gpu hardware version.
+//
+// On Cuda platform, it comprises of se::CudaComputeCapability.
+//
+// On ROCm platform, the string has the contents of the
+// hipDeviceProp_t::gcnArchName field.
+// The string contains all the information needed to create an exact LLVM
+// AMDGPUTarget corresponding the AMDGPU device it represents.
+using GpuVersion = absl::variant<se::CudaComputeCapability, std::string>;
 }  // namespace gpu
 }  // namespace xla
 

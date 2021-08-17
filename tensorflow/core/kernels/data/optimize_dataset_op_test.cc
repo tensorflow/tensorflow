@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
@@ -83,8 +83,8 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
                             /*output_shapes=*/{PartialTensorShape({})},
                             /*optimization_configs=*/{},
                             /*node_name=*/kNodeName);
-  std::vector<Tensor> expected_outputs =
-      CreateTensors<int64>(TensorShape({}), {{-3}, {-2}, {-1}, {0}, {1}, {2}});
+  std::vector<Tensor> expected_outputs = CreateTensors<int64_t>(
+      TensorShape({}), {{-3}, {-2}, {-1}, {0}, {1}, {2}});
 
   TF_ASSERT_OK(Initialize(optimize_dataset_params));
   TF_EXPECT_OK(CheckIteratorGetNext(expected_outputs, /*compare_order=*/true));

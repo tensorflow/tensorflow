@@ -22,7 +22,8 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -60,7 +61,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "guitar",
+        "noguitar",  # TODO(b/176867216): Flaky.
         "manual",
         "multi_gpu",
         "no_oss",

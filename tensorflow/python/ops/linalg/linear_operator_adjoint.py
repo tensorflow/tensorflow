@@ -30,6 +30,7 @@ __all__ = []
 
 
 @tf_export("linalg.LinearOperatorAdjoint")
+@linear_operator.make_composite_tensor
 class LinearOperatorAdjoint(linear_operator.LinearOperator):
   """`LinearOperator` representing the adjoint of another operator.
 
@@ -153,7 +154,6 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     with ops.name_scope(name, values=operator.graph_parents):
       super(LinearOperatorAdjoint, self).__init__(
           dtype=operator.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
@@ -231,3 +231,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
 
   def _cond(self):
     return self.operator.cond()
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operator",)

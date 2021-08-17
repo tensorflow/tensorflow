@@ -223,9 +223,9 @@ class TrainingOpsTest(TensorFlowTestCase):
       self._testTypesForFtrlMultiplyLinearByLr(
           x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
 
-  def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
+  def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices, use_gpu):
     self.setUp()
-    with self.session(use_gpu=False):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       self.evaluate(variables.global_variables_initializer())
@@ -251,11 +251,12 @@ class TrainingOpsTest(TensorFlowTestCase):
                               lr,
                               grad,
                               indices,
+                              use_gpu,
                               l1=0.0,
                               l2=0.0,
                               lr_power=-0.5):
     self.setUp()
-    with self.session(use_gpu=False):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       linear = variables.VariableV1(z)
@@ -327,8 +328,9 @@ class TrainingOpsTest(TensorFlowTestCase):
   @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
                          "supported in eager mode.")
   def testSparseApplyAdagrad(self):
-    for (dtype, index_type) in itertools.product(
-        [np.float16, np.float32, np.float64], [np.int32, np.int64]):
+    for (dtype, index_type,
+         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
+                                       [np.int32, np.int64], [False, True]):
       x_val = [np.arange(10), np.arange(10, 20), np.arange(20, 30)]
       y_val = [np.arange(1, 11), np.arange(11, 21), np.arange(21, 31)]
       x = np.array(x_val).astype(dtype)
@@ -337,13 +339,19 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad_val = [np.arange(10), np.arange(10)]
       grad = np.array(grad_val).astype(dtype)
       indices = np.array([0, 2]).astype(index_type)
-      self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
+      self._testTypesForSparseAdagrad(x, y, lr, grad, indices, use_gpu)
+      # Empty sparse gradients.
+      empty_grad = np.zeros([0, 10], dtype=dtype)
+      empty_indices = np.zeros([0], dtype=index_type)
+      self._testTypesForSparseAdagrad(x, y, lr, empty_grad, empty_indices,
+                                      use_gpu)
 
   @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
                          "supported in eager mode.")
   def testSparseApplyAdagradDim1(self):
-    for (dtype, index_type) in itertools.product(
-        [np.float16, np.float32, np.float64], [np.int32, np.int64]):
+    for (dtype, index_type,
+         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
+                                       [np.int32, np.int64], [False, True]):
       x_val = [[1.0], [2.0], [3.0]]
       y_val = [[4.0], [5.0], [6.0]]
       x = np.array(x_val).astype(dtype)
@@ -352,13 +360,14 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad_val = [[1.5], [2.5]]
       grad = np.array(grad_val).astype(dtype)
       indices = np.array([0, 2]).astype(index_type)
-      self._testTypesForSparseAdagrad(x, y, lr, grad, indices)
+      self._testTypesForSparseAdagrad(x, y, lr, grad, indices, use_gpu)
 
   @test_util.run_v1_only("SparseApplyFtrl op returns a ref, so it is not "
                          "supported in eager mode.")
   def testSparseApplyFtrlDim1(self):
-    for (dtype, index_type) in itertools.product(
-        [np.float16, np.float32, np.float64], [np.int32, np.int64]):
+    for (dtype, index_type,
+         use_gpu) in itertools.product([np.float16, np.float32, np.float64],
+                                       [np.int32, np.int64], [False, True]):
       x_val = [[0.0], [0.0], [0.0]]
       y_val = [[4.0], [5.0], [6.0]]
       z_val = [[0.0], [0.0], [0.0]]
@@ -369,7 +378,12 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad_val = [[1.5], [2.5]]
       grad = np.array(grad_val).astype(dtype)
       indices = np.array([0, 2]).astype(index_type)
-      self._testTypesForSparseFtrl(x, y, z, lr, grad, indices)
+      self._testTypesForSparseFtrl(x, y, z, lr, grad, indices, use_gpu)
+      # Empty sparse gradients.
+      empty_grad = np.zeros([0, 1], dtype=dtype)
+      empty_indices = np.zeros([0], dtype=index_type)
+      self._testTypesForSparseFtrl(x, y, z, lr, empty_grad, empty_indices,
+                                   use_gpu)
 
   @test_util.run_v1_only("SparseApplyFtrlMultiplyLinearByLr op returns a ref, "
                          "so it is not supported in eager mode.")

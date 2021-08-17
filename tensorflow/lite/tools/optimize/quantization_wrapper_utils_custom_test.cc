@@ -134,5 +134,3 @@ TEST(LstmPreprocess, Add2Tensors) {
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite
-
-int main(int argc, char** argv) { return RUN_ALL_TESTS(); }

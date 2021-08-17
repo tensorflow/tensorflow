@@ -15,11 +15,7 @@
 # pylint: disable=invalid-name
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
-"""Set of tools for real-time data augmentation on image data.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Set of tools for real-time data augmentation on image data."""
 
 from keras_preprocessing import image
 import numpy as np
@@ -95,9 +91,10 @@ def smart_resize(x, size, interpolation='bilinear'):
   2. Resize the cropped image to the target size. In the example above,
   we resize the `(340, 340)` crop to `(200, 200)`.
 
-  Arguments:
-    x: Input image (as a tensor or NumPy array). Must be in format
-      `(height, width, channels)`.
+  Args:
+    x: Input image or batch of images (as a tensor or NumPy array).
+      Must be in format `(height, width, channels)` or
+      `(batch_size, height, width, channels)`.
     size: Tuple of `(height, width)` integer. Target size.
     interpolation: String, interpolation to use for resizing.
       Defaults to `'bilinear'`. Supports `bilinear`, `nearest`, `bicubic`,
@@ -113,12 +110,17 @@ def smart_resize(x, size, interpolation='bilinear'):
                      'but got: %s' % (size,))
   img = ops.convert_to_tensor_v2_with_dispatch(x)
   if img.shape.rank is not None:
-    if img.shape.rank != 3:
+    if img.shape.rank < 3 or img.shape.rank > 4:
       raise ValueError(
-          'Expected an image array with shape `(height, width, channels)`, but '
+          'Expected an image array with shape `(height, width, channels)`, '
+          'or `(batch_size, height, width, channels)` but '
           'got input with incorrect rank, of shape %s' % (img.shape,))
   shape = array_ops.shape(img)
-  height, width = shape[0], shape[1]
+  if img.shape.rank == 4:
+    height, width = shape[1], shape[2]
+    static_num_channels = img.shape[-1]
+  else:
+    height, width = shape[0], shape[1]
   target_height, target_width = size
 
   crop_height = math_ops.cast(
@@ -135,20 +137,28 @@ def smart_resize(x, size, interpolation='bilinear'):
   crop_box_wstart = math_ops.cast(
       math_ops.cast(width - crop_width, 'float32') / 2, 'int32')
 
-  crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
-  crop_box_size = array_ops.stack([crop_height, crop_width, -1])
+  if img.shape.rank == 4:
+    crop_box_start = array_ops.stack([0, crop_box_hstart, crop_box_wstart, 0])
+    crop_box_size = array_ops.stack([-1, crop_height, crop_width, -1])
+  else:
+    crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
+    crop_box_size = array_ops.stack([crop_height, crop_width, -1])
 
   img = array_ops.slice(img, crop_box_start, crop_box_size)
   img = image_ops.resize_images_v2(
       images=img,
       size=size,
       method=interpolation)
+  if img.shape.rank == 4:
+    # Apparent bug in resize_images_v2 may cause shape to be lost
+    img.set_shape((None, None, None, static_num_channels))
   if isinstance(x, np.ndarray):
     return img.numpy()
   return img
 
 
-@keras_export('keras.preprocessing.image.array_to_img')
+@keras_export('keras.utils.array_to_img',
+              'keras.preprocessing.image.array_to_img')
 def array_to_img(x, data_format=None, scale=True, dtype=None):
   """Converts a 3D Numpy array to a PIL Image instance.
 
@@ -161,14 +171,14 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
   ```
 
 
-  Arguments:
-      x: Input Numpy array.
+  Args:
+      x: Input data, in any form that can be converted to a Numpy array.
       data_format: Image data format, can be either "channels_first" or
         "channels_last". Defaults to `None`, in which case the global setting
         `tf.keras.backend.image_data_format()` is used (unless you changed it,
         it defaults to "channels_last").
-      scale: Whether to rescale image values to be within `[0, 255]`. Defaults
-        to `True`.
+      scale: Whether to rescale the image such that minimum and maximum values
+        are 0 and 255 respectively. Defaults to `True`.
       dtype: Dtype to use. Default to `None`, in which case the global setting
       `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
       to "float32")
@@ -191,7 +201,8 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
   return image.array_to_img(x, data_format=data_format, scale=scale, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.img_to_array')
+@keras_export('keras.utils.img_to_array',
+              'keras.preprocessing.image.img_to_array')
 def img_to_array(img, data_format=None, dtype=None):
   """Converts a PIL Image instance to a Numpy array.
 
@@ -205,7 +216,7 @@ def img_to_array(img, data_format=None, dtype=None):
   ```
 
 
-  Arguments:
+  Args:
       img: Input PIL Image instance.
       data_format: Image data format, can be either "channels_first" or
         "channels_last". Defaults to `None`, in which case the global setting
@@ -232,7 +243,8 @@ def img_to_array(img, data_format=None, dtype=None):
   return image.img_to_array(img, data_format=data_format, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.save_img')
+@keras_export('keras.utils.save_img',
+              'keras.preprocessing.image.save_img')
 def save_img(path,
              x,
              data_format=None,
@@ -241,7 +253,7 @@ def save_img(path,
              **kwargs):
   """Saves an image stored as a Numpy array to a path or file object.
 
-  Arguments:
+  Args:
       path: Path or file object.
       x: Numpy array.
       data_format: Image data format,
@@ -262,6 +274,8 @@ def save_img(path,
                  scale=scale, **kwargs)
 
 
+@keras_export('keras.utils.load_img',
+              'keras.preprocessing.image.load_img')
 def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
              interpolation='nearest'):
   """Loads an image into PIL format.
@@ -270,12 +284,12 @@ def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
 
   ```
   image = tf.keras.preprocessing.image.load_img(image_path)
-  input_arr = keras.preprocessing.image.img_to_array(image)
+  input_arr = tf.keras.preprocessing.image.img_to_array(image)
   input_arr = np.array([input_arr])  # Convert single image to a batch.
   predictions = model.predict(input_arr)
   ```
 
-  Arguments:
+  Args:
       path: Path to image file.
       grayscale: DEPRECATED use `color_mode="grayscale"`.
       color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
@@ -306,10 +320,10 @@ class Iterator(image.Iterator, data_utils.Sequence):
 
 
 @keras_export('keras.preprocessing.image.DirectoryIterator')
-class DirectoryIterator(image.DirectoryIterator, Iterator):
+class DirectoryIterator(image.DirectoryIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk.
 
-  Arguments:
+  Args:
       directory: Path to the directory to read images from.
           Each subdirectory in this directory will be
           considered to contain images from one class,
@@ -324,12 +338,12 @@ class DirectoryIterator(image.DirectoryIterator, Iterator):
           containing images from each class (e.g. `["dogs", "cats"]`).
           It will be computed automatically if not set.
       class_mode: Mode for yielding the targets:
-          `"binary"`: binary targets (if there are only two classes),
-          `"categorical"`: categorical targets,
-          `"sparse"`: integer targets,
-          `"input"`: targets are images identical to input images (mainly
+          - `"binary"`: binary targets (if there are only two classes),
+          - `"categorical"`: categorical targets,
+          - `"sparse"`: integer targets,
+          - `"input"`: targets are images identical to input images (mainly
               used to work with autoencoders),
-          `None`: no targets get yielded (only input images are yielded).
+          - `None`: no targets get yielded (only input images are yielded).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -400,7 +414,7 @@ class DirectoryIterator(image.DirectoryIterator, Iterator):
 class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
   """Iterator yielding data from a Numpy array.
 
-  Arguments:
+  Args:
       x: Numpy array of input data or tuple.
           If tuple, the second elements is either
           another numpy array or a list of numpy arrays,
@@ -460,21 +474,23 @@ class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
         **kwargs)
 
 
-class DataFrameIterator(image.DataFrameIterator, Iterator):
+class DataFrameIterator(image.DataFrameIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk as a dataframe.
 
-  Arguments:
+  Args:
       dataframe: Pandas dataframe containing the filepaths relative to
         `directory` (or absolute paths if `directory` is None) of the images in
-        a string column. It should include other column/s
-          depending on the `class_mode`: - if `class_mode` is `"categorical"`
-            (default value) it must include the `y_col` column with the class/es
-            of each image. Values in column can be string/list/tuple if a single
-            class or list/tuple if multiple classes. - if `class_mode` is
-            `"binary"` or `"sparse"` it must include the given `y_col` column
-            with class values as strings. - if `class_mode` is `"raw"` or
-            `"multi_output"` it should contain the columns specified in `y_col`.
-            - if `class_mode` is `"input"` or `None` no extra column is needed.
+        a string column. It should include other column/s depending on the
+        `class_mode`:
+          - if `class_mode` is `"categorical"` (default value) it must include
+              the `y_col` column with the class/es of each image. Values in
+              column can be string/list/tuple if a single class or list/tuple if
+              multiple classes.
+          - if `class_mode` is `"binary"` or `"sparse"` it must include the
+              given `y_col` column with class values as strings.
+          - if `class_mode` is `"raw"` or `"multi_output"` it should contain the
+              columns specified in `y_col`.
+          - if `class_mode` is `"input"` or `None` no extra column is needed.
       directory: string, path to the directory to read images from. If `None`,
         data in `x_col` column should be absolute paths.
       image_data_generator: Instance of `ImageDataGenerator` to use for random
@@ -491,8 +507,8 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
       classes: Optional list of strings, classes to use (e.g. `["dogs",
         "cats"]`). If None, all classes in `y_col` will be used.
       class_mode: one of "binary", "categorical", "input", "multi_output",
-          "raw", "sparse" or None. Default: "categorical".
-          Mode for yielding the targets:
+        "raw", "sparse" or None. Default: "categorical".
+        Mode for yielding the targets:
           - `"binary"`: 1D numpy array of binary labels,
           - `"categorical"`: 2D numpy array of one-hot encoded labels. Supports
             multi-label output.
@@ -500,9 +516,9 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
             with autoencoders),
           - `"multi_output"`: list with the values of the different columns,
           - `"raw"`: numpy array of values in `y_col` column(s),
-          - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
-            are returned (the generator will only yield batches of image data,
-            which is useful to use in `model.predict()`).
+          - `"sparse"`: 1D numpy array of integer labels,
+          - `None`, no targets are returned (the generator will only yield
+            batches of image data, which is useful to use in `model.predict()`).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -583,7 +599,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
 
    The data will be looped over (in batches).
 
-  Arguments:
+  Args:
       featurewise_center: Boolean.
           Set input mean to 0 over the dataset, feature-wise.
       samplewise_center: Boolean. Set each sample mean to 0.
@@ -655,6 +671,12 @@ class ImageDataGenerator(image.ImageDataGenerator):
           (strictly between 0 and 1).
       dtype: Dtype to use for the generated arrays.
 
+  Raises:
+    ValueError: If the value of the argument, `data_format` is other than
+          `"channels_last"` or `"channels_first"`.
+    ValueError: If the value of the argument, `validation_split` > 1
+          or `validation_split` < 0.
+
   Examples:
 
   Example of using `.flow(x, y)`:
@@ -669,13 +691,17 @@ class ImageDataGenerator(image.ImageDataGenerator):
       rotation_range=20,
       width_shift_range=0.2,
       height_shift_range=0.2,
-      horizontal_flip=True)
+      horizontal_flip=True,
+      validation_split=0.2)
   # compute quantities required for featurewise normalization
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit(datagen.flow(x_train, y_train, batch_size=32),
-            steps_per_epoch=len(x_train) / 32, epochs=epochs)
+  model.fit(datagen.flow(x_train, y_train, batch_size=32,
+           subset='training'),
+           validation_data=datagen.flow(x_train, y_train,
+           batch_size=8, subset='validation'),
+           steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
       print('Epoch', e)
@@ -817,7 +843,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
            subset=None):
     """Takes data & label arrays, generates batches of augmented data.
 
-    Arguments:
+    Args:
         x: Input data. Numpy array of rank 4 or a tuple. If tuple, the first
           element should contain the images and the second element another numpy
           array or a list of numpy arrays that gets passed to the output without
@@ -835,7 +861,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str (default: `''`). Prefix to use for filenames of saved
           pictures (only relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
@@ -849,6 +876,10 @@ class ImageDataGenerator(image.ImageDataGenerator):
             of corresponding labels. If 'sample_weight' is not None,
             the yielded tuples are of the form `(x, y, sample_weight)`.
             If `y` is None, only the numpy array `x` is returned.
+    Raises:
+      ValueError: If the Value of the argument, `subset` is other than
+            "training" or "validation".
+
     """
     return NumpyArrayIterator(
         x,
@@ -881,7 +912,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
                           interpolation='nearest'):
     """Takes the path to a directory & generates batches of augmented data.
 
-    Arguments:
+    Args:
         directory: string, path to the target directory. It should contain one
           subdirectory per class. Any PNG, JPG, BMP, PPM or TIF images inside
           each of the subdirectories directory tree will be included in the
@@ -902,15 +933,17 @@ class ImageDataGenerator(image.ImageDataGenerator):
               indices can be obtained via the attribute `class_indices`.
         class_mode: One of "categorical", "binary", "sparse",
             "input", or None. Default: "categorical".
-            Determines the type of label arrays that are returned: -
-              "categorical" will be 2D one-hot encoded labels, - "binary" will
-              be 1D binary labels, "sparse" will be 1D integer labels, - "input"
-              will be images identical to input images (mainly used to work with
-              autoencoders). - If None, no labels are returned (the generator
-              will only yield batches of image data, which is useful to use with
-              `model.predict()`). Please note that in case of
-              class_mode None, the data still needs to reside in a subdirectory
-              of `directory` for it to work correctly.
+            Determines the type of label arrays that are returned:
+            - "categorical" will be 2D one-hot encoded labels,
+            - "binary" will be 1D binary labels,
+            - "sparse" will be 1D integer labels,
+            - "input"  will be images identical to input images (mainly used to
+              work with autoencoders).
+            - If None, no labels are returned (the generator will only yield
+              batches of image data, which is useful to use with
+              `model.predict()`).
+            Please note that in case of class_mode None, the data still needs to
+            reside in a subdirectory of `directory` for it to work correctly.
         batch_size: Size of the batches of data (default: 32).
         shuffle: Whether to shuffle the data (default: True) If set to False,
           sorts the data in alphanumeric order.
@@ -920,7 +953,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: One of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
@@ -984,19 +1018,20 @@ class ImageDataGenerator(image.ImageDataGenerator):
     **A simple tutorial can be found **[here](
                                 http://bit.ly/keras_flow_from_dataframe).
 
-    Arguments:
+    Args:
         dataframe: Pandas dataframe containing the filepaths relative to
           `directory` (or absolute paths if `directory` is None) of the images
           in a string column. It should include other column/s
-            depending on the `class_mode`: - if `class_mode` is `"categorical"`
-              (default value) it must include the `y_col` column with the
-              class/es of each image. Values in column can be string/list/tuple
-              if a single class or list/tuple if multiple classes. - if
-              `class_mode` is `"binary"` or `"sparse"` it must include the given
-              `y_col` column with class values as strings. - if `class_mode` is
-              `"raw"` or `"multi_output"` it should contain the columns
-              specified in `y_col`. - if `class_mode` is `"input"` or `None` no
-              extra column is needed.
+            depending on the `class_mode`:
+            - if `class_mode` is `"categorical"` (default value) it must include
+              the `y_col` column with the class/es of each image. Values in
+              column can be string/list/tuple if a single class or list/tuple if
+              multiple classes.
+            - if `class_mode` is `"binary"` or `"sparse"` it must include the
+              given `y_col` column with class values as strings.
+            - if `class_mode` is `"raw"` or `"multi_output"` it should contain
+              the columns specified in `y_col`.
+            - if `class_mode` is `"input"` or `None` no extra column is needed.
         directory: string, path to the directory to read images from. If `None`,
           data in `x_col` column should be absolute paths.
         x_col: string, column in `dataframe` that contains the filenames (or
@@ -1024,9 +1059,10 @@ class ImageDataGenerator(image.ImageDataGenerator):
               with autoencoders),
             - `"multi_output"`: list with the values of the different columns,
             - `"raw"`: numpy array of values in `y_col` column(s),
-            - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
-              are returned (the generator will only yield batches of image data,
-              which is useful to use in `model.predict()`).
+            - `"sparse"`: 1D numpy array of integer labels,
+            - `None`, no targets are returned (the generator will only yield
+              batches of image data, which is useful to use in
+              `model.predict()`).
         batch_size: size of the batches of data (default: 32).
         shuffle: whether to shuffle the data (default: True)
         seed: optional random seed for shuffling and transformations.
@@ -1035,7 +1071,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
@@ -1058,21 +1095,21 @@ class ImageDataGenerator(image.ImageDataGenerator):
         and `y` is a numpy array of corresponding labels.
     """
     if 'has_ext' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'has_ext is deprecated, filenames in the dataframe have '
           'to match the exact filenames in disk.', DeprecationWarning)
     if 'sort' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'sort is deprecated, batches will be created in the'
           'same order than the filenames provided if shuffle'
           'is set to False.', DeprecationWarning)
     if class_mode == 'other':
-      tf_logging.warn(
+      tf_logging.warning(
           '`class_mode` "other" is deprecated, please use '
           '`class_mode` "raw".', DeprecationWarning)
       class_mode = 'raw'
     if 'drop_duplicates' in kwargs:
-      tf_logging.warn(
+      tf_logging.warning(
           'drop_duplicates is deprecated, you can drop duplicates '
           'by using the pandas.DataFrame.drop_duplicates method.',
           DeprecationWarning)
@@ -1113,4 +1150,3 @@ keras_export(
 keras_export('keras.preprocessing.image.random_brightness')(random_brightness)
 keras_export(
     'keras.preprocessing.image.apply_affine_transform')(apply_affine_transform)
-keras_export('keras.preprocessing.image.load_img')(load_img)

@@ -30,6 +30,7 @@ __all__ = ["LinearOperatorFullMatrix"]
 
 
 @tf_export("linalg.LinearOperatorFullMatrix")
+@linear_operator.make_composite_tensor
 class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   """`LinearOperator` that wraps a [batch] matrix.
 
@@ -149,7 +150,6 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
       super(LinearOperatorFullMatrix, self).__init__(
           dtype=self._matrix.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
@@ -197,3 +197,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
   def _to_dense(self):
     return self._matrix
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("matrix",)

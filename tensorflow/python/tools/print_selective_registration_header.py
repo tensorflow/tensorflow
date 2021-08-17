@@ -38,7 +38,7 @@ from __future__ import print_function
 import argparse
 import sys
 
-from tensorflow.python.platform import app
+from absl import app
 from tensorflow.python.tools import selective_registration_header_lib
 
 FLAGS = None

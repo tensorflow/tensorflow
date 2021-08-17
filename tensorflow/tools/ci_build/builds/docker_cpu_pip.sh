@@ -22,16 +22,16 @@ pip --version
 pip install portpicker
 pip install *.whl
 
-# Make bazel version the same as the env that invokes this script
-rm -rf ~/bazel
-mkdir ~/bazel
-pushd ~/bazel
-wget https://github.com/bazelbuild/bazel/releases/download/"${BAZEL_VERSION}"/bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-chmod +x bazel-*.sh
-./bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh --user
-rm bazel-"${BAZEL_VERSION}"-installer-linux-x86_64.sh
-PATH="/bazel_pip/bin:$PATH"
-popd
+# Install bazelisk
+rm -rf ~/bin/bazel
+mkdir ~/bin/bazel
+wget --no-verbose -O "~/bin/bazel" \
+    "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/bazelisk-linux-amd64"
+chmod u+x "~/bin/bazel"
+if [[ ! ":$PATH:" =~ :"~"/bin/?: ]]; then
+  PATH="~/bin:$PATH"
+fi
+which bazel
 bazel version
 
 # Use default configuration
@@ -51,7 +51,7 @@ bazel --output_base=/tmp test --define=no_tensorflow_py_deps=true \
       -- //${PIP_TEST_ROOT}/tensorflow/python/... \
       -//${PIP_TEST_ROOT}/tensorflow/python/compiler/xla:xla_test \
       -//${PIP_TEST_ROOT}/tensorflow/python/distribute:parameter_server_strategy_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/client:virtual_gpu_test \
       -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test
 # The above tests are excluded because they seem to require a GPU.
 # TODO(yifeif): Investigate and potentially add an unconditional 'gpu' tag.

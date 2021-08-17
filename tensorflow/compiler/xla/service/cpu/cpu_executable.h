@@ -53,12 +53,19 @@ class CpuExecutable : public Executable {
                 const string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-  ~CpuExecutable() override {}
+  ~CpuExecutable() override;
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
+
+  // Calls the generated function performing the computation with the given
+  // arguments using the supplied buffers.
+  Status ExecuteComputeFunction(
+      const ExecutableRunOptions* run_options,
+      absl::Span<MaybeOwningDeviceMemory const> buffers,
+      HloExecutionProfile* hlo_execution_profile);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -67,13 +74,13 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  static int64 ShapeSizeBytes(const Shape& shape);
+  static int64_t ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
   using ComputeFunctionType =
       void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
                const void** /*args*/, void** /*buffer_table*/,
-               int64* /*profile_counters*/);
+               int64_t* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -81,7 +88,7 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
-  int64 SizeOfGeneratedCodeInBytes() const override;
+  int64_t SizeOfGeneratedCodeInBytes() const override;
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -105,13 +112,6 @@ class CpuExecutable : public Executable {
       se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
       absl::Span<ExecutionInput const> arguments);
 
-  // Calls the generated function performing the computation with the given
-  // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory const> buffers,
-      HloExecutionProfile* hlo_execution_profile);
-
   // Creates an Execution output holding ScopedShapedBuffer for holding the
   // result of the computation, moving buffers out of allocated_buffers and into
   // the result as appropriate.  The addresses are set according to buffer
@@ -131,11 +131,16 @@ class CpuExecutable : public Executable {
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
 
+  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
   // positives.
   string ir_module_string_;
+
+  // Unique identifier.
+  string module_name_;
 
   ComputeFunctionType compute_function_;
 

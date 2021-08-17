@@ -57,7 +57,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     xla::XlaBuilder* builder = input.builder();
     auto input_xla_shape = builder->GetShape(input);
     OP_REQUIRES_OK(ctx, input_xla_shape.status());
-    absl::Span<const int64> input_shape =
+    absl::Span<const int64_t> input_shape =
         input_xla_shape.ValueOrDie().dimensions();
     int input_rank = input_shape.size();
 
@@ -69,9 +69,9 @@ class DepthToSpaceOp : public XlaOpKernel {
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format);
 
-    std::vector<int64> reshaped_shape;
-    std::vector<int64> transpose_order;
-    std::vector<int64> output_shape;
+    std::vector<int64_t> reshaped_shape;
+    std::vector<int64_t> transpose_order;
+    std::vector<int64_t> output_shape;
     reshaped_shape.reserve(input_rank);
     transpose_order.reserve(input_rank);
     output_shape.reserve(input_rank);
@@ -80,7 +80,7 @@ class DepthToSpaceOp : public XlaOpKernel {
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(input_shape[1 + i]);
       }
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(block_size_);
         block_elems *= block_size_;
@@ -102,7 +102,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     } else {
       // NCHW format.
       reshaped_shape.push_back(input_shape[0]);
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(block_size_);
         block_elems *= block_size_;

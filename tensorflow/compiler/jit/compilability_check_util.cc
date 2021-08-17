@@ -65,6 +65,8 @@ namespace tensorflow {
 
 namespace {
 
+constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+
 bool HasResourceInput(const Node& node) {
   return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
 }
@@ -73,6 +75,10 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
   VLOG(3) << "Found uncompilable node " << node.name() << " (op "
           << node.type_string() << ")" << (reason.empty() ? "" : ": ")
           << reason;
+}
+
+bool IsInOutsideCompilationCluster(const Node& n) {
+  return n.attrs().Find(kXlaOutsideCompilationAttr) != nullptr;
 }
 
 Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
@@ -84,7 +90,7 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   return Status::OK();
 }
 
-xla::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
     const Node& node, absl::string_view attr_name,
     absl::string_view call_name) {
   std::vector<NameAttrList> attr_lists;
@@ -151,35 +157,15 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   // not considered uncompilable.
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+      stack_trace.emplace_back(
+          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
     }
   }
-  stack_trace.emplace_back(StackFrameView{node.name(), ""});
+  stack_trace.emplace_back(
+      StackFrameView{node.name(), "", node.GetStackTrace()});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableNode(node, lib_runtime, &stack_trace,
-                   /*encapsulating_function=*/nullptr, &uncompilable_nodes);
-  return uncompilable_nodes;
-}
-
-RecursiveCompilabilityChecker::UncompilableNodesMap
-RecursiveCompilabilityChecker::FindUncompilableNodes(
-    const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
-    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
-        node_stack_trace) const {
-  // If `node_stack_trace` is provided, that means `call_def` is inside
-  // a function body, and therefore, arg nodes and retval nodes are
-  // not considered uncompilable.
-  std::vector<StackFrameView> stack_trace;
-  if (node_stack_trace != nullptr) {
-    for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
-    }
-  }
-  stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
-  IsCompilableCall(call_def, lib_runtime, &stack_trace,
                    /*encapsulating_function=*/nullptr, &uncompilable_nodes);
   return uncompilable_nodes;
 }
@@ -194,12 +180,11 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
         "SymbolicGradient should be handled by IsCompilableCall().";
     return false;
   }
+
   if (node.type_string() == "Const") {
-    // Skip Const op with type DT_STRING, since XLA doesn't support it, but the
-    // registered Const KernelDef says that it does, to support no-op Assert for
-    // tfcompile.
     const AttrValue* attr = node.attrs().Find("dtype");
-    if (attr != nullptr && attr->type() == DT_STRING) {
+    if (!op_filter_.allow_string_consts && attr != nullptr &&
+        attr->type() == DT_STRING) {
       *uncompilable_reason =
           "Const op with type DT_STRING is not supported by XLA.";
       return false;
@@ -250,7 +235,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCase(
     NameAttrList* encapsulating_function,
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
-  xla::StatusOr<std::vector<NodeDef>> calls =
+  StatusOr<std::vector<NodeDef>> calls =
       MakeCallNodesFromAttribute(case_node, "branches", "branch");
   if (!calls.ok()) {
     VLOG(2) << "Rejecting node " << case_node.name() << ": "
@@ -359,7 +344,8 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   bool is_compilable = true;
   for (const Node* node : fbody->graph->op_nodes()) {
-    stack_trace->emplace_back(StackFrameView{node->name(), function.name()});
+    stack_trace->emplace_back(
+        StackFrameView{node->name(), function.name(), node->GetStackTrace()});
     is_compilable &= IsCompilableNode(*node, lib_runtime, stack_trace,
                                       &function, uncompilable_nodes);
     stack_trace->pop_back();
@@ -398,6 +384,10 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
   auto stack_depth = stack_trace->size();
+
+  if (op_filter_.allow_outside_compiled && IsInOutsideCompilationCluster(node))
+    return true;
+
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -485,6 +475,15 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_eliding_assert_and_checknumerics_ops &&
       IsAssertOrCheckNumerics(node.type_string())) {
     absl::string_view uncompilable_reason = "Assert or CheckNumerics";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
+  if (!op_filter_.allow_collective_reduce_v2 &&
+      node.type_string() == "CollectiveReduceV2") {
+    absl::string_view uncompilable_reason = "Collective op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
@@ -583,7 +582,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
                     [](const StackFrameView& stack_element) {
                       return StackFrame{
                           std::string(stack_element.name),
-                          std::string(stack_element.function_name)};
+                          std::string(stack_element.function_name),
+                          stack_element.stack_trace};
                     });
 
   node_info.name = std::string(stack_trace.back().name);
@@ -690,8 +690,10 @@ tensorflow::MemoryTypeVector GetOutputMemoryTypes(
 static auto const ops_triggering_xla_compilation =
     new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
                                          "XlaConv",
+                                         "XlaConvV2",
                                          "XlaDequantize",
                                          "XlaDot",
+                                         "XlaDotV2",
                                          "XlaDynamicSlice",
                                          "XlaDynamicUpdateSlice",
                                          "XlaEinsum",
@@ -703,6 +705,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaReduce",
                                          "XlaReduceWindow",
                                          "XlaReplicaId",
+                                         "XlaRngBitGenerator",
                                          "XlaScatter",
                                          "XlaSelectAndScatter",
                                          "XlaSelfAdjointEig",
@@ -712,6 +715,8 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaSpmdFullToShardShape",
                                          "XlaSpmdShardToFullShape",
                                          "XlaSvd",
+                                         "XlaVariadicReduceV2",
+                                         "XlaVariadicSort",
                                          "XlaWhile"};
 
 static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {

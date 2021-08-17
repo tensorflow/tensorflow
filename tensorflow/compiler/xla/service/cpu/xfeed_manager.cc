@@ -67,7 +67,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   return current_buffer_;
 }
 
-void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
+void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
                                              StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())
@@ -78,6 +78,14 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
   CHECK_EQ(data, current_buffer_->data());
   current_buffer_->Done(std::move(shape));
   current_buffer_ = nullptr;
+}
+
+int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, pointer_size);
+  }
+  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
 }
 
 }  // namespace runtime

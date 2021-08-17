@@ -15,24 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 
-#include <stdint.h>
+#include <memory>
 
-#include <string>
-
-#include "absl/strings/str_cat.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/any.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
+#include "tensorflow/lite/delegates/gpu/common/unimplemented_operation_parser.h"
 
 namespace tflite {
 namespace gpu {
 
-absl::Status ParseCustomAttributes(absl::string_view op_name, int version,
-                                   const void* data, uint32_t data_size,
-                                   absl::any* attr, BHWC* output_shape) {
-  return absl::UnimplementedError(absl::StrCat(
-      "Attributes parsing is not enabled for ", op_name, " operation."));
+std::unique_ptr<TFLiteOperationParser> NewCustomOperationParser(
+    absl::string_view op_name) {
+  return absl::make_unique<UnimplementedOperationParser>(op_name);
 }
 
 }  // namespace gpu

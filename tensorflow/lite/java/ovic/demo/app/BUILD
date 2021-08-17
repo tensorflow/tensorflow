@@ -3,7 +3,7 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 android_binary(

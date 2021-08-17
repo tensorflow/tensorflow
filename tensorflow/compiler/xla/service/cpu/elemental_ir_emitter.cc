@@ -33,9 +33,9 @@ using xla::llvm_ir::IrArray;
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
-                                                        llvm::Value* lhs,
-                                                        llvm::Value* rhs) {
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
+    absl::string_view /*name*/) {
   string function_name;
   bool cast_result_to_fp16 = false;
   switch (prim_type) {
@@ -103,16 +103,6 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
     result = FPCast(result, b()->getHalfTy());
   }
   return result;
-}
-
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitConvolution(
-    const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& index) {
-  return ir_emitter_->EmitElementalConvolution(
-      Cast<HloConvolutionInstruction>(hlo),
-      operand_to_generator.at(hlo->operand(0)),
-      operand_to_generator.at(hlo->operand(1)), index);
 }
 
 }  // namespace cpu

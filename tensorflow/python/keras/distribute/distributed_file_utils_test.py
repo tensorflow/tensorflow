@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for distributed_file_utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.keras.distribute import distributed_file_utils

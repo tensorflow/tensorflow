@@ -51,6 +51,11 @@ class SubstrOp : public OpKernel {
     const Tensor& len_tensor = context->input(2);
     const TensorShape& input_shape = input_tensor.shape();
     const TensorShape& pos_shape = pos_tensor.shape();
+    const TensorShape& len_shape = len_tensor.shape();
+    OP_REQUIRES(context, (pos_shape == len_shape),
+                errors::InvalidArgument(
+                    "pos and len should have the same shape, got: ",
+                    pos_shape.DebugString(), " vs. ", len_shape.DebugString()));
 
     bool is_scalar = TensorShapeUtils::IsScalar(pos_shape);
 
@@ -146,15 +151,6 @@ class SubstrOp : public OpKernel {
           auto pos_shaped = pos_tensor.shaped<T, 1>(bcast.y_reshape());
           auto len_shaped = len_tensor.shaped<T, 1>(bcast.y_reshape());
 
-          // Allocate temporary buffer for broadcasted input tensor
-          Tensor input_buffer;
-          OP_REQUIRES_OK(context, context->allocate_temp(
-                                      DT_STRING, output_shape, &input_buffer));
-          TTypes<tstring, 1>::Tensor input_bcast =
-              input_buffer.shaped<tstring, 1>(bcast.result_shape());
-          input_bcast =
-              input.broadcast(BCast::ToIndexArray<1>(bcast.x_bcast()));
-
           // Allocate temporary buffer for broadcasted position tensor
           Tensor pos_buffer;
           OP_REQUIRES_OK(context,
@@ -177,7 +173,7 @@ class SubstrOp : public OpKernel {
 
           // Iterate through broadcasted tensors and perform substr
           for (int i = 0; i < output_shape.dim_size(0); ++i) {
-            StringPiece in(input_bcast(i));
+            StringPiece in(input(input.dimension(0) > 1 ? i : 0));
             const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
             const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
             T byte_pos = pos;
@@ -192,8 +188,7 @@ class SubstrOp : public OpKernel {
               case CharUnit::BYTE:
                 byte_pos = AdjustedPosIndex(byte_pos, in);
                 OP_REQUIRES(
-                    context,
-                    FastBoundsCheck(byte_pos, input_bcast(i).size() + 1),
+                    context, FastBoundsCheck(byte_pos, in.size() + 1),
                     errors::InvalidArgument("pos ", pos, " out of range for ",
                                             "string b'", in, "' at index ", i));
             }
@@ -208,15 +203,6 @@ class SubstrOp : public OpKernel {
           auto output = output_tensor->shaped<tstring, 2>(bcast.result_shape());
           auto pos_shaped = pos_tensor.shaped<T, 2>(bcast.y_reshape());
           auto len_shaped = len_tensor.shaped<T, 2>(bcast.y_reshape());
-
-          // Allocate temporary buffer for broadcasted input tensor
-          Tensor input_buffer;
-          OP_REQUIRES_OK(context, context->allocate_temp(
-                                      DT_STRING, output_shape, &input_buffer));
-          TTypes<tstring, 2>::Tensor input_bcast =
-              input_buffer.shaped<tstring, 2>(bcast.result_shape());
-          input_bcast =
-              input.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
 
           // Allocate temporary buffer for broadcasted position tensor
           Tensor pos_buffer;
@@ -241,7 +227,8 @@ class SubstrOp : public OpKernel {
           // Iterate through broadcasted tensors and perform substr
           for (int i = 0; i < output_shape.dim_size(0); ++i) {
             for (int j = 0; j < output_shape.dim_size(1); ++j) {
-              StringPiece in(input_bcast(i, j));
+              StringPiece in(input(input.dimension(0) > 1 ? i : 0,
+                                   input.dimension(1) > 1 ? j : 0));
               const T pos =
                   tensorflow::internal::SubtleMustCopy(pos_bcast(i, j));
               const T len =
@@ -354,5 +341,5 @@ class SubstrOp : public OpKernel {
       Name("Substr").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       SubstrOp<type>);
 REGISTER_SUBSTR(int32);
-REGISTER_SUBSTR(int64);
+REGISTER_SUBSTR(int64_t);
 }  // namespace tensorflow

@@ -69,7 +69,7 @@ Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
   return parent_op_->SetAttrString(attr_name, data, length);
 }
 Status TapeOperation::SetAttrInt(const char* attr_name, int64_t value) {
-  forward_op_.attrs.Set(attr_name, static_cast<int64>(value));
+  forward_op_.attrs.Set(attr_name, static_cast<int64_t>(value));
   return parent_op_->SetAttrInt(attr_name, value);
 }
 Status TapeOperation::SetAttrFloat(const char* attr_name, float value) {
@@ -139,8 +139,8 @@ Status TapeOperation::SetAttrFloatList(const char* attr_name,
 Status TapeOperation::SetAttrIntList(const char* attr_name,
                                      const int64_t* values, int num_values) {
   forward_op_.attrs.Set(
-      attr_name, gtl::ArraySlice<const int64>(
-                     reinterpret_cast<const int64*>(values), num_values));
+      attr_name, gtl::ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
 Status TapeOperation::SetAttrTypeList(const char* attr_name,
@@ -197,12 +197,6 @@ AbstractOperation* TapeOperation::GetBackingOperation() { return parent_op_; }
 Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                               int* num_retvals) {
   TF_RETURN_IF_ERROR(parent_op_->Execute(retvals, num_retvals));
-  std::vector<int64> input_ids(forward_op_.inputs.size());
-  std::vector<tensorflow::DataType> input_dtypes(forward_op_.inputs.size());
-  for (int i = 0; i < forward_op_.inputs.size(); i++) {
-    input_ids[i] = ToId(forward_op_.inputs[i]);
-    input_dtypes[i] = forward_op_.inputs[i]->DataType();
-  }
   for (int i = 0; i < *num_retvals; i++) {
     // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
     forward_op_.outputs.push_back(retvals[i]);
@@ -212,25 +206,11 @@ Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   // Consider getting rid of this and making the behavior between number types
   // and string consistent.
   forward_op_.attrs.BuildNodeDef();
-  std::vector<TapeTensor> tape_tensors;
-  for (auto t : retvals) {
-    tape_tensors.push_back(TapeTensor(t));
-  }
-  tape_->RecordOperation(
-      parent_op_->Name(), tape_tensors, input_ids, input_dtypes,
-      [this]() -> BackwardFunction* {
-        std::unique_ptr<BackwardFunction> backward_fn;
-        Status s = registry_.Lookup(forward_op_, &backward_fn);
-        if (!s.ok()) {
-          return nullptr;
-        }
-        return backward_fn.release();
-      },
-      [](BackwardFunction* ptr) {
-        if (ptr) {
-          delete ptr;
-        }
-      });
+  // TODO(b/170307493): Populate skip_input_indices here.
+  std::unique_ptr<GradientFunction> backward_fn;
+  TF_RETURN_IF_ERROR(registry_.Lookup(forward_op_, &backward_fn));
+  tape_->RecordOperation(forward_op_.inputs, forward_op_.outputs,
+                         backward_fn.release(), parent_op_->Name());
   return Status::OK();
 }
 

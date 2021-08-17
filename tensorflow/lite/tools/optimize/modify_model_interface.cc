@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
-#include <fstream>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/error_reporter.h"
@@ -54,7 +56,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-    std::unordered_map<TensorT*, int> input_tensors;
+    absl::flat_hash_map<TensorT*, int> input_tensors;
     for (size_t input_idx = 0; input_idx < subgraph->inputs.size();
          input_idx++) {
       TensorT* tensor = subgraph->tensors[subgraph->inputs[input_idx]].get();
@@ -129,7 +131,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-    std::unordered_map<TensorT*, int> output_tensors;
+    absl::flat_hash_map<TensorT*, int> output_tensors;
     for (size_t output_idx = 0; output_idx < subgraph->outputs.size();
          output_idx++) {
       TensorT* tensor = subgraph->tensors[subgraph->outputs[output_idx]].get();
@@ -296,33 +298,6 @@ TfLiteStatus RemoveOutputTensor(ModelT* model,
   return kTfLiteOk;
 }
 
-void WriteFile(const std::string& out_file, const uint8_t* bytes,
-               size_t num_bytes) {
-  std::fstream stream(out_file, std::ios::binary | std::ios::out);
-  for (size_t i = 0; i < num_bytes; i++) {
-    stream << bytes[i];
-  }
-  TFLITE_DCHECK(!stream.bad() && !stream.fail());
-}
-
-std::unique_ptr<flatbuffers::FlatBufferBuilder> FinishModel(
-    const tflite::ModelT* model) {
-  std::unique_ptr<flatbuffers::FlatBufferBuilder> builder(
-      new flatbuffers::FlatBufferBuilder());
-  auto packed_model = tflite::Model::Pack(*builder, model);
-  tflite::FinishModelBuffer(*builder, packed_model);
-  return builder;
-}
-
-std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
-    const string& model_filepath) {
-  auto fb_model =
-      tflite::FlatBufferModel::BuildFromFile(model_filepath.c_str());
-  auto tflite_model = fb_model->GetModel();
-  auto copied_model = absl::make_unique<tflite::ModelT>();
-  tflite_model->UnPackTo(copied_model.get(), nullptr);
-  return copied_model;
-}
 
 int GetOriginalNumberOfTensors(const TensorType& input_type,
                                const TensorType& output_type, ModelT* model,
@@ -400,9 +375,9 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
   }
 
   // Create model.
-  auto tflite_model = CreateMutableModelFromFile(input_file);
+  auto tflite_model = utils::CreateMutableModelFromFile(input_file);
 
-  auto model_builder = FinishModel(tflite_model.get());
+  auto model_builder = utils::FinishModel(tflite_model.get());
 
   auto fixed_point_model_builder =
       absl::make_unique<flatbuffers::FlatBufferBuilder>();
@@ -412,7 +387,7 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                      output_type);
   TFLITE_DCHECK_EQ(status, kTfLiteOk);
 
-  WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
+  utils::WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
 
   return kTfLiteOk;
 }

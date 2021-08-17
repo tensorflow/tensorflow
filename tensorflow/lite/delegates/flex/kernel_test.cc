@@ -366,8 +366,7 @@ tensorflow::OpDef MakeOpDef(int num_inputs, int num_outputs) {
   return op_reg_data.op_def;
 }
 
-tensorflow::PartialTensorShape S(
-    std::initializer_list<tensorflow::int64> dims) {
+tensorflow::PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return tensorflow::PartialTensorShape(dims);
 }
 
@@ -412,9 +411,3 @@ TEST(ValidateOutputTensorShapeConsistencyTest, GetDimsDebugString) {
 }  // namespace testing
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

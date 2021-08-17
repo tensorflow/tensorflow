@@ -22,13 +22,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -69,6 +68,16 @@ namespace {
 struct SplitMergedOperandsPass
     : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-split-merged-operands";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Split merged stateful operands for tfl operations.";
+  }
 };
 
 LogicalResult DuplicateValueIfNeeded(Operation* op,
@@ -124,9 +133,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 
-static PassRegistration<SplitMergedOperandsPass> pass(
-    "tfl-split-merged-operands",
-    "Split merged stateful operands for tfl operations.");
+static PassRegistration<SplitMergedOperandsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

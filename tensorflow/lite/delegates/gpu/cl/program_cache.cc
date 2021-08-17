@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
@@ -28,29 +29,48 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+namespace {
 
-ProgramCache::ProgramDescriptor::ProgramDescriptor(const std::string& code_text,
-                                                   const std::string& options,
-                                                   bool use_fingerprints)
-    : code(code_text),
-      compiler_options(options),
-      use_fingerprint(use_fingerprints) {
+// Farmhash Fingerprint
+inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
+  // Murmur-inspired hashing.
+  const uint64_t kMul = 0x9ddfea08eb382d69ULL;
+  uint64_t a = (l ^ h) * kMul;
+  a ^= (a >> 47);
+  uint64_t b = (h ^ a) * kMul;
+  b ^= (b >> 44);
+  b *= kMul;
+  b ^= (b >> 41);
+  b *= kMul;
+  return b;
+}
+
+uint64_t GetProgramFingerprint(const std::string& code,
+                               const std::string& compiler_options) {
   const uint64_t code_fingerprint = ::util::Fingerprint64(code);
   const uint64_t options_fingerprint =
       ::util::Fingerprint64(compiler_options);
-  fingerprint = code_fingerprint + options_fingerprint;
+  return CombineFingerprints(code_fingerprint, options_fingerprint);
 }
 
+std::string GetDriverVersion(const CLDevice& device) {
+  return device.GetPlatformVersion() + "_jet_version_0";
+}
+
+}  // namespace
+
+ProgramCache::ProgramDescriptor::ProgramDescriptor(
+    const std::string& code, const std::string& compiler_options)
+    : fingerprint(GetProgramFingerprint(code, compiler_options)) {}
+
 ProgramCache::ProgramDescriptor::ProgramDescriptor(uint64_t fingerprints)
-    : fingerprint(fingerprints), use_fingerprint(true) {}
+    : fingerprint(fingerprints) {}
 
 ProgramCache::ProgramCache(ProgramCache&& program_cache)
-    : use_fingerprints_(program_cache.use_fingerprints_),
-      programs_(std::move(program_cache.programs_)) {}
+    : programs_(std::move(program_cache.programs_)) {}
 
 ProgramCache& ProgramCache::operator=(ProgramCache&& program_cache) {
   if (this != &program_cache) {
-    use_fingerprints_ = program_cache.use_fingerprints_;
     programs_ = std::move(program_cache.programs_);
   }
   return *this;
@@ -59,9 +79,14 @@ ProgramCache& ProgramCache::operator=(ProgramCache&& program_cache) {
 absl::Status ProgramCache::GetOrCreateCLKernel(
     const std::string& code, const std::string& function_name,
     const std::vector<CompilerOptions>& compiler_options,
-    const CLContext& context, const CLDevice& device, CLKernel* result) {
-  const std::string options = CompilerOptionsToString(device, compiler_options);
-  ProgramDescriptor desc{code, options, use_fingerprints_};
+    const CLContext& context, const CLDevice& device, CLKernel* result,
+    uint64_t* kernel_fingerprint) {
+  const std::string options =
+      CompilerOptionsToString(device.GetInfo(), compiler_options);
+  ProgramDescriptor desc(code, options);
+  if (kernel_fingerprint) {
+    *kernel_fingerprint = desc.fingerprint;
+  }
   auto it = programs_.find(desc);
   if (it != programs_.end()) {
     return result->CreateFromProgram(it->second, function_name);
@@ -78,8 +103,46 @@ absl::Status ProgramCache::GetOrCreateCLKernel(const std::string& code,
                                                const std::string& function_name,
                                                const CLContext& context,
                                                const CLDevice& device,
-                                               CLKernel* result) {
-  return GetOrCreateCLKernel(code, function_name, {}, context, device, result);
+                                               CLKernel* result,
+                                               uint64_t* kernel_fingerprint) {
+  return GetOrCreateCLKernel(code, function_name, {}, context, device, result,
+                             kernel_fingerprint);
+}
+
+absl::Status ProgramCache::GetKernel(uint64_t fingerprint,
+                                     const std::string& function_name,
+                                     CLKernel* result) const {
+  ProgramDescriptor desc(fingerprint);
+  auto it = programs_.find(desc);
+  if (it == programs_.end()) {
+    return absl::NotFoundError("No program with this fingerprint.");
+  }
+  return result->CreateFromProgram(it->second, function_name);
+}
+
+absl::Status ProgramCache::AddProgramBinary(const CLContext& context,
+                                            const CLDevice& device,
+                                            uint64_t fingerprint,
+                                            absl::Span<const uint8_t> binary) {
+  ProgramDescriptor desc(fingerprint);
+  auto it = programs_.find(desc);
+  if (it == programs_.end()) {
+    CLProgram program;
+    RETURN_IF_ERROR(
+        CreateCLProgramFromBinary(context, device, binary, &program));
+    programs_.insert(std::make_pair(std::move(desc), std::move(program)));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ProgramCache::GetProgramBinary(
+    uint64_t fingerprint, std::vector<uint8_t>* program_binary) const {
+  ProgramDescriptor desc(fingerprint);
+  auto it = programs_.find(desc);
+  if (it == programs_.end()) {
+    return absl::NotFoundError("No program with this fingerprint.");
+  }
+  return it->second.GetBinary(program_binary);
 }
 
 absl::Status ProgramCache::AddSerializedCache(
@@ -95,25 +158,16 @@ absl::Status ProgramCache::AddSerializedCache(
   std::string platform_version(model->driver_version()->c_str(),
                                model->driver_version()->size());
 
-  if (device.GetPlatformVersion() != platform_version) {
+  if (GetDriverVersion(device) != platform_version) {
     return absl::InvalidArgumentError(
         "OpenCL driver changed, cache invalid, should be regenerated");
   }
 
-  use_fingerprints_ = true;
-
   for (auto serialized_program : *model->programs()) {
-    ProgramDescriptor desc(serialized_program->fingerprint());
-    CLProgram program;
-    RETURN_IF_ERROR(CreateCLProgramFromBinary(
-        context, device,
-        absl::MakeSpan(serialized_program->binary()->data(),
-                       serialized_program->binary()->size()),
-        &program));
-    auto it = programs_.find(desc);
-    if (it == programs_.end()) {
-      programs_.insert(std::make_pair(std::move(desc), std::move(program)));
-    }
+    auto binary_span = absl::MakeSpan(serialized_program->binary()->data(),
+                                      serialized_program->binary()->size());
+    RETURN_IF_ERROR(AddProgramBinary(
+        context, device, serialized_program->fingerprint(), binary_span));
   }
   return absl::OkStatus();
 }
@@ -131,7 +185,7 @@ absl::Status ProgramCache::GetSerializedCache(
     program_builder.add_binary(binary_offset);
     serialized_programs.push_back(program_builder.Finish());
   }
-  auto driver_version = builder.CreateString(device.GetPlatformVersion());
+  auto driver_version = builder.CreateString(GetDriverVersion(device));
   auto programs_s = builder.CreateVector(serialized_programs);
   data::CompiledCacheBuilder cache_builder(builder);
   cache_builder.add_driver_version(driver_version);

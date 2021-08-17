@@ -13,15 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the loss scaling optimizer class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
-from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -32,6 +28,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -323,14 +320,14 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor(self._current_loss_scale)
+    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
 
   def update(self, grads):
     """Updates the value of the loss scale.
 
     Args:
-      grads: A nested structure of unscaled gradients, each which is the
-        gradient of the loss with respect to a weight.
+      grads: A nested structure of unscaled gradients, each which is an
+        all-reduced gradient of the loss with respect to a weight.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
@@ -340,21 +337,16 @@ class _DynamicLossScaleState(trackable.Trackable):
         step.
     """
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy():
+    if distribution_strategy_context.has_strategy(
+    ) and distribution_strategy_context.in_cross_replica_context():
       distribution = distribution_strategy_context.get_strategy()
-
-      def get_is_finite(grads):
-        is_finite = _is_all_finite(grads)
-        # We cast to float, because we cannot reduce booleans with
-        # DistributionStrategy.
-        return math_ops.cast(is_finite, dtypes.float32)
-
-      is_finite_float = distribution.extended.call_for_each_replica(
-          get_is_finite, args=(grads,))
-      reduced_is_finite_float = distribution.reduce(reduce_util.ReduceOp.SUM,
-                                                    is_finite_float, axis=None)
-      is_finite = math_ops.equal(reduced_is_finite_float,
-                                 distribution.num_replicas_in_sync)
+      is_finite_per_replica = distribution.extended.call_for_each_replica(
+          _is_all_finite, args=(grads,))
+      # Each replica computed the same `is_finite` value, since `grads` is
+      # all-reduced across replicas. Arbitrarily take `is_finite` from the first
+      # replica.
+      is_finite = (
+          distribution.experimental_local_results(is_finite_per_replica)[0])
     else:
       is_finite = _is_all_finite(grads)
 
@@ -477,7 +469,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   skipped is `1 / dynamic_growth_steps`).
 
   `LossScaleOptimizer` delegates all public `Optimizer` methods to the inner
-  optimizer. Additionally, in methods `minimize` and `get_gradients, it scales
+  optimizer. Additionally, in methods `minimize` and `get_gradients`, it scales
   the loss and unscales the gradients. In methods `minimize` and
   `apply_gradients`, it additionally updates the loss scale and skips applying
   gradients if any gradient has a nonfinite value.
@@ -530,8 +522,19 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # LossScaleOptimizerV1.
       raise TypeError('"dynamic" argument to LossScaleOptimizer.__init__ must '
                       'be a bool, but got: %r' % (dynamic,))
+    if isinstance(inner_optimizer, LossScaleOptimizer):
+      raise TypeError('LossScaleOptimizer cannot wrap another '
+                      'LossScaleOptimizer, but got: %s' % (inner_optimizer,))
     self._raise_if_strategy_unsupported()
+    if getattr(inner_optimizer, '_is_wrapped_by_loss_scale_optimizer', False):
+      # TODO(reedwm): Maybe support this. The difficulty is that LSO has the
+      # same checkpoint format as the inner optimizer, so multiple LSOs wrapping
+      # the same optimizer causes the checkpointing logic to become confused.
+      raise ValueError('"inner_optimizer" is already wrapped by a '
+                       'LossScaleOptimizer. An optimizer can only be wrapped '
+                       'by a single LossScaleOptimizer')
     self._optimizer = inner_optimizer
+    self._optimizer._is_wrapped_by_loss_scale_optimizer = True
 
     # We don't call super().__init__, since we do not want to call OptimizerV2's
     # constructor.
@@ -567,9 +570,10 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor(self._loss_scale.current_loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale)
     else:
-      return ops.convert_to_tensor(self._loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
 
   @property
   def dynamic_counter(self):
@@ -706,30 +710,26 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # as frequently the optimizer is created outside the strategy's scope.
     self._raise_if_strategy_unsupported()
 
+    grads_and_vars = optimizer_utils.filter_empty_gradients(grads_and_vars)
+    if experimental_aggregate_gradients:
+      # We must aggregate the gradients here instead of in
+      # self.optimizer.apply_gradients, so that any NaN or Inf gradients are
+      # propogated to each replica. If any replica has a NaN or Inf gradient,
+      # they must all have a NaN or Inf gradient so that they all skip the step.
+      # pylint: disable=protected-access
+      grads_and_vars = self._optimizer._transform_unaggregated_gradients(
+          grads_and_vars)
+      grads_and_vars = self._optimizer._aggregate_gradients(grads_and_vars)
+      # pylint: enable=protected-access
+
     grads_and_vars = tuple(grads_and_vars)
-    return distribution_strategy_context.get_replica_context().merge_call(
-        self._apply_gradients_cross_replica,
-        args=(grads_and_vars, name, experimental_aggregate_gradients))
-
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
-                                     experimental_aggregate_gradients):
     grads = [g for g, _ in grads_and_vars]
-    if isinstance(self._loss_scale, _DynamicLossScaleState):
-      loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
-    else:
-      loss_scale_update_op = control_flow_ops.no_op()
-      should_apply_grads = True
-
-    def apply_fn():
-      # We do not want DistributionStrategy to unwrap any MirroredVariables in
-      # grads_and_vars, because even in a replica context, the wrapped optimizer
-      # expects mirrored variables. So we wrap the variables with an
-      # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
-      # MirroredVariables.
-      wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
-      return distribution.extended.call_for_each_replica(
-          self._apply_gradients,
-          args=(grads, wrapped_vars, name, experimental_aggregate_gradients))
+    # We do not want DistributionStrategy to unwrap any MirroredVariables in
+    # grads_and_vars, because even in a replica context, the wrapped
+    # optimizer expects mirrored variables. So we wrap the variables with an
+    # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
+    # MirroredVariables.
+    wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
 
     def do_not_apply_fn():
       # Normally self._optimizer.iterations is incremented in
@@ -737,22 +737,52 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # branch, we increment it here instead.
       return self._optimizer.iterations.assign_add(1, read_value=False)
 
-    # Note: We must call this cond() in a cross-replica context.
-    # DistributionStrategy does not support having a cond in a replica context
-    # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
-    # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
-                                           do_not_apply_fn)
-    return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+    def _if_should_apply_grads(grads):
+      if isinstance(self._loss_scale, _DynamicLossScaleState):
+        return self._loss_scale.update(grads)
+      else:
+        return (control_flow_ops.no_op(), True)
 
-  def _apply_gradients(self, grads, wrapped_vars, name,
-                       experimental_aggregate_gradients):
+    if optimizer_utils.strategy_supports_no_merge_call():
+      loss_scale_update_op, should_apply_grads = _if_should_apply_grads(grads)
+      def apply_fn():
+        return self._apply_gradients(grads, wrapped_vars, name)
+
+      maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                             do_not_apply_fn)
+      return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+
+    else:
+
+      def _apply_gradients_cross_replica(distribution, grads, wrapped_vars,
+                                         name):
+        loss_scale_update_op, should_apply_grads = _if_should_apply_grads(grads)
+
+        def apply_fn():
+          return distribution.extended.call_for_each_replica(
+              self._apply_gradients,
+              args=(grads, wrapped_vars, name))
+
+        # Note: We must call this cond() in a cross-replica context.
+        # DistributionStrategy does not support having a cond in a replica
+        # context with a branch that calls `merge_call`, and
+        # self._optimizer.apply_gradients calls `merge_call`.
+        maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                               do_not_apply_fn)
+        return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+      return distribution_strategy_context.get_replica_context().merge_call(
+          _apply_gradients_cross_replica,
+          args=(grads, wrapped_vars, name))
+
+  def _apply_gradients(self, grads, wrapped_vars, name):
+    # Pass experimental_aggregate_gradients=False since LossScaleOptimizer
+    # already aggregated the gradients.
     # TODO(reedwm): This will raise a fairly cryptic error message if
     # self._optimizer.apply_gradients does not take
     # experimental_aggregate_gradients.
     return self._optimizer.apply_gradients(
         list(zip(grads, wrapped_vars.value)), name,
-        experimental_aggregate_gradients=experimental_aggregate_gradients)
+        experimental_aggregate_gradients=False)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
@@ -921,6 +951,27 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     else:
       super(LossScaleOptimizer, self).__setattr__(name, value)
 
+  # Explicitly delegate learning_rate. Normally hyperparameters are delegated in
+  # __getattribute__, but if a hyperparameter is not in self._optimizer._hyper
+  # (e.g. because self._optimizer itself wraps another optimizer), then it won't
+  # be delegated. Since learning_rate is a very commonly accessed
+  # hyperparameter, we delegate it here.
+  @property
+  def learning_rate(self):
+    return self._optimizer.learning_rate
+
+  @learning_rate.setter
+  def learning_rate(self, value):
+    self._optimizer.learning_rate = value
+
+  @property
+  def lr(self):
+    return self._optimizer.learning_rate
+
+  @lr.setter
+  def lr(self, value):
+    self._optimizer.lr = value
+
   # We do not override some OptimizerV2 methods. For each, we describe why we do
   # not delegate them to self._optimizer:
   # * get_updates: get_updates() calls get_gradients(). Since we override
@@ -940,8 +991,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 class LossScaleOptimizerV1(LossScaleOptimizer):
   """An deprecated optimizer that applies loss scaling.
 
-  Warning: This class is deprecated and will be removed in TensorFlow 2.5.
-  Please use the non-experimental class
+  Warning: This class is deprecated and will be removed in a future version of
+  TensorFlow. Please use the non-experimental class
   `tf.keras.mixed_precision.LossScaleOptimizer` instead.
 
   This class is identical to the non-experimental
@@ -1021,24 +1072,24 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
       loss_scale = keras_loss_scale_module.deserialize(loss_scale)
 
     if isinstance(loss_scale, (int, float)):
-      tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+      tf_logging.warning(
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(loss_scale))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=loss_scale)
     elif isinstance(loss_scale, loss_scale_module.FixedLossScale):
       ls_val = loss_scale._loss_scale_value  # pylint: disable=protected-access
-      tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+      tf_logging.warning(
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(ls_val))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=ls_val)
     elif loss_scale == 'dynamic':
-      tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+      tf_logging.warning(
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt)')
       super(LossScaleOptimizerV1, self).__init__(optimizer)
     elif isinstance(loss_scale, loss_scale_module.DynamicLossScale):
@@ -1056,12 +1107,12 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
         raise ValueError('When passing a DynamicLossScale to "loss_scale", '
                          'DynamicLossScale.multiplier must be 2. Got: %s'
                          % (loss_scale,))
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix +
           'Note that the non-experimental LossScaleOptimizer does not take a '
           'DynamicLossScale but instead takes the dynamic configuration '
           'directly in the constructor. For example:\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt{})\n'.format(extra_arguments))
       super(LossScaleOptimizerV1, self).__init__(optimizer, **kwargs)
     elif isinstance(loss_scale, loss_scale_module.LossScale):
@@ -1150,9 +1201,8 @@ class FakeOptimizerForRestoration(trackable.Trackable):
         slot_variable_position, slot_name, variable)
 
 
-# pylint: disable=protected-access
-mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
-                                                LossScaleOptimizerV1)
+mixed_precision.register_loss_scale_wrapper(optimizer_v2.OptimizerV2,
+                                            LossScaleOptimizerV1)
 
 
 def _multiply_gradient(gradient, scale):

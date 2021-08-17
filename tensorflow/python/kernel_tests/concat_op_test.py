@@ -38,7 +38,7 @@ class ConcatOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testHStack(self):
-    with self.session(use_gpu=True):
+    with self.session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       c = array_ops.concat([p1, p2], 0)
@@ -54,7 +54,7 @@ class ConcatOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testVStack(self):
-    with self.session(use_gpu=True):
+    with self.session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       c = array_ops.concat([p1, p2], 1)
@@ -70,7 +70,7 @@ class ConcatOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test4DStack(self):
-    with self.session(use_gpu=True):
+    with self.session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[2, 3, 1, 1])
       p2 = array_ops.placeholder(dtypes.float32, shape=[2, 3, 4, 1])
       c = array_ops.concat([p1, p2], 2)
@@ -121,7 +121,7 @@ class ConcatOpTest(test.TestCase):
       dtype_feed = dtypes.float32
     else:
       dtype_feed = dtype
-    with self.session(use_gpu=True):
+    with self.session():
       p = []
       for i in np.arange(num_tensors):
         input_shape = shape
@@ -315,7 +315,7 @@ class ConcatOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientWithUnknownInputDim(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.concat([x, y], 2)
@@ -526,7 +526,7 @@ class ConcatOpTest(test.TestCase):
   # shared memory is not large for all the inputs
   @test_util.run_deprecated_v1
   def testConcatLargeNumberOfTensors(self):
-    with self.session(use_gpu=True):
+    with self.session():
       for concat_dim in range(2):
         params = {}
         p = []

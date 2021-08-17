@@ -87,6 +87,12 @@ struct TfLiteInterpreterOptions {
   TfLiteErrorReporterCallback error_reporter_callback;
 
   bool use_nnapi = false;
+
+  // Determines whether to allow automatic fallback to CPU.
+  // If true, and if one or more delegates were set,
+  // then if Invoke with delegates fails, it will be
+  // automatically retried without delegates.
+  bool enable_delegate_fallback = false;
 };
 
 struct TfLiteInterpreter {
@@ -100,6 +106,8 @@ struct TfLiteInterpreter {
   std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
 
   std::unique_ptr<tflite::Interpreter> impl;
+
+  bool enable_delegate_fallback;
 };
 
 namespace tflite {

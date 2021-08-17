@@ -45,10 +45,9 @@ namespace tensorflow {
 class ConditionalAccumulatorBaseOp : public OpKernel {
  public:
   explicit ConditionalAccumulatorBaseOp(OpKernelConstruction* context)
-      : OpKernel(context), accumulator_handle_set_(false) {
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_STRING, TensorShape({2}),
-                                                &accumulator_handle_, nullptr));
+      : OpKernel(context), accumulator_set_(false) {
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_STRING, TensorShape({2}),
+                                                   &accumulator_));
     OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
     OP_REQUIRES_OK(context,
@@ -57,7 +56,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
-    if (!accumulator_handle_set_) {
+    if (!accumulator_set_) {
       OP_REQUIRES_OK(ctx, SetAccumulatorHandle(ctx));
     }
     SetHandleToOutput(ctx);
@@ -66,7 +65,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
  protected:
   ~ConditionalAccumulatorBaseOp() override {
     // If the accumulator object was not shared, delete it.
-    if (accumulator_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
+    if (accumulator_set_ && cinfo_.resource_is_private_to_kernel()) {
       TF_CHECK_OK((cinfo_.resource_manager()
                        ->template Delete<ConditionalAccumulatorBase>(
                            cinfo_.container(), cinfo_.name())));
@@ -91,8 +90,8 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   ContainerInfo cinfo_;
   string reduction_type_;
   mutex mu_;
-  PersistentTensor accumulator_handle_ TF_GUARDED_BY(mu_);
-  bool accumulator_handle_set_ TF_GUARDED_BY(mu_);
+  Tensor accumulator_ TF_GUARDED_BY(mu_);
+  bool accumulator_set_ TF_GUARDED_BY(mu_);
 
  private:
   Status SetAccumulatorHandle(OpKernelContext* ctx)
@@ -113,10 +112,10 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     // Verify that the shared accumulator is compatible
     // with the requested arguments.
     TF_RETURN_IF_ERROR(accumulator->MatchesNodeDef(def()));
-    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<tstring>();
+    auto h = accumulator_.template flat<tstring>();
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();
-    accumulator_handle_set_ = true;
+    accumulator_set_ = true;
     return Status::OK();
   }
 };
@@ -180,7 +179,7 @@ class ConditionalAccumulatorBaseApplyGradientOp
     }
 
     // Actually try to apply gradient now
-    accumulator->TryApplyGrad(local_step_tensor->scalar<int64>()(), ctx);
+    accumulator->TryApplyGrad(local_step_tensor->scalar<int64_t>()(), ctx);
   }
 };
 

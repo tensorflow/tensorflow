@@ -79,7 +79,7 @@ class QueueAccessOpKernel : public QueueOpKernel {
   explicit QueueAccessOpKernel(OpKernelConstruction* context);
 
  protected:
-  int64 timeout_;
+  int64_t timeout_;
 };
 
 // Defines an EnqueueOp, the execution of which enqueues a tuple of

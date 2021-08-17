@@ -44,13 +44,13 @@ class SnappyInputStream : public InputStreamInterface {
   // ABORTED:      If inflate() fails, we return the error code with the
   //               error message in `z_stream_->msg`.
   // others:       If reading from stream failed.
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
-#if defined(PLATFORM_GOOGLE)
-  Status ReadNBytes(int64 bytes_to_read, absl::Cord* result) override;
+#if defined(TF_CORD_SUPPORT)
+  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   Status Reset() override;
 
@@ -67,7 +67,7 @@ class SnappyInputStream : public InputStreamInterface {
   const bool owns_input_stream_;
 
   // Specifies the number of decompressed bytes currently read.
-  int64 bytes_read_;
+  int64_t bytes_read_;
 
   // output_buffer_ contains decompressed data not yet read by the client.
   std::unique_ptr<char[]> output_buffer_;

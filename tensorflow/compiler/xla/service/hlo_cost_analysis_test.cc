@@ -37,9 +37,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-constexpr int64 kPointerSize = 8;
+constexpr int64_t kPointerSize = 8;
 
-int64 ShapeSize(const Shape& shape) {
+int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
 }
 
@@ -320,7 +320,7 @@ TEST_F(HloCostAnalysisTest, Convolution) {
 
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
   XlaBuilder builder("convolution");
-  constexpr int64 kLarge = 512 * 1024;
+  constexpr int64_t kLarge = 512 * 1024;
   auto input = Parameter(
       &builder, 0,
       ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
@@ -343,7 +343,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
 
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
   XlaBuilder builder("convolution");
-  constexpr int64 kLarge = 512 * 1024;
+  constexpr int64_t kLarge = 512 * 1024;
   auto input = Parameter(
       &builder, 0,
       ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/1}),
@@ -447,6 +447,41 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 1);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 4);
+}
+
+TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
+  XlaBuilder builder("reduce_window_variadic");
+  auto elem_shape = ShapeUtil::MakeShape(F32, {});
+  auto p2 = Parameter(&builder, 0, elem_shape, "x0");
+  auto p3 = Parameter(&builder, 1, elem_shape, "x1");
+  auto p4 = Parameter(&builder, 2, elem_shape, "y0");
+  auto p5 = Parameter(&builder, 3, elem_shape, "y1");
+  absl::InlinedVector<XlaOp, 2> compute_vec = {Min(p2, p4), Min(p3, p5)};
+  Tuple(&builder, compute_vec);
+  TF_ASSERT_OK_AND_ASSIGN(auto compute_tuple, builder.Build());
+  auto input1 =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input1");
+  auto input2 =
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {10, 20}), "input2");
+  auto init = ConstantR0<float>(&builder, 0);
+  ReduceWindow({input1, input2}, {init, init}, compute_tuple, {4, 5}, {4, 5},
+               Padding::kValid);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Each of [2x4] output elements are generated from reducing [4x5] elements.
+  EXPECT_EQ(analysis.flop_count(), 2 * 4 * 2 * (4 * 5 - 1));
+
+  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (10 * 20 * 2 + 2 * 3));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 10 * 20);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 4);
 }
 
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
@@ -602,7 +637,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
 
     EXPECT_EQ(fusion_analysis.flop_count(), 16);
     EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
-    constexpr int64 bytes_accessed = sizeof(float) * 4 * 2 * 2;
+    constexpr int64_t bytes_accessed = sizeof(float) * 4 * 2 * 2;
     static_assert(bytes_accessed == 64, "");
     EXPECT_EQ(fusion_analysis.bytes_accessed(), bytes_accessed);
 
@@ -658,10 +693,10 @@ TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
   EXPECT_EQ(fusion_analysis.flop_count(), 16);
   EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
   EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion),
-            sizeof(float) * (3 + 5) * 2 * 2 + kPointerSize * 2);
+            sizeof(float) * (5 + 5) * 2 * 2);
 
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
-            kPointerSize * 2);
+            sizeof(float) * 2 * 2 * 2);
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 1),
             sizeof(float) * 2 * 2);
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 2),
@@ -721,6 +756,112 @@ TEST_F(FusionCostAnalysis, NoLayout) {
             sizeof(float) * 3);
   EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
             sizeof(float) * 2 * 3 * 4 * 5);
+}
+
+TEST_F(FusionCostAnalysis, TupleBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+fused_computation {
+  param = (f32[2,2]{1,0}, f32[2,2]{1,0}) parameter(0)
+  gte0 = f32[2,2]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[2,2]{1,0} get-tuple-element(param), index=1
+  add = f32[2,2]{1,0} add(gte0, gte1)
+  mul = f32[2,2]{1,0} multiply(gte0, gte1)
+  ROOT root = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(add, mul)
+}
+
+ENTRY entry {
+  param0 = f32[2,2]{1,0} parameter(0)
+  param1 = f32[2,2]{1,0} parameter(1)
+  tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(param0, param1)
+  ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(tuple), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion), sizeof(float) * 2 * 2 * 4);
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
+            sizeof(float) * 2 * 2 * 2);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
+            sizeof(float) * 2 * 2 * 2);
+}
+
+TEST_F(FusionCostAnalysis, InfeedOutfeed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  after-all = token[] after-all()
+  infeed = ((f32[2,3]{1,0}), token[]) infeed(after-all)
+  gte0 = (f32[2,3]{1,0}) get-tuple-element(infeed), index=0
+  gte1 = f32[2,3]{1,0} get-tuple-element(gte0), index=0
+  add = f32[2,3]{1,0} add(gte1, gte1)
+  tuple = (f32[2,3]{1,0}) tuple(add)
+  tok = token[] get-tuple-element(infeed), index=1
+  ROOT outfeed = token[] outfeed(tuple, tok)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* infeed =
+      module->entry_computation()->GetInstructionWithName("infeed");
+  HloInstruction* outfeed =
+      module->entry_computation()->GetInstructionWithName("outfeed");
+
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(infeed->Accept(&analysis));
+  ASSERT_IS_OK(outfeed->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(*infeed), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*infeed, 0), 0);
+  EXPECT_EQ(analysis.output_bytes_accessed(*infeed), sizeof(float) * 2 * 3);
+
+  EXPECT_EQ(analysis.bytes_accessed(*outfeed), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*outfeed, 0),
+            sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.output_bytes_accessed(*outfeed), 0);
+}
+
+TEST_F(FusionCostAnalysis, AllReduceTupleBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+sum {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param0 = f32[2,2]{1,0} parameter(0)
+  param1 = f32[2,2]{1,0} parameter(1)
+  ROOT all-reduce = (f32[2,2]{1,0}, f32[2,2]{1,0}) all-reduce(param0, param1), replica_groups={{0,1}}, to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis all_reduce_analysis(ShapeSize);
+  ASSERT_IS_OK(all_reduce->Accept(&all_reduce_analysis));
+
+  EXPECT_EQ(all_reduce_analysis.bytes_accessed(*all_reduce),
+            sizeof(float) * 2 * 2 * 4);
+  EXPECT_EQ(all_reduce_analysis.operand_bytes_accessed(*all_reduce, 0),
+            sizeof(float) * 2 * 2);
+  EXPECT_EQ(all_reduce_analysis.operand_bytes_accessed(*all_reduce, 1),
+            sizeof(float) * 2 * 2);
+  EXPECT_EQ(all_reduce_analysis.output_bytes_accessed(*all_reduce),
+            sizeof(float) * 2 * 2 * 2);
 }
 
 TEST_F(HloCostAnalysisTest, TupleCost) {

@@ -135,6 +135,7 @@ REGISTER_OP("StatelessRandomGetKeyCounter")
 
 REGISTER_OP("StatelessRandomGetAlg")
     .Output("alg: int32")
+    .SetIsStateful()  // because outputs depend on device
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->MakeShape({}));
       return Status::OK();

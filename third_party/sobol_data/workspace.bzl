@@ -1,9 +1,9 @@
 """Loads the sobol_data library, used by TF."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "sobol_data",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/joe-kuo/sobol_data/archive/835a7d7b1ee3bc83e575e302a985c66ec4b65249.tar.gz",

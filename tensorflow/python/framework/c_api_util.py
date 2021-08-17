@@ -101,8 +101,12 @@ class ScopedTFFunction(object):
     # Function at shutdown, which satisfies leak checkers.
     self.deleter = c_api.TF_DeleteFunction
 
+  @property
+  def has_been_garbage_collected(self):
+    return self.func is None
+
   def __del__(self):
-    if self.func is not None:
+    if not self.has_been_garbage_collected:
       self.deleter(self.func)
       self.func = None
 

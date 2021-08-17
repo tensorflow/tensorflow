@@ -45,14 +45,19 @@ OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
 OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
-TrackableReference = collections.namedtuple(
-    "TrackableReference",
-    [
-        # The local name for this dependency.
-        "name",
-        # The Trackable object being referenced.
-        "ref"
-    ])
+
+@tf_export("__internal__.tracking.TrackableReference", v1=[])
+class TrackableReference(
+    collections.namedtuple("TrackableReference", ["name", "ref"])):
+  """A named reference to a trackable object for use with the `Trackable` class.
+
+  These references mark named `Trackable` dependencies of a `Trackable` object
+  and should be created when overriding `Trackable._checkpoint_dependencies`.
+
+  Attributes:
+    name: The local name for this dependency.
+    ref: The `Trackable` object being referenced.
+  """
 
 
 # TODO(bfontain):  Update once sharded initialization interface is finalized.
@@ -60,6 +65,7 @@ ShardInfo = collections.namedtuple(
     "CheckpointInitialValueShardInfo", ["shape", "offset"])
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValueCallable", v1=[])
 class CheckpointInitialValueCallable(object):
   """A callable object that returns a CheckpointInitialValue.
 
@@ -86,6 +92,7 @@ class CheckpointInitialValueCallable(object):
     return self._checkpoint_position.restore_uid
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
 class CheckpointInitialValue(ops.Tensor):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
@@ -105,16 +112,10 @@ class CheckpointInitialValue(ops.Tensor):
       slice_spec = ":".join(
           "%d,%d" % (o, s) for o, s in zip(shard_info.offset, shard_info.shape))
       shape_and_slice = full_shape_str + slice_spec
-      # Override shape here so we set the correct shape below.
-      shape = shard_info.shape
     else:
       shape_and_slice = ""
     self.wrapped_value = checkpoint_position.value_tensors(
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
-    if shape:
-      # We need to set the static shape information on the initializer if
-      # possible so we don't get a variable with an unknown shape.
-      self.wrapped_value.set_shape(shape)
     self._checkpoint_position = checkpoint_position
 
   def __getattr__(self, attr):
@@ -474,6 +475,17 @@ class CheckpointPosition(object):
   def __repr__(self):
     return repr(self.object_proto)
 
+  def value_shape(self):
+    """The shape of the VARIABLE_VALUE tensor.
+
+    Returns:
+      If found a TensorShape object, otherwise None.
+    """
+    for serialized_tensor in self.object_proto.attributes:
+      if serialized_tensor.name == VARIABLE_VALUE_KEY:
+        return self._checkpoint.shape_map[serialized_tensor.checkpoint_key]
+    return None
+
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
     "_DeferredSlotVariableRestoration", [
@@ -493,6 +505,7 @@ _SlotVariableRestoration = collections.namedtuple(
     ])
 
 
+@tf_export("__internal__.tracking.no_automatic_dependency_tracking", v1=[])
 def no_automatic_dependency_tracking(method):
   """Disables automatic dependency tracking on attribute assignment.
 
@@ -683,6 +696,9 @@ class Trackable(object):
   def _object_identifier(self):
     """String used to identify this object in a SavedModel.
 
+    THIS FIELD HAS BEEN DEPRECATED IN FAVOR OF THE NAME REGISTERED WITH
+    `register_serializable`.
+
     Generally, the object identifier is constant across objects of the same
     class, while the metadata field is used for instance-specific data.
 
@@ -690,11 +706,6 @@ class Trackable(object):
       String object identifier.
     """
     return "_generic_user_object"
-
-  @property
-  def _tracking_metadata(self):
-    """String containing object metadata, which is saved to the SavedModel."""
-    return ""
 
   def _no_dependency(self, value):
     """If automatic dependency tracking is enabled, ignores `value`."""
@@ -1108,3 +1119,122 @@ class Trackable(object):
           newly created resource tensors.
     """
     return {}, {}
+
+  def _serialize_to_proto(self, **kwargs):
+    """Returns a proto of any type to be saved into the SavedModel.
+
+    Trackable classes decorated with `register_serializable` should overwrite
+    this method to save metadata for this object to the SavedModel. The proto
+    returned by this function will be passed to `_deserialize_from_proto` in the
+    form of a `google.protobuf.Any` proto.
+
+    This data is only saved and used by the Python API. Existing C++ loading
+    APIs such as `tensorflow::LoadSavedModel` will not read this field at all.
+
+    Args:
+      **kwargs: Keyword arguments passed to the object during saving. There are
+        no kwargs at this time. One future kwarg would be the SavedModel
+        directory, which will be used by the Assets object.
+
+    Returns:
+      A new proto
+    """
+    del kwargs
+
+    return None
+
+  @classmethod
+  def _deserialize_from_proto(cls, **kwargs):
+    """Returns a new object restored by the SavedModel.
+
+    Trackable classes decorated with `register_serializable` should overwrite
+    this method to change how the object is loaded from SavedModel. By default,
+    the object is initialized with no arguments.
+
+    Example:
+
+    ```
+    def _serialize_to_proto(self, **unused_kwargs):
+      return Message(name="a")
+
+    @classmethod
+    def _deserialize_from_proto(cls, proto, **unused_kwargs):
+      if proto.Is(Message.DESCRIPTOR):
+        unpacked = Message()
+        proto.Unpack(unpacked)
+        return cls(unpacked.name)
+      else:
+        return cls()
+    ```
+
+    This function is only used by the Python API. C++ and TensorFlow Serving do
+    not have access to your registered class and cannot execute any of the
+    non-tf.functions attached to the Python class. However, all signatures and
+    tf.functions are still accessible.
+
+    **Avoid creating duplicate trackables**
+
+    SavedModel is saved by recursively gathering all of the trackables and their
+    children. SavedModel loading reverses those steps by creating all
+    trackables, then reconnecting the children trackables to their parents using
+    `Trackable._add_trackable_child`.
+
+    That means that if `_deserialize_from_proto` calls the `__init__` function,
+    which creates all of the children trackables, then those children end up
+    being created *twice*.
+
+    To avoid this, structure your code so that Trackables are not created
+    when deserialized from SavedModel:
+
+    ```
+    @register_serializable()
+    class Serializable(trackable):
+      def __init __(self, from_proto=False):
+        create_non_trackable_objects()
+        if not from_proto:
+          create_variables_and_other_trackables()
+
+      def _deserialize_from_proto(cls, **kwargs):
+        return cls(from_proto=True)
+
+      def _add_trackable_child(self, name, value):
+        self.__setattr__(name, value)
+    ```
+
+    Args:
+      **kwargs: Keyword arguments passed to the object when loading. As of now,
+        the only supported kwarg is:
+        * proto: A `google.protobuf.Any` proto read from the SavedModel.
+
+    Returns:
+      A new object.
+    """
+    del kwargs
+    return cls()
+
+  def _add_trackable_child(self, name, value):
+    """Restores a connection between trackables when loading from SavedModel.
+
+    SavedModel stores both the object metadata and its list of children. When
+    loading, this function is used along with `_deserialize_from_proto` to load
+    objects from the SavedModel: First, all saved objects are created with
+    `_deserialize_from_proto`. After that is complete, the children are
+    connected using `_add_trackable_child`.
+
+    **Example**
+
+    `tf.Module`, `tf.keras.Model` and Keras layers use `__setattr__` to track
+    children. This is why users can call `model.v = tf.Variable(...)`, and the
+    variable will be automatically saved to the checkpoint. The implementation
+    of this method for the listed objects is:
+
+    ```
+    def _add_trackable_child(self, name, value):
+      self.__setattr__(name, value)
+    ```
+
+    Args:
+      name: The name of the connection between the parent and child `Trackable`.
+      value: The child `Trackable` object.
+    """
+    self._track_trackable(value, name, overwrite=True)

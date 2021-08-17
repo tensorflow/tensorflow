@@ -82,7 +82,7 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
 
   // Add a const node with value 1
   NodeDef* max_parallelism_value =
-      graph_utils::AddScalarConstNode(int64{1}, &graph);
+      graph_utils::AddScalarConstNode(int64_t{1}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("intra_op_parallelism", graph.graph(),
@@ -111,13 +111,6 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
 
   stats->num_changes++;
   return Status::OK();
-}
-
-void DisableIntraOpParallelism::Feedback(Cluster* cluster,
-                                         const GrapplerItem& item,
-                                         const GraphDef& optimize_output,
-                                         double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(DisableIntraOpParallelism,

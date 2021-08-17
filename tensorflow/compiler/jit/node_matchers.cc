@@ -55,7 +55,7 @@ bool CompareTensor(const Tensor& actual, const Tensor& expected,
     }
   }
 
-  for (int64 i = 0, e = actual.NumElements(); i < e; i++) {
+  for (int64_t i = 0, e = actual.NumElements(); i < e; i++) {
     if (actual.flat<T>()(i) != expected.flat<T>()(i)) {
       *listener << "\nmismatch in constant tensor at index " << i
                 << " expected = " << expected.flat<T>()(i)
@@ -92,7 +92,7 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
     case DT_INT32:
       return CompareTensor<int32>(tensor, expected_tensor, listener);
     case DT_INT64:
-      return CompareTensor<int64>(tensor, expected_tensor, listener);
+      return CompareTensor<int64_t>(tensor, expected_tensor, listener);
     case DT_UINT8:
       return CompareTensor<uint8>(tensor, expected_tensor, listener);
     case DT_UINT16:

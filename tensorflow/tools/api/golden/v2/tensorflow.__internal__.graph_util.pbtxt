@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.graph_util"
+tf_module {
+  member_method {
+    name: "graph_defs_equal"
+    argspec: "args=[\'graph_def_1\', \'graph_def_2\', \'treat_nan_as_equal\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

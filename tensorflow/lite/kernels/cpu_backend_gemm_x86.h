@@ -41,25 +41,27 @@ struct GemmImplX86 {
       const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
       const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
       CpuBackendContext* context) {
-    // Run-time dispatch to Ruy for platforms with AVX or above.
-    if (context->HasAvxOrAbove()) {
-      detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar,
-                               quantization_flavor>::Run(lhs_params, lhs_data,
-                                                         rhs_params, rhs_data,
-                                                         dst_params, dst_data,
-                                                         params, context);
-    } else {
-      // Dispatch to gemmlowp for SSE.
+    // TODO(b/168923364) Ruy is preferred on x86, but check if the deprecated
+    // path is enabled.
+    if (context->PreferGemmlowpOnX86()) {
+      // Dispatch to gemmlowp.
       detail::GemmImplUsingGemmlowp<
           LhsScalar, RhsScalar, AccumScalar, DstScalar,
           quantization_flavor>::Run(lhs_params, lhs_data, rhs_params, rhs_data,
                                     dst_params, dst_data, params, context);
+
+      return;
     }
+    // Run-time dispatch to Ruy for platforms with AVX or above.
+    detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+                             quantization_flavor>::Run(lhs_params, lhs_data,
+                                                       rhs_params, rhs_data,
+                                                       dst_params, dst_data,
+                                                       params, context);
   }
 };
 
-// For float, again prefer Ruy in all cases, but defer to eigen if no flavor of
-// AVX is present.
+// For float, defer to eigen for now.
 template <>
 struct GemmImplX86<float, float, float, float,
                    QuantizationFlavor::kFloatingPoint> {
@@ -69,19 +71,8 @@ struct GemmImplX86<float, float, float, float,
                   const GemmParams<float, float,
                                    QuantizationFlavor::kFloatingPoint>& params,
                   CpuBackendContext* context) {
-    // Run-time dispatch to Ruy for platforms with AVX or above.
-    if (context->HasAvxOrAbove()) {
-      detail::GemmImplUsingRuy<
-          float, float, float, float,
-          QuantizationFlavor::kFloatingPoint>::Run(lhs_params, lhs_data,
-                                                   rhs_params, rhs_data,
-                                                   dst_params, dst_data, params,
-                                                   context);
-    } else {
-      // Dispatch to gemmlowp for SSE.
-      GemmImplUsingEigen::Run(lhs_params, lhs_data, rhs_params, rhs_data,
-                              dst_params, dst_data, params, context);
-    }
+    GemmImplUsingEigen::Run(lhs_params, lhs_data, rhs_params, rhs_data,
+                            dst_params, dst_data, params, context);
   }
 };
 

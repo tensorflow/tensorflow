@@ -165,5 +165,14 @@ NNAPI acceleration is also not supported when the model contains
 dynamically-sized outputs. In this case, you will get a warning like:
 
 ```none
-ERROR: Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors.
+ERROR: Attempting to use a delegate that only supports static-sized tensors \
+with a graph that has dynamic-sized tensors.
 ```
+
+### Enable NNAPI CPU implementation
+
+A graph that can't be processed completely by an accelerator can fall back to
+the NNAPI CPU implementation. However, since this is typically less performant
+than the TensorFlow interpreter, this option is disabled by default in the NNAPI
+delegate for Android 10 (API Level 29) or above. To override this behavior, set
+`setUseNnapiCpu` to `true` in the `NnApiDelegate.Options` object.

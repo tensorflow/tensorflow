@@ -22,9 +22,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -45,26 +45,9 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
-// A pass that rewrites tensor list operations to tensor operations on buffers
-// and size values.
-//
-// This pass requires that the full shape of the tensor list can be inferred: 1)
-// the maximum size needs to be a constant and 2) the element shape needs to be
-// constant.
-//
-// A tensor list creation op "tf.EmptyTensorList"/"tf.TensorListReserve" will be
-// turned in to a zero-initialized buffer, and the size is initialized to a 0
-// for "tf.EmptyTensorList" or the specified size for "tf.TensorListReserve".
-// Each push will be turned into "tf.XlaDynamicUpdateSlice" with the incremented
-// size, and each pop will be turned into a "tf.Slice" and a copy of the buffer
-// with decremented size. Each SetItem will be turned into a
-// "tf.XlaDynamicUpdateSlice" with unchanged size, and each GetItem will be
-// turned into a "tf.Slice".
-//
-// The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public PassWrapper<TensorListOpsDecompositionPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TensorListOpsDecompositionPassBase<
+          TensorListOpsDecompositionPass> {
   void runOnOperation() override;
 };
 
@@ -72,9 +55,9 @@ struct TensorListOpsDecompositionPass
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types, func.front().getTerminator()->getOperandTypes(),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Holds the size value of a tensor list and whether the size is statically
@@ -209,7 +192,7 @@ LogicalResult HandleWhileOp(
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op.getAttrs());
+                                  new_while_operands, while_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -269,7 +252,7 @@ LogicalResult HandleCaseOrIfOp(
   FuncOp first_branch = branches.front();
   auto new_op = OpBuilder(op).create<CaseOrIfOp>(
       op.getLoc(), first_branch.getType().getResults(), new_operands,
-      op.getAttrs());
+      op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -330,7 +313,7 @@ LogicalResult HandleWhileRegionOp(
   }
   auto new_while = builder.create<TF::WhileRegionOp>(
       while_op.getLoc(), body_region.front().getTerminator()->getOperandTypes(),
-      new_while_operands, while_op.getAttrs());
+      new_while_operands, while_op->getAttrs());
   new_while.body().takeBody(body_region);
   new_while.cond().takeBody(cond_region);
   for (const auto& entry : output_buffer_to_size) {
@@ -370,7 +353,7 @@ LogicalResult HandleIfRegionOp(
   // Recreate the op.
   auto new_op = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), then_branch.front().getTerminator()->getOperandTypes(),
-      if_op.getOperand(), if_op.getAttrs());
+      if_op.getOperand(), if_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -416,7 +399,7 @@ LogicalResult HandleCaseRegionOp(
   auto new_op = OpBuilder(case_op).create<TF::CaseRegionOp>(
       case_op.getLoc(),
       first_branch->front().getTerminator()->getOperandTypes(),
-      case_op.getOperand(), case_op.getAttrs(), case_op.getNumRegions());
+      case_op.getOperand(), case_op->getAttrs(), case_op.getNumRegions());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -457,8 +440,8 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
-    new_call.setAttr(
+        new_operands, call->getAttrs());
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.buffer_ret_to_size_ret) {
@@ -540,8 +523,23 @@ LogicalResult GetConstShapeValue(Value shape_value,
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.value().getValues<APInt>()) {
-    shape->push_back(v.getSExtValue());
+    int64_t dim_size = v.getSExtValue();
+    if (dim_size == ShapedType::kDynamicSize) return failure();
+    shape->push_back(dim_size);
   }
+  return success();
+}
+
+// Checks the result Variant type to infer the element shape if fully defined.
+// If the Variant type has multiple subtypes or does not have static shape,
+// return error.
+LogicalResult GetElementShapeFromResultType(
+    Type type, llvm::SmallVector<int64_t, 8>* shape) {
+  auto variant_type = getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  if (!variant_type || variant_type.getSubtypes().size() != 1) return failure();
+  TensorType tensor_type = variant_type.getSubtypes().front();
+  if (!tensor_type.hasStaticShape()) return failure();
+  for (auto d : tensor_type.getShape()) shape->push_back(d);
   return success();
 }
 
@@ -551,8 +549,14 @@ LogicalResult HandleEmptyTensorListOp(
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(
           element_shape, list.max_num_elements(), list, list.element_dtype(),
@@ -572,8 +576,14 @@ LogicalResult HandleTensorListReserveOp(
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(element_shape, list.num_elements(),
                                           list, list.element_dtype(), builder,
@@ -792,7 +802,7 @@ LogicalResult DecomposeTensorListOpsInternal(
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
     // TODO(yuanzx): Add a pass to remove identities in device computation.
-    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp, TF::StopGradientOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto list = llvm::dyn_cast<TF::EmptyTensorListOp>(&op)) {
@@ -931,11 +941,6 @@ void TensorListOpsDecompositionPass::runOnOperation() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<TensorListOpsDecompositionPass> pass(
-    "tf-tensor-list-ops-decomposition",
-    "Decompose tensor list operations into operations on buffers and sizes. "
-    "Needs static shapes.");
 
 }  // namespace
 

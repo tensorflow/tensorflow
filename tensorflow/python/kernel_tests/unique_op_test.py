@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
@@ -105,6 +106,69 @@ class UniqueTest(test.TestCase):
     self.assertEqual(len(tf_y), len(np.unique(x)))
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
+
+  @test_util.run_deprecated_v1
+  def testShapeInferenceV2(self):
+    """Test shape inference."""
+    x = np.arange(6).reshape(3, 2, 1)
+    _, idx = gen_array_ops.unique_v2(x, axis=[0])
+    self.assertEqual(idx.shape.as_list(), [3])
+    _, idx = gen_array_ops.unique_v2(x, axis=[1])
+    self.assertEqual(idx.shape.as_list(), [2])
+    _, idx = gen_array_ops.unique_v2(x, axis=[2])
+    self.assertEqual(idx.shape.as_list(), [1])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-1])
+    self.assertEqual(idx.shape.as_list(), [1])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-2])
+    self.assertEqual(idx.shape.as_list(), [2])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-3])
+    self.assertEqual(idx.shape.as_list(), [3])
+    _, idx = gen_array_ops.unique_v2([0, 1, 2], axis=[])
+    self.assertEqual(idx.shape.as_list(), [3])
+
+    with self.assertRaisesRegexp(ValueError, "axis expects a 1D vector"):
+      gen_array_ops.unique_v2(x, axis=[[0]])
+
+    with self.assertRaisesRegexp(ValueError, "x expects a 1D vector"):
+      gen_array_ops.unique_v2(x, axis=[])
+
+    with self.assertRaisesRegexp(
+        ValueError, "axis does not support input tensors larger than"):
+      gen_array_ops.unique_v2(x, axis=[1, 2])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r"axis expects to be in the range \[-3, 3\)"):
+      gen_array_ops.unique_v2(x, axis=[3])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r"axis expects to be in the range \[-3, 3\)"):
+      gen_array_ops.unique_v2(x, axis=[-4])
+
+    x_t = array_ops.placeholder(dtypes.int32, shape=None)
+    _, idx = gen_array_ops.unique_v2(x_t, axis=[0])
+    self.assertEqual(idx.shape.as_list(), [None])
+
+    axis_t = array_ops.placeholder(dtypes.int32, shape=None)
+    _, idx = gen_array_ops.unique_v2(x, axis=axis_t)
+    self.assertEqual(idx.shape.as_list(), [None])
+
+  def testEmpty(self):
+    x = np.random.randint(2, size=0)
+    y, idx = array_ops.unique(x)
+    tf_y, tf_idx = self.evaluate([y, idx])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+
+  def testOrderedByAppearance(self):
+    x = np.array([3, 5, 3, 4, 1, 4, 9, 8, 6, 3, 5, 7, 8, 8, 4, 6, 4, 2, 5, 6])
+    true_y = np.array([3, 5, 4, 1, 9, 8, 6, 7, 2])
+    true_idx = np.array(
+        [0, 1, 0, 2, 3, 2, 4, 5, 6, 0, 1, 7, 5, 5, 2, 6, 2, 8, 1, 6])
+    y, idx = array_ops.unique(x)
+    tf_y, tf_idx = self.evaluate([y, idx])
+    self.assertAllEqual(tf_y, true_y)
+    self.assertAllEqual(tf_idx, true_idx)
 
 
 class UniqueWithCountsTest(test.TestCase):
@@ -229,6 +293,27 @@ class UniqueWithCountsTest(test.TestCase):
         self.assertEqual(count, 1)
       else:
         self.assertEqual(count, np.sum(x == value))
+
+  def testEmpty(self):
+    x = np.random.randint(2, size=0)
+    y, idx, count = array_ops.unique_with_counts(x)
+    tf_y, tf_idx, tf_count = self.evaluate([y, idx, count])
+
+    self.assertEqual(tf_idx.shape, (0,))
+    self.assertEqual(tf_y.shape, (0,))
+    self.assertEqual(tf_count.shape, (0,))
+
+  def testOrderedByAppearance(self):
+    x = np.array([3, 5, 3, 4, 1, 4, 9, 8, 6, 3, 5, 7, 8, 8, 4, 6, 4, 2, 5, 6])
+    true_y = np.array([3, 5, 4, 1, 9, 8, 6, 7, 2])
+    true_idx = np.array(
+        [0, 1, 0, 2, 3, 2, 4, 5, 6, 0, 1, 7, 5, 5, 2, 6, 2, 8, 1, 6])
+    true_count = np.array([3, 3, 4, 1, 1, 3, 3, 1, 1])
+    y, idx, count = array_ops.unique_with_counts(x)
+    tf_y, tf_idx, tf_count = self.evaluate([y, idx, count])
+    self.assertAllEqual(tf_y, true_y)
+    self.assertAllEqual(tf_idx, true_idx)
+    self.assertAllEqual(tf_count, true_count)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include "gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
+#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 namespace tensorflow {
@@ -30,7 +30,7 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
           .ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -50,7 +50,7 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
           .ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -85,7 +85,7 @@ TEST(PoolAllocatorTest, Alignment) {
           .ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -94,7 +94,7 @@ TEST(PoolAllocatorTest, Alignment) {
     size_t alignment = 1 << i;
     void* p = pool.AllocateRaw(alignment, 111);
     EXPECT_TRUE(p != nullptr);
-    EXPECT_EQ(0, reinterpret_cast<int64>(p) & (alignment - 1))
+    EXPECT_EQ(0, reinterpret_cast<int64_t>(p) & (alignment - 1))
         << "ptr: " << p << " alignment " << alignment;
     // Intentionally don't deallocate, to test that destruction of
     // the PoolAllocator frees all pending memory.
@@ -130,23 +130,23 @@ TEST(PoolAllocatorTest, AutoResize) {
 
 TEST(PoolAllocatorTest, CudaHostAllocator) {
   int alloc_count = 0;
-  int64 alloc_size = 0;
+  int64_t alloc_size = 0;
   SubAllocator::Visitor alloc_visitor =
-      [&alloc_count, &alloc_size](void* ptr, int numa_node, int64 size) {
+      [&alloc_count, &alloc_size](void* ptr, int numa_node, int64_t size) {
         ++alloc_count;
         alloc_size += size;
       };
   int free_count = 0;
-  int64 free_size = 0;
+  int64_t free_size = 0;
   SubAllocator::Visitor free_visitor =
-      [&free_count, &free_size](void* ptr, int numa_node, int64 size) {
+      [&free_count, &free_size](void* ptr, int numa_node, int64_t size) {
         ++free_count;
         free_size += size;
       };
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
           .ValueOrDie();
-  GpuHostAllocator* sub_allocator = new GpuHostAllocator(
+  DeviceHostAllocator* sub_allocator = new DeviceHostAllocator(
       platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
           .ValueOrDie(),
       0 /*numa_node*/, {alloc_visitor}, {free_visitor});
@@ -252,7 +252,7 @@ TEST(PoolAllocatorTest, Name) {
           .ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),

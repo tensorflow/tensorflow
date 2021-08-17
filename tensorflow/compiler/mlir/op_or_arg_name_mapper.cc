@@ -133,7 +133,8 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
 }
 
 std::string OpOrArgStripNameMapper::GetName(OpOrVal op_or_val) {
-  return llvm::APInt(32, count_++).toString(/*Radix=*/36, /*Signed=*/false);
+  return llvm::toString(llvm::APInt(32, count_++),
+                        /*Radix=*/36, /*Signed=*/false);
 }
 
 }  // namespace tensorflow

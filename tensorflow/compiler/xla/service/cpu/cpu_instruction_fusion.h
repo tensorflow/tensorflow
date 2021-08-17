@@ -36,7 +36,7 @@ class CpuInstructionFusion : public InstructionFusion {
   }
 
  protected:
-  bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
+  bool ShouldFuse(HloInstruction* consumer, int64_t operand_index) override;
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 

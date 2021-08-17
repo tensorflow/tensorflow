@@ -1,6 +1,6 @@
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -8,8 +8,9 @@ cc_library(
     srcs = ["custom_parsers.cc"],
     hdrs = ["//tensorflow/lite/delegates/gpu/common:custom_parsers.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:operation_parser",
+        "//tensorflow/lite/delegates/gpu/common:unimplemented_operation_parser",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
     ],

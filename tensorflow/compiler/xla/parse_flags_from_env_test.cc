@@ -127,8 +127,11 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
       {"--int_flag=3", "--int_flag=2", "2\n"},  // flag beats environment
   };
   for (int i = 0; i != TF_ARRAYSIZE(test); i++) {
-    if (test[i].env != nullptr) {
-      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, true /*overwrite*/);
+    if (test[i].env == nullptr) {
+      // Might be set from previous tests.
+      tensorflow::unsetenv("TF_XLA_FLAGS");
+    } else {
+      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
     }
     tensorflow::SubProcess child;
     std::vector<string> argv;
@@ -139,10 +142,14 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     }
     child.SetProgram(binary_name, argv);
     child.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+    child.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     CHECK(child.Start()) << "test " << i;
     string stdout_str;
-    int child_status = child.Communicate(nullptr, &stdout_str, nullptr);
-    CHECK_EQ(child_status, 0) << "test " << i;
+    string stderr_str;
+    int child_status = child.Communicate(nullptr, &stdout_str, &stderr_str);
+    CHECK_EQ(child_status, 0) << "test " << i << "\nstdout\n"
+                              << stdout_str << "\nstderr\n"
+                              << stderr_str;
     // On windows, we get CR characters. Remove them.
     stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
                      stdout_str.end());

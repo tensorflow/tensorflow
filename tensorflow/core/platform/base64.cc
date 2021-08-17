@@ -51,10 +51,10 @@ inline uint32 Convert(char x) {
   // we still do some table lookup, but the value is ignored since we explicitly
   // set the high bit of y to 1. Either way, y is negative (high bit set) in
   // case of error.
-  const int8 y = kBase64Bytes[x & 0x7F] | (x & 0x80);
+  const int8_t y = kBase64Bytes[x & 0x7F] | (x & 0x80);
   // Casting from int8 to int32 preserves sign by sign extension. If y was
   // negative, at least its 25 high bits of the return value are set.
-  const int32 z = static_cast<int32>(y);
+  const int32_t z = static_cast<int32>(y);
   return static_cast<uint32>(z);
 }
 
@@ -194,10 +194,12 @@ Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
   return Status::OK();
 }
 
-template Status Base64Decode<string>(StringPiece data, string* decoded);
-template Status Base64Encode<string>(StringPiece source, string* encoded);
-template Status Base64Encode<string>(StringPiece source, bool with_padding,
-                                     string* encoded);
+template Status Base64Decode<std::string>(StringPiece data,
+                                          std::string* decoded);
+template Status Base64Encode<std::string>(StringPiece source,
+                                          std::string* encoded);
+template Status Base64Encode<std::string>(StringPiece source, bool with_padding,
+                                          std::string* encoded);
 
 template Status Base64Decode<tstring>(StringPiece data, tstring* decoded);
 template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);

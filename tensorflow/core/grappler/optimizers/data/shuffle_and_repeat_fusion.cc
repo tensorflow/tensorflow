@@ -83,7 +83,7 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDatasetV2, output,
                                       fused_node);
 
-  NodeDef zero_node = *graph_utils::AddScalarConstNode<int64>(0, graph);
+  NodeDef zero_node = *graph_utils::AddScalarConstNode<int64_t>(0, graph);
 
   // Set the `input` input argument.
   fused_node->add_input(shuffle_node.input(0));
@@ -203,13 +203,6 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
-}
-
-void ShuffleAndRepeatFusion::Feedback(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,

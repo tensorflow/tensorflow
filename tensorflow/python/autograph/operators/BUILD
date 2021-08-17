@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -44,6 +44,9 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/experimental/ops:scan_ops",
+        "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

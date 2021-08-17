@@ -44,10 +44,14 @@ enum VariantUnaryOp {
   CONJ_VARIANT_UNARY_OP = 2,
 };
 
+const char* VariantUnaryOpToString(VariantUnaryOp op);
+
 enum VariantBinaryOp {
   INVALID_VARIANT_BINARY_OP = 0,
   ADD_VARIANT_BINARY_OP = 1,
 };
+
+const char* VariantBinaryOpToString(VariantBinaryOp op);
 
 enum VariantDeviceCopyDirection {
   INVALID_DEVICE_COPY_DIRECTION = 0,
@@ -55,6 +59,9 @@ enum VariantDeviceCopyDirection {
   DEVICE_TO_HOST = 2,
   DEVICE_TO_DEVICE = 3,
 };
+
+class UnaryVariantOpRegistry;
+extern UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal();
 
 class UnaryVariantOpRegistry {
  public:
@@ -170,9 +177,7 @@ class UnaryVariantOpRegistry {
 
   // Get a pointer to a global UnaryVariantOpRegistry object
   static UnaryVariantOpRegistry* Global() {
-    static UnaryVariantOpRegistry* global_unary_variant_op_registry =
-        new UnaryVariantOpRegistry;
-    return global_unary_variant_op_registry;
+    return UnaryVariantOpRegistryGlobal();
   }
 
   // Get a pointer to a global persistent string storage object.
@@ -311,9 +316,10 @@ Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op, const Variant& v,
   UnaryVariantOpRegistry::VariantUnaryOpFn* unary_op_fn =
       UnaryVariantOpRegistry::Global()->GetUnaryOpFn(op, device, v.TypeId());
   if (unary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant unary_op function found for unary variant op enum: ",
-        op, " Variant type_name: ", v.TypeName(), " for device type: ", device);
+    return errors::Internal("No unary variant unary_op function found for op ",
+                            VariantUnaryOpToString(op),
+                            " Variant type_name: ", v.TypeName(),
+                            " for device type: ", device);
   }
   return (*unary_op_fn)(ctx, v, v_out);
 }
@@ -340,11 +346,10 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
   UnaryVariantOpRegistry::VariantBinaryOpFn* binary_op_fn =
       UnaryVariantOpRegistry::Global()->GetBinaryOpFn(op, device, a.TypeId());
   if (binary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant binary_op function found for binary variant op "
-        "enum: ",
-        op, " Variant type_name: '", a.TypeName(), "' for device type: ",
-        device);
+    return errors::Internal("No unary variant binary_op function found for op ",
+                            VariantBinaryOpToString(op),
+                            " Variant type_name: '", a.TypeName(),
+                            "' for device type: ", device);
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }

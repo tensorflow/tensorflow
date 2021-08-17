@@ -280,20 +280,6 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
   EXPECT_TRUE(ShapeUtil::Compatible(result0, s32));
 }
 
-// Test when a graph compilation terminates early, resources are properly
-// reclaimed.
-TEST(XlaJitCompiledCpuFunction, SumWithJunkAttr) {
-  GraphDef graph_def = SumGraph();
-
-  (*graph_def.mutable_node(2)->mutable_attr())["junk"] =
-      TypeAttrValue(DT_INT32);
-
-  tf2xla::Config config = SumConfig();
-  EXPECT_FALSE(XlaJitCompiledCpuFunction::Compile(graph_def, config,
-                                                  xla::ExecutableBuildOptions())
-                   .ok());
-}
-
 TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
   class FakePlatform : public se::Platform {
    public:

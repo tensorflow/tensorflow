@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
@@ -35,7 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class StatelessRandomOpsTest(xla_test.XLATestCase):
+class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self, include_int=False):
@@ -80,6 +83,51 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
     self.assertAllEqual(alg.shape, [])
 
+  @parameterized.named_parameters(
+      ('_%s_%s' % (op_id, alg_id), op, alg_group)  # pylint: disable=g-complex-comprehension
+      for alg_id, alg_group in enumerate([
+          [stateless.Algorithm.PHILOX,
+           stateless.Algorithm.PHILOX.value,
+           'philox'],
+          [stateless.Algorithm.THREEFRY,
+           stateless.Algorithm.THREEFRY.value,
+           'threefry'],
+          [stateless.Algorithm.AUTO_SELECT,
+           stateless.Algorithm.AUTO_SELECT.value,
+           'auto_select',
+           None],
+      ])
+      for op_id, op in enumerate([
+          stateless.stateless_random_normal,
+          stateless.stateless_truncated_normal,
+          functools.partial(
+              stateless.stateless_random_uniform, dtype=dtypes.uint32,
+              minval=None, maxval=None),
+          functools.partial(
+              stateless.stateless_random_uniform, dtype=dtypes.int32,
+              maxval=100),
+          functools.partial(
+              stateless.stateless_random_uniform, dtype=dtypes.float32),
+      ])
+      )
+  @test_util.run_v2_only
+  def testAlg(self, op, alg_group):
+    """Tests all values of `alg`."""
+    if config.list_logical_devices('TPU') or config.list_logical_devices('GPU'):
+      self.skipTest('Only _cpu tests linked in support for jit_compile on CPU.')
+    seed = [1, 2]
+    shape = [2, 3]
+    outputs = []
+    for alg in alg_group:
+      with ops.device('CPU'):
+        output = def_function.function(jit_compile=True)(op)(
+            shape=shape, seed=seed, alg=alg)
+      self.assertEqual(output.shape, shape)
+      outputs.append(output)
+    x = outputs[0]
+    for y in outputs[1:]:
+      self.assertAllEqual(x, y)
+
   def testLargeNormal(self):
     """Tests an OOM bug of StatelessRandomNormalV2 on TPU."""
     with self.session() as sess, self.test_scope():
@@ -104,7 +152,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     # Stateless values should be equal iff the seeds are equal (roughly)
     with self.session(), self.test_scope():
       seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-      seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
+      seeds = [(x, y) for x in range(-2, 3) for y in range(-2, 3)] * 3  # pylint: disable=g-complex-comprehension
       for stateless_op in [
           stateless.stateless_random_uniform, stateless.stateless_random_normal
       ]:

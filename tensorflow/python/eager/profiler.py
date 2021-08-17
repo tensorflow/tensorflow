@@ -38,7 +38,7 @@ import datetime
 import os
 import threading
 
-from tensorflow.python import _pywrap_events_writer
+from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import gfile

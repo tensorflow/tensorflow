@@ -23,17 +23,80 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 
 void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
-  const TensorShape lhs_shape = ctx->InputShape(0);
-  const TensorShape rhs_shape = ctx->InputShape(1);
-
+  TensorShape lhs_shape = ctx->InputShape(0);
+  TensorShape rhs_shape = ctx->InputShape(1);
+  xla::Shape lhs_xla_shape = ctx->InputXlaShape(0).ValueOrDie();
+  xla::Shape rhs_xla_shape = ctx->InputXlaShape(1).ValueOrDie();
+  // Fetch the expressions containing the input tensors.
+  auto lhs_handle = ctx->Input(0);
+  auto rhs_handle = ctx->Input(1);
+  if (lhs_shape.dims() == rhs_shape.dims()) {
+    auto reconcile_tensor_mismatched_dims =
+        [ctx](xla::XlaOp op, const xla::Shape& lhs_xla_shape,
+              const xla::Shape& rhs_xla_shape, TensorShape* lhs_tensor_shape) {
+          // Find out mismatched dimensions that are non-broadcastable.
+          // Reconcile the
+          // difference by slicing the bigger dimension.
+          for (int64_t i = 0; i < lhs_xla_shape.rank(); ++i) {
+            if (lhs_xla_shape.is_dynamic_dimension(i)) {
+              if (!rhs_xla_shape.is_dynamic_dimension(i) &&
+                  lhs_xla_shape.dimensions(i) > rhs_xla_shape.dimensions(i) &&
+                  rhs_xla_shape.dimensions(i) != 1) {
+                // e.g., :
+                // lhs = [..., <=N, ...]
+                // rhs = [..., 2  , ...]
+                // Slice N into 2.
+                // Size 1 dim doesn't need slice as the other side is
+                // broadcastable.
+                auto size = xla::GetDimensionSize(op, i);
+                op = xla::SliceInDim(op, 0, rhs_xla_shape.dimensions(i), 1,
+                                     /*dimno=*/i);
+                lhs_tensor_shape->set_dim(i, rhs_xla_shape.dimensions(i));
+                // Propagate dynamic dimension.
+                op = xla::SetDimensionSize(op, size, i);
+              }
+              if (rhs_xla_shape.is_dynamic_dimension(i) &&
+                  lhs_xla_shape.dimensions(i) < rhs_xla_shape.dimensions(i) &&
+                  rhs_xla_shape.dimensions(i) != 1 &&
+                  lhs_xla_shape.dimensions(i) != 1) {
+                // e.g., :
+                // lhs = [..., <=M, ...]
+                // rhs = [..., <=N  , ...]
+                // where M < N
+                //
+                // In this case we pad M into N to make the bounds the same.
+                // Note that we can't slice N into M because M could be a
+                // dynamic size 1 dim that's meant to be broadcasted to N.
+                auto size = xla::GetDimensionSize(op, i);
+                int64_t diff =
+                    rhs_xla_shape.dimensions(i) - lhs_xla_shape.dimensions(i);
+                op = xla::PadInDim(
+                    op, xla::Zero(ctx->builder(), lhs_xla_shape.element_type()),
+                    i, 0, diff);
+                lhs_tensor_shape->set_dim(i, rhs_xla_shape.dimensions(i));
+                // Propagate dynamic dimension.
+                op = xla::SetDimensionSize(op, size, i);
+              }
+            }
+          }
+          return op;
+        };
+    lhs_handle = reconcile_tensor_mismatched_dims(lhs_handle, lhs_xla_shape,
+                                                  rhs_xla_shape, &lhs_shape);
+    rhs_handle = reconcile_tensor_mismatched_dims(rhs_handle, rhs_xla_shape,
+                                                  lhs_xla_shape, &rhs_shape);
+  }
   // By TensorFlow conventions the inputs may not have the same
   // shapes, in which case they will be automatically broadcast if
   // possible before mapping. Use the standard TensorFlow helper to
@@ -49,10 +112,6 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
     return;
   }
 
-  // Fetch the expressions containing the input tensors.
-  auto lhs_handle = ctx->Input(0);
-  auto rhs_handle = ctx->Input(1);
-
   // If the ranks of the inputs don't match, TensorFlow automatically
   // reshapes the smaller by padding with dimensions of size 1 as a
   // prefix. In other words to pad a 5-vector to a 3-dimensional
@@ -64,7 +123,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   // would be dimensions [2]. If we were matching a matrix against a
   // 4-D tensor the dimensions to match would be [2,3],
   // etc. extend_dimension encodes the general case.
-  std::vector<int64> extend_dimension;
+  std::vector<int64_t> extend_dimension;
   int max_rank = std::max(lhs_shape.dims(), rhs_shape.dims());
   int min_rank = std::min(lhs_shape.dims(), rhs_shape.dims());
   if (min_rank != max_rank) {

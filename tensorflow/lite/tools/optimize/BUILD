@@ -1,17 +1,55 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts",
+)
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
     "testdata/*.bin",
 ]))
+
+cc_library(
+    name = "reduced_precision_support",
+    srcs = [],
+    hdrs = [
+        "reduced_precision_support.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+tf_cc_test(
+    name = "reduced_precision_support_test",
+    srcs = ["reduced_precision_support_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reduced_precision_support",
+        ":test_util",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
 
 cc_library(
     name = "modify_model_interface",
@@ -24,6 +62,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -42,7 +81,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -110,7 +149,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -147,7 +186,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -173,17 +211,14 @@ tf_cc_test(
     name = "model_utils_test",
     srcs = ["model_utils_test.cc"],
     tags = [
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":model_utils",
         ":test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -193,9 +228,9 @@ cc_library(
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
     ],
@@ -242,6 +277,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
@@ -320,8 +356,11 @@ tf_cc_test(
     data = [
         "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
+        "//tensorflow/lite/tools/optimize:testdata/broadcast_to.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
+        "//tensorflow/lite/tools/optimize:testdata/fc_qat.bin",
+        "//tensorflow/lite/tools/optimize:testdata/gather_nd.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
@@ -344,6 +383,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/where.bin",
     ],
     tags = [
         "tflite_not_portable_android",

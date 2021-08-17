@@ -19,6 +19,8 @@ limitations under the License.
 #define TF_DEVICE_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow Device Dialect definitions
@@ -74,7 +76,7 @@ This op captures all needed live-in values.
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "StringAttr":$device, "ArrayRef<Type>":$result_types),
+    OpBuilder<(ins "StringAttr":$device, "TypeRange":$result_types),
     [{
         $_state.addAttribute("device", device);
         $_state.addTypes(result_types);
@@ -85,7 +87,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -96,7 +98,7 @@ The `tf_device.return` operation terminates and returns values from a
   );
 
   let builders = [
-    OpBuilderDAG<(ins),
+    OpBuilder<(ins),
     [{
       build($_builder, $_state, {});
     }]>
@@ -167,7 +169,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$num_regions, "llvm::ArrayRef<Type>":$output_types)>,
+    OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
   let verifier = [{ return Verify(*this); }];
@@ -214,17 +216,17 @@ For example:
 %1 = "tf.opB"() : () -> tensor<i32>
 %2 = "tf.opC"() : () -> tensor<f32>
 %3 = "tf.opD"() : () -> tensor<f32>
-%4 = "tf.opE"() : () -> tensor<!tf.resource>
-%5 = "tf.opF"() : () -> tensor<!tf.resource>
-%6 = "tf.opG"() : () -> tensor<!tf.string>
-%7 = "tf.opH"() : () -> tensor<!tf.string>
-%8 = "tf.opI"() : () -> tensor<!tf.variant>
+%4 = "tf.opE"() : () -> tensor<!tf_type.resource>
+%5 = "tf.opF"() : () -> tensor<!tf_type.resource>
+%6 = "tf.opG"() : () -> tensor<!tf_type.string>
+%7 = "tf.opH"() : () -> tensor<!tf_type.string>
+%8 = "tf.opI"() : () -> tensor<!tf_type.variant>
 %9 = "tf.opJ"() : () -> tensor<i1>
 %output:8 = tf_device.replicate([%0, %1] as %input_0: tensor<i32>,
                                 [%2, %3] as %input_1: tensor<f32>,
-                                [%4, %5] as %input_2: tensor<!tf.resource>,
-                                [%6, %7] as %input_3: tensor<!tf.string>,
-                                %8 as %input_4: tensor<!tf.variant>)
+                                [%4, %5] as %input_2: tensor<!tf_type.resource>,
+                                [%6, %7] as %input_3: tensor<!tf_type.string>,
+                                %8 as %input_4: tensor<!tf_type.variant>)
                 {n = 2 : i32,
                  devices = {DEVICE_ALIAS_0 = ["/DEVICE:0", "/DEVICE:1"],
                             DEVICE_ALIAS_1 = ["/DEVICE:2", "/DEVICE:3"]}} {
@@ -233,25 +235,25 @@ For example:
   // "/DEVICE:1"/"/DEVICE:3", depending on which device alias is used.
   %k = "tf_device.launch"() ( {
     %9 = "tf.opK"(%input_0, %input_4, %9) :
-      (tensor<i32>, tensor<!tf.variant>, tensor<i1>) -> tensor<i32>
+      (tensor<i32>, tensor<!tf_type.variant>, tensor<i1>) -> tensor<i32>
     tf_device.return %9 : tensor<i32>
   }) {device = "DEVICE_ALIAS_0"} : () -> tensor<i32>
   %l = "tf_device.launch"() ( {
     %10 = "tf.opL"(%input_1, %input_4, %9) :
-      (tensor<f32>, tensor<!tf.variant>, tensor<i1>) -> tensor<f32>
+      (tensor<f32>, tensor<!tf_type.variant>, tensor<i1>) -> tensor<f32>
     tf_device.return %10 : tensor<f32>
   }) {device = "DEVICE_ALIAS_1"} : () -> tensor<f32>
   %m = "tf_device.launch"() ( {
     %11 = "tf.opM"(%input_2, %input_4, %9) :
-      (tensor<!tf.resource>, tensor<!tf.variant>, tensor<i1>)
-        -> tensor<!tf.resource>
-    tf_device.return %11 : tensor<!tf.resource>
+      (tensor<!tf_type.resource>, tensor<!tf_type.variant>, tensor<i1>)
+        -> tensor<!tf_type.resource>
+    tf_device.return %11 : tensor<!tf_type.resource>
   }) {device = "/DEVICE:4"} : () -> tensor<f32>
   %n = "tf.opN"(%input_3, %input_4, %9) :
-    (tensor<!tf.string>, tensor<!tf.variant>, tensor<i1>)
-      -> tensor<!tf.string>
+    (tensor<!tf_type.string>, tensor<!tf_type.variant>, tensor<i1>)
+      -> tensor<!tf_type.string>
   tf_device.return %k, %l, %m, %n :
-    tensor<i32>, tensor<f32>, tensor<!tf.resource>, tensor<!tf.string>
+    tensor<i32>, tensor<f32>, tensor<!tf_type.resource>, tensor<!tf_type.string>
 }
 // %output#0 corresponds to %k returned from "/DEVICE:0"
 // %output#1 corresponds to %k returned from "/DEVICE:1"
@@ -287,11 +289,16 @@ For example:
     bool IsPackedBlockArgument(BlockArgument block_arg);
     unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
     Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
+    MutableArrayRef<OpOperand> GetOperandsForBlockArgument(BlockArgument block_arg);
+    bool WrapsSingleOp();
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$n,
+    OpBuilder<(ins "int":$n,
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
+      "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
+      "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
+    OpBuilder<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
@@ -309,9 +316,12 @@ The `tf_device.cluster` op wraps containing operations in a region.
 
   let description = [{
 This op can be used to group operations, and captures all needed live-in values.
+
+Optional policy attribute allows to tag clusters with a policy name that was
+used to form the cluster.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins OptionalAttr<StrAttr>:$policy);
 
   let results = (outs
     Variadic<AnyType>:$results
@@ -319,9 +329,18 @@ This op can be used to group operations, and captures all needed live-in values.
 
   let regions = (region SizedRegion<1>:$body);
 
+  let builders = [
+    OpBuilder<(ins "TypeRange":$resultTypes),
+    [{
+      build($_builder, $_state, resultTypes, mlir::StringAttr {});
+    }]>
+  ];
+
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {
@@ -375,6 +394,43 @@ This op captures all needed live-in values.
   let assemblyFormat = [{
       $host $callee `(` $callee_args `)` attr-dict `:` functional-type ( $callee_args , $results )
   }];
+}
+
+def TfDevice_SendOp : TfDevice_Op<"send", []> {
+  let summary = "Send a value to a host.";
+
+  let description = [{
+    Send the value to the given host with the given rendezvous key.
+  }];
+
+  let arguments = (ins
+    AnyType:$value,
+    StrAttr:$key,
+    StrAttr:$dst_host
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = [{$value $key $dst_host attr-dict `:` type($value)}];
+}
+
+def TfDevice_ReceiveOp : TfDevice_Op<"receive", []> {
+  let summary = "Rceive a value from a host.";
+
+  let description = [{
+    Receive a value from the given host with the given rendezvous key.
+  }];
+
+  let arguments = (ins
+    StrAttr:$key,
+    StrAttr:$src_host
+  );
+
+  let results = (outs
+    AnyType:$result
+  );
+
+  let assemblyFormat = [{$key $src_host attr-dict `:` type($result)}];
 }
 
 #endif // TF_DEVICE_DIALECT

@@ -6,6 +6,6 @@ py_library(
     name = "tblib",
     srcs = glob(["src/tblib/*.py"]),
     imports = ["src"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

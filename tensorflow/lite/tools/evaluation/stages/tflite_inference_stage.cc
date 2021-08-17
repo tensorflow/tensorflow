@@ -129,7 +129,7 @@ TfLiteStatus TfliteInferenceStage::Init(
     }
   } else {
     auto delegates = delegate_providers->CreateAllDelegates(params);
-    for (auto& one : delegates) delegates_.push_back(std::move(one));
+    for (auto& one : delegates) delegates_.push_back(std::move(one.delegate));
   }
 
   for (int i = 0; i < delegates_.size(); ++i) {

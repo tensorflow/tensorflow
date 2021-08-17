@@ -24,6 +24,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
@@ -57,6 +58,7 @@ public final class TensorTest {
 
   @Before
   public void setUp() {
+    TestInit.init();
     wrapper = new NativeInterpreterWrapper(MODEL_PATH);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -86,6 +88,7 @@ public final class TensorTest {
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
     assertThat(tensor.numDimensions()).isEqualTo(4);
     assertThat(tensor.name()).isEqualTo("output");
+    assertThat(tensor.asReadOnlyBuffer().capacity()).isEqualTo(tensor.numBytes());
   }
 
   @Test
@@ -103,6 +106,16 @@ public final class TensorTest {
       tensor.copyTo(null);
       fail();
     } catch (IllegalArgumentException e) {
+      // Success.
+    }
+  }
+
+  @Test
+  public void testModifyReadOnlyBuffer() {
+    try {
+      assertThat(tensor.asReadOnlyBuffer().putFloat(0.f));
+      fail();
+    } catch (ReadOnlyBufferException e) {
       // Success.
     }
   }
@@ -535,11 +548,20 @@ public final class TensorTest {
   @Test
   public void testByteArrayStringTensorInput() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
+    // Test input of string[1]
     wrapper.resizeInput(0, new int[] {1});
     Tensor stringTensor = wrapper.getInputTensor(0);
+    byte[][] bytes1DStringData = new byte[][] {{0x00, 0x01, 0x02, 0x03}};
+    stringTensor.setTo(bytes1DStringData);
 
     byte[][] byteArray = new byte[][] {new byte[1]};
     assertThat(stringTensor.dataTypeOf(byteArray)).isEqualTo(DataType.STRING);
     assertThat(stringTensor.shape()).isEqualTo(new int[] {1});
+
+    // Test input of scalar string
+    wrapper.resizeInput(0, new int[] {});
+    byte[] bytesStringData = new byte[] {0x00, 0x01, 0x02, 0x03};
+    stringTensor.setTo(bytesStringData);
+    assertThat(stringTensor.shape()).isEqualTo(new int[] {});
   }
 }

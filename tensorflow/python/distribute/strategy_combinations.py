@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import cluster_resolver
@@ -28,14 +29,18 @@ from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
 _TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
@@ -119,7 +124,22 @@ def _get_tpu_strategy_creator(steps_per_run,
   return _create_tpu_strategy
 
 
-def _get_multi_worker_mirrored_creator(required_gpus):
+def _mirrored_strategy_with_collective_key_base(devices):
+  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  return MirroredStrategy(devices)
+
+
+def _mirrored_strategy_with_no_merge_call(devices):
+  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  out = MirroredStrategy(devices)
+  # Stub out merge call usage.
+  out.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
+  return out
+
+
+def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
 
   def _create_multi_worker_mirrored():
     tf_config = cluster_resolver.TFConfigClusterResolver()
@@ -146,6 +166,9 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     # configured after initialization.
     with context.eager_mode():
       strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
+
+    if not use_merge_call:
+      strategy.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
@@ -159,6 +182,87 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     return strategy
 
   return _create_multi_worker_mirrored
+
+_ps_cluster = None
+MAX_NUM_WORKER = 3
+MAX_NUM_PS = 2
+
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _ps_cluster
+  if _ps_cluster is None:
+    _ps_cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _ps_cluster["worker"][:num_workers],
+      "ps": _ps_cluster["ps"][:num_ps],
+  }
+
+
+def _get_ps_strategy_creator(
+    num_workers, num_ps, required_gpus=0,
+    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
+
+  def _create_ps_strategy(resolver, variable_partitioner):
+    return parameter_server_strategy_v2.ParameterServerStrategyV2(
+        resolver,
+        variable_partitioner=variable_partitioner
+        )
+
+  def _create_parameter_server():
+    if framework_test_util.is_xla_enabled():
+      # To address test failures resulting in XLA with MultiProcessRunner,
+      # continue to use in-process cluster for XLA tests.
+      cluster_def = multi_worker_test_base.create_in_process_cluster(
+          num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
+      resolver = cluster_resolver.SimpleClusterResolver(
+          server_lib.ClusterSpec(cluster_def),
+          num_accelerators={"GPU": required_gpus},
+          rpc_layer="grpc")
+      return _create_ps_strategy(resolver, variable_partitioner)
+    else:
+      tf_config = cluster_resolver.TFConfigClusterResolver()
+      cluster_def = tf_config.cluster_spec().as_dict()
+      if not cluster_def:
+        # When MultiProcessRunner cluster is used, the cluster is not created
+        # initially when the decorator is called. When the test runs, initially
+        # this method is invoked via decorator before setting up the
+        # MultiProcessRunner with worker and ps in the combinations.py. After
+        # setup is done, the subprocess invokes this method again to get
+        # strategy object. We return None strategy when the main thread invokes
+        # this method before setting up cluster.
+        # Returning None is fine here, since this thread will proceed to create
+        # MultiProcessRunner and invoke tests with decorator inside
+        # subprocesses.
+        return None
+      # MultiProcessRunner is already setup and this method is invoked from a
+      # subprocess running the actual test.
+      resolver = cluster_resolver.SimpleClusterResolver(
+          server_lib.ClusterSpec(cluster_def),
+          num_accelerators={"GPU": required_gpus},
+          task_type=tf_config.task_type,
+          task_id=tf_config.task_id,
+          environment=tf_config.environment,
+          rpc_layer=tf_config.rpc_layer or "grpc")
+      if tf_config.task_type in ("worker", "ps"):
+        worker_config = config_pb2.ConfigProto()
+        worker_config.inter_op_parallelism_threads = 4  # max num_workers + 1
+        server = server_lib.Server(
+            cluster_def,
+            job_name=tf_config.task_type,
+            task_index=tf_config.task_id,
+            protocol="grpc",
+            config=worker_config)
+
+        # Blocking the process that starts a server from exiting.
+        server.join()
+
+      return _create_ps_strategy(resolver, variable_partitioner)
+
+  return _create_parameter_server
 
 
 def _deferred_pool_runner(has_chief, num_workers, initializer=None):
@@ -204,7 +308,6 @@ _four_worker_pool = _deferred_pool_runner(
     num_workers=3,
     initializer=_get_multi_worker_mirrored_creator(required_gpus=0))
 
-
 # pylint: disable=g-long-lambda
 default_strategy = combinations.NamedDistribution(
     "Default",
@@ -244,20 +347,33 @@ cloud_tpu_strategy = combinations.NamedDistribution(
     required_tpu=True,
     use_cloud_tpu=True)
 mirrored_strategy_with_one_cpu = combinations.NamedDistribution(
-    "Mirrored1CPU", lambda: MirroredStrategy(["/cpu:0"]))
+    "Mirrored1CPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:0"]))
 mirrored_strategy_with_one_gpu = combinations.NamedDistribution(
-    "Mirrored1GPU", lambda: MirroredStrategy(["/gpu:0"]), required_gpus=1)
+    "Mirrored1GPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0"]),
+    required_gpus=1)
 mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "MirroredCPUAndGPU",
-    lambda: MirroredStrategy(["/gpu:0", "/cpu:0"]),
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
+mirrored_strategy_with_two_cpus = combinations.NamedDistribution(
+    "Mirrored2CPUs",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:0", "/cpu:1"]),
+    required_gpus=0)
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
-    lambda: MirroredStrategy(["/gpu:0", "/gpu:1"]),
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+mirrored_strategy_with_two_gpus_no_merge_call = combinations.NamedDistribution(
+    "Mirrored2GPUsNoMergeCall",
+    lambda: _mirrored_strategy_with_no_merge_call(["/gpu:0", "/gpu:1"]),
+    required_physical_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
+# Deprecated, use mirrored_strategy_with_two_cpus instead.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
-    "Mirrored2CPU", lambda: MirroredStrategy(["/cpu:1", "/cpu:2"]))
+    "Mirrored2CPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:1", "/cpu:2"]))
 mirrored_strategy_with_cpu_1_and_2.__doc__ = (
     """Mirrored strategy with 2 virtual CPUs.
 
@@ -300,6 +416,16 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
     pool_runner_fn=_two_worker_pool,
     no_xla=True,
 )
+multi_worker_mirrored_2x2_gpu_no_merge_call = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x2GPUNoMergeCall",
+    _get_multi_worker_mirrored_creator(
+        required_gpus=2, use_merge_call=False),
+    has_chief=True,
+    num_workers=1,
+    required_physical_gpus=2,
+    pool_runner_fn=_two_worker_pool,
+    no_xla=True,
+)
 # chief + 3 workers, with CPU.
 multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     "MultiWorkerMirrored4x1CPU",
@@ -309,6 +435,30 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     pool_runner_fn=_four_worker_pool,
     no_xla=True,
 )
+
+
+def parameter_server_strategy_fn(
+    name, num_workers, num_ps, required_gpus=0,
+    variable_partitioner=sharded_variable.FixedShardsPartitioner(2)):
+  return combinations.NamedDistribution(
+      name,
+      _get_ps_strategy_creator(
+          num_workers=num_workers, num_ps=num_ps, required_gpus=required_gpus,
+          variable_partitioner=variable_partitioner),
+      required_gpus=required_gpus,
+      num_workers=num_workers,
+      has_chief=True,
+      num_ps=num_ps)
+
+
+parameter_server_strategy_3worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PSCPU", num_workers=3, num_ps=2)
+parameter_server_strategy_1worker_2ps_cpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PSCPU", num_workers=1, num_ps=2)
+parameter_server_strategy_3worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer3Worker2PS1GPU", num_workers=3, num_ps=2, required_gpus=1)
+parameter_server_strategy_1worker_2ps_1gpu = parameter_server_strategy_fn(
+    "ParameterServer1Worker2PS1GPU", num_workers=1, num_ps=2, required_gpus=1)
 
 
 graph_and_eager_modes = ["graph", "eager"]
@@ -432,6 +582,10 @@ tf_export(
     _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus",
     v1=[]).export_constant(__name__, "mirrored_strategy_with_two_gpus")
 tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "mirrored_strategy_with_two_gpus_no_merge_call")
+tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_cpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_cpu")
 tf_export(
@@ -441,6 +595,10 @@ tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x2_gpu")
 tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "multi_worker_mirrored_2x2_gpu_no_merge_call")
+tf_export(
     _TF_INTERNAL_API_PREFIX + "one_device_strategy",
     v1=[]).export_constant(__name__, "one_device_strategy")
 tf_export(
@@ -449,6 +607,22 @@ tf_export(
 tf_export(
     _TF_INTERNAL_API_PREFIX + "tpu_strategy",
     v1=[]).export_constant(__name__, "tpu_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_3worker_2ps_cpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_3worker_2ps_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_1worker_2ps_cpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_1worker_2ps_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_3worker_2ps_1gpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_3worker_2ps_1gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_1worker_2ps_1gpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_1worker_2ps_1gpu")
 tf_export(
     _TF_INTERNAL_API_PREFIX + "tpu_strategy_one_core",
     v1=[]).export_constant(__name__, "tpu_strategy_one_core")

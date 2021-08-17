@@ -31,6 +31,11 @@ def make_tile_tests(options):
       "input_shape": [[3, 2, 1], [2, 2, 2]],
       "multiplier_dtype": [tf.int32, tf.int64],
       "multiplier_shape": [[3]]
+  }, {
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[]],
+      "multiplier_dtype": [tf.int32, tf.int64],
+      "multiplier_shape": [[0]]
   }]
 
   def build_graph(parameters):

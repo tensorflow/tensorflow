@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_INTEGRAL_TYPES_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_INTEGRAL_TYPES_H_
 
+#include <cstdint>
+
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/types.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/types.h
 
@@ -24,12 +26,12 @@ namespace tensorflow {
 typedef signed char int8;
 typedef short int16;
 typedef int int32;
-typedef long long int64;
+typedef std::int64_t int64;
 
 typedef unsigned char uint8;
 typedef unsigned short uint16;
 typedef unsigned int uint32;
-typedef unsigned long long uint64;
+typedef std::uint64_t uint64;
 
 }  // namespace tensorflow
 

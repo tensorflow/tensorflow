@@ -61,7 +61,7 @@ TEST(SchemaTest, TestCompatibility) {
   // Read file contents of schemas into strings
   // TODO(aselle): Need a reliable way to load files.
   std::string base_contents, current_contents;
-  const char *base_filename = TFLITE_TF_PREFIX "lite/schema/schema_v3a.fbs";
+  const char *base_filename = TFLITE_TF_PREFIX "lite/schema/schema_v3b.fbs";
   const char *current_filename =
       TFLITE_TF_PREFIX "lite/schema/schema.fbs";
 
@@ -82,9 +82,4 @@ TEST(SchemaTest, TestCompatibility) {
             err.c_str());
     FAIL();
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }

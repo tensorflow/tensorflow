@@ -130,11 +130,9 @@ void GraphOptimizer::Optimize(
     if (!changed) break;
   }
 
-  // Note that we use the Graph constructor that copies the input
-  // FunctionLibraryDefinition, since the original lib def will go out of scope.
-  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
-  CopyGraph(*g, copy.get());
-  graph->swap(copy);
+  // Clone the graph to copy the input FunctionLibraryDefinition, since the
+  // original lib def will go out of scope.
+  *graph = g->Clone();
 
   DumpGraph("ReCopy", graph->get());
 }

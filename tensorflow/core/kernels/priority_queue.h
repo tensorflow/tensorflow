@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using PriorityTensorPair = std::pair<int64, PersistentTensor>;
+using PriorityTensorPair = std::pair<int64_t, Tensor>;
 
 struct ComparePriorityTensorPair {
   // 0 is a higher priority than 1, -MAX_LONG is a higher priority
@@ -48,7 +48,7 @@ class PriorityQueue
                                             std::vector<PriorityTensorPair>,
                                             ComparePriorityTensorPair> > {
  public:
-  PriorityQueue(int32 capacity, const DataTypeVector& component_dtypes,
+  PriorityQueue(int32_t capacity, const DataTypeVector& component_dtypes,
                 const std::vector<TensorShape>& component_shapes,
                 const string& name);
 
@@ -83,7 +83,7 @@ class PriorityQueue
   static Status GetElementComponentFromBatch(const Tuple& tuple, int index,
                                              int component,
                                              OpKernelContext* ctx,
-                                             PersistentTensor* out_element);
+                                             Tensor* out_element);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PriorityQueue);
 };

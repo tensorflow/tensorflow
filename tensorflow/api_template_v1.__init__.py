@@ -67,6 +67,13 @@ elif _tf_api_dir not in __path__:
 # lazy loading.
 _current_module.compat.v2  # pylint: disable=pointless-statement
 
+# Load tensorflow-io-gcs-filesystem if enabled
+# pylint: disable=g-import-not-at-top
+if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
+    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+# pylint: enable=g-import-not-at-top
+
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
 estimator = _LazyLoader("estimator", globals(), _estimator_module)
@@ -75,13 +82,12 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-try:
-  from .python.keras.api._v1 import keras
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
-  setattr(_current_module, "keras", keras)
-except ImportError:
-  pass
+_keras_module = "keras.api._v1.keras"
+keras = _LazyLoader("keras", globals(), _keras_module)
+_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "keras", keras)
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
@@ -115,6 +121,29 @@ _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
 
 _major_api_version = 1
+
+# Add module aliases from Keras to TF.
+# Some tf endpoints actually lives under Keras.
+if hasattr(_current_module, "keras"):
+  # It is possible that keras is a lazily loaded module, which might break when
+  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
+  # when it doing some very initial loading, like tf.compat.v2, etc.
+  try:
+    _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
+    layers = _LazyLoader("layers", globals(), _layer_package)
+    _module_dir = _module_util.get_parent_dir_for_name(_layer_package)
+    if _module_dir:
+      _current_module.__path__ = [_module_dir] + _current_module.__path__
+    setattr(_current_module, "layers", layers)
+
+    _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"
+    _rnn_cell = _LazyLoader("legacy_rnn", globals(), _legacy_rnn_package)
+    _module_dir = _module_util.get_parent_dir_for_name(_legacy_rnn_package)
+    if _module_dir:
+      _current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
+    _current_module.nn.rnn_cell = _rnn_cell
+  except ImportError:
+    pass
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -155,6 +184,8 @@ if _running_from_pip_package():
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+      # Load Pluggable Device Library
+      _ll.load_pluggable_device_library(_plugin_dir)
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.

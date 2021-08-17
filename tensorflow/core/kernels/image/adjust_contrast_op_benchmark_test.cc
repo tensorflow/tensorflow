@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* BM_AdjustContrast(int batches, int width, int height) {
+static Graph* AdjustContrast(int batches, int width, int height) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor in(DT_FLOAT, TensorShape({batches, width, height, 3}));
   in.flat<float>().setRandom();
@@ -36,11 +36,14 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
   return g;
 }
 
-#define BM_AdjustContrastDev(DEVICE, B, W, H)                           \
-  static void BM_AdjustContrast_##DEVICE##_##B##_##W##_##H(int iters) { \
-    testing::ItemsProcessed(iters* B* W* H * 3);                        \
-    test::Benchmark(#DEVICE, BM_AdjustContrast(B, W, H)).Run(iters);    \
-  }                                                                     \
+#define BM_AdjustContrastDev(DEVICE, B, W, H)                    \
+  static void BM_AdjustContrast_##DEVICE##_##B##_##W##_##H(      \
+      ::testing::benchmark::State& state) {                      \
+    test::Benchmark(#DEVICE, AdjustContrast(B, W, H),            \
+                    /*old_benchmark_api*/ false)                 \
+        .Run(state);                                             \
+    state.SetItemsProcessed(state.iterations() * B * W * H * 3); \
+  }                                                              \
   BENCHMARK(BM_AdjustContrast_##DEVICE##_##B##_##W##_##H)
 
 // Benchmark results as of cl/106323955

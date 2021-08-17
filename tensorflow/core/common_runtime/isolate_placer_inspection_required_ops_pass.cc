@@ -38,9 +38,7 @@ Status IsolatePlacerInspectionRequiredOpsPass::Run(
     DumpGraphToFile("isolate_deep_ops_before", *graph, nullptr, "/tmp");
   }
 
-  const FunctionLibraryDefinition* flib_def =
-      options.flib_def == nullptr ? &graph->flib_def() : options.flib_def;
-  Status status = IsolatePlacerInspectionRequiredOps(*flib_def, graph);
+  Status status = IsolatePlacerInspectionRequiredOps(*options.flib_def, graph);
 
   if (VLOG_IS_ON(3) && status.ok()) {
     DumpGraphToFile("isolate_deep_ops_after", *graph, nullptr, "/tmp");

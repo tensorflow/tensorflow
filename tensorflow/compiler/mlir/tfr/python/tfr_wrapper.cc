@@ -33,12 +33,12 @@ limitations under the License.
 
 PYBIND11_MODULE(tfr_wrapper, m) {
   m.def("verify", [](std::string input) {
-    mlir::MLIRContext ctx;
-    auto& registry = ctx.getDialectRegistry();
+    mlir::DialectRegistry registry;
     registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
                     mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
                     mlir::TFR::TFRDialect>();
-    ctx.getDialectRegistry().loadAll(&ctx);
+    mlir::MLIRContext ctx(registry);
+    ctx.loadAllAvailableDialects();
 
     llvm::SourceMgr source_mgr = llvm::SourceMgr();
     source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),

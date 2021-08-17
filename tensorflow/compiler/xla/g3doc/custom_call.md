@@ -19,9 +19,9 @@ described below.
 You can create an HLO instruction which represents a custom-call via XLA's
 client API. This is not exposed via TensorFlow as of writing.
 
-For example, the following code uses a custom-call to compute
-`A[i] = B[i % 128] + C[i]` on the CPU. (Of course you could -- and should! -- do
-this with regular HLO.)
+For example, the following code uses a custom-call to compute `A[i] = B[i % 128]
++ C[i]` on the CPU. (Of course you could -- and should! -- do this with regular
+HLO.)
 
 ```c++
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -118,6 +118,64 @@ serialized proto inside of `opaque` and deserialize it within your GPU
 custom-call. Note however that although `xla::ShapeProto` does not change
 frequently, it *does* change. Check the git log to see how it has changed in the
 past.
+
+### Signalling an error.
+
+If your custom call encounters an error, you can signal the error to the XLA
+runtime (instead of e.g. crashing or returning nonsense in the output buffers)
+by using the following signature for your function:
+
+```c++
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
+
+void do_custom_call(CUstream stream, void** buffers, const char* opaque,
+                    size_t opaque_len, XlaCustomCallStatus* status);
+```
+
+You can signal failure by using `XlaCustomCallStatusSetFailure`, e.g.:
+
+```c++
+void do_custom_call(CUstream stream, void** buffers, const char* opaque,
+                    size_t opaque_len, XlaCustomCallStatus* status) {
+  // ... do some work.
+
+  if (bad_condition) {
+    char* error_message = "An error occurred";
+    XlaCustomCallStatusSetFailure(status, error_message, strlen(error_message));
+    return;
+  }
+
+  // ... continue.
+}
+```
+
+You can also use `XlaCustomCallStatusSetSuccess` to indicate success, but the
+`XlaCustomCallStatus` is in a success state by default, so ignoring it
+completely will also indicate success.
+
+When using custom call functions with this signature, you must create the
+corresponding `custom-call` op with the appropriate API version set, e.g.:
+
+```c++
+xla::CustomCall(&b, "do_custom_call", /*operands=*/{param0, param1},
+                /*output_shape=*/ShapeUtil::CreateShape(F32, {2048}),
+                opaque, /*has_side_effect=*/false,
+                /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+                /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+                /*api_version=*/API_VERSION_STATUS_RETURNING);
+```
+
+NOTE: In the future all clients will be required to migrate their custom call
+functions to the new API version and the old one will be deprecated. For custom
+calls that can't fail, you can simply add the new `XlaCustomCallStatus*`
+parameter and then ignore it.
+
+On failure, none of the custom call outputs will be used; the XLA runtime will
+terminate the computation. It is not possible for an HLO computation to recover
+from the error (e.g. by catching and handling it).
+
+This feature is only available for GPU custom calls; it is not possible to
+signal failure for a CPU custom call.
 
 ## Passing tuples to custom-calls
 

@@ -79,6 +79,7 @@ cc_library(
     srcs = [
         "@llvm_openmp//:libiomp5.so",
     ],
+    hdrs = ["@llvm_openmp//:config_omp"],
     visibility = ["//visibility:public"],
 )
 
@@ -88,6 +89,7 @@ cc_library(
     srcs = [
         "@llvm_openmp//:libiomp5.dylib",
     ],
+    hdrs = ["@llvm_openmp//:config_omp"],
     visibility = ["//visibility:public"],
 )
 
@@ -96,6 +98,7 @@ cc_library(
     srcs = [
         "@llvm_openmp//:libiomp5md.dll",
     ],
+    hdrs = ["@llvm_openmp//:config_omp"],
     visibility = ["//visibility:public"],
 )
 

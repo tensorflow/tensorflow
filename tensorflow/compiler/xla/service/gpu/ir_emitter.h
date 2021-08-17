@@ -77,9 +77,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -92,7 +90,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleSelect(HloInstruction* select) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
@@ -107,10 +104,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilder<>* builder() { return &b_; }
 
   // Emits constants to generated LLVM IR, and also populate related
-  // inforamtion to ir_emitter_context for large-constant initializations. If
-  // `lookup_indices` is true, the allocation index associated with the constant
-  // is also populated.
-  Status EmitConstants(const HloComputation& computation, bool lookup_indices);
+  // inforamtion to ir_emitter_context for large-constant initializations.
+  Status EmitConstants(const HloComputation& computation);
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
@@ -182,7 +177,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
 
- protected:
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
@@ -206,7 +200,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // A helper method for HandleSort(). It adds the inner comparison loop where
   // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
-  void EmitCompareLoop(int64 dimension_to_sort,
+  void EmitCompareLoop(int64_t dimension_to_sort,
                        const llvm_ir::IrArray::Index& keys_index,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);

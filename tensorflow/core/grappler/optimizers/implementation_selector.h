@@ -108,10 +108,6 @@ class ImplementationSelector : public CustomGraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  // Does not take any feedback.
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
-
  private:
   Status LoadFunctions(const GraphDef& graph);
   Status MaybeOptimizeFunctionCall(utils::MutableNodeView* node_view) const;

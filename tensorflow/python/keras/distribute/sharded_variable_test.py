@@ -1,10 +1,11 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Lint as: python3
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,21 +13,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ShardedVariable."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+"""Tests for ClusterCoordinator and Keras models."""
+from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.framework import constant_op
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
 
 class ShardedVariableTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+
+  def assert_list_all_equal(self, list1, list2):
+    """Used in lieu of `assertAllEqual`.
+
+    This is used to replace standard `assertAllEqual` for the cases where
+    `list1` and `list2` contain `AggregatingVariable`. Lists with
+    `AggregatingVariable` are not convertible to numpy array via `np.array`
+    calls as numpy would raise `ValueError: setting an array element with a
+    sequence.`
+
+    Args:
+      list1: The first list to compare equality.
+      list2: The second list to compare equality.
+    """
+    for lhs, rhs in zip(list1, list2):
+      self.assertEqual(lhs, rhs)
 
   def test_keras_layer_setattr(self):
 
@@ -34,18 +57,11 @@ class ShardedVariableTest(test.TestCase):
 
       def __init__(self):
         super().__init__()
-        variables1 = [
-            variables_lib.Variable([0]),
-            variables_lib.Variable([1]),
-        ]
-        variables2 = [
-            variables_lib.Variable([2], trainable=False),
-            variables_lib.Variable([3], trainable=False),
-        ]
-        self.w = sharded_variable.ShardedVariable(variables1)
-        self.b = sharded_variable.ShardedVariable(variables2)
+        self.w = variables_lib.Variable([0, 1])
+        self.b = variables_lib.Variable([2, 3], trainable=False)
 
-    layer = Layer()
+    with self.strategy.scope():
+      layer = Layer()
 
     self.assertLen(layer.trainable_weights, 2)
     self.assertEqual(layer.trainable_weights[0], [0])
@@ -53,10 +69,11 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(layer.non_trainable_weights, 2)
     self.assertEqual(layer.non_trainable_weights[0], [2])
     self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
@@ -68,42 +85,57 @@ class ShardedVariableTest(test.TestCase):
       def __init__(self):
         super().__init__()
         self.w = self.add_weight(
-            shape=(2,), initializer=lambda shape, dtype: [0, 1], trainable=True)
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([0., 1.],),
+            trainable=True)
         self.b = self.add_weight(
             shape=(2,),
-            initializer=lambda shape, dtype: [2, 3],
+            initializer=lambda shape, dtype: constant_op.constant([2., 3.]),
             trainable=False)
 
-    def sharded_variable_creator(next_creator, **kwargs):
-      v1_value = kwargs['initial_value']()[0:1]
-      v2_value = kwargs['initial_value']()[1:]
-
-      kwargs['initial_value'] = v1_value
-      kwargs['shape'] = (1,)
-      v1 = next_creator(**kwargs)
-
-      kwargs['initial_value'] = v2_value
-      kwargs['shape'] = (1,)
-      v2 = next_creator(**kwargs)
-
-      return sharded_variable.ShardedVariable([v1, v2])
-
-    with variable_scope.variable_creator_scope(sharded_variable_creator):
+    with self.strategy.scope():
       layer = Layer()
 
     self.assertLen(layer.trainable_weights, 2)
-    self.assertEqual(layer.trainable_weights[0], [0])
-    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertEqual(layer.trainable_weights[0], [0.])
+    self.assertEqual(layer.trainable_weights[1], [1.])
     self.assertLen(layer.non_trainable_weights, 2)
-    self.assertEqual(layer.non_trainable_weights[0], [2])
-    self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assertEqual(layer.non_trainable_weights[0], [2.])
+    self.assertEqual(layer.non_trainable_weights[1], [3.])
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+
+  def test_saved_model(self):
+
+    def create_model():
+      inputs = keras.layers.Input(shape=(4,))
+      outputs = keras.layers.Dense(2)(inputs)
+      model = keras.Model(inputs, outputs)
+      model.compile(optimizer='adam', loss='mean_squared_error')
+      return model
+
+    with self.strategy.scope():
+      model = create_model()
+
+    inputs = random_ops.random_normal(shape=(8, 4))
+    expect = model(inputs)
+    saved_dir = self.get_temp_dir()
+    model.save(saved_dir)
+
+    loaded_model = keras.models.load_model(saved_dir)
+    got = loaded_model(inputs)
+    self.assertAllClose(got, expect)
+    self.assertGreater(len(model.variables), len(loaded_model.variables))
+
+    with self.assertRaises(ValueError):
+      with self.strategy.scope():
+        keras.models.load_model(saved_dir)
 
 
 if __name__ == '__main__':

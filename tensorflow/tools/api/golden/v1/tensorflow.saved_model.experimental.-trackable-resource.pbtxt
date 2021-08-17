@@ -1,0 +1,15 @@
+path: "tensorflow.saved_model.experimental.TrackableResource"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.TrackableResource\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.CapturableResource\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "resource_handle"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'device\'], varargs=None, keywords=None, defaults=[\'\'], "
+  }
+}

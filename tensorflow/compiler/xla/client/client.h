@@ -123,7 +123,7 @@ class Client {
   // device handles are used to specify the devices to execute the computations
   // (see ExecuteParallel) or to transfer data (see TransferToServer or
   // TransferToInfeed).
-  StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64 device_count);
+  StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64_t device_count);
 
   // Transfer the global data provided to this client process, which is
   // returned in the provided literal. Use sparingly to avoid transfer
@@ -149,7 +149,7 @@ class Client {
   // device_handle and replica_id together specify a particular device; a device
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
-  Status TransferToInfeed(const LiteralSlice& literal, int64 replica_id = 0,
+  Status TransferToInfeed(const LiteralSlice& literal, int64_t replica_id = 0,
                           const DeviceHandle* device_handle = nullptr);
 
   // Transfers from the Outfeed of the device.
@@ -158,7 +158,7 @@ class Client {
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
   StatusOr<Literal> TransferFromOutfeed(
-      const Shape* shape_with_layout, int64 replica_id = 0,
+      const Shape* shape_with_layout, int64_t replica_id = 0,
       const DeviceHandle* device_handle = nullptr);
 
   // Resets the device, clearing all existing state on the device.

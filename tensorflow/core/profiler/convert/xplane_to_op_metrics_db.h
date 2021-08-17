@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_METRICS_DB_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -30,29 +31,22 @@ namespace profiler {
 
 // Data per host thread for TensorFlow Op Metrics Database.
 struct TfMetricsDbData {
-  // The start timestamp in ps of the last infeed enqueue op on this core.
-  uint64 last_infeed_enq_start_timestamp_ps = 0;
-  // The duration in ps of the last infeed enqueue op on this core.
-  uint64 last_infeed_enq_duration_ps = 0;
-
   // A database of TF-Op metrics for this core.
   OpMetricsDb tf_metrics_db;
   HostOpMetricsDbBuilder tf_metrics_db_builder{&tf_metrics_db};
 };
 
-absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
+absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
     const XPlane& host_trace);
 
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
-    const XLineVisitor& line, const absl::flat_hash_map<int64, TfOp>& tf_ops);
+    const XLineVisitor& line, const absl::flat_hash_map<int64_t, TfOp>& tf_ops);
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
-    const XPlane& device_trace, double peak_tera_flops_per_second,
-    double peak_hbm_bw_giga_bytes_per_second);
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

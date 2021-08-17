@@ -1060,7 +1060,9 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(new_layer._feature_columns[0].name, 'a')
     self.assertEqual(new_layer._feature_columns[1].initializer.mean, 0.0)
     self.assertEqual(new_layer._feature_columns[1].categorical_column.name, 'b')
-    self.assertIsInstance(new_layer._feature_columns[2], fc.IndicatorColumn)
+    self.assertIsInstance(new_layer._feature_columns[0], cols[0].__class__)
+    self.assertIsInstance(new_layer._feature_columns[1], cols[1].__class__)
+    self.assertIsInstance(new_layer._feature_columns[2], cols[2].__class__)
 
   def test_crossed_column(self):
     a = fc.categorical_column_with_vocabulary_list(

@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
@@ -134,10 +135,14 @@ class FtrlOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
+    def _accum_initializer(shape, dtype=dtypes.float32, partition_info=None):
+      del partition_info
+      return array_ops.ones(
+          shape=shape, dtype=dtype) * self._initial_accumulator_value
     for v in var_list:
-      val = constant_op.constant(
-          self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
-      self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
+      self._get_or_make_slot_with_initializer(
+          v, _accum_initializer, v.shape, v.dtype, "accum",
+          self._accum_name or self._name)
       self._zeros_slot(v, "linear", self._linear_name or self._name)
 
   def _prepare(self):

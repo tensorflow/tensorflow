@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -92,13 +92,14 @@ ZipDatasetParams ZipDatasetParams2() {
 }
 
 std::vector<GetNextTestCase<ZipDatasetParams>> GetNextTestCases() {
-  return {
-      {/*dataset_params=*/ZipDatasetParams1(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{0}, {10}, {1}, {11}, {2}, {12}})},
-      {/*dataset_params=*/ZipDatasetParams2(),
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{0}, {10}, {1}, {11}, {2}, {12}})}};
+  return {{/*dataset_params=*/ZipDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape{},
+                                  {{0}, {10}, {1}, {11}, {2}, {12}})},
+          {/*dataset_params=*/ZipDatasetParams2(),
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape{},
+                                  {{0}, {10}, {1}, {11}, {2}, {12}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ZipDatasetOpTest, ZipDatasetParams, GetNextTestCases())
@@ -183,15 +184,16 @@ TEST_F(ZipDatasetOpTest, IteratorOutputPrefix) {
 
 std::vector<IteratorSaveAndRestoreTestCase<ZipDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
-  return {
-      {/*dataset_params=*/ZipDatasetParams1(),
-       /*breakpoints=*/{0, 1, 4},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{0}, {10}, {1}, {11}, {2}, {12}})},
-      {/*dataset_params=*/ZipDatasetParams2(),
-       /*breakpoints=*/{0, 1, 4},
-       /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{0}, {10}, {1}, {11}, {2}, {12}})}};
+  return {{/*dataset_params=*/ZipDatasetParams1(),
+           /*breakpoints=*/{0, 1, 4},
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape{},
+                                  {{0}, {10}, {1}, {11}, {2}, {12}})},
+          {/*dataset_params=*/ZipDatasetParams2(),
+           /*breakpoints=*/{0, 1, 4},
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape{},
+                                  {{0}, {10}, {1}, {11}, {2}, {12}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(ZipDatasetOpTest, ZipDatasetParams,

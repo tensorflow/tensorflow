@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -27,11 +28,27 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace tf_executor {
-
 namespace {
+
+// This transformation pass prunes a TF graph eliminating dead-nodes.
+class GraphPruningPass
+    : public TF::ExecutorGraphPruningPassBase<GraphPruningPass> {
+ public:
+  GraphPruningPass() = default;
+  explicit GraphPruningPass(llvm::ArrayRef<std::string> ops_to_preserve);
+  void runOnFunction() override;
+
+ private:
+  bool ShouldPreserveOp(Operation* op);
+  bool ShouldPreserveIsland(IslandOp island);
+  void PruneGraph(GraphOp graph);
+
+  llvm::SmallDenseSet<mlir::Identifier, 4> ops_to_preserve_ids_;
+};
 
 // Checks if a tf_executor.Graph can be pruned.
 // For TensorFlow V1.0 compatibility: when importing a graph without providing
@@ -40,7 +57,7 @@ namespace {
 // "tf.entry_function" attribute defined.
 bool CanPruneGraph(FuncOp func) {
   return func.getName() != "main" ||
-         func.getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
+         func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
 
 // Visits an op's operand if it is an output of an Operation in the same
@@ -88,10 +105,36 @@ void VisitOp(GraphOp graph, Operation* op,
   }
 }
 
-}  // namespace
+GraphPruningPass::GraphPruningPass(
+    llvm::ArrayRef<std::string> ops_to_preserve) {
+  ops_to_preserve_ = ops_to_preserve;
+}
+
+void GraphPruningPass::runOnFunction() {
+  for (const auto& op_name : ops_to_preserve_) {
+    ops_to_preserve_ids_.insert(mlir::Identifier::get(op_name, &getContext()));
+  }
+  if (!CanPruneGraph(getFunction())) return;
+  getFunction().walk([this](tf_executor::GraphOp graph) { PruneGraph(graph); });
+}
+
+// An op should be preserved if its identifier is contained in
+// `ops_to_preserve_ids_`.
+bool GraphPruningPass::ShouldPreserveOp(Operation* op) {
+  return ops_to_preserve_ids_.contains(op->getName().getIdentifier());
+}
+
+// An island should be preserved if any of its inner ops should be preserved.
+bool GraphPruningPass::ShouldPreserveIsland(IslandOp island) {
+  auto result = island.walk([this](Operation* inner_op) {
+    if (ShouldPreserveOp(inner_op)) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
 
 // Prunes unreachable operations of a tf_executor.graph operation.
-void PruneGraph(GraphOp graph) {
+void GraphPruningPass::PruneGraph(GraphOp graph) {
   // A graph has a single block which forms a DAG: operations that aren't
   // reachable from the `fetch` operands can be eliminated.
 
@@ -101,6 +144,17 @@ void PruneGraph(GraphOp graph) {
   // Visit fetches first to create a starting point for ops that are reachable.
   reachable_ops.insert(graph.GetFetch());
   VisitOpOperands(graph, graph.GetFetch(), &reachable_ops, &ops_to_visit);
+
+  // Find and visit ops that should be preserved regardless of being reachable
+  // from a fetch.
+  for (Operation& op : graph.GetBody().without_terminator()) {
+    auto island = llvm::dyn_cast<IslandOp>(op);
+    if (!island) continue;
+    if (ShouldPreserveIsland(island)) {
+      reachable_ops.insert(&op);
+      VisitOp(graph, &op, &reachable_ops, &ops_to_visit);
+    }
+  }
 
   // Visit transitive ops until no there are no reachable ops left that have not
   // been visited.
@@ -117,25 +171,12 @@ void PruneGraph(GraphOp graph) {
     if (!reachable_ops.contains(&op)) op.erase();
 }
 
-namespace {
-
-// This transformation pass prunes a TF graph eliminating dead-nodes.
-struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
-  void runOnFunction() override {
-    if (!CanPruneGraph(getFunction())) return;
-    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
-  }
-};
-
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass() {
-  return std::make_unique<GraphPruning>();
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+    llvm::ArrayRef<std::string> ops_to_preserve) {
+  return std::make_unique<GraphPruningPass>(ops_to_preserve);
 }
-
-static PassRegistration<GraphPruning> pass(
-    "tf-executor-graph-pruning",
-    "Prune unreachable nodes in a TensorFlow Graph.");
 
 }  // namespace tf_executor
 }  // namespace mlir

@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -55,12 +56,12 @@ namespace xla {
 // creation backtraces.
 Status WithLogBacktrace(const Status& status);
 
-// Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+// Ranks greater than 8 are very rare, so use InlinedVector<int64_t, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64_t, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -171,29 +172,29 @@ absl::Span<T> AsMutableSlice(std::vector<T>* v) {
   return absl::Span<T>(v->data(), v->size());
 }
 
-// xla::int64 is not the same type as tensorflow::protobuf_int64 in open-source.
-// Wrapper function that gives an int64 array slice view of a repeated int64
+// int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
+// Wrapper function that gives an int64_t array slice view of a repeated int64
 // protobuf field.
-static inline absl::Span<const int64> AsInt64Slice(
+static inline absl::Span<const int64_t> AsInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
   absl::Span<const tensorflow::protobuf_int64> slice(v);
-  return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
-                                 slice.size());
+  return absl::Span<const int64_t>(
+      reinterpret_cast<const int64_t*>(slice.data()), slice.size());
 }
 
 // TODO(b/29771030): This nop overload was added to simplify the migration of
 // Shape from a proto to a C++ class. Remove after class has been migrated.
-static inline absl::Span<const int64> AsInt64Slice(
-    absl::Span<const int64> slice) {
+static inline absl::Span<const int64_t> AsInt64Slice(
+    absl::Span<const int64_t> slice) {
   return slice;
 }
 
 // As above, but for uint64 types.
-static inline absl::Span<const uint64> AsUInt64Slice(
+static inline absl::Span<const uint64_t> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
   absl::Span<const tensorflow::protobuf_uint64> slice(v);
-  return absl::Span<const uint64>(reinterpret_cast<const uint64*>(slice.data()),
-                                  slice.size());
+  return absl::Span<const uint64_t>(
+      reinterpret_cast<const uint64_t*>(slice.data()), slice.size());
 }
 
 // Compares two containers for equality. Returns true iff the two containers
@@ -227,9 +228,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
-                 absl::Span<const S> src, int64 src_base, int64 src_stride,
-                 int64 count) {
+void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
+                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+                 int64_t count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -328,41 +329,8 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 // uniformly replaced with "indentation".
 string Reindent(absl::string_view original, absl::string_view indentation);
 
-// Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
-
-// Applies `permutation` on `input` and returns the permuted array.
-// For each i, output[permutation[i]] = input[i].
-//
-// Precondition:
-// 1. `permutation` is a permutation of 0..permutation.size()-1.
-// 2. permutation.size() == input.size().
 template <typename Container>
-std::vector<typename Container::value_type> Permute(
-    absl::Span<const int64> permutation, const Container& input) {
-  using T = typename Container::value_type;
-  absl::Span<const T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
-  std::vector<T> output(data.size());
-  for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
-  }
-  return output;
-}
-
-// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation);
-
-// Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2);
-
-// Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64> permutation);
-
-template <typename Container>
-int64 PositionInContainer(const Container& container, int64 value) {
+int64_t PositionInContainer(const Container& container, int64_t value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -419,12 +387,12 @@ string RoundTripFpToString(float value);
 string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
-PaddingConfig MakeNoPaddingConfig(int64 rank);
+PaddingConfig MakeNoPaddingConfig(int64_t rank);
 
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
 PaddingConfig MakeEdgePaddingConfig(
-    absl::Span<const std::pair<int64, int64>> padding);
+    absl::Span<const std::pair<int64_t, int64_t>> padding);
 
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
@@ -479,10 +447,88 @@ inline bool IsPowerOfTwo(T x) {
   return x != 0 && (x & (x - 1)) == 0;
 }
 
-// Returns a mask with "bits" number of least significant bits set.
-inline uint32 LsbMaskU32(int bits) {
-  CHECK_GE(bits, 0);
-  return (1U << bits) - 1;
+// Returns a mask with "width" number of least significant bits set.
+template <typename T>
+inline T LsbMask(int width) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  CHECK_GE(width, 0) << "Unsupported width " << width;
+  CHECK_LE(width, std::numeric_limits<T>::digits)
+      << "Unsupported width " << width;
+  return width == 0
+             ? 0
+             : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+}
+
+// Returns the value with every bit except the lower 'width' bits set to zero.
+template <typename T>
+inline T ClearUpperBits(T value, int width) {
+  return value & LsbMask<T>(width);
+}
+
+template <size_t>
+struct UnsignedIntegerTypeForSize;
+
+template <>
+struct UnsignedIntegerTypeForSize<1> {
+  using type = uint8_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<2> {
+  using type = uint16_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<4> {
+  using type = uint32_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<8> {
+  using type = uint64_t;
+};
+
+template <typename T>
+constexpr int NanPayloadBits() {
+  // Floating point types with NaNs have payloads.
+  if (!std::numeric_limits<T>::has_quiet_NaN) {
+    return 0;
+  }
+  return std::numeric_limits<T>::digits - 1;
+}
+
+template <typename T>
+constexpr uint64_t QuietNanWithoutPayload() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return uint64_t{1} << (bits - 1);
+  }
+  return 0;
+}
+
+template <typename T>
+constexpr uint64_t NanPayloadBitMask() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return LsbMask<uint64_t>(bits);
+  }
+  return 0;
+}
+
+template <typename T>
+T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
+  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  const T val = std::numeric_limits<T>::quiet_NaN();
+  auto rep = absl::bit_cast<RepT>(val);
+  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
+  rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
+  constexpr int kPayloadBits = NanPayloadBits<T>();
+  if (kPayloadBits > 0) {
+    // Clear rep's NaN payload.
+    rep &= ~NanPayloadBitMask<T>();
+    CHECK_NE(nan_payload, 0);
+    rep |= nan_payload;
+  }
+  return absl::bit_cast<T>(rep);
 }
 
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
@@ -491,7 +537,7 @@ std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
   return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
 }
 
-int64 Product(absl::Span<const int64> xs);
+int64_t Product(absl::Span<const int64_t> xs);
 
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
@@ -502,10 +548,12 @@ int64 Product(absl::Span<const int64> xs);
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
 //
-// If the given shapes have non-zero size, returns the bounds of the shortest
-// possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
-    absl::Span<const int64> a, absl::Span<const int64> b);
+// If input and output are the same, return {(0, 0), {1, 1}, ... {a.size,
+// b.size}}, otherwise if the given shapes have non-zero size, returns the
+// bounds of the shortest possible such subsequences; else, returns `{(0, 0),
+// (a.size, b.size)}`.
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
+    absl::Span<const int64_t> a, absl::Span<const int64_t> b);
 
 struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
@@ -516,25 +564,25 @@ struct ConvertedDimensionNumbers {
 // Convert and unsorted list of dimensions from one shapes dimension sizes to
 // another shapes dimensions sizes.
 ConvertedDimensionNumbers ConvertDimensionNumbers(
-    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
-    absl::Span<const int64> to_sizes);
+    absl::Span<const int64_t> from_dimensions,
+    absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
 template <typename C, typename Value>
-int64 FindIndex(const C& c, Value&& value) {
+int64_t FindIndex(const C& c, Value&& value) {
   auto it = absl::c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
 }
 
 template <typename C, typename Value>
-void InsertAt(C* c, int64 index, Value&& value) {
+void InsertAt(C* c, int64_t index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
 template <typename C>
-void EraseAt(C* c, int64 index) {
+void EraseAt(C* c, int64_t index) {
   c->erase(c->begin() + index);
 }
 

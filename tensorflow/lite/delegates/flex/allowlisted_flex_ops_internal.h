@@ -15,14 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
 
-#include <set>
 #include <string>
 
 namespace tflite {
 namespace flex {
-
-// Return the list of allowlisted flex ops.
-const std::set<std::string>& GetFlexAllowlist();
 
 // Return true if op_name is a tf.text op need to be supported by flex delegate.
 bool IsAllowedTFTextOpForFlex(const std::string& op_name);

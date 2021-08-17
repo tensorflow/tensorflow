@@ -36,7 +36,7 @@ Status PartitionFunctionGraph(
     // Currently, we simply split the graph at device boundaries.
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -56,12 +56,9 @@ Status PartitionFunctionGraph(
   for (auto& partition : partitions) {
     const string& device = partition.first;
     GraphDef& graph_def = partition.second;
-    // Each partition gets a copy of all the
-    // std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
+    // Each partition gets a new graph.
     std::unique_ptr<Graph> subgraph(
-        new Graph(graph->flib_def().ReachableDefinitions(graph_def)));
-    FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-    TF_CHECK_OK(subgraph->AddFunctionLibrary(global_flib.ToProto()));
+        new Graph(graph->flib_def().default_registry()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
@@ -74,7 +71,7 @@ Status PartitionFunctionGraph(
 }
 
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, const string& device_type,
+    Graph* graph, const string& device_type,
     std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs) {
@@ -84,7 +81,7 @@ Status UpdateArgAndRetvalMetadata(
 
   // Find the Arg and Retval nodes, along with their corresponding indices
   // in the original function.
-  for (Node* node : subgraph->op_nodes()) {
+  for (Node* node : graph->op_nodes()) {
     if (node->IsArg()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
@@ -124,31 +121,35 @@ Status UpdateArgAndRetvalMetadata(
     Node* arg = arg_nodes[i].first;
     arg->AddAttr("index", i);
     TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
-    AllocatorAttributes alloc_attr;
-    DataType type = attr_value->type();
-    MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                        device_type == "XLA_GPU")
-                           ? MTypeFromDTypeIntsOnDevice(type)
-                           : MTypeFromDType(type);
-    if (mtype == HOST_MEMORY) {
-      alloc_attr.set_on_host(true);
+    if (arg_alloc_attrs != nullptr) {
+      AllocatorAttributes alloc_attr;
+      DataType type = attr_value->type();
+      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
+                          device_type == "XLA_GPU")
+                             ? MTypeFromDTypeIntsOnDevice(type)
+                             : MTypeFromDType(type);
+      if (mtype == HOST_MEMORY) {
+        alloc_attr.set_on_host(true);
+      }
+      arg_alloc_attrs->push_back(alloc_attr);
     }
-    arg_alloc_attrs->push_back(alloc_attr);
   }
   for (int i = 0; i < ret_nodes.size(); ++i) {
     Node* ret = ret_nodes[i].first;
     ret->AddAttr("index", i);
     TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
-    AllocatorAttributes alloc_attr;
-    DataType type = attr_value->type();
-    MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                        device_type == "XLA_GPU")
-                           ? MTypeFromDTypeIntsOnDevice(type)
-                           : MTypeFromDType(type);
-    if (mtype == HOST_MEMORY) {
-      alloc_attr.set_on_host(true);
+    if (ret_alloc_attrs) {
+      AllocatorAttributes alloc_attr;
+      DataType type = attr_value->type();
+      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
+                          device_type == "XLA_GPU")
+                             ? MTypeFromDTypeIntsOnDevice(type)
+                             : MTypeFromDType(type);
+      if (mtype == HOST_MEMORY) {
+        alloc_attr.set_on_host(true);
+      }
+      ret_alloc_attrs->push_back(alloc_attr);
     }
-    ret_alloc_attrs->push_back(alloc_attr);
   }
 
   return Status::OK();

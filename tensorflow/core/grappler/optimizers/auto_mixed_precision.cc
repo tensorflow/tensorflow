@@ -56,6 +56,51 @@ const char kCastToFp16[] = "CastToFp16";
 const char kCastToBf16[] = "CastToBf16";
 const char kCastToFp32[] = "CastToFp32";
 
+#if GOOGLE_CUDA
+// Returns the GPU architecture (compute capability) as a (major, minor) pair.
+std::pair<int, int> GetDeviceGPUArch(
+    const DeviceProperties& device_properties) {
+  if (device_properties.type() != "GPU") return {0, 0};
+  string arch_str = device_properties.environment().at("architecture");
+  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
+  if (split_arch_str.empty()) {
+    return {0, 0};
+  }
+
+  int major, minor;
+  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+    return {0, 0};
+  }
+
+  if (split_arch_str.size() > 1) {
+    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+      return {major, minor};
+    } else {
+      return {0, 0};
+    }
+  } else {
+    return {major, 0};
+  }
+}
+#endif
+
+// Returns true if FP16Support is valid
+// For CUDA, We compare the GPUArch with the kMinGPUArch, if GPUArch is >= min,
+// return true. For AMD the corresponding gfx arch string for the detected AMD
+// GPU is in the list for FP16 supported compute. Returns false otherwise.
+bool HasFastFP16Support(const DeviceProperties& props) {
+#if GOOGLE_CUDA
+  return GetDeviceGPUArch(props) >= kMinGPUArch;
+#elif TENSORFLOW_USE_ROCM
+  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"},
+                                                           {"gfx908"}};
+  std::string gcnArchName = props.environment().at("architecture");
+  std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
+  return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
+#endif
+  return false;
+}
+
 // Instances of this class represent unique type attribute identifiers within a
 // node. It handles regular type attributes, list type attributes (where
 // type_index is set to the index in the type list), and fixed types.
@@ -966,6 +1011,7 @@ class AutoMixedPrecisionImpl {
   void ConvertBatchNormOpsToV2();
   bool SupportsF16(const NodeTypeId& node_type) const;
   bool SupportsF16DataType(const NodeTypeId& node_type) const;
+  bool IsQuantized(const NodeTypeId& node_type) const;
   const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
   bool IsSourceOrSinkOp(const string& op) const;
   void FindFloat32TensorListOpClustersAndDenylistUnsafe(
@@ -1020,9 +1066,9 @@ NodeDef AutoMixedPrecisionImpl::BuildCastNode(
     const string& device) const {
   DataType src_type = to_f16 ? DT_FLOAT : target_dtype_;
   DataType dst_type = to_f16 ? target_dtype_ : DT_FLOAT;
-  const char* cast_string =
-      !to_f16 ? kCastToFp32
-              : target_dtype_ == DT_HALF ? kCastToFp16 : kCastToBf16;
+  const char* cast_string = !to_f16                    ? kCastToFp32
+                            : target_dtype_ == DT_HALF ? kCastToFp16
+                                                       : kCastToBf16;
   string name = strings::StrCat(src.node->name(), "-", src.port_id, "-",
                                 cast_string, "-", kSuffix);
   NodeDef node;
@@ -1133,34 +1179,8 @@ bool AutoMixedPrecisionImpl::IsOnDevice(const NodeDef& node,
   return false;
 }
 
-// Returns the GPU architecture (compute capability) as a (major, minor) pair.
-std::pair<int, int> GetDeviceGPUArch(
-    const DeviceProperties& device_properties) {
-  if (device_properties.type() != "GPU") return {0, 0};
-  string arch_str = device_properties.environment().at("architecture");
-  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
-  if (split_arch_str.empty()) {
-    return {0, 0};
-  }
-
-  int major, minor;
-  if (!strings::safe_strto32(split_arch_str[0], &major)) {
-    return {0, 0};
-  }
-
-  if (split_arch_str.size() > 1) {
-    if (strings::safe_strto32(split_arch_str[1], &minor)) {
-      return {major, minor};
-    } else {
-      return {0, 0};
-    }
-  } else {
-    return {major, 0};
-  }
-}
-
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
-  return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
+  return HasFastFP16Support(virtual_placer_.get_device(node));
 }
 
 bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
@@ -1209,6 +1229,16 @@ bool AutoMixedPrecisionImpl::SupportsF16DataType(
       OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
   if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
+}
+
+bool AutoMixedPrecisionImpl::IsQuantized(const NodeTypeId& node_type) const {
+  for (const TypeAttrId& type_attr :
+       node_type_map_.GetTypeAttrs(*node_type.node)) {
+    if (DataTypeIsQuantized(GetDataType(*node_type.node, type_attr))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // TODO(mconley): Make this change the node's name (to aid debugging). Need to
@@ -1704,12 +1734,13 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
 // If ops have one or more type_attr, But this type_attr could not be converted
 // to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
 // support float. So we will remove this node from allow_set.
+// Also don't convert quantized ops to FP16.
 void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
     absl::flat_hash_set<int>* allow_set) const {
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
     if (f16_allowlist_.count(root.node->op()) && allow_set->count(root_idx) &&
-        !SupportsF16DataType(root)) {
+        (!SupportsF16DataType(root) || IsQuantized(root))) {
       auto erased = allow_set->erase(root_idx);
       if (VLOG_IS_ON(2) && erased) {
         VLOG(2) << "UnPainting type " << root.type_attr.DebugString()
@@ -1964,14 +1995,13 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
   return Status::OK();
 }
 
-int GetNumGPUs(const Cluster& cluster,
-               const std::pair<int, int>& min_arch = {0, 0}) {
+int GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
-    std::pair<int, int> arch = GetDeviceGPUArch(device_properties);
-    if (device_properties.type() == "GPU" && arch >= min_arch) {
+    if (device_properties.type() == "GPU" &&
+        (ShouldIgnorePerformance() || HasFastFP16Support(device_properties))) {
       num_gpus++;
     }
   }
@@ -1986,7 +2016,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     return errors::InvalidArgument("cluster == nullptr");
   }
 
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(INTEL_MKL)
   if (mode_ == AutoMixedPrecisionMode::MKL) {
     return errors::Unimplemented(
         "The auto_mixed_precision_mkl optimizer cannot be used since "
@@ -1996,13 +2026,12 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
   }
-#endif
+#endif  // INTEL_MKL
 
   // Start by copying input graph to output.
   *output = item.graph;
 
-  int num_gpus = ShouldIgnorePerformance() ? GetNumGPUs(*cluster)
-                                           : GetNumGPUs(*cluster, kMinGPUArch);
+  int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
@@ -2025,12 +2054,6 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     LOG(WARNING) << name() << " graph optimizer FAILED: " << status.ToString();
   }
   return status;
-}
-
-void AutoMixedPrecision::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                  const GraphDef& optimize_output,
-                                  double result) {
-  // Nothing to do for AutoMixedPrecision.
 }
 
 }  // end namespace grappler

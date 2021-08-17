@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace rfft2d {
 
 using std::complex;
@@ -467,6 +467,6 @@ TfLiteRegistration* Register_RFFT2D() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

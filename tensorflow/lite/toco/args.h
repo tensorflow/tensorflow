@@ -184,12 +184,18 @@ struct ParsedTocoFlags {
   Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
   Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
-  Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
+  Arg<int64_t> dedupe_array_min_size_bytes = Arg<int64_t>(64);
   Arg<bool> split_tflite_lstm_inputs = Arg<bool>(true);
   // WARNING: Experimental interface, subject to change
   Arg<bool> enable_select_tf_ops = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
   Arg<bool> force_select_tf_ops = Arg<bool>(false);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> unfold_batchmatmul = Arg<bool>(true);
+  // WARNING: Experimental interface, subject to change
+  Arg<std::string> accumulation_type;
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> allow_bfloat16;
 };
 
 }  // namespace toco

@@ -29,7 +29,7 @@ namespace {
 template <typename T>
 void OutputToLog(const T& proto) {
   string type_name = proto.GetTypeName();
-  const size_t index = type_name.find_last_of(".");
+  const size_t index = type_name.find_last_of('.');
   if (index != string::npos) type_name = type_name.substr(index + 1);
   LOG(INFO) << LogMemory::kLogMemoryLabel << " " << type_name << " { "
             << proto.ShortDebugString() << " }";
@@ -37,7 +37,7 @@ void OutputToLog(const T& proto) {
 
 }  // namespace
 
-void LogMemory::RecordStep(const int64 step_id, const string& handle) {
+void LogMemory::RecordStep(const int64_t step_id, const string& handle) {
   MemoryLogStep step;
   step.set_step_id(step_id);
   step.set_handle(handle);
@@ -45,7 +45,7 @@ void LogMemory::RecordStep(const int64 step_id, const string& handle) {
 }
 
 void LogMemory::RecordTensorAllocation(const string& kernel_name,
-                                       const int64 step_id,
+                                       const int64_t step_id,
                                        const Tensor& tensor) {
   MemoryLogTensorAllocation allocation;
   allocation.set_step_id(step_id);
@@ -54,7 +54,7 @@ void LogMemory::RecordTensorAllocation(const string& kernel_name,
   OutputToLog(allocation);
 }
 
-void LogMemory::RecordTensorDeallocation(const int64 allocation_id,
+void LogMemory::RecordTensorDeallocation(const int64_t allocation_id,
                                          const string& allocator_name) {
   MemoryLogTensorDeallocation deallocation;
   deallocation.set_allocation_id(allocation_id);
@@ -63,7 +63,7 @@ void LogMemory::RecordTensorDeallocation(const int64 allocation_id,
 }
 
 void LogMemory::RecordTensorOutput(const string& kernel_name,
-                                   const int64 step_id, const int index,
+                                   const int64_t step_id, const int index,
                                    const Tensor& tensor) {
   MemoryLogTensorOutput output;
   output.set_step_id(step_id);
@@ -74,12 +74,12 @@ void LogMemory::RecordTensorOutput(const string& kernel_name,
 }
 
 void LogMemory::RecordRawAllocation(const string& operation,
-                                    const int64 step_id, size_t num_bytes,
+                                    const int64_t step_id, size_t num_bytes,
                                     void* ptr, Allocator* allocator) {
   MemoryLogRawAllocation allocation;
   allocation.set_step_id(step_id);
   allocation.set_operation(operation);
-  allocation.set_num_bytes(static_cast<int64>(num_bytes));
+  allocation.set_num_bytes(static_cast<int64_t>(num_bytes));
   allocation.set_ptr(reinterpret_cast<uintptr_t>(ptr));
   allocation.set_allocation_id(allocator->AllocationId(ptr));
   allocation.set_allocator_name(allocator->Name());
@@ -87,7 +87,7 @@ void LogMemory::RecordRawAllocation(const string& operation,
 }
 
 void LogMemory::RecordRawDeallocation(const string& operation,
-                                      const int64 step_id, void* ptr,
+                                      const int64_t step_id, void* ptr,
                                       Allocator* allocator, bool deferred) {
   MemoryLogRawDeallocation deallocation;
   deallocation.set_step_id(step_id);

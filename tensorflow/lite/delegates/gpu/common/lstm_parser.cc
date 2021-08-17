@@ -52,17 +52,49 @@ Value* CreateNewSimilarValue(GraphFloat32* graph, const Value* old_value) {
   return new_value;
 }
 
-absl::Status SetFullyConnectedWeights(int weights_tensor_id,
-                                      ObjectReader* reader,
-                                      FullyConnectedAttributes* attr) {
-  Tensor<HW, DataType::FLOAT32> weights;
-  RETURN_IF_ERROR(reader->ReadTensor(weights_tensor_id, &weights));
-  attr->weights.data = std::move(weights.data);
-  attr->weights.id = weights.id;
-  attr->weights.shape.o = weights.shape.h;
-  attr->weights.shape.h = 1;
-  attr->weights.shape.w = 1;
-  attr->weights.shape.i = weights.shape.w;
+absl::Status GetFullyConnectedNode(int weights_tensor_id, int bias_tensor_id,
+                                   ObjectReader* reader, Node* node) {
+  const TfLiteTensor* weights_tensor =
+      reader->GetInputTensor(weights_tensor_id);
+  TfLiteAffineQuantization* quant_params =
+      static_cast<TfLiteAffineQuantization*>(
+          weights_tensor->quantization.params);
+  if (weights_tensor->type == kTfLiteInt8 && quant_params->scale->size == 1) {
+    // uniform int8 quantization
+    node->operation.type = ToString(OperationType::FULLY_CONNECTED_INT8);
+    FullyConnectedInt8Attributes fc_attr;
+    fc_attr.scale = weights_tensor->params.scale;
+    fc_attr.zero_point = weights_tensor->params.zero_point;
+    fc_attr.weights.data.resize(weights_tensor->bytes);
+    std::memcpy(fc_attr.weights.data.data(), weights_tensor->data.int8,
+                weights_tensor->bytes);
+    int tensor_id;
+    RETURN_IF_ERROR(reader->GetTensorId(weights_tensor_id, &tensor_id));
+    fc_attr.weights.id = tensor_id;
+    fc_attr.weights.shape.o = weights_tensor->dims->data[0];
+    fc_attr.weights.shape.h = 1;
+    fc_attr.weights.shape.w = 1;
+    fc_attr.weights.shape.i = weights_tensor->dims->data[1];
+    if (bias_tensor_id != -1) {
+      reader->ReadTensor(bias_tensor_id, &(fc_attr.bias)).IgnoreError();
+    }
+    node->operation.attributes = std::move(fc_attr);
+  } else {
+    node->operation.type = ToString(OperationType::FULLY_CONNECTED);
+    FullyConnectedAttributes fc_attr;
+    Tensor<HW, DataType::FLOAT32> weights;
+    RETURN_IF_ERROR(reader->ReadTensor(weights_tensor_id, &weights));
+    fc_attr.weights.data = std::move(weights.data);
+    fc_attr.weights.id = weights.id;
+    fc_attr.weights.shape.o = weights.shape.h;
+    fc_attr.weights.shape.h = 1;
+    fc_attr.weights.shape.w = 1;
+    fc_attr.weights.shape.i = weights.shape.w;
+    if (bias_tensor_id != -1) {
+      reader->ReadTensor(bias_tensor_id, &(fc_attr.bias)).IgnoreError();
+    }
+    node->operation.attributes = std::move(fc_attr);
+  }
   return absl::OkStatus();
 }
 
@@ -125,14 +157,9 @@ absl::Status BuildLstmGate(GraphFloat32* graph, ObjectReader* reader,
     // #1 matrix multiplication: input_weights * input_tensor
     // If has no normalization, also adds bias.
     Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::FULLY_CONNECTED);
-    FullyConnectedAttributes fc_attr;
+    int input_bias_id = !has_normalization ? bias_id : -1;
     RETURN_IF_ERROR(
-        SetFullyConnectedWeights(input_weight_id, reader, &fc_attr));
-    if (!has_normalization) {
-      RETURN_IF_ERROR(reader->ReadTensor(bias_id, &(fc_attr.bias)));
-    }
-    node->operation.attributes = std::move(fc_attr);
+        GetFullyConnectedNode(input_weight_id, input_bias_id, reader, node));
     RETURN_IF_ERROR(
         reader->AddInput(node, tflite::ops::builtin::lstm::full::kInputTensor));
     RETURN_IF_ERROR(graph->SetProducer(node->id, input_times_weights->id));
@@ -142,11 +169,8 @@ absl::Status BuildLstmGate(GraphFloat32* graph, ObjectReader* reader,
   {
     // #2 matrix multiplication: recurrent_weights * output_state
     Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::FULLY_CONNECTED);
-    FullyConnectedAttributes fc_attr;
     RETURN_IF_ERROR(
-        SetFullyConnectedWeights(recurrent_weight_id, reader, &fc_attr));
-    node->operation.attributes = std::move(fc_attr);
+        GetFullyConnectedNode(recurrent_weight_id, -1, reader, node));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, output_state->id));
     RETURN_IF_ERROR(
         graph->SetProducer(node->id, output_state_times_weights->id));
@@ -377,17 +401,11 @@ absl::Status BuildOutputStateUpdate(GraphFloat32* graph, ObjectReader* reader,
   {
     // #3 matrix multiplication: projection_weights * #2 + projection_bias
     Node* node = graph->NewNode();
-    FullyConnectedAttributes fc_attr;
-    RETURN_IF_ERROR(SetFullyConnectedWeights(
-        tflite::ops::builtin::lstm::full::kProjectionWeightsTensor, reader,
-        &fc_attr));
-    // Projection bias is optional
-    reader
-        ->ReadTensor(tflite::ops::builtin::lstm::full::kProjectionBiasTensor,
-                     &(fc_attr.bias))
-        .IgnoreError();
-    node->operation.attributes = std::move(fc_attr);
-    node->operation.type = ToString(OperationType::FULLY_CONNECTED);
+
+    RETURN_IF_ERROR(GetFullyConnectedNode(
+        tflite::ops::builtin::lstm::full::kProjectionWeightsTensor,
+        tflite::ops::builtin::lstm::full::kProjectionBiasTensor, reader, node));
+
     RETURN_IF_ERROR(graph->AddConsumer(node->id, new_output_state->id));
     RETURN_IF_ERROR(graph->SetProducer(node->id, projected_output_state->id));
   }

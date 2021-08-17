@@ -9,12 +9,14 @@ load(
     "tf_cc_binary",
     "tf_copts",
     "tf_defines_nortti_if_lite_protos",
+    "tf_features_nolayering_check_if_android_or_ios",
     "tf_features_nomodules_if_mobile",
     "tf_opts_nortti_if_lite_protos",
     "tf_portable_full_lite_protos",
 )
 load(
     "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_jni_binary",
     "tflite_jni_linkopts",
@@ -25,12 +27,14 @@ load("//tensorflow/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
 def generate_flex_kernel_header(
         name,
         models,
+        testonly = 0,
         additional_deps = []):
     """A rule to generate a header file listing only used operators.
 
     Args:
       name: Name of the generated library.
       models: TFLite models to interpret.
+      testonly: Should be marked as true if additional_deps is testonly.
       additional_deps: Dependencies for additional TF ops.
 
     Returns:
@@ -55,6 +59,7 @@ def generate_flex_kernel_header(
             deps = [
                 clean_dep("//tensorflow/lite/tools:list_flex_ops_main_lib"),
             ] + additional_deps,
+            testonly = testonly,
         )
         list_ops_tool = ":%s_list_flex_ops_main" % name
     native.genrule(
@@ -65,6 +70,7 @@ def generate_flex_kernel_header(
         message = "Listing flex ops from %s..." % ",".join(models),
         cmd = ("$(location " + list_ops_tool + ")" +
                model_file_args + " > \"$@\""),
+        testonly = testonly,
     )
 
     # Generate the kernel registration header file from list of flex ops.
@@ -73,7 +79,7 @@ def generate_flex_kernel_header(
         name = "%s_kernel_registration" % name,
         srcs = [list_ops_output],
         outs = [header],
-        exec_tools = [tool],
+        tools = [tool],
         message = "Processing %s..." % list_ops_output,
         cmd = ("$(location " + tool + ")" +
                " --default_ops=\"\"" +
@@ -86,7 +92,9 @@ def tflite_flex_cc_library(
         name,
         models = [],
         additional_deps = [],
-        visibility = ["//visibility:public"]):
+        testonly = 0,
+        visibility = ["//visibility:public"],
+        link_symbol = True):
     """A rule to generate a flex delegate with only ops to run listed models.
 
     Args:
@@ -95,6 +103,7 @@ def tflite_flex_cc_library(
           to support these models. If empty, the library will include all Tensorflow
           ops and kernels.
       additional_deps: Dependencies for additional TF ops.
+      testonly: Mark this library as testonly if true.
       visibility: visibility of the generated rules.
     """
     portable_tensorflow_lib = clean_dep("//tensorflow/core:portable_tensorflow_lib")
@@ -103,6 +112,7 @@ def tflite_flex_cc_library(
             name = "%s_tf_op_headers" % name,
             models = models,
             additional_deps = additional_deps,
+            testonly = testonly,
         )
 
         # Define a custom tensorflow_lib with selective registration.
@@ -111,8 +121,8 @@ def tflite_flex_cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
                 clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
-                clean_dep("//tensorflow/core/kernels:android_core_ops"),
-                clean_dep("//tensorflow/core/kernels:android_extended_ops"),
+                clean_dep("//tensorflow/core/kernels:portable_core_ops"),
+                clean_dep("//tensorflow/core/kernels:portable_extended_ops"),
             ]) + [CUSTOM_KERNEL_HEADER.header],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
             defines = [
@@ -122,13 +132,13 @@ def tflite_flex_cc_library(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile(),
+            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_android_or_ios(),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
             ],
             textual_hdrs = [
-                clean_dep("//tensorflow/core/kernels:android_all_ops_textual_hdrs"),
+                clean_dep("//tensorflow/core/kernels:portable_all_ops_textual_hdrs"),
             ],
             visibility = visibility,
             deps = flex_portable_tensorflow_deps() + [
@@ -138,8 +148,13 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/lite/delegates/flex:portable_images_lib"),
             ],
             alwayslink = 1,
+            testonly = testonly,
         )
         portable_tensorflow_lib = ":%s_tensorflow_lib" % name
+
+    delegate_symbol = []
+    if link_symbol:
+        delegate_symbol.append(clean_dep("//tensorflow/lite/delegates/flex:delegate_symbol"))
 
     # Define a custom flex delegate with above tensorflow_lib.
     native.cc_library(
@@ -147,6 +162,7 @@ def tflite_flex_cc_library(
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
+        features = tf_features_nolayering_check_if_android_or_ios(),
         visibility = visibility,
         deps = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate_data"),
@@ -163,14 +179,69 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core:tensorflow"),
                 clean_dep("//tensorflow/lite/c:common"),
             ],
-        }) + additional_deps,
+        }) + additional_deps + delegate_symbol,
+        testonly = testonly,
         alwayslink = 1,
+    )
+
+def tflite_flex_shared_library(
+        name,
+        models = [],
+        additional_deps = [],
+        testonly = 0,
+        visibility = ["//visibility:private"]):
+    """A rule to generate a flex delegate shared library with only ops to run listed models.
+
+    The output library name is platform dependent:
+    - Linux/Android: `lib{name}.so`
+    - Mac: `lib{name}.dylib`
+    - Windows: `lib{name}.dll`
+
+    Args:
+      name: Name of the library.
+      models: TFLite models to interpret. The library will only include ops and kernels
+          to support these models. If empty, the library will include all Tensorflow
+          ops and kernels.
+      additional_deps: Dependencies for additional TF ops.
+      testonly: Mark this library as testonly if true.
+      visibility: visibility of the generated rules.
+    """
+    tflite_flex_cc_library(
+        name = "%s_flex_delegate" % name,
+        models = models,
+        additional_deps = additional_deps,
+        testonly = testonly,
+        visibility = visibility,
+    )
+
+    tflite_cc_shared_object(
+        name = name,
+        # Until we have more granular symbol export for the C++ API on Windows,
+        # export all symbols.
+        features = ["windows_export_all_symbols"],
+        linkopts = select({
+            "//tensorflow:macos": [
+                "-Wl,-exported_symbols_list,$(location //tensorflow/lite/delegates/flex:exported_symbols.lds)",
+            ],
+            "//tensorflow:windows": [],
+            "//conditions:default": [
+                "-Wl,-z,defs",
+                "-Wl,--version-script,$(location //tensorflow/lite/delegates/flex:version_script.lds)",
+            ],
+        }),
+        per_os_targets = True,
+        deps = [
+            "%s_flex_delegate" % name,
+            "//tensorflow/lite/delegates/flex:exported_symbols.lds",
+            "//tensorflow/lite/delegates/flex:version_script.lds",
+        ],
     )
 
 def tflite_flex_jni_library(
         name,
         models = [],
         additional_deps = [],
+        testonly = 0,
         visibility = ["//visibility:private"]):
     """A rule to generate a jni library listing only used operators.
 
@@ -183,6 +254,7 @@ def tflite_flex_jni_library(
           to support these models. If empty, the library will include all Tensorflow
           ops and kernels.
       additional_deps: Dependencies for additional TF ops.
+      testonly: Mark this library as testonly if true.
       visibility: visibility of the generated rules.
     """
 
@@ -192,6 +264,7 @@ def tflite_flex_jni_library(
         name = "%s_flex_delegate" % name,
         models = models,
         additional_deps = additional_deps,
+        testonly = testonly,
         visibility = visibility,
     )
 
@@ -204,6 +277,7 @@ def tflite_flex_jni_library(
             clean_dep("//tensorflow/lite/delegates/flex/java/src/main/native:flex_delegate_jni.cc"),
         ],
         copts = tflite_copts(),
+        testonly = testonly,
         visibility = visibility,
         deps = [
             ":%s_flex_delegate" % name,
@@ -224,6 +298,7 @@ def tflite_flex_jni_library(
     tflite_jni_binary(
         name = "libtensorflowlite_flex_jni.so",
         linkopts = tflite_jni_linkopts(),
+        testonly = testonly,
         deps = [
             ":%s_flex_native" % name,
         ],
@@ -234,6 +309,7 @@ def tflite_flex_android_library(
         models = [],
         additional_deps = [],
         custom_package = "org.tensorflow.lite.flex",
+        testonly = 0,
         visibility = ["//visibility:private"]):
     """A rule to generate an android library based on the selective-built jni library.
 
@@ -244,18 +320,21 @@ def tflite_flex_android_library(
           Tensorflow ops and kernels.
       additional_deps: Dependencies for additional TF ops.
       custom_package: Java package for which java sources will be generated.
+      testonly: Mark this library as testonly if true.
       visibility: visibility of the generated rules.
     """
     tflite_flex_jni_library(
         name = name,
         models = models,
         additional_deps = additional_deps,
+        testonly = testonly,
         visibility = visibility,
     )
 
     native.cc_library(
         name = "%s_native" % name,
         srcs = ["libtensorflowlite_flex_jni.so"],
+        testonly = testonly,
         visibility = visibility,
     )
 
@@ -265,6 +344,7 @@ def tflite_flex_android_library(
         manifest = clean_dep("//tensorflow/lite/java:AndroidManifest.xml"),
         proguard_specs = [clean_dep("//tensorflow/lite/java:proguard.flags")],
         custom_package = custom_package,
+        testonly = testonly,
         deps = [
             ":%s_native" % name,
             clean_dep("//tensorflow/lite/java:tensorflowlite_java"),

@@ -27,7 +27,9 @@ namespace tensorflow {
 
 std::vector<string> CandidateCudaRoots() {
   VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
-  return {TF_CUDA_TOOLKIT_PATH};
+  return {TF_CUDA_TOOLKIT_PATH, string("/usr/local/cuda")};
 }
+
+bool PreferPtxasFromPath() { return true; }
 
 }  // namespace tensorflow

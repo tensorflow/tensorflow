@@ -68,8 +68,8 @@ class RecordWriter {
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.
   // "*dest" must remain live while this Writer is in use.
-  RecordWriter(WritableFile* dest,
-               const RecordWriterOptions& options = RecordWriterOptions());
+  explicit RecordWriter(WritableFile* dest, const RecordWriterOptions& options =
+                                                RecordWriterOptions());
 
   // Calls Close() and logs if an error occurs.
   //
@@ -79,7 +79,7 @@ class RecordWriter {
 
   Status WriteRecord(StringPiece data);
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status WriteRecord(const absl::Cord& data);
 #endif
 
@@ -98,12 +98,13 @@ class RecordWriter {
   // "header[0,kHeaderSize-1]".  The record-header is based on data[0, n-1].
   inline static void PopulateHeader(char* header, const char* data, size_t n);
 
+  inline static void PopulateHeader(char* header, const absl::Cord& data);
+
   // Utility method to populate TFRecord footers.  Populates record-footer in
   // "footer[0,kFooterSize-1]".  The record-footer is based on data[0, n-1].
   inline static void PopulateFooter(char* footer, const char* data, size_t n);
 
-#if defined(PLATFORM_GOOGLE)
-  inline static void PopulateHeader(char* header, const absl::Cord& data);
+#if defined(TF_CORD_SUPPORT)
   inline static void PopulateFooter(char* footer, const absl::Cord& data);
 #endif
 
@@ -115,7 +116,7 @@ class RecordWriter {
     return crc32c::Mask(crc32c::Value(data, n));
   }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   inline static uint32 MaskedCrc(const absl::Cord& data) {
     return crc32c::Mask(crc32c::Value(data));
   }
@@ -134,7 +135,7 @@ void RecordWriter::PopulateFooter(char* footer, const char* data, size_t n) {
   core::EncodeFixed32(footer, MaskedCrc(data, n));
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 void RecordWriter::PopulateHeader(char* header, const absl::Cord& data) {
   core::EncodeFixed64(header + 0, data.size());
   core::EncodeFixed32(header + sizeof(uint64),

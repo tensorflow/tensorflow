@@ -759,7 +759,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   Add(x, y);
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
+      local_client_->backend().compiler()->DeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
@@ -826,7 +827,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_EQ(1, executables.size());
   // The executable should be at least as large as the constant it contains.
   EXPECT_GT(executables.front()->executable()->SizeOfGeneratedCodeInBytes(),
-            int64{sizeof(float) * size});
+            int64_t{sizeof(float) * size});
 }
 
 XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
@@ -885,12 +886,12 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 
   test_to_device_and_back(LiteralUtil::CreateR2<double>(
       {{1.0, 2.0, 3.0}, {44.0, 0.099999999999999978, -3}}));
-  test_to_device_and_back(LiteralUtil::CreateR2<int64>({{2, 1}, {4444, 56}}));
+  test_to_device_and_back(LiteralUtil::CreateR2<int64_t>({{2, 1}, {4444, 56}}));
   test_to_device_and_back(
-      LiteralUtil::CreateR2<uint64>({{20000000000ULL, 1}, {4444, 56}}));
+      LiteralUtil::CreateR2<uint64_t>({{20000000000ULL, 1}, {4444, 56}}));
   test_to_device_and_back(LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR1<double>({1.0, -42.0}),
-       LiteralUtil::CreateR0<int64>(123456789000LL)}));
+       LiteralUtil::CreateR0<int64_t>(123456789000LL)}));
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.
@@ -937,9 +938,9 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),
       local_client_->default_device_ordinal()));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          local_client_->TransferFromOutfeedLocal(
-                              shape, local_client_->default_device_ordinal()));
+  Literal result(shape);
+  ASSERT_IS_OK(local_client_->TransferFromOutfeedLocal(
+      local_client_->default_device_ordinal(), &result));
 
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, result);
 }

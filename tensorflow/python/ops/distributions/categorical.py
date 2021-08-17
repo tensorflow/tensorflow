@@ -311,8 +311,10 @@ class Categorical(distribution.Distribution):
     k, logits = _broadcast_cat_event_and_params(
         k, self.logits, base_dtype=self.dtype.base_dtype)
 
-    return -nn_ops.sparse_softmax_cross_entropy_with_logits(labels=k,
-                                                            logits=logits)
+    # pylint: disable=invalid-unary-operand-type
+    return -nn_ops.sparse_softmax_cross_entropy_with_logits(
+        labels=k,
+        logits=logits)
 
   def _entropy(self):
     return -math_ops.reduce_sum(

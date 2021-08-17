@@ -3,21 +3,79 @@
 [TOC]
 
 ## Overview
-This document describes SavedModel, the universal serialization format for
+
+SavedModel is the universal serialization format for
 [TensorFlow](https://www.tensorflow.org/) models.
 
-SavedModel provides a language-neutral format to save machine-learned models
+SavedModel provides a language-neutral format to save machine-learning models
 that is recoverable and hermetic. It enables higher-level systems and tools to
 produce, consume and transform TensorFlow models.
 
-## Features
+## Guides
+* [Using the SavedModel Format](https://www.tensorflow.org/guide/saved_model)
+* [Save and load Keras models](https://www.tensorflow.org/guide/keras/save_and_serialize)
+* [Save and load with checkpointing in Keras](https://www.tensorflow.org/tutorials/keras/save_and_load)
+* [Training checkpoints](https://www.tensorflow.org/guide/checkpoint)
+* [Save and load a model using a distribution strategy](https://www.tensorflow.org/tutorials/distribute/save_and_load)
+
+
+## [Public API](https://www.tensorflow.org/api_docs/python/tf/saved_model)
+* [`tf.saved_model.save`](https://www.tensorflow.org/api_docs/python/tf/saved_model/save)
+* [`tf.saved_model.load`](https://www.tensorflow.org/api_docs/python/tf/saved_model/load)
+* [`tf.saved_model.SaveOptions`](https://www.tensorflow.org/api_docs/python/tf/saved_model/SaveOptions)
+* [`tf.saved_model.LoadOptions`](https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
+* [`tf.saved_model.Asset`](https://www.tensorflow.org/api_docs/python/tf/saved_model/Asset)
+* [`tf.saved_model.contains_saved_model`](https://www.tensorflow.org/api_docs/python/tf/saved_model/contains_saved_model)
+
+### Related Modules and Functions
+* [`tf.keras.models.save_model`](https://www.tensorflow.org/api_docs/python/tf/keras/models/save_model)
+* [`tf.keras.models.load_model`](https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model)
+* [`tf.train.Checkpoint`](https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint)
+
+
+## The SavedModel Format
+A SavedModel directory has the following structure:
+
+```
+assets/
+assets.extra/
+variables/
+    variables.data-?????-of-?????
+    variables.index
+saved_model.pb
+```
+
+*   SavedModel protocol buffer
+    *   [`saved_model.pb`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/saved_model.proto)
+        or `saved_model.pbtxt`
+    *   Includes the graph definitions as `MetaGraphDef` protocol buffers.
+*   Assets
+    *   Subfolder called `assets`.
+    *   Contains auxiliary files such as vocabularies, etc.
+*   Extra assets
+    *   Subfolder where higher-level libraries and users can add their own
+        assets that co-exist with the model, but are not loaded by the graph.
+    *   This subfolder is not managed by the SavedModel libraries.
+*   Variables
+    *   Subfolder called `variables`.
+        *   `variables.data-?????-of-?????`
+        *   `variables.index`
+
+---
+
+## SavedModel in TensorFlow 1.x
+
+SavedModel had slightly different semantics in TF 1.x. Conventions that are
+generally only supported in TF 1.x are noted as such.
+
+### Features
 
 The following is a summary of the features in SavedModel:
 
-* Multiple graphs sharing a single set of variables and assets can be added to a
+* (TF1-only) Multiple graphs sharing a single set of variables and assets can be added to a
   single SavedModel. Each graph is associated with a specific set of tags to
   allow identification during a load or restore operation.
-* Support for `SignatureDefs`
+* (TF1-only) Support for `SignatureDefs`
     * Graphs that are used for inference tasks typically have a set of inputs
       and outputs. This is called a `Signature`.
     * SavedModel uses [SignatureDefs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/meta_graph.proto)
@@ -38,45 +96,18 @@ Higher-level frameworks and tools that use SavedModel may provide these.
 * Garbage collection.
 * Atomic writes to the SavedModel location.
 
-## Background
+### TF1 SavedModel Background
 SavedModel manages and builds upon existing TensorFlow primitives such as
 `TensorFlow Saver` and `MetaGraphDef`. Specifically, SavedModel wraps a [TensorFlow Saver](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py).
 The Saver is primarily used to generate the variable checkpoints. SavedModel
-will replace the existing [TensorFlow Inference Model Format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/session_bundle/README.md)
+will replace the existing [TensorFlow Inference Model Format](https://github.com/tensorflow/tensorflow/tree/r1.15/tensorflow/contrib/session_bundle#tensorflow-inference-model-format)
 as the canonical way to export TensorFlow graphs for serving.
 
-## Components
-A SavedModel directory has the following structure:
 
-```
-assets/
-assets.extra/
-variables/
-    variables.data-?????-of-?????
-    variables.index
-saved_model.pb
-```
-
-* SavedModel protocol buffer
-    * `saved_model.pb` or `saved_model.pbtxt`
-    * Includes the graph definitions as `MetaGraphDef` protocol buffers.
-* Assets
-    * Subfolder called `assets`.
-    * Contains auxiliary files such as vocabularies, etc.
-* Extra assets
-    * Subfolder where higher-level libraries and users can add their own assets
-      that co-exist with the model, but are not loaded by the graph.
-    * This subfolder is not managed by the SavedModel libraries.
-* Variables
-    * Subfolder called `variables`.
-    * Includes output from the [TensorFlow Saver](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py).
-        * `variables.data-?????-of-?????`
-        * `variables.index`
-
-## APIs
+### APIs
 The APIs for building and loading a SavedModel are described in this section.
 
-### Builder
+#### (TF1-only) Builder
 The SavedModel [builder](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py)
 is implemented in Python.
 
@@ -89,7 +120,7 @@ assets need to be saved and written or copied to disk, they can be provided
 when the meta graph def is added. If multiple meta graph defs are associated
 with an asset of the same name, only the first version is retained.
 
-#### Tags
+#### (TF1-only) Tags
 Each meta graph added to the SavedModel must be annotated with user specified
 tags, which reflect the meta graph capabilities or use-cases.
 More specifically, these tags typically annotate a meta graph with its
@@ -124,7 +155,7 @@ with tf.Session(graph=tf.Graph()) as sess:
 builder.save()
 ~~~
 
-#### Stripping Default valued attributes
+#### (TF1-only) Stripping Default valued attributes
 The SavedModelBuilder class allows users to control whether default-valued
 attributes must be stripped from the NodeDefs while adding a meta graph to the
 SavedModel bundle. Both `SavedModelBuilder.add_meta_graph_and_variables` and
@@ -156,7 +187,7 @@ to `True` while using `SavedModelBuilder.add_meta_graph_and_variables` and
 ### Loader
 The SavedModel loader is implemented in C++ and Python.
 
-#### Python
+#### (TF1-only) Python
 The Python version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/loader.py)
 provides load and restore capability for a SavedModel. The `load` operation
 requires the session in which to restore the graph definition and variables, the
@@ -194,18 +225,17 @@ variety of use-cases. For the set of most common expected use-cases,
 SavedModel's APIs provide a set of constants in Python and C++ that are easy to
 reuse and share across tools consistently.
 
-#### Tag constants
+#### (TF1-specific) Tag constants
 Sets of tags can be used to uniquely identify a `MetaGraphDef` saved in a
 SavedModel. A subset of commonly used tags is specified in:
 
 * [Python](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/tag_constants.py)
 * [C++](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/tag_constants.h).
 
-#### Signature constants
+#### (TF1-specific) Signature constants
 SignatureDefs are used to define the signature of a computation supported in a
 TensorFlow graph. Commonly used input keys, output keys and method names are
 defined in:
 
 * [Python](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/signature_constants.py)
 * [C++](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/signature_constants.h).
-

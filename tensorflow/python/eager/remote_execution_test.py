@@ -233,21 +233,6 @@ class RemoteExecutionTest(test.TestCase, parameterized.TestCase):
                      "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
 
 
-class RemoteExecutionWithoutLazyRemoteInputsCopyTest(RemoteExecutionTest):
-
-  @classmethod
-  def setUpClass(cls):
-    super(RemoteExecutionWithoutLazyRemoteInputsCopyTest, cls).setUpClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = False
-
-  @classmethod
-  def tearDownClass(cls):
-    super(RemoteExecutionWithoutLazyRemoteInputsCopyTest, cls).tearDownClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = True
-
-
 if __name__ == "__main__":
   ops.enable_eager_execution()
   test.main()

@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -11,7 +11,7 @@ py_library(
         "__init__.py",
         "jit.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":xla",
         "//tensorflow/core:protos_all_py",
@@ -50,7 +50,7 @@ cuda_py_test(
 py_library(
     name = "xla",
     srcs = ["xla.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
@@ -86,9 +86,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/summary",
         "//tensorflow/python/tpu:tpu_lib",
         "@absl_py//absl/testing:parameterized",
     ],

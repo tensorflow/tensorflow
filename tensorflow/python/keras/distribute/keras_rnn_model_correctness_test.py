@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Correctness tests for tf.keras RNN models using DistributionStrategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy

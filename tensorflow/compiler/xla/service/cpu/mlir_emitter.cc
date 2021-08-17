@@ -17,13 +17,14 @@ limitations under the License.
 
 #include "llvm/Linker/Linker.h"
 #include "llvm/Transforms/IPO/Internalize.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
@@ -68,19 +69,19 @@ void BuildViewForBuffer(llvm::SmallVectorImpl<llvm::Value *> *args,
   args->push_back(b->getInt64(0));  // Offset.
 
   // Sizes.
-  for (int64 dim : opShape.dimensions()) {
+  for (int64_t dim : opShape.dimensions()) {
     args->push_back(b->getInt64(dim));
   }
 
   int64_t accumulated_stride = 1;
   llvm::SmallVector<int64_t, 4> strides(opShape.rank(), 1);
-  for (int64 dim : LayoutUtil::MinorToMajor(opShape)) {
+  for (int64_t dim : LayoutUtil::MinorToMajor(opShape)) {
     strides[dim] = accumulated_stride;
     accumulated_stride *= opShape.dimensions(dim);
   }
 
   // Strides.
-  for (int64 stride : strides) {
+  for (int64_t stride : strides) {
     args->push_back(b->getInt64(stride));
   }
 }
@@ -108,7 +109,7 @@ Status EmitMlirFuncAndCall(
   // Create the function an call the emission callback.
   mlir::Location loc = mlir::UnknownLoc::get(context);
   auto function = mlir::FuncOp::create(
-      loc, func_name, mlir::FunctionType::get(operand_types, {}, context));
+      loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
   mlir::OwningModuleRef mlir_module = mlir::ModuleOp::create(loc);
   mlir_module->push_back(function);

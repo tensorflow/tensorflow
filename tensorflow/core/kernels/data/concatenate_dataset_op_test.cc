@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,12 +25,12 @@ constexpr char kNodeName[] = "concatenate_dataset";
 // Test case 1: same shape.
 ConcatenateDatasetParams SameShapeConcatenateDatasetParams() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{2, 2},
-                                          {{1, 2, 3, 4}, {5, 6, 7, 8}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{2, 2},
+                                            {{1, 2, 3, 4}, {5, 6, 7, 8}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{2, 2},
-                                          {{11, 12, 13, 14}, {15, 16, 17, 18}}),
+      /*components=*/CreateTensors<int64_t>(
+          TensorShape{2, 2}, {{11, 12, 13, 14}, {15, 16, 17, 18}}),
       /*node_name=*/"tensor_slice_1");
   return ConcatenateDatasetParams(
       std::move(tensor_slice_dataset_params_0),
@@ -44,13 +44,13 @@ ConcatenateDatasetParams SameShapeConcatenateDatasetParams() {
 ConcatenateDatasetParams DifferentShapeConcatenateDatasetParams() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{2, 3}, {1, 2, 3, 4, 5, 6}),
-       CreateTensor<int64>(TensorShape{2, 2}, {7, 8, 9, 10})},
+      {CreateTensor<int64_t>(TensorShape{2, 3}, {1, 2, 3, 4, 5, 6}),
+       CreateTensor<int64_t>(TensorShape{2, 2}, {7, 8, 9, 10})},
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{2, 2}, {11, 12, 13, 14}),
-       CreateTensor<int64>(TensorShape{2, 1}, {15, 16})},
+      {CreateTensor<int64_t>(TensorShape{2, 2}, {11, 12, 13, 14}),
+       CreateTensor<int64_t>(TensorShape{2, 1}, {15, 16})},
       /*node_name=*/"tensor_slice_1");
   return ConcatenateDatasetParams(
       std::move(tensor_slice_dataset_params_0),
@@ -63,7 +63,7 @@ ConcatenateDatasetParams DifferentShapeConcatenateDatasetParams() {
 // Test case 3: different dtypes
 ConcatenateDatasetParams DifferentDtypeConcatenateDatasetParams() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{2, 2}, {{1, 2, 3, 4}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{2, 2}, {{1, 2, 3, 4}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
       /*components=*/
@@ -81,24 +81,24 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {};
 std::vector<GetNextTestCase<ConcatenateDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/SameShapeConcatenateDatasetParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{1, 2},
-                                                   {5, 6},
-                                                   {3, 4},
-                                                   {7, 8},
-                                                   {11, 12},
-                                                   {15, 16},
-                                                   {13, 14},
-                                                   {17, 18}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{1, 2},
+                                                     {5, 6},
+                                                     {3, 4},
+                                                     {7, 8},
+                                                     {11, 12},
+                                                     {15, 16},
+                                                     {13, 14},
+                                                     {17, 18}})},
           {/*dataset_params=*/DifferentShapeConcatenateDatasetParams(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2}, {7, 8}),
-            CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
-            CreateTensor<int64>(TensorShape{2}, {9, 10}),
-            CreateTensor<int64>(TensorShape{2}, {11, 12}),
-            CreateTensor<int64>(TensorShape{1}, {15}),
-            CreateTensor<int64>(TensorShape{2}, {13, 14}),
-            CreateTensor<int64>(TensorShape{1}, {16})}}};
+           {CreateTensor<int64_t>(TensorShape{3}, {1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{3}, {4, 5, 6}),
+            CreateTensor<int64_t>(TensorShape{2}, {9, 10}),
+            CreateTensor<int64_t>(TensorShape{2}, {11, 12}),
+            CreateTensor<int64_t>(TensorShape{1}, {15}),
+            CreateTensor<int64_t>(TensorShape{2}, {13, 14}),
+            CreateTensor<int64_t>(TensorShape{1}, {16})}}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ConcatenateDatasetOpTest, ConcatenateDatasetParams,
@@ -202,25 +202,25 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/SameShapeConcatenateDatasetParams(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{1, 2},
-                                                   {5, 6},
-                                                   {3, 4},
-                                                   {7, 8},
-                                                   {11, 12},
-                                                   {15, 16},
-                                                   {13, 14},
-                                                   {17, 18}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{1, 2},
+                                                     {5, 6},
+                                                     {3, 4},
+                                                     {7, 8},
+                                                     {11, 12},
+                                                     {15, 16},
+                                                     {13, 14},
+                                                     {17, 18}})},
           {/*dataset_params=*/DifferentShapeConcatenateDatasetParams(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2}, {7, 8}),
-            CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
-            CreateTensor<int64>(TensorShape{2}, {9, 10}),
-            CreateTensor<int64>(TensorShape{2}, {11, 12}),
-            CreateTensor<int64>(TensorShape{1}, {15}),
-            CreateTensor<int64>(TensorShape{2}, {13, 14}),
-            CreateTensor<int64>(TensorShape{1}, {16})}}};
+           {CreateTensor<int64_t>(TensorShape{3}, {1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{3}, {4, 5, 6}),
+            CreateTensor<int64_t>(TensorShape{2}, {9, 10}),
+            CreateTensor<int64_t>(TensorShape{2}, {11, 12}),
+            CreateTensor<int64_t>(TensorShape{1}, {15}),
+            CreateTensor<int64_t>(TensorShape{2}, {13, 14}),
+            CreateTensor<int64_t>(TensorShape{1}, {16})}}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(ConcatenateDatasetOpTest,

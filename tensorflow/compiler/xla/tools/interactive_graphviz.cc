@@ -72,6 +72,7 @@ bool ReadLine(const char* prompt, string* line) {
 struct Options {
   string hlo_snapshot;
   string hlo_proto;
+  string hlo_module_proto;
   string hlo_text;
   string platform;
   string browser;
@@ -103,12 +104,12 @@ Usage:
 
 // Unless an explicit width is specified, we will render a neighborhood of
 // kDefaultWidth nodes around the requested instruction.
-constexpr int64 kDefaultWidth = 2;
+constexpr int64_t kDefaultWidth = 2;
 
 // When printing all paths between two nodes, we print out only this many nodes
 // by default, truncating the graph if there are more nodes than this in the
 // all-paths set.
-constexpr int64 kDefaultMaxNumNodesInAllPaths = 100;
+constexpr int64_t kDefaultMaxNumNodesInAllPaths = 100;
 
 using absl::EqualsIgnoreCase;
 
@@ -379,7 +380,7 @@ void DoExtractCommand(const HloModule& module,
     return;
   }
 
-  int64 height = -1;
+  int64_t height = -1;
   if (tokens.size() == 3) {
     if (!absl::SimpleAtoi(tokens[2], &height)) {
       std::cerr << "Can't parse '" << tokens[2] << "' as an integer."
@@ -502,7 +503,7 @@ void DoAllPathsCommand(const Options& opts, const HloModule& module,
     return;
   }
 
-  int64 max_nodes = kDefaultMaxNumNodesInAllPaths;
+  int64_t max_nodes = kDefaultMaxNumNodesInAllPaths;
   if (tokens.size() == 4 && !absl::SimpleAtoi(tokens[3], &max_nodes)) {
     std::cerr << "Can't parse '" << tokens[3] << "' as an integer."
               << std::endl;
@@ -664,11 +665,14 @@ void CheckFlags(const Options& opts) {
   if (!opts.hlo_text.empty()) {
     ++nonempty_flags_amount;
   }
+  if (!opts.hlo_module_proto.empty()) {
+    ++nonempty_flags_amount;
+  }
   if (nonempty_flags_amount == 1) {
     return;
   }
   LOG(FATAL) << "Can only specify one and only one of '--hlo_proto', "
-                "'--hlo_snapshot', '--hlo_text' flags.";
+                "'--hlo_snapshot', '--hlo_text', '--hlo_module_proto' flags.";
 }
 
 void RealMain(const Options& opts) {
@@ -700,6 +704,10 @@ void RealMain(const Options& opts) {
   } else if (!opts.hlo_text.empty()) {
     module = HloRunner::ReadModuleFromHloTextFile(
                  opts.hlo_text, xla::GetDebugOptionsFromFlags())
+                 .ValueOrDie();
+  } else if (!opts.hlo_module_proto.empty()) {
+    module = HloRunner::ReadModuleFromModuleBinaryProtofile(
+                 opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
                  .ValueOrDie();
   }
 
@@ -739,6 +747,8 @@ int main(int argc, char** argv) {
                        "HloSnapshot proto to interactively dump to graphviz"),
       tensorflow::Flag("hlo_proto", &opts.hlo_proto,
                        "XLA hlo proto to interactively dump to graphviz"),
+      tensorflow::Flag("hlo_module_proto", &opts.hlo_module_proto,
+                       "XLA hlomodule proto to interactively dump to graphviz"),
       tensorflow::Flag("hlo_text", &opts.hlo_text,
                        "XLA hlo proto to interactively dump to graphviz"),
       tensorflow::Flag("platform", &opts.platform,

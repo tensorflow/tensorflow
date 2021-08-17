@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -38,16 +39,17 @@ class XlaConvOp : public XlaOpKernel {
     OP_REQUIRES(context,
                 precision_config_.ParsePartialFromString(precision_config_attr),
                 errors::InvalidArgument("Error parsing precision config."));
+    preferred_element_type_ = absl::nullopt;
   }
 
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape lhs_shape = context->InputShape(0);
     const TensorShape rhs_shape = context->InputShape(1);
     const TensorShape padding_shape = context->InputShape("padding");
-    std::vector<int64> window_strides;
-    std::vector<int64> lhs_dilation;
-    std::vector<int64> rhs_dilation;
-    int64 feature_group_count;
+    std::vector<int64_t> window_strides;
+    std::vector<int64_t> lhs_dilation;
+    std::vector<int64_t> rhs_dilation;
+    int64_t feature_group_count;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
                                                               &window_strides));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("lhs_dilation",
@@ -66,10 +68,10 @@ class XlaConvOp : public XlaOpKernel {
     xla::Literal padding_literal;
     OP_REQUIRES_OK(context, context->ConstantInputAsInt64Literal(
                                 "padding", &padding_literal));
-    std::vector<std::pair<int64, int64>> padding(padding_shape.dim_size(0));
+    std::vector<std::pair<int64_t, int64_t>> padding(padding_shape.dim_size(0));
     for (int i = 0; i < padding.size(); ++i) {
-      padding[i] = {padding_literal.Get<int64>({i, 0}),
-                    padding_literal.Get<int64>({i, 1})};
+      padding[i] = {padding_literal.Get<int64_t>({i, 0}),
+                    padding_literal.Get<int64_t>({i, 1})};
     }
 
     // We do only minimal checking, relying on XLA to check the shape
@@ -77,9 +79,12 @@ class XlaConvOp : public XlaOpKernel {
     xla::XlaOp output = xla::ConvGeneralDilated(
         context->Input(0), context->Input(1), window_strides, padding,
         lhs_dilation, rhs_dilation, dnums_, feature_group_count,
-        /*batch_group_count=*/1, &precision_config_);
+        /*batch_group_count=*/1, &precision_config_, preferred_element_type_);
     context->SetOutput(0, output);
   }
+
+ protected:
+  absl::optional<xla::PrimitiveType> preferred_element_type_;
 
  private:
   xla::ConvolutionDimensionNumbers dnums_;
@@ -95,6 +100,30 @@ REGISTER_XLA_OP(Name("XlaConv")
                     .CompileTimeConstantInput("feature_group_count")
                     .CompileTimeConstantInput("padding"),
                 XlaConvOp);
+
+class XlaConvV2Op : public XlaConvOp {
+ public:
+  explicit XlaConvV2Op(OpKernelConstruction* context) : XlaConvOp(context) {
+    DataType preferred_element_dtype;
+    OP_REQUIRES_OK(context, context->GetAttr("preferred_element_type",
+                                             &preferred_element_dtype));
+    xla::PrimitiveType preferred_element_type;
+    OP_REQUIRES_OK(context, DataTypeToPrimitiveType(preferred_element_dtype,
+                                                    &preferred_element_type));
+    preferred_element_type_ = preferred_element_type;
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaConvV2Op);
+};
+
+REGISTER_XLA_OP(Name("XlaConvV2")
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("lhs_dilation")
+                    .CompileTimeConstantInput("rhs_dilation")
+                    .CompileTimeConstantInput("feature_group_count")
+                    .CompileTimeConstantInput("padding"),
+                XlaConvV2Op);
 
 }  // namespace
 }  // namespace tensorflow

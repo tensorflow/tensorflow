@@ -8,7 +8,7 @@ package(
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -41,6 +41,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
+    deps = ["@com_google_absl//absl/strings:cord"],
 )
 
 cc_library(
@@ -75,13 +76,13 @@ cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
-        "posix_file_system.h",
         "//tensorflow/core/platform:env.cc",
         "//tensorflow/core/platform:file_system.cc",
         "//tensorflow/core/platform:file_system_helper.cc",
         "//tensorflow/core/platform:threadpool.cc",
     ],
     hdrs = [
+        "posix_file_system.h",
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:file_system_helper.h",
@@ -113,6 +114,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -140,6 +142,11 @@ cc_library(
     ],
     deps = [
         ":env",
+        "//tensorflow/core/platform:load_library",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -201,6 +208,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -281,8 +289,8 @@ cc_library(
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
         "//tensorflow/core/platform:snappy.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
@@ -290,6 +298,7 @@ cc_library(
         "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
+    features = ["-layering_check"],
     tags = [
         "manual",
         "no_oss",
@@ -512,7 +521,25 @@ cc_library(
         "//tensorflow/core/lib/core:notification",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "crash_analysis",
+    srcs = [
+        "crash_analysis.cc",
+    ],
+    hdrs = ["crash_analysis.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 
@@ -543,8 +570,8 @@ filegroup(
         "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
-        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )

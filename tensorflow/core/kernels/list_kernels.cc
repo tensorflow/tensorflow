@@ -42,7 +42,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
-        (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1)) {
+        (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1)) {
       *out = PartialTensorShape();
       return Status::OK();
     }
@@ -54,7 +54,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     return PartialTensorShape::MakePartialShape(t.vec<int32>().data(),
                                                 t.NumElements(), out);
   } else if (t.dtype() == DT_INT64) {
-    return PartialTensorShape::MakePartialShape(t.vec<int64>().data(),
+    return PartialTensorShape::MakePartialShape(t.vec<int64_t>().data(),
                                                 t.NumElements(), out);
   }
   return errors::InvalidArgument(
@@ -88,8 +88,8 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
   return Status::OK();
 }
 
-Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
-                                   int32 output_index,
+Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
+                                   int32_t output_index,
                                    const TensorList& input_list,
                                    TensorList** output_list) {
   // Attempt to forward the input tensor to the output if possible.
@@ -264,7 +264,7 @@ class TensorListElementShape : public OpKernel {
       if (result->dtype() == DT_INT32) {
         result->scalar<int32>()() = -1;
       } else {
-        result->scalar<int64>()() = -1;
+        result->scalar<int64_t>()() = -1;
       }
     } else {
       OP_REQUIRES_OK(c, c->allocate_output(
@@ -273,7 +273,7 @@ class TensorListElementShape : public OpKernel {
         if (result->dtype() == DT_INT32) {
           result->flat<int32>()(i) = l->element_shape.dim_size(i);
         } else {
-          result->flat<int64>()(i) = l->element_shape.dim_size(i);
+          result->flat<int64_t>()(i) = l->element_shape.dim_size(i);
         }
       }
     }
@@ -301,7 +301,11 @@ class TensorListReserve : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
-    int32 num_elements = c->input(1).scalar<int32>()();
+    int32_t num_elements = c->input(1).scalar<int32>()();
+    OP_REQUIRES(c, num_elements >= 0,
+                errors::InvalidArgument("The num_elements to reserve must be a "
+                                        "non negative number, but got ",
+                                        num_elements));
     TensorList output;
     output.element_shape = element_shape;
     output.element_dtype = element_dtype_;
@@ -336,7 +340,7 @@ class TensorListResize : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
-    int32 size = c->input(1).scalar<int32>()();
+    int32_t size = c->input(1).scalar<int32>()();
     OP_REQUIRES(
         c, size >= 0,
         errors::InvalidArgument(
@@ -405,7 +409,7 @@ class TensorListSetItem : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
-    int32 index = c->input(1).scalar<int32>()();
+    int32_t index = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, index < l->tensors().size(),
                 errors::InvalidArgument("Trying to modify element ", index,
                                         " in a list with ", l->tensors().size(),
@@ -474,7 +478,7 @@ class TensorListConcatLists : public OpKernel {
     if (tl_alias && tl_alias->dtype() == DT_VARIANT &&
         tl_alias->NumElements() > 0) {
       auto tl_a_t = tl_alias->flat<Variant>();
-      for (int64 i = 0; i < tl_alias->NumElements(); ++i) {
+      for (int64_t i = 0; i < tl_alias->NumElements(); ++i) {
         TensorList* aliased = tl_a_t(i).get<TensorList>();
         if (aliased == nullptr || !aliased->RefCountIsOne()) {
           ok_to_alias = false;
@@ -497,7 +501,7 @@ class TensorListConcatLists : public OpKernel {
     auto tl_a_t = tl_a.flat<Variant>();
     auto tl_b_t = tl_b.flat<Variant>();
 
-    for (int64 i = 0; i < tl_a.NumElements(); ++i) {
+    for (int64_t i = 0; i < tl_a.NumElements(); ++i) {
       const TensorList* l_a = tl_a_t(i).get<TensorList>();
       const TensorList* l_b = tl_b_t(i).get<TensorList>();
       OP_REQUIRES(

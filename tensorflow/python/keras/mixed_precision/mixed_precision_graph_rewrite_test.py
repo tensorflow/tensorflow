@@ -13,13 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests Keras integration with enable_mixed_precision_graph_rewrite()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
-from tensorflow.python import tf2
 from tensorflow.python.framework import config
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -29,14 +25,6 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import mixed_precision
-
-
-if tf2.enabled():
-  enable_mixed_precision_graph_rewrite = (
-      mixed_precision.enable_mixed_precision_graph_rewrite)
-else:
-  enable_mixed_precision_graph_rewrite = (
-      mixed_precision.enable_mixed_precision_graph_rewrite_v1)
 
 
 class MixedPrecisionTest(keras_parameterized.TestCase):
@@ -57,13 +45,13 @@ class MixedPrecisionTest(keras_parameterized.TestCase):
     else:
       del os.environ[self.IGNORE_PERF_VAR]
 
-    mixed_precision.disable_mixed_precision_graph_rewrite()
+    mixed_precision.disable_mixed_precision_graph_rewrite_v1()
     super(MixedPrecisionTest, self).tearDown()
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_wrap_optimizer(self):
     opt = gradient_descent_v2.SGD(1.0)
-    opt = enable_mixed_precision_graph_rewrite(opt, 123.)
+    opt = mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
     self.assertIsInstance(
         opt, loss_scale_optimizer_v2.LossScaleOptimizerV1)
     self.assertEqual(self.evaluate(opt.loss_scale), 123.)
@@ -75,7 +63,7 @@ class MixedPrecisionTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, '"opt" must not already be an instance of a '
         'LossScaleOptimizer.'):
-      enable_mixed_precision_graph_rewrite(opt)
+      mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
 
@@ -84,12 +72,15 @@ class MixedPrecisionTest(keras_parameterized.TestCase):
     with policy.policy_scope('mixed_float16'):
       with self.assertRaisesRegex(ValueError,
                                   'the global Keras dtype Policy has been set'):
-        enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+        mixed_precision.enable_mixed_precision_graph_rewrite_v1(
+            gradient_descent_v2.SGD(1.0))
     # Test no error is thrown when the policy is currently the default.
-    enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+    mixed_precision.enable_mixed_precision_graph_rewrite_v1(
+        gradient_descent_v2.SGD(1.0))
     # Test no error is thrown when the policy is a non-mixed policy.
     with policy.policy_scope('float64'):
-      enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+      mixed_precision.enable_mixed_precision_graph_rewrite_v1(
+          gradient_descent_v2.SGD(1.0))
 
 
 if __name__ == '__main__':

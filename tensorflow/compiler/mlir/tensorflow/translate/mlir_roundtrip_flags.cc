@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
+#include <ostream>
+#include <sstream>
 #include <type_traits>
 
 #include "absl/algorithm/container.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "llvm/ADT/Optional.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,6 +35,32 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+std::string GraphImportConfig::str() const {
+  std::ostringstream ss;
+
+  ss << "graph_func_name: " << graph_func_name;
+  InputArrays inputs;
+  ss << "\ninputs: ";
+  for (auto& it : inputs) {
+    ss << "\n\t" << it.first << " -> "
+       << DataTypeString(it.second.imported_dtype) << " "
+       << it.second.shape.DebugString();
+  }
+  ss << "\noutputs:";
+  for (auto& output : outputs) ss << " " << output;
+  ss << "\ncontrol_outputs:";
+  for (auto& output : control_outputs) ss << " " << output;
+  ss << "\nprune_unused_nodes: " << prune_unused_nodes;
+  ss << "\nconvert_legacy_fed_inputs: " << convert_legacy_fed_inputs;
+  ss << "\ngraph_as_function: " << graph_as_function;
+  ss << "\nupgrade_legacy: " << upgrade_legacy;
+  ss << "\nrestrict_functionalization_to_tpu_nodes: "
+     << restrict_functionalization_to_tpu_nodes;
+  ss << "\nenable_shape_inference: " << enable_shape_inference;
+
+  return ss.str();
+}
 
 Status ParseOutputArrayInfo(absl::string_view array_names,
                             std::vector<string>* outputs) {
@@ -54,17 +83,18 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<std::vector<int>> node_shapes;
+  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
   TF_RETURN_IF_ERROR(ParseNodeShapes(shapes, node_shapes));
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-Status ParseInputArrayInfo(const std::vector<string>& node_names,
-                           const std::vector<string>& node_dtypes,
-                           const std::vector<std::vector<int>>& node_shapes,
-                           GraphImportConfig::InputArrays* inputs) {
+Status ParseInputArrayInfo(
+    const std::vector<string>& node_names,
+    const std::vector<string>& node_dtypes,
+    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
   if (node_dtypes.empty()) {
     // Mark all the node dtypes Invalid, so the importer can handle them by
@@ -110,7 +140,11 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
     }
 
     if (!node_shapes.empty()) {
-      for (auto& dim : node_shapes[i]) {
+      if (!node_shapes[i].hasValue()) {
+        info.shape.set_unknown_rank(true);
+        continue;
+      }
+      for (auto& dim : node_shapes[i].getValue()) {
         info.shape.add_dim()->set_size(dim);
       }
     }
@@ -118,17 +152,26 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
   return Status::OK();
 }
 
-Status ParseNodeShapes(absl::string_view shapes_str,
-                       std::vector<std::vector<int>>& shapes_vector) {
+Status ParseNodeShapes(
+    absl::string_view shapes_str,
+    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
     std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
     for (int i = 0; i < node_shapes_str.size(); i++) {
+      if (node_shapes_str[i] == "*") {
+        shapes_vector.push_back(llvm::None);
+        continue;
+      }
       std::vector<int> dims;
       for (const absl::string_view dim_str :
            absl::StrSplit(node_shapes_str[i], ',')) {
         // Treats empty input shape as scalar
         if (dim_str.empty()) continue;
+        if (dim_str == "?") {
+          dims.push_back(-1);
+          continue;
+        }
         int size;
         TF_RET_CHECK(absl::SimpleAtoi(dim_str, &size));
         dims.push_back(size);

@@ -79,7 +79,7 @@ class HloInstructionSequence {
     id_sequence_.clear();
   }
 
-  int64 size() const { return instruction_sequence_.size(); }
+  int64_t size() const { return instruction_sequence_.size(); }
 
   // Returns the sequence of HLO instructions.
   const std::vector<HloInstruction*>& instructions() const {
@@ -130,7 +130,8 @@ class HloSchedule {
 
   // Returns a map from HloComputation unique ID to instruction sequence. The
   // map contains all sequences in the schedule.
-  const absl::flat_hash_map<int64, HloInstructionSequence>& sequences() const {
+  const absl::flat_hash_map<int64_t, HloInstructionSequence>& sequences()
+      const {
     return sequences_;
   }
 
@@ -196,7 +197,7 @@ class HloSchedule {
   // A map from computation unique ID to instruction sequence. Unique IDs are
   // used rather than HloComputation pointers because HLO pointers are not
   // unique across HLO transformations because pointers may be recycled.
-  absl::flat_hash_map<int64, HloInstructionSequence> sequences_;
+  absl::flat_hash_map<int64_t, HloInstructionSequence> sequences_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSchedule& schedule);

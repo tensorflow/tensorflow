@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_TFE_OP_ATTRS_INTERNAL_H_
 
 #include "tensorflow/c/conversion_macros.h"
+#include "tensorflow/c/eager/abstract_op_attrs.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 
 // An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
@@ -28,7 +28,7 @@ typedef struct TFE_Context TFE_Context;
 typedef struct TFE_Op TFE_Op;
 
 namespace tensorflow {
-DEFINE_CONVERSION_FUNCTIONS(tensorflow::AttrBuilder, TFE_OpAttrs);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractOpAttrs, TFE_OpAttrs);
 
 // Set an AttrValue on the op. Doesn't handle the list types.
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,

@@ -1,15 +1,17 @@
 """Loads the ruy library, used by TensorFlow Lite."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "ruy",
-        sha256 = "d8f9dc52c0a52c8470e2e0b60bc16cba91853d812846c075f7ed8404990b003d",
-        strip_prefix = "ruy-5bb02fbf90824c2eb6cd7418f766c593106a332b",
+        # LINT.IfChange
+        sha256 = "fa9a0b9041095817bc3533f7b125c3b4044570c0b3ee6c436d2d29dae001c06b",
+        strip_prefix = "ruy-e6c1b8dc8a8b00ee74e7268aac8b18d7260ab1ce",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/5bb02fbf90824c2eb6cd7418f766c593106a332b.zip",
-            "https://github.com/google/ruy/archive/5bb02fbf90824c2eb6cd7418f766c593106a332b.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/ruy/archive/e6c1b8dc8a8b00ee74e7268aac8b18d7260ab1ce.zip",
+            "https://github.com/google/ruy/archive/e6c1b8dc8a8b00ee74e7268aac8b18d7260ab1ce.zip",
         ],
+        # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/ruy.cmake)
         build_file = "//third_party/ruy:BUILD",
     )

@@ -129,7 +129,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
       # TruncatedNormalMoments requires scipy.stats.
       # Give up early if we are unable to import it.
       random_seed.set_random_seed(seed)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         if use_stateless:
           # Generate a seed that stateless ops can use.
           new_seed = random_ops.random_uniform([2],
@@ -163,7 +163,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     try:
       import scipy.stats  # pylint: disable=g-import-not-at-top
       random_seed.set_random_seed(seed)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         if use_stateless:
           new_seed = random_ops.random_uniform([2],
                                                seed=seed,
@@ -298,7 +298,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
         minvals=-1.,
         maxvals=1.)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       samples, samples_stateless = sess.run([sample_op, sample_op_stateless])
       # 0. is more than 16 standard deviations from the mean, and
       # should have a likelihood < 1e-57.
@@ -313,7 +313,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     minval = variables.Variable(-1.)
     maxval = variables.Variable(1.)
 
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       with backprop.GradientTape(persistent=True) as tape:
         samples = stateless.stateless_parameterized_truncated_normal(
             [1], [1, 2], mean, stddev, minval, maxval)

@@ -35,7 +35,7 @@ import os
 import socket
 import sys
 
-from tensorflow.python.platform import app
+from absl import app
 
 # pylint: disable=g-import-not-at-top
 # Official recommended way of turning on fast protocol buffers as of 10/21/14

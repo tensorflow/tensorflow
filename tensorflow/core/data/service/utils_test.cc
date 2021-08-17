@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-DatasetDef DatasetDefWithVersion(int32 version) {
+DatasetDef DatasetDefWithVersion(int32_t version) {
   DatasetDef def;
   def.mutable_graph()->set_version(version);
   return def;
@@ -36,7 +36,7 @@ DatasetDef DatasetDefWithVersion(int32 version) {
 TEST(Utils, ReadWriteDataset) {
   std::string filename = testing::TmpDir();
   ASSERT_TRUE(Env::Default()->CreateUniqueFileName(&filename, "journal_dir"));
-  int32 version = 3;
+  int32_t version = 3;
   DatasetDef def = DatasetDefWithVersion(version);
   TF_ASSERT_OK(WriteDatasetDef(filename, def));
   DatasetDef result;
@@ -47,8 +47,8 @@ TEST(Utils, ReadWriteDataset) {
 TEST(Utils, OverwriteDataset) {
   std::string filename = testing::TmpDir();
   ASSERT_TRUE(Env::Default()->CreateUniqueFileName(&filename, "journal_dir"));
-  int32 version_1 = 1;
-  int32 version_2 = 2;
+  int32_t version_1 = 1;
+  int32_t version_2 = 2;
   DatasetDef def_1 = DatasetDefWithVersion(version_1);
   TF_ASSERT_OK(WriteDatasetDef(filename, def_1));
   DatasetDef def_2 = DatasetDefWithVersion(version_2);

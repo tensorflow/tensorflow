@@ -19,9 +19,6 @@ Reference:
   - [Densely Connected Convolutional Networks](
       https://arxiv.org/abs/1608.06993) (CVPR 2017)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
@@ -57,7 +54,7 @@ layers = VersionAwareLayers()
 def dense_block(x, blocks, name):
   """A dense block.
 
-  Arguments:
+  Args:
     x: input tensor.
     blocks: integer, the number of building blocks.
     name: string, block label.
@@ -73,7 +70,7 @@ def dense_block(x, blocks, name):
 def transition_block(x, reduction, name):
   """A transition block.
 
-  Arguments:
+  Args:
     x: input tensor.
     reduction: float, compression rate at transition layers.
     name: string, block label.
@@ -99,7 +96,7 @@ def transition_block(x, reduction, name):
 def conv_block(x, growth_rate, name):
   """A building block for a dense block.
 
-  Arguments:
+  Args:
     x: input tensor.
     growth_rate: float, growth rate at dense layers.
     name: string, block label.
@@ -141,15 +138,24 @@ def DenseNet(
   - [Densely Connected Convolutional Networks](
       https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
+  This function returns a Keras image classification model,
+  optionally loaded with weights pre-trained on ImageNet.
+
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
   inputs before passing them to the model.
+  `densenet.preprocess_input` will scale pixels between 0 and 1 and then
+  will normalize each channel with respect to the ImageNet dataset statistics.
 
-  Arguments:
+  Args:
     blocks: numbers of building blocks for the four dense layers.
     include_top: whether to include the fully-connected
       layer at the top of the network.
@@ -183,15 +189,11 @@ def DenseNet(
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
@@ -388,7 +390,7 @@ DOC = """
   For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
   inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),

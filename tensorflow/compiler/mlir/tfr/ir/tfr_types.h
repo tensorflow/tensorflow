@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_TYPES_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 
@@ -76,14 +77,18 @@ class TFRTypeImpl : public Type::TypeBase<Derived, TFRType, TFRTypeStorage> {
   }
 
   static Derived getChecked(ArrayRef<StringAttr> attrs, Location loc) {
-    return Base::getChecked(loc, attrs);
+    return Base::getChecked(loc, loc.getContext(), attrs);
+  }
+  static Derived getChecked(function_ref<InFlightDiagnostic()> emitError,
+                            MLIRContext* context, ArrayRef<StringAttr> attrs) {
+    return Base::getChecked(emitError, context, attrs);
   }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
 
   // TODO(fengliuai): fix the implementation
-  static LogicalResult verifyConstructionInvariants(
-      Location loc, ArrayRef<StringAttr> attrs) {
+  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
+                              ArrayRef<StringAttr> attrs) {
     return success();
   }
 

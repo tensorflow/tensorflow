@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -32,7 +31,7 @@ namespace gpu {
 namespace dnn = se::dnn;
 
 CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& mean,
@@ -50,8 +49,6 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::DeviceMemoryBase output_base =
       buffer_allocations.GetDeviceAddress(output_);
   se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
@@ -71,13 +68,12 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& output_data,
     const BufferAllocation::Slice& output_mean,
-    const BufferAllocation::Slice& output_inv_stddev,
-    const BufferAllocation::Slice& output_tuple)
+    const BufferAllocation::Slice& output_inv_stddev)
     : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, thunk_info),
       config_(std::move(config)),
       operand_(operand),
@@ -85,8 +81,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
       offset_(offset),
       output_data_(output_data),
       output_mean_(output_mean),
-      output_inv_stddev_(output_inv_stddev),
-      output_tuple_(output_tuple) {}
+      output_inv_stddev_(output_inv_stddev) {}
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -101,8 +96,6 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(output_inv_stddev_));
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
       config_, operand, output_data, output_mean, output_inv_stddev,
@@ -110,16 +103,6 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       &stream));
 
-  // Write the output tuple.
-  const int kNumOutputs = 3;
-  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
-  ptrs[0] = output_data.opaque();
-  ptrs[1] = output_mean.opaque();
-  ptrs[2] = output_inv_stddev.opaque();
-  se::DeviceMemory<void*> tuple_addr(
-      buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream,
-                params.deferred_host_callbacks);
   if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
@@ -127,15 +110,14 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
     const BufferAllocation::Slice& inv_stddev,
     const BufferAllocation::Slice& grad_output,
     const BufferAllocation::Slice& output_grad_data,
     const BufferAllocation::Slice& output_grad_scale,
-    const BufferAllocation::Slice& output_grad_offset,
-    const BufferAllocation::Slice& output_tuple)
+    const BufferAllocation::Slice& output_grad_offset)
     : Thunk(Thunk::Kind::kCudnnBatchNormBackward, thunk_info),
       config_(std::move(config)),
       operand_(operand),
@@ -145,8 +127,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
       grad_output_(grad_output),
       output_grad_data_(output_grad_data),
       output_grad_scale_(output_grad_scale),
-      output_grad_offset_(output_grad_offset),
-      output_tuple_(output_tuple) {}
+      output_grad_offset_(output_grad_offset) {}
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -161,8 +142,6 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   se::DeviceMemory<float> output_grad_offset(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
       config_, operand, output_grad_data, grad_output, output_grad_scale,
@@ -171,17 +150,6 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
       stream));
-
-  // Write the output tuple.
-  const int kNumOutputs = 3;
-  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
-  ptrs[0] = output_grad_data.opaque();
-  ptrs[1] = output_grad_scale.opaque();
-  ptrs[2] = output_grad_offset.opaque();
-  se::DeviceMemory<void*> tuple_addr(
-      buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream,
-                params.deferred_host_callbacks);
 
   if (!stream->ok()) {
     return InternalError("BatchNormalizationBackward call failed.");

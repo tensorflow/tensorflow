@@ -53,7 +53,7 @@ void NcclReducer::Run(StatusCallback done) {
         break;
       case DT_INT64:
         group_size_val =
-            Tensor(static_cast<int64>(col_params_->group.group_size));
+            Tensor(static_cast<int64_t>(col_params_->group.group_size));
         break;
       default:
         done(errors::Internal("Unsupported type ",
@@ -88,6 +88,9 @@ void NcclReducer::Run(StatusCallback done) {
   } else {
     done_callback = std::move(done);
   }
+  // Hold a ref to col_params for the rest of this function.
+  col_params_->Ref();
+  core::ScopedUnref unref(col_params_);
   col_ctx_->nccl_communicator->Enqueue(col_ctx_, std::move(done_callback));
 
   // If no final_op, then this OpKernel is non-blocking.

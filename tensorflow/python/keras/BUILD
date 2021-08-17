@@ -5,10 +5,8 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -18,25 +16,28 @@ filegroup(
     ],
 )
 
+config_setting(
+    name = "no_keras_py_deps",
+    define_values = {"no_keras_py_deps": "true"},
+    visibility = ["//visibility:public"],
+)
+
 py_library(
     name = "keras",
     srcs = [
         "__init__.py",
-        "estimator/__init__.py",
         "keras_parameterized.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         ":engine",
-        # TODO(scottzhu): Stop exporting the test_utils after removing all
-        # callers that using it.
-        ":testing_utils",
+        ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
-        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/estimator",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
@@ -53,7 +54,7 @@ py_library(
 py_library(
     name = "backend",
     srcs = ["backend.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend_config",
         "//tensorflow/core:protos_all_py",
@@ -61,7 +62,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -84,7 +84,6 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
@@ -94,18 +93,20 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
+        "//tensorflow/python/summary",
     ],
 )
 
 py_library(
     name = "backend_config",
     srcs = ["backend_config.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
     ],
@@ -118,7 +119,7 @@ py_library(
         ":metrics",
         ":models",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras/engine",
     ],
@@ -129,7 +130,7 @@ py_library(
     srcs = [
         "activations.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         "//tensorflow/python/keras/layers:advanced_activations",
@@ -141,7 +142,7 @@ py_library(
 py_library(
     name = "base_layer",
     srcs = [],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras/engine:base_layer",
     ],
@@ -152,9 +153,10 @@ py_library(
     srcs = [
         "callbacks.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
@@ -170,6 +172,7 @@ py_library(
     srcs = [
         "combinations.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":testing_utils",
         "//tensorflow/python:framework_combinations",
@@ -183,9 +186,10 @@ py_library(
     srcs = [
         "callbacks_v1.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/profiler:profiler_v2",
     ],
@@ -196,24 +200,9 @@ py_library(
     srcs = [
         "constraints.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
-        "//tensorflow/python/keras/utils:engine_utils",
-    ],
-)
-
-py_library(
-    name = "initializers",
-    srcs = [
-        "initializers/__init__.py",
-        "initializers/initializers_v1.py",
-        "initializers/initializers_v2.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":backend",
-        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -223,7 +212,7 @@ py_library(
     srcs = [
         "losses.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -235,15 +224,15 @@ py_library(
     srcs = [
         "metrics.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
+        ":activations",
         ":backend",
         ":losses",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
@@ -265,7 +254,6 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -274,7 +262,7 @@ py_library(
     srcs = [
         "models.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         ":metrics",
@@ -295,7 +283,7 @@ py_library(
         "optimizer_v1.py",
         "optimizers.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         "//tensorflow/python/keras/optimizer_v2",
@@ -308,18 +296,30 @@ py_library(
     srcs = [
         "regularizers.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":backend",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
 
+# Internally urllib.request.urlretrieve library requires Google
+# SSL context to be provided to work in python 3. This isn't needed in OSS.
+# copybara:uncomment_begin(google-only)
+# py_library(
+#     name = "url_utils",
+#     srcs = ["google/url_utils.py"],
+#     srcs_version = "PY3",
+#     deps = ["//pyglib/contrib/google_ssl"],
+# )
+# copybara:uncomment_end
+
 py_library(
     name = "testing_utils",
     srcs = [
         "testing_utils.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":backend",
         ":models",
@@ -387,26 +387,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "initializers_test",
-    size = "small",
-    srcs = ["initializers_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":backend",
-        ":combinations",
-        ":initializers",
-        ":models",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/engine",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "regularizers_test",
     size = "medium",
     srcs = ["regularizers_test.py"],
@@ -439,6 +419,9 @@ tf_py_test(
     size = "small",
     srcs = ["losses_test.py"],
     python_version = "PY3",
+    tags = [
+        "noasan",  # b/186128525
+    ],
     deps = [
         ":backend",
         ":combinations",
@@ -543,13 +526,14 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
+        "no_tfrt",  # TODO(b/179690526)
         "notsan",
     ],
     deps = [
         ":keras",
+        "//tensorflow/python/profiler:profiler_v2",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -582,7 +566,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "notsan",  # b/67509773
     ],
     deps = [
@@ -650,82 +633,15 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "expect_absl_installed",
-    # This is a dummy rule used as a absl dependency in open-source.
-    # We expect absl to already be installed on the system, e.g. via
-    # `pip install absl`
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_h5py_installed",
-    # This is a dummy rule used as a h5 dependency in open-source.
-    # We expect h5py to already be installed on the system, e.g. via
-    # `pip install h5py'
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_keras_preprocessing_installed",
-    # This is a dummy rule used as a keras_preprocessing dependency in open-source.
-    # We expect keras_preprocessing to already be installed on the system, e.g. via
-    # `pip install keras_preprocessing`
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_numpy_installed",
-    # This is a dummy rule used as a numpy dependency in open-source.
-    # We expect numpy to already be installed on the system, e.g. via
-    # `pip install numpy`
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_pandas_installed",
-    # This is a dummy rule used as a pandas dependency in open-source.
-    # We expect pandas to already be installed on the system, e.g. via
-    # `pip install pandas'
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_pydot_installed",
-    # This is a dummy rule used as a pydot dependency in open-source.
-    # We expect pydot to already be installed on the system, e.g. via
-    # `pip install pydot'
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_scipy_installed",
-    # This is a dummy rule used as a scipy dependency in open-source.
-    # We expect scipy to already be installed on the system, e.g. via
-    # `pip install scipy'
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_six_installed",
-    # This is a dummy rule used as a six dependency in open-source.
-    # We expect six to already be installed on the system, e.g. via
-    # `pip install six`
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_tensorflow_installed",
-    # This is a dummy rule used as a tensorflow dependency in open-source.
-    # We expect tensorflow to already be installed on the system, e.g. via
-    # `pip install tensorflow` or `pip install tensorflow_gpu`
-    visibility = ["//visibility:public"],
-)
-
-py_library(
-    name = "expect_yaml_installed",
-    # This is a dummy rule used as a yaml dependency in open-source.
-    # We expect yaml to already be installed on the system, e.g. via
-    # `pip install yaml`
-    visibility = ["//visibility:public"],
-)
+# copybara:uncomment_begin(google-only)
+# tf_py_test(
+#     name = "url_utils_test",
+#     srcs = ["google/url_utils_test.py"],
+#     python_version = "PY3",
+#     deps = [
+#         ":url_utils",
+#         "//testing/pymocks:matchers",
+#         "//tensorflow/python:client_testlib",
+#     ],
+# )
+# copybara:uncomment_end

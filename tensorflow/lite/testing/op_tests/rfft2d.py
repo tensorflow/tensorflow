@@ -52,6 +52,5 @@ def make_rfft2d_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 
   extra_toco_options = ExtraTocoOptions()
-  extra_toco_options.allow_custom_ops = True
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
                     extra_toco_options)

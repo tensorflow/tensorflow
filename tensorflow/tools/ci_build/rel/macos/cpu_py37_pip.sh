@@ -23,18 +23,15 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-# Install macos pip dependencies
-install_macos_pip_deps sudo pip3.7
+# Set up and install MacOS pip dependencies.
+install_macos_pip_deps_no_venv python3.7
 
 # Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.7'
+export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 export TF_BUILD_BOTH_CPU_PACKAGES=1
-
-# Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
-yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
 export TF_BUILD_FLAGS="--config=release_cpu_macos"

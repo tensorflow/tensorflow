@@ -23,15 +23,32 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-def _make_elementwise_tests(op):
+def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
+                            max_value=100):
   """Make a set of tests to do element-wise operations."""
 
   def f(options):
     """Actual function that generates examples."""
-    test_parameters = [{
-        "input_dtype": [tf.float32],
-        "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
-    }]
+    test_parameters = [
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+            "fully_quantize": [False],
+            "input_range": [[min_value, max_value]],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+            "fully_quantize": [True],
+            "input_range": [[min_value, max_value]],
+        },
+    ]
+
+    if not allow_fully_quantize:
+      test_parameters = [
+          test_parameter for test_parameter in test_parameters
+          if True not in test_parameter["fully_quantize"]
+      ]
 
     def build_graph(parameters):
       """Build the unary op testing graph."""
@@ -44,7 +61,9 @@ def _make_elementwise_tests(op):
 
     def build_inputs(parameters, sess, inputs, outputs):
       input_value = create_tensor_data(parameters["input_dtype"],
-                                       parameters["input_shape"])
+                                       parameters["input_shape"],
+                                       min_value=min_value,
+                                       max_value=max_value)
       return [input_value], sess.run(
           outputs, feed_dict={inputs[0]: input_value})
 
@@ -74,7 +93,8 @@ def make_sqrt_tests(options):
 @register_make_test_function()
 def make_rsqrt_tests(options):
   """Make a set of tests to do 1/sqrt."""
-  return _make_elementwise_tests(tf.math.rsqrt)(options)
+  return _make_elementwise_tests(tf.math.rsqrt, allow_fully_quantize=True,
+                                 min_value=.1, max_value=1)(options)
 
 
 @register_make_test_function()

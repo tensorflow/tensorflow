@@ -33,17 +33,17 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   ~RandomAccessInputStream();
 
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
-#if defined(PLATFORM_GOOGLE)
-  Status ReadNBytes(int64 bytes_to_read, absl::Cord* result) override;
+#if defined(TF_CORD_SUPPORT)
+  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
-  Status SkipNBytes(int64 bytes_to_skip) override;
+  Status SkipNBytes(int64_t bytes_to_skip) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
-  Status Seek(int64 position) {
+  Status Seek(int64_t position) {
     pos_ = position;
     return Status::OK();
   }
@@ -52,7 +52,7 @@ class RandomAccessInputStream : public InputStreamInterface {
 
  private:
   RandomAccessFile* file_;  // Not owned.
-  int64 pos_ = 0;           // Tracks where we are in the file.
+  int64_t pos_ = 0;         // Tracks where we are in the file.
   bool owns_file_ = false;
 };
 

@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -15,6 +15,42 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "batch_input_task",
+    hdrs = ["batch_input_task.h"],
+    deps = [
+        ":batch_scheduler_hdrs",
+        ":concat_split_util",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_input_task_test",
+    srcs = ["batch_input_task_test.cc"],
+    deps = [
+        ":batch_input_task",
+        ":batch_resource_base",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:batch_kernels",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -81,6 +117,7 @@ cc_library(
     name = "shared_batch_scheduler_hdrs",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
@@ -93,18 +130,21 @@ cc_library(
     name = "shared_batch_scheduler",
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
+        ":batch_input_task",
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
 
 tf_cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":fake_clock_env",
@@ -113,6 +153,10 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -124,6 +168,7 @@ cc_library(
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -196,6 +241,7 @@ tf_cc_test(
     ],
     deps = [
         ":basic_batch_scheduler",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
@@ -241,17 +287,35 @@ cc_library(
     srcs = ["batch_resource_base.cc"],
     hdrs = ["batch_resource_base.h"],
     deps = [
+        ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
         ":concat_split_util",
         ":shared_batch_scheduler",
+        ":threadsafe_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/batching_util:threadsafe_status",
+        "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_resource_base_test",
+    srcs = ["batch_resource_base_test.cc"],
+    deps = [
+        ":batch_resource_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "@com_google_absl//absl/time",
     ],
 )

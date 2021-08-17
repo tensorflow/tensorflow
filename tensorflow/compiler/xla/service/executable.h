@@ -278,7 +278,7 @@ class Executable {
   // If the hlo_execution_profile is provided as non-nullptr, profiling will be
   // enabled. Note that profiling is tricky to use correctly, as the profiling
   // objects (when they exist) must out-live the task.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile);
@@ -366,7 +366,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes() const;
+  virtual int64_t SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
@@ -399,7 +399,7 @@ class Executable {
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.
-  int64 execution_count_ = 0;
+  int64_t execution_count_ = 0;
 
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;

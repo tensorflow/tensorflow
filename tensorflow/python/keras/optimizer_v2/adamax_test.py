@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Adamax."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -81,7 +77,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         zero_slots = lambda: np.zeros((3), dtype=dtype.as_numpy_dtype)  # pylint: disable=cell-var-from-loop
         m0, v0, m1, v1 = zero_slots(), zero_slots(), zero_slots(), zero_slots()
@@ -275,7 +271,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
   def testTensorLearningRate(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -312,7 +308,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSharing(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

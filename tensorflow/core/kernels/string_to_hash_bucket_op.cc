@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/string_to_hash_bucket_op.h"
 
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strong_hash.h"
 
 namespace tensorflow {
@@ -39,7 +38,7 @@ class LegacyStringToHashBucketOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", input_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<int64>();
+    auto output_flat = output_tensor->flat<int64_t>();
 
     typedef decltype(input_flat.size()) Index;
     for (Index i = 0; i < input_flat.size(); ++i) {
@@ -48,12 +47,12 @@ class LegacyStringToHashBucketOp : public OpKernel {
       // The number of buckets is always in the positive range of int64 so is
       // the resulting bucket_id. Casting the bucket_id from uint64 to int64 is
       // safe.
-      output_flat(i) = static_cast<int64>(bucket_id);
+      output_flat(i) = static_cast<int64_t>(bucket_id);
     }
   }
 
  private:
-  int64 num_buckets_;
+  int64_t num_buckets_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBucketOp);
 };
@@ -61,9 +60,6 @@ class LegacyStringToHashBucketOp : public OpKernel {
 // StringToHashBucket is deprecated in favor of StringToHashBucketFast/Strong.
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
                         LegacyStringToHashBucketOp);
-
-REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
-                        StringToHashBucketOp<Fingerprint64>);
 
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucketStrong").Device(DEVICE_CPU),
                         StringToKeyedHashBucketOp<StrongKeyedHash>);

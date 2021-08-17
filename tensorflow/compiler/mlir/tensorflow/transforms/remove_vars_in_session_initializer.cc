@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -36,6 +36,14 @@ class RemoveVariablesInSessionInitializerPass
     : public PassWrapper<RemoveVariablesInSessionInitializerPass,
                          OperationPass<ModuleOp>> {
  public:
+  StringRef getArgument() const final {
+    return "tf-saved-model-remove-vars-in-session-initializer";
+  }
+
+  StringRef getDescription() const final {
+    return "Remove variables in tf saved model's session initializer.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -107,9 +115,7 @@ void RemoveVariablesInSessionInitializerPass::runOnOperation() {
 
 }  // namespace
 
-static PassRegistration<RemoveVariablesInSessionInitializerPass> pass(
-    "tf-saved-model-remove-vars-in-session-initializer",
-    "Remove variables in tf saved model's session initializer.");
+static PassRegistration<RemoveVariablesInSessionInitializerPass> pass;
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariablesInSessionInitializerPass() {

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
@@ -24,9 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
@@ -46,8 +48,8 @@ class ClOperation {
   ClOperation() = default;
   virtual ~ClOperation() = default;
   // Move only
-  ClOperation(ClOperation&& operation);
-  ClOperation& operator=(ClOperation&& operation);
+  ClOperation(ClOperation&& operation) = default;
+  ClOperation& operator=(ClOperation&& operation) = default;
   ClOperation(const ClOperation&) = delete;
   ClOperation& operator=(const ClOperation&) = delete;
 
@@ -57,6 +59,7 @@ class ClOperation {
 
   GPUOperation& GetGpuOperation() { return *operation_; }
   const GPUOperation& GetGpuOperation() const { return *operation_; }
+  uint64_t GetKernelFingerprint() const { return kernel_fingerprint_; }
 
   const OperationDef& GetDefinition() const { return operation_->definition_; }
 
@@ -76,7 +79,9 @@ class ClOperation {
 
   absl::Status Compile(const CreationContext& creation_context);
 
-  absl::Status CompileDeserialized(const CreationContext& creation_context);
+  absl::Status RestoreDeserialized(const CreationContext& creation_context);
+  absl::Status InitFromCache(uint64_t fingerprint,
+                             const ProgramCache& program_cache);
 
   void MoveObjectRefsFromCLToGeneric() {
     cl_args_.MoveObjectRefsOut(&operation_->args_);
@@ -89,6 +94,7 @@ class ClOperation {
  private:
   std::unique_ptr<GPUOperation> operation_;
   CLKernel kernel_;
+  uint64_t kernel_fingerprint_;
   CLArguments cl_args_;
 };
 

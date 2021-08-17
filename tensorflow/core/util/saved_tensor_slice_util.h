@@ -117,7 +117,7 @@ TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(uint32, uint32, uint32);
-TENSOR_PROTO_EXTRACT_TYPE(int64, int64, protobuf_int64);
+TENSOR_PROTO_EXTRACT_TYPE(int64_t, int64, protobuf_int64);
 TENSOR_PROTO_EXTRACT_TYPE(uint64, uint64, protobuf_uint64);
 TENSOR_PROTO_EXTRACT_TYPE(uint16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
@@ -174,7 +174,7 @@ inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedField<int32>* val = t->mutable_half_val();
   val->Resize(n, 0);
   for (size_t i = 0; i < n; ++i) {
-    val->Set(i, data[i].x);
+    val->Set(i, Eigen::numext::bit_cast<uint16>(data[i]));
   }
 }
 

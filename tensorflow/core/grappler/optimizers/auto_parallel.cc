@@ -270,10 +270,5 @@ Status AutoParallel::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void AutoParallel::Feedback(Cluster* cluster, const GrapplerItem& item,
-                            const GraphDef& optimize_output, double result) {
-  // TODO(yaozhang): Add feedback.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

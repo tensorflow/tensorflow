@@ -30,6 +30,8 @@ import six
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -335,12 +337,12 @@ def keras_layer_tracepoint(layer, checkpoint_name):
   """
   try:
     outputs = layer.output
-    if tensor_util.is_tensor(outputs):
+    if tensor_util.is_tf_type(outputs):
       trace_tensor(outputs, '%s' % (checkpoint_name))
     else:
       idx = 0
       for output_tensor in outputs:
-        if tensor_util.is_tensor(outputs):
+        if tensor_util.is_tf_type(outputs):
           trace_tensor(output_tensor, '%s_%d' % (checkpoint_name, idx))
         idx += 1
   except AttributeError:
@@ -1960,6 +1962,12 @@ class TensorTracer(object):
       RuntimeError: If num_replicas_per_host > 8.
       RuntimeError: If tensor_fetches is None or empty.
     """
+    if isinstance(graph, func_graph.FuncGraph) or isinstance(
+        graph, function._FuncGraph):  # pylint: disable=protected-access
+      logging.warning('Tensor Tracer is not supported for tracing FuncGraphs. '
+                      'Ignoring tracing.')
+      return tensor_fetches
+
     if graph in TensorTracer._traced_graphs:
       logging.warning('Graph is already rewritten with tensor tracer, ignoring '
                       'multiple calls.')
@@ -2010,6 +2018,11 @@ class TensorTracer(object):
     Raises:
       RuntimeError: If tensor_fetches is None or empty.
     """
+    if isinstance(graph, func_graph.FuncGraph) or isinstance(
+        graph, function._FuncGraph):  # pylint: disable=protected-access
+      logging.warning('Tensor Tracer is not supported for tracing FuncGraphs. '
+                      'Ignoring tracing.')
+      return tensor_fetches
 
     if graph in TensorTracer._traced_graphs:
       logging.warning('Graph is already rewritten with tensor tracer, ignoring '

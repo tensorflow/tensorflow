@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
@@ -749,7 +750,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_value = rng.randn(m, m).astype("float32")
     x_value = rng.randn(m).astype("float32")
     hess_value = mat_value + mat_value.T
-    with self.session(use_gpu=True):
+    with self.session():
       mat = constant_op.constant(mat_value)
       x = constant_op.constant(x_value)
       x_mat_x = math_ops.reduce_sum(x[:, None] * mat * x[None, :])
@@ -766,7 +767,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_values = [rng.randn(m, m).astype("float32") for _ in range(n)]
     x_values = [rng.randn(m).astype("float32") for _ in range(n)]
     hess_values = [mat_value + mat_value.T for mat_value in mat_values]
-    with self.session(use_gpu=True):
+    with self.session():
       mats = [constant_op.constant(mat_value) for mat_value in mat_values]
       xs = [constant_op.constant(x_value) for x_value in x_values]
       xs_mats_xs = [
@@ -781,7 +782,7 @@ class HessianTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only("b/120545219")
   def testHessianInvalidDimension(self):
     for shape in [(10, 10), None]:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         x = array_ops.placeholder(dtypes.float32, shape)
         # Expect a ValueError because the dimensions are wrong
         with self.assertRaises(ValueError):
@@ -795,7 +796,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     m = 3
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, m).astype("float32")
-    with self.session(use_gpu=True):
+    with self.session():
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5
@@ -815,7 +816,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     n = 4
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, n).astype("float32")
-    with self.session(use_gpu=True):
+    with self.session():
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5
@@ -1023,6 +1024,17 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
       dependent_vars = custom_gradient._get_dependent_variables(
           [input_t], [result_t])
       self.assertEqual(dependent_vars, [])
+
+  def testGetVariableByName(self):
+    with context.graph_mode():
+      init = constant_op.constant(100.0)
+      var = variable_scope.variable(init, name="a/replica_1")
+      if isinstance(var, variables.RefVariable):
+        var._variable = array_ops.identity(var, name="a")
+      else:
+        var._handle = array_ops.identity(var, name="a")
+      var2 = custom_gradient.get_variable_by_name("a")
+      self.assertEqual(var2.name, var.name)
 
   def testVariablesOutsideAndNonTrainable(self):
     with ops.Graph().as_default():
@@ -1492,6 +1504,42 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
         f, inputs, delta=delta)
     self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
+
+  def testRecomputeGradZeroSizeInput(self):
+
+    def F(x):
+      return 2 * x
+
+    x = array_ops.constant(())
+    grads_re = self._grad(custom_gradient.recompute_grad(F))(x)
+    grads = self._grad(F)(x)
+    self.assertAllClose(grads_re, grads)
+
+    f_graph = function.defun(F, input_signature=[tensor_spec.TensorSpec(None)])
+    grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x)
+    grads = self._grad(f_graph)(x)
+    self.assertAllClose(grads_re, grads)
+
+  def testRecomputeGradDifferentDtypesInputs(self):
+
+    def F(x1, x2):
+      return 2 * x1, 2 * x2
+
+    x1 = array_ops.constant(1, dtype=dtypes.int32)
+    x2 = array_ops.constant(1., dtype=dtypes.float32)
+    grads_re = self._grad(custom_gradient.recompute_grad(F))(x1, x2)
+    grads = self._grad(F)(x1, x2)
+    self.assertAllClose(grads_re, grads)
+
+    f_graph = function.defun(
+        F,
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtype=dtypes.int32),
+            tensor_spec.TensorSpec(None, dtype=dtypes.float32),
+        ])
+    grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x1, x2)
+    grads = self._grad(f_graph)(x1, x2)
+    self.assertAllClose(grads_re, grads)
 
   @test_util.run_v2_only
   def testCustomGradientRecomputeGradHigherOrder(self):

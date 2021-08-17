@@ -18,19 +18,18 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.6
+install_ubuntu_16_python_pip_deps python3.6
 
 install_bazelisk
 
-python2.7 tensorflow/tools/ci_build/update_version.py --nightly
-
-# Run configure.
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.6)
-yes "" | "$PYTHON_BIN_PATH" configure.py
+"$PYTHON_BIN_PATH" tensorflow/tools/ci_build/update_version.py --nightly
 
 # Build the pip package
-bazel build --config=release_gpu_linux tensorflow/tools/pip_package:build_pip_package
+bazel build \
+  --config=release_gpu_linux \
+  --action_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
+  tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
@@ -55,7 +54,11 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly*dev*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
-    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
+    # Although the python version installing twine is independent of python
+    # version of the binary it pushes, unsure which python versions are
+    # available to user.
+    python3.6 -m pip install twine
+    python3.6 -m twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
   else
     echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
     return 1

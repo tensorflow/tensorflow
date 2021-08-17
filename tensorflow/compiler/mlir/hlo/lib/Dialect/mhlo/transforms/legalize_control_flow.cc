@@ -19,14 +19,16 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -36,7 +38,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 struct LegalizeControlFlowPass
-    : public mlir::PassWrapper<LegalizeControlFlowPass, FunctionPass> {
+    : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -83,7 +85,7 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 
   // Extract the predicate for checking branching, then branch to the true and
   // false regions appropriately.
-  auto cond_value = builder.create<mlir::ExtractElementOp>(loc, if_op.pred());
+  auto cond_value = builder.create<mlir::tensor::ExtractOp>(loc, if_op.pred());
   builder.create<mlir::CondBranchOp>(loc, cond_value, true_block,
                                      if_op.true_arg(), false_block,
                                      if_op.false_arg());
@@ -105,6 +107,9 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 }
 
 LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
+  // TODO(jpienaar): Support multi-operand while op.
+  if (while_op.arg().size() != 1) return failure();
+
   // Converts a MHLO while loop into control flow. This generates a set of MLIR
   // blocks and branches, along with inlining the regions provided by the MHLO
   // while loop. The structure should be similar to below:
@@ -139,10 +144,11 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   //     <prior operations>
   //     br ^cond(%arg0) // Jumps to the condition statement.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<mlir::BranchOp>(loc, cond_block, while_op.getOperand());
+  // TODO(jpienaar): Support multi-operand while op.
+  builder.create<mlir::BranchOp>(loc, cond_block, while_op.arg()[0]);
 
   // Updates the inlined condition blocks by replacing the return op with an
-  // extract_element and conditional branch. This changes the block below:
+  // tensor.extract and conditional branch. This changes the block below:
   //   ^cond(%0):
   //     <inlined conditional region>
   //    "mhlo".return(%1)
@@ -150,7 +156,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   //  Into:
   //   ^cond(%0):
   //     <inlined conditional region>
-  //     %2 = extract_element %1[] : tensor<i1> // Extract the condition value.
+  //     %2 = tensor.extract %1[] : tensor<i1> // Extract the condition value.
   //     cond_br %2, ^body(%0), ^tail(%0) // Branch.
   builder.setInsertionPointToStart(cond_block);
 
@@ -166,7 +172,8 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
     builder.setInsertionPointToEnd(new_block);
 
     auto return_value = return_op.getOperand(0);
-    auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
+    auto cond_value =
+        builder.create<mlir::tensor::ExtractOp>(loc, return_value);
 
     // Get the body block arguments.
     llvm::SmallVector<Value, 4> successor_args(cond_block->args_begin(),
@@ -197,8 +204,9 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   }
 
   // Erase the original while loop.
-  tail_block->addArgument(while_op.getType());
-  while_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
+  // TODO(jpienaar): Support multi-operand while op.
+  tail_block->addArgument(while_op.arg().getType()[0]);
+  while_op.getResult(0).replaceAllUsesWith(tail_block->getArgument(0));
   op_inst->erase();
 
   return success();

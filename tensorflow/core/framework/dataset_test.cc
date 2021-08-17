@@ -20,13 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_DATASET_OP_NAME("DummyDatasetOp");
-
-TEST(DatasetTest, RegisterDatasetOp) {
-  EXPECT_TRUE(data::DatasetOpRegistry::IsRegistered("DummyDatasetOp"));
-  EXPECT_FALSE(data::DatasetOpRegistry::IsRegistered("InvalidDatasetOp"));
-}
-
 TEST(DatasetTest, FullName) {
   EXPECT_EQ(data::FullName("prefix", "name"),
             "60d899aa0d8ce4351e7c3b419e92d25b|prefix:name");
@@ -46,7 +39,7 @@ struct DatasetTestParam {
   // parameters of the test case do not become globals. Ordering of static
   // initializers and globals can cause errors in the test.
   std::function<std::vector<Tensor>()> tensor_factory;
-  const int64 expected_bytes;
+  const int64_t expected_bytes;
 };
 
 class DatasetTestTotalBytes
@@ -70,8 +63,8 @@ std::vector<Tensor> tensor_tf_int_32s() {
 }
 
 std::vector<Tensor> tensor_tf_int_64s() {
-  return {test::AsTensor<int64>({1, 2, 3, 4, 5}),
-          test::AsTensor<int64>({10, 12})};
+  return {test::AsTensor<int64_t>({1, 2, 3, 4, 5}),
+          test::AsTensor<int64_t>({10, 12})};
 }
 
 std::vector<Tensor> tensor_tf_float_s() {
@@ -94,6 +87,49 @@ INSTANTIATE_TEST_SUITE_P(
         {_tf_float_, tensor_tf_float_s, 4 /*bytes*/ * 4 /*elements*/},
         {_tf_double_, tensor_tf_double_s, 8 /*bytes*/ * 4 /*elements*/},
         {_tf_string_, tensor_strs,
-         static_cast<int64>(sizeof(str) + str.size()) /*bytes*/}}));
+         static_cast<int64_t>(sizeof(str) + str.size()) /*bytes*/}}));
+
+struct MergeOptionsTestParam {
+  const std::string source;
+  const std::string destination;
+  const std::string expected;
+};
+
+class MergeOptionsTest
+    : public ::testing::TestWithParam<MergeOptionsTestParam> {};
+
+TEST_P(MergeOptionsTest, MergeOptions) {
+  const MergeOptionsTestParam& test_case = GetParam();
+  data::Options source;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.source,
+                                                          &source));
+  data::Options destination;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.destination,
+                                                          &destination));
+  data::Options expected;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.expected,
+                                                          &expected));
+  data::internal::MergeOptions(source, &destination);
+  EXPECT_EQ(expected.SerializeAsString(), destination.SerializeAsString());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MergeOptionsTest, MergeOptionsTest,
+    ::testing::ValuesIn(std::vector<MergeOptionsTestParam>{
+        // Destination is empty.
+        {/*source=*/"deterministic: false", /*destination=*/"",
+         /*expected=*/"deterministic: false"},
+        // Source and destination have the same values.
+        {/*source=*/"deterministic: false",
+         /*destination=*/"deterministic: false",
+         /*expected=*/"deterministic: false"},
+        // Source values override destination values.
+        {/*source=*/"deterministic: false",
+         /*destination=*/"deterministic: true",
+         /*expected=*/"deterministic: false"},
+        // Values are enums.
+        {/*source=*/"external_state_policy: POLICY_IGNORE",
+         /*destination=*/"external_state_policy: POLICY_FAIL",
+         /*expected=*/"external_state_policy: POLICY_IGNORE"}}));
 
 }  // namespace tensorflow

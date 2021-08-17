@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,34 +33,43 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
+#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 using absl::StrAppend;
 using absl::StrCat;
 
 namespace xla {
 
-StatusOr<int> DeviceAssignment::ReplicaIdForDeviceOrdinal(
-    int device_ordinal) const {
-  absl::optional<int> replica_id;
-  for (int64 r = 0; r < replica_count(); ++r) {
-    for (int64 c = 0; c < computation_count(); ++c) {
-      if ((*this)(r, c) == device_ordinal) {
-        if (replica_id.has_value()) {
+StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
+    GlobalDeviceId device_id) const {
+  absl::optional<DeviceAssignment::LogicalID> logical_id;
+  for (int r = 0; r < replica_count(); ++r) {
+    for (int c = 0; c < computation_count(); ++c) {
+      if ((*this)(r, c) == device_id.value()) {
+        if (logical_id.has_value()) {
           return InternalError(
-              "Device ordinal %d appears twice in DeviceAssignment? %s",
-              device_ordinal, ToString());
+              "Device %d appears twice in DeviceAssignment: %s",
+              device_id.value(), ToString());
         }
-        replica_id = r;
+        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
       }
     }
   }
-  if (!replica_id.has_value()) {
-    return InternalError(
-        "Device ordinal %d doesn't appear in DeviceAssignment %s",
-        device_ordinal, ToString());
+  if (logical_id.has_value()) {
+    return *logical_id;
+  } else {
+    return InternalError("Device %d doesn't appear in DeviceAssignment: %s",
+                         device_id.value(), ToString());
   }
-  return *replica_id;
+}
+
+StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
+    GlobalDeviceId device_id) const {
+  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
+                      LogicalIdForDevice(device_id));
+  return logical_id.replica_id;
 }
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {

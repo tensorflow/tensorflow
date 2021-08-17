@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_channel_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -53,7 +54,7 @@ Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
   if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
-      host_port.substr(0, colon_index).find("/") != string::npos) {
+      host_port.substr(0, colon_index).find('/') != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }
@@ -83,7 +84,7 @@ Status ValidateHostPortPair(const string& host_port) {
           args->SetString(name_value[0], value);
         }
       } else {
-        int64 value;
+        int64_t value;
         if (strings::safe_strto64(name_value[1], &value)) {
           args->SetInt(name_value[0], value);
         } else {
@@ -187,47 +188,15 @@ Status GrpcChannelSpec::AddHostPortsJob(
 namespace {
 
 // GrpcChannelCache that caches results to FindWorkerChannel() calls.
-class CachingGrpcChannelCache : public GrpcChannelCache {
- public:
-  CachingGrpcChannelCache() {}
-
-  ~CachingGrpcChannelCache() override {}
-
-  SharedGrpcChannelPtr FindWorkerChannel(const string& target) override {
-    SharedGrpcChannelPtr ch = nullptr;
-    {
-      mutex_lock l(mu_);  // could use reader lock
-      ch = gtl::FindPtrOrNull(channels_, target);
-      if (ch) {
-        return ch;
-      }
-    }
-    ch = FindChannelOnce(target);
-    if (ch) {
-      mutex_lock l(mu_);
-      channels_.insert({target, ch});
-    }
-    return ch;
-  }
-
- protected:
-  // Find the ClientChannel for "target".  Only called when no channel was
-  // found in the channels_ cache for "target".  A non nullptr result will be
-  // cached in channels_.
-  virtual SharedGrpcChannelPtr FindChannelOnce(const string& target) = 0;
-
- private:
-  // TODO(zhifengc): Eviction when the map becomes too big.
-  mutex mu_;
-  std::unordered_map<string, SharedGrpcChannelPtr> channels_ TF_GUARDED_BY(mu_);
-};
+using CachingGrpcChannelCache = GenericCachingChannelCache<GrpcChannelCache>;
 
 // A ChannelCache that is the union of multiple ChannelCaches.
 // Takes ownership of the caches passed to the constructor.
 class MultiGrpcChannelCache : public CachingGrpcChannelCache {
  public:
-  explicit MultiGrpcChannelCache(const std::vector<GrpcChannelCache*>& caches)
-      : CachingGrpcChannelCache(), caches_(caches) {}
+  explicit MultiGrpcChannelCache(const std::vector<GrpcChannelCache*>& caches,
+                                 int num_channels_per_target)
+      : CachingGrpcChannelCache(num_channels_per_target), caches_(caches) {}
 
   ~MultiGrpcChannelCache() override {
     for (GrpcChannelCache* cache : caches_) {
@@ -294,8 +263,10 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
  public:
   SparseGrpcChannelCache(const string& job_id,
                          const std::map<int, string>& host_ports,
-                         ChannelCreationFunction channel_func)
-      : job_id_(job_id),
+                         ChannelCreationFunction channel_func,
+                         int num_channels_per_target)
+      : CachingGrpcChannelCache(num_channels_per_target),
+        job_id_(job_id),
         host_ports_(host_ports),
         channel_func_(std::move(channel_func)) {
     LOG(INFO) << "Initialize GrpcChannelCache for job " << ToString();
@@ -330,7 +301,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       LOG(WARNING) << "Replica ID must be 0 in target: " << target;
       return "";
     }
-    int32 task = parsed.has_task ? parsed.task : -1;
+    int32_t task = parsed.has_task ? parsed.task : -1;
     auto iter = host_ports_.find(task);
     if (iter == host_ports_.end()) {
       LOG(WARNING) << "Task " << task << " was not defined in sparse job "
@@ -346,7 +317,11 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     if (host_port.empty()) {
       return nullptr;
     }
-    return channel_func_(host_port);
+    auto chan_ptr = channel_func_(host_port);
+    VLOG(5) << "Channel created for: job: " << job_id_
+            << " host_port: " << host_port << " target : " << target
+            << " Ptr: " << chan_ptr.get();
+    return chan_ptr;
   }
 
  private:
@@ -370,7 +345,8 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
 }  // namespace
 
 GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
-                                      ChannelCreationFunction channel_func) {
+                                      ChannelCreationFunction channel_func,
+                                      const RPCOptions& options) {
   const int num_jobs = spec.host_ports_jobs().size();
   if (!num_jobs) {
     LOG(ERROR) << "Empty channel spec.";
@@ -379,10 +355,14 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
   std::vector<GrpcChannelCache*> caches;
   caches.reserve(num_jobs);
   for (auto& job : spec.host_ports_jobs()) {
+    VLOG(2) << "Creating Grpc Channel Cache for: " << job.job_id;
     caches.push_back(
-        new SparseGrpcChannelCache(job.job_id, job.host_ports, channel_func));
+        new SparseGrpcChannelCache(job.job_id, job.host_ports, channel_func,
+                                   options.num_channels_per_target()));
   }
-  return caches.size() == 1 ? caches[0] : new MultiGrpcChannelCache(caches);
+  return caches.size() == 1 ? caches[0]
+                            : new MultiGrpcChannelCache(
+                                  caches, options.num_channels_per_target());
 }
 
 }  // end namespace tensorflow

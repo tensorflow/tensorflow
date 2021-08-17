@@ -57,7 +57,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   int VisibleDeviceCount() const override;
 
-  int64 TpuMemoryLimit() override;
+  int64_t TpuMemoryLimit() override;
 
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
@@ -65,6 +65,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   const tensorflow::tpu::TpuHostLocationExternal GetTpuHostLocation()
       const override;
+
+  TpuRuntimeVersion version() const override;
 
   bool Initialized() const override;
 
@@ -133,7 +135,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   static Status TpusPerHost(int* tpus);
 
   // Returns the memory capacity of the TPUs on this host.
-  static Status TpuMemoryLimit(int64* memory_limit);
+  static Status TpuMemoryLimit(int64_t* memory_limit);
 
   tensorflow::mutex& mutex() { return event_map_mu_; }
 

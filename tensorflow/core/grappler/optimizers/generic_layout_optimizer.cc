@@ -77,7 +77,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
-    if (!IsConv2D(*node_def) and !IsConv3D(*node_def)) {
+    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
     const string& device_name =
@@ -457,13 +457,6 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
 
   *output = context.graph;
   return Status::OK();
-}
-
-void GenericLayoutOptimizer::Feedback(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
-  // Takes no feedback.
 }
 
 }  // end namespace grappler

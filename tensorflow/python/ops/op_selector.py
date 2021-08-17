@@ -128,7 +128,8 @@ def check_graphs(*args):
     if graph is None and sgv.graph is not None:
       graph = sgv.graph
     elif sgv.graph is not None and sgv.graph is not graph:
-      raise ValueError("Argument[{}]: Wrong graph!".format(i))
+      raise ValueError(f"args[{i}] does not belong to the same graph as "
+                       "other arguments.")
 
 
 def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
@@ -371,7 +372,7 @@ def map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
 
   Note: This function mutates visited_ops and op_outputs.
 
-  Arguments:
+  Args:
     init_tensor:  A Tensor or Operation where the subgraph terminates.
     sources:  A set of Tensors where subgraph extraction should stop.
     disallowed_placeholders: An optional set of ops which may not appear in the

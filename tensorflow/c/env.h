@@ -20,8 +20,9 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_file_statistics.h"
+#include "tensorflow/c/tf_status.h"
 
 // --------------------------------------------------------------------------
 // C API for tensorflow::Env.

@@ -41,7 +41,20 @@ namespace {
 //    }
 struct FunctionalToExecutorDialectConversion
     : public PassWrapper<FunctionalToExecutorDialectConversion, FunctionPass> {
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-functional-to-executor-conversion";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Transform from func op to TF executor dialect.";
+  }
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
+  }
 };
 }  // end anonymous namespace
 
@@ -102,6 +115,4 @@ CreateFunctionalToExecutorDialectConversionPass() {
 
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::FunctionalToExecutorDialectConversion> pass(
-    "tf-functional-to-executor-conversion",
-    "Transform from func op to TF executor dialect.");
+static mlir::PassRegistration<mlir::FunctionalToExecutorDialectConversion> pass;

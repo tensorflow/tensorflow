@@ -79,6 +79,7 @@ void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
       assert(0);
       break;
   }
+  tf_status->status.ReplaceAllPayloads(status.GetAllPayloads());
 }
 
 Status StatusFromTF_Status(const TF_Status* tf_status) {

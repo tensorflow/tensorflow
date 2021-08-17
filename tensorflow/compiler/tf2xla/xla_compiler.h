@@ -138,9 +138,6 @@ class XlaCompiler {
 
   using CompilationResult = ::tensorflow::XlaCompilationResult;
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                                  bool)>
-      ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
     // The default empty value is invalid.
@@ -173,7 +170,7 @@ class XlaCompiler {
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
-    ShapeRepresentationFn shape_representation_fn;
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
@@ -192,7 +189,10 @@ class XlaCompiler {
     // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
-    se::DeviceMemoryAllocator* device_allocator = nullptr;
+    // This must be a shared_ptr, as this is passed all the way down to the
+    // cluster compilation. This allows asynchronous compilation to hold a
+    // reference until the compilation is finished.
+    std::shared_ptr<se::DeviceMemoryAllocator> device_allocator;
 
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.
@@ -287,11 +287,12 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
-  xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody);
+                          const FunctionBody** fbody,
+                          const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.
@@ -320,10 +321,10 @@ class XlaCompiler {
   Status initialization_status_;
 
   // Returns the next step sequence number.
-  int64 NextStepId();
+  int64_t NextStepId();
 
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_;
+  int64_t next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   StaticDeviceMgr device_mgr_;

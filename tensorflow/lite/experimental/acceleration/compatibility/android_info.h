@@ -33,6 +33,8 @@ struct AndroidInfo {
   std::string device;
   // Property ro.product.manufacturer
   std::string manufacturer;
+  // Whether code is running on an emulator.
+  bool is_emulator;
 };
 
 absl::Status RequestAndroidInfo(AndroidInfo* info_out);

@@ -123,7 +123,7 @@ DebugEventsWriter::~DebugEventsWriter() { Close().IgnoreError(); }
 // static
 DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
     const string& dump_root, const string& tfdbg_run_id,
-    int64 circular_buffer_size) {
+    int64_t circular_buffer_size) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
   std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
       DebugEventsWriter::GetDebugEventsWriterMap();
@@ -163,7 +163,7 @@ Status DebugEventsWriter::Init() {
                                     "Failed to create directory ", dump_root_);
   }
 
-  int64 time_in_seconds = env_->NowMicros() / 1e6;
+  int64_t time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
       dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
                                   static_cast<long long>(time_in_seconds),
@@ -274,7 +274,7 @@ Status DebugEventsWriter::WriteGraphExecutionTrace(
 
 Status DebugEventsWriter::WriteGraphExecutionTrace(
     const string& tfdbg_context_id, const string& device_name,
-    const string& op_name, int32 output_slot, int32 tensor_debug_mode,
+    const string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
     const Tensor& tensor_value) {
   std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
   trace->set_tfdbg_context_id(tfdbg_context_id);
@@ -403,6 +403,13 @@ string DebugEventsWriter::FileName(DebugEventFileType type) {
 }
 
 Status DebugEventsWriter::Close() {
+  {
+    mutex_lock l(initialization_mu_);
+    if (!is_initialized_) {
+      return Status::OK();
+    }
+  }
+
   std::vector<string> failed_to_close_files;
 
   if (metadata_writer_ != nullptr) {
@@ -467,7 +474,7 @@ DebugEventsWriter::GetDebugEventsWriterMap() {
 
 DebugEventsWriter::DebugEventsWriter(const string& dump_root,
                                      const string& tfdbg_run_id,
-                                     int64 circular_buffer_size)
+                                     int64_t circular_buffer_size)
     : env_(Env::Default()),
       dump_root_(dump_root),
       tfdbg_run_id_(tfdbg_run_id),

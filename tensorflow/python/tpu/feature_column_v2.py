@@ -430,6 +430,7 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
               use_safe_embedding_lookup=True,
               bypass_scope_validation=False):
     del bypass_scope_validation
+    # pylint: disable=redundant-keyword-arg
     return fc_lib.EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -444,7 +445,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
 
   def __getnewargs__(self):
     return (self._tpu_categorical_column, self.dimension, self.combiner,
-            self.initializer, self._max_sequence_length, self._learning_rate_fn)
+            self.initializer, self._max_sequence_length, self._learning_rate_fn,
+            self.use_safe_embedding_lookup, self._bypass_scope_validation)
 
   def __deepcopy__(self, memo):
     return _TPUEmbeddingColumnV2(
@@ -627,6 +629,7 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
               max_sequence_length=0,
               learning_rate_fn=None,
               use_safe_embedding_lookup=True):
+    # pylint: disable=redundant-keyword-arg
     return fc_lib.SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,

@@ -15,9 +15,6 @@
 # pylint: disable=protected-access
 # pylint: disable=g-import-not-at-top
 """Utilities related to model visualization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import sys
@@ -77,7 +74,7 @@ def model_to_dot(model,
                  subgraph=False):
   """Convert a Keras model to dot format.
 
-  Arguments:
+  Args:
     model: A Keras model instance.
     show_shapes: whether to display shape information.
     show_dtype: whether to display layer dtypes.
@@ -104,9 +101,10 @@ def model_to_dot(model,
 
   if not check_pydot():
     message = (
-        'Failed to import pydot. You must `pip install pydot` '
-        'and install graphviz (https://graphviz.gitlab.io/download/), ',
-        'for `pydotprint` to work.')
+        'You must install pydot (`pip install pydot`) '
+        'and install graphviz '
+        '(see instructions at https://graphviz.gitlab.io/download/) ',
+        'for plot_model/model_to_dot to work.')
     if 'IPython.core.magics.namespace' in sys.modules:
       # We don't raise an exception here in order to avoid crashing notebook
       # tests where graphviz is not available.
@@ -304,7 +302,7 @@ def plot_model(model,
   tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
   ```
 
-  Arguments:
+  Args:
     model: A Keras model instance
     to_file: File name of the plot image.
     show_shapes: whether to display shape information.

@@ -81,6 +81,13 @@ class BinaryElementwiseTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline BinaryElementwiseTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
   inline BinaryElementwiseTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -129,6 +136,7 @@ class BinaryElementwiseTester {
   bool input1_static_ = false;
   bool input2_static_ = false;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
   bool sparse_weights_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;

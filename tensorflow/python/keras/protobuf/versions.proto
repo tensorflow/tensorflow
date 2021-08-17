@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package third_party.tensorflow.python.keras.protobuf;
+
+// This file is a copy of the TensorFlow Versions proto.
+// Keep this file in sync with the source proto definition at
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/versions.proto
+
+// Version information for a piece of serialized data
+//
+// There are different types of versions for each type of data
+// (GraphDef, etc.), but they all have the same common shape
+// described here.
+//
+// Each consumer has "consumer" and "min_producer" versions (specified
+// elsewhere).  A consumer is allowed to consume this data if
+//
+//   producer >= min_producer
+//   consumer >= min_consumer
+//   consumer not in bad_consumers
+//
+// LINT.IfChange
+message VersionDef {
+  // The version of the code that produced this data.
+  int32 producer = 1;
+
+  // Any consumer below this version is not allowed to consume this data.
+  int32 min_consumer = 2;
+
+  // Specific consumer versions which are disallowed (e.g. due to bugs).
+  repeated int32 bad_consumers = 3;
+}
+// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/core/framework/versions.proto)

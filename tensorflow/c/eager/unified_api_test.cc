@@ -68,7 +68,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -90,7 +90,7 @@ Status TestTensorShape2x4(AbstractContext* ctx,
     return errors::InvalidArgument(
         "Tensor expected to have rank 2 found rank: ", shape.dims());
   }
-  int64 dim_sizes[] = {2, 4};
+  int64_t dim_sizes[] = {2, 4};
   for (int i = 0; i < shape.dims(); i++) {
     if (shape.dim_size(i) != dim_sizes[i]) {
       return errors::InvalidArgument("Dim ", i, " expected to be of size ",
@@ -119,9 +119,9 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     float data[] = {0., 0., 0., 0., 0., 0., 0., 0};
-    int64 dim_sizes[] = {2, 4};
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx.get(), data, dim_sizes, 2, &x_raw);
+    int64_t dim_sizes[] = {2, 4};
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx.get(), data,
+                                                         dim_sizes, 2, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -170,7 +170,7 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
   {
     tracing::TracingTensorHandle* x_raw = nullptr;
     PartialTensorShape shape;
-    int64 dim_sizes[] = {2, -1};
+    int64_t dim_sizes[] = {2, -1};
     Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(

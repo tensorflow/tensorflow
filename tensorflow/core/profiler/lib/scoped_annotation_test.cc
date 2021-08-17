@@ -53,78 +53,79 @@ std::string GenerateRandomString(int length) {
   return std::string(length, 'a');
 }
 
-void BM_ScopedAnnotationDisabled(int iters, int annotation_size) {
-  testing::StopTiming();
+void BM_ScopedAnnotationDisabled(::testing::benchmark::State& state) {
+  const int annotation_size = state.range(0);
+
   std::string annotation = GenerateRandomString(annotation_size);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     ScopedAnnotation trace(annotation);
   }
-  testing::StopTiming();
 }
 
 BENCHMARK(BM_ScopedAnnotationDisabled)->Arg(8)->Arg(32)->Arg(128);
 
-void BM_ScopedAnnotationEnabled(int iters, int annotation_size) {
-  testing::StopTiming();
+void BM_ScopedAnnotationEnabled(::testing::benchmark::State& state) {
+  const int annotation_size = state.range(0);
+
   std::string annotation = GenerateRandomString(annotation_size);
   AnnotationStack::Enable(true);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     ScopedAnnotation trace(annotation);
   }
-  testing::StopTiming();
   AnnotationStack::Enable(false);
 }
 
 BENCHMARK(BM_ScopedAnnotationEnabled)->Arg(8)->Arg(32)->Arg(128);
 
-void BM_ScopedAnnotationEnabled_Nested(int iters, int annotation_size) {
-  testing::StopTiming();
+void BM_ScopedAnnotationEnabled_Nested(::testing::benchmark::State& state) {
+  const int annotation_size = state.range(0);
+
   std::string annotation = GenerateRandomString(annotation_size);
   AnnotationStack::Enable(true);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     ScopedAnnotation trace(annotation);
     { ScopedAnnotation trace(annotation); }
   }
-  testing::StopTiming();
   AnnotationStack::Enable(false);
 }
 
 BENCHMARK(BM_ScopedAnnotationEnabled_Nested)->Arg(8)->Arg(32)->Arg(128);
 
-void BM_ScopedAnnotationEnabled_Adhoc(int iters, int annotation_size) {
-  testing::StopTiming();
+void BM_ScopedAnnotationEnabled_Adhoc(::testing::benchmark::State& state) {
   AnnotationStack::Enable(true);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  int i = 0;
+  for (auto s : state) {
     // generate the annotation on the fly.
     ScopedAnnotation trace(absl::StrCat(i, "-", i * i));
+    ++i;
   }
-  testing::StopTiming();
   AnnotationStack::Enable(false);
 }
 
-BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc)->Arg(8)->Arg(32)->Arg(128);
+BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc);
 
-void BM_ScopedAnnotationDisabled_Lambda(int iters, int annotation_size) {
-  for (int i = 0; i < iters; i++) {
+void BM_ScopedAnnotationDisabled_Lambda(::testing::benchmark::State& state) {
+  int i = 0;
+  for (auto s : state) {
     ScopedAnnotation trace([&]() { return absl::StrCat(i, "-", i * i); });
+    ++i;
   }
 }
 
-BENCHMARK(BM_ScopedAnnotationDisabled_Lambda)->Arg(8)->Arg(32)->Arg(128);
+BENCHMARK(BM_ScopedAnnotationDisabled_Lambda);
 
-void BM_ScopedAnnotationEnabled_Adhoc_Lambda(int iters, int annotation_size) {
+void BM_ScopedAnnotationEnabled_Adhoc_Lambda(
+    ::testing::benchmark::State& state) {
   AnnotationStack::Enable(true);
-  for (int i = 0; i < iters; i++) {
+  int i = 0;
+  for (auto s : state) {
     ScopedAnnotation trace([&]() { return absl::StrCat(i, "-", i * i); });
+    ++i;
   }
   AnnotationStack::Enable(false);
 }
 
-BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc_Lambda)->Arg(8)->Arg(32)->Arg(128);
+BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc_Lambda);
 
 }  // namespace
 }  // namespace profiler

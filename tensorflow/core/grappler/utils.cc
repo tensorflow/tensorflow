@@ -77,14 +77,14 @@ namespace internal {
 // Specialized template class method GetNodeDefFromGraph.
 template <>
 NodeDef* NodeMapInternal<GraphDef, NodeDef>::GetNodeDefFromGraph(
-    GraphDef* graph, int64 i) const {
+    GraphDef* graph, int64_t i) const {
   return graph->mutable_node(i);
 }
 
 template <>
 const NodeDef*
 NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
-    const GraphDef* graph, int64 i) const {
+    const GraphDef* graph, int64_t i) const {
   return &graph->node(i);
 }
 }  // namespace internal
@@ -124,7 +124,7 @@ string AddPrefixToNodeName(const string& name, const string& prefix) {
   return AddPrefixToNodeName(name, prefix, "/");
 }
 
-bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
+bool ExecuteWithTimeout(std::function<void()> fn, const int64_t timeout_in_ms,
                         thread::ThreadPool* const thread_pool) {
   if (timeout_in_ms <= 0) {
     fn();

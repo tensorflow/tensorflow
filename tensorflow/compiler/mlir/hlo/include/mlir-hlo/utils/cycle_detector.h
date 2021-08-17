@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 
 namespace mlir {
 

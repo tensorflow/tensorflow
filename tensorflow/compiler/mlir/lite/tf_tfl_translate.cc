@@ -17,20 +17,25 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -40,8 +45,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
@@ -150,9 +157,24 @@ int main(int argc, char **argv) {
   specs.upgrade_legacy = upgrade_legacy;
   specs.prune_unused_nodes = true;
 
+  if (!select_user_tf_ops.empty() && !emit_select_tf_ops) {
+    llvm::errs() << "You must specify `emit-select-tf-ops=true` when passing "
+                    "`select-user-tf-ops` flag.";
+    return kTrFailure;
+  }
+
+  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
+  if ((import_saved_model_object_graph || import_saved_model_signature_defs) &&
+      import_hlo) {
+    llvm::errs() << "Import saved model and import hlo cannot be both set.";
+    return kTrFailure;
+  }
+
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    // Saved model import path.
     int saved_model_version;
     if (import_saved_model_object_graph) {
       saved_model_version = 2;
@@ -174,14 +196,36 @@ int main(int argc, char **argv) {
     }
     std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
                                           custom_opdefs.end());
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, extra_opdefs, exported_names,
-                                          specs, &context);
+    module = tensorflow::ImportSavedModel(
+        input_file_name, saved_model_version, tags, extra_opdefs,
+        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        &bundle);
+  } else if (import_hlo) {
+    // HLO import path.
+    std::string error;
+    std::unique_ptr<llvm::MemoryBuffer> buffer =
+        mlir::openInputFile(input_file_name, &error);
+    if (buffer == nullptr) {
+      llvm::errs() << "Cannot open input file: " << input_file_name << " "
+                   << error;
+      return kTrFailure;
+    }
+
+    auto content = buffer->getBuffer();
+    if (hlo_import_type == HloImportType::hlotxt) {
+      module = xla::HloTextToMlirHloTranslateFunction(content, &context, false);
+    } else if (hlo_import_type == HloImportType::proto) {
+      module = xla::HloToMlirHloTranslateFunction(content, &context, false);
+    } else {
+      module =
+          mlir::OwningModuleRef(mlir::parseSourceString(content, &context));
+    }
   } else {
+    // Graphdef import path.
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays, &source_mgr, &context);
+        output_arrays, control_output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error
@@ -228,6 +272,13 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
+  pass_config.unfold_batch_matmul = unfold_batchmatmul;
+  pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
+  pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
+
+  if (enable_hlo_to_tf_conversion) {
+    pass_config.enable_hlo_to_tf_conversion = true;
+  }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
@@ -239,10 +290,24 @@ int main(int argc, char **argv) {
   }
   pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
+  toco::TocoFlags toco_flags;
+  toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  toco_flags.set_allow_custom_ops(emit_custom_ops);
+  toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
+  // Read list of user select ops.
+  llvm::SmallVector<llvm::StringRef, 2> user_ops;
+  (llvm::StringRef(select_user_tf_ops))
+      .split(user_ops, ',', /*MaxSplit=*/-1,
+             /*KeepEmpty=*/false);
+  llvm::for_each(user_ops, [&toco_flags](llvm::StringRef op_name) {
+    *(toco_flags.add_select_user_tf_ops()) = op_name.str();
+  });
+
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, tags, &result, &pm);
+      module.ValueOrDie().get(), output_mlir, toco_flags, quant_specs, tags,
+      &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

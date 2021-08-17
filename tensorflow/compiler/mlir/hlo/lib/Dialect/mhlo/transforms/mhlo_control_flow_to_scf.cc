@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -37,7 +40,7 @@ void MatchAndRewrite(WhileOp whileOp);
 
 /// Pass that converts MHLO control flow to SCF.
 class ControlFlowToScfPass
-    : public mlir::PassWrapper<ControlFlowToScfPass, FunctionPass> {
+    : public LegalizeControlFlowToScfPassBase<ControlFlowToScfPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<scf::SCFDialect>();
   }
@@ -48,6 +51,9 @@ class ControlFlowToScfPass
 
 // TODO(jpienaar): Look into reformulating as a pattern.
 void MatchAndRewrite(WhileOp whileOp) {
+  // TODO(jpienaar): Supports multi-operand while op.
+  if (whileOp.arg().size() != 1) return;
+
   // Handle pattern:
   //   x = start
   //   step = ...
@@ -55,7 +61,8 @@ void MatchAndRewrite(WhileOp whileOp) {
   //   while (x < limit) { ... x += step; }
 
   // Only handling multi value while loops at the moment.
-  auto tupleOp = whileOp.getOperand().getDefiningOp<TupleOp>();
+  // TODO(jpienaar): Support multi-operand while op.
+  auto tupleOp = whileOp.getOperand(0).getDefiningOp<TupleOp>();
   if (!tupleOp) return;
   auto bodyReturn = whileOp.body()
                         .front()
@@ -119,7 +126,7 @@ void MatchAndRewrite(WhileOp whileOp) {
   auto tensorIndexType = RankedTensorType::get({}, b.getIndexType());
   auto getAsIndex = [&](Value val) {
     auto loc = whileOp.getLoc();
-    return b.create<ExtractElementOp>(
+    return b.create<tensor::ExtractOp>(
         loc, b.create<IndexCastOp>(loc, tensorIndexType, val), ValueRange());
   };
 

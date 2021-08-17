@@ -99,7 +99,7 @@ class GpuDriver {
   // Allocates a GPU memory space of size bytes associated with the given
   // context via cuMemAlloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb82d2a09844a58dd9e744dc31e8aa467
-  static void* DeviceAllocate(GpuContext* context, uint64 bytes);
+  static void* DeviceAllocate(GpuContext* context, uint64_t bytes);
 
   // Deallocates a GPU memory space of size bytes associated with the given
   // context via cuMemFree.
@@ -110,7 +110,7 @@ class GpuDriver {
   // context via cuMemAllocManaged.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb347ded34dc326af404aa02af5388a32
   // (supported on CUDA only)
-  static void* UnifiedMemoryAllocate(GpuContext* context, uint64 bytes);
+  static void* UnifiedMemoryAllocate(GpuContext* context, uint64_t bytes);
 
   // Deallocates a unified memory space of size bytes associated with the given
   // context via cuMemFree.
@@ -121,7 +121,7 @@ class GpuDriver {
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
-  static void* HostAllocate(GpuContext* context, uint64 bytes);
+  static void* HostAllocate(GpuContext* context, uint64_t bytes);
 
   // Deallocates a location created by HostAllocate, via cuMemFreeHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g62e0fdbe181dab6b1c90fa1a51c7b92c
@@ -129,7 +129,7 @@ class GpuDriver {
 
   // Registers a memory region at location of size bytes via cuMemHostRegister.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
-  static bool HostRegister(GpuContext* context, void* location, uint64 bytes);
+  static bool HostRegister(GpuContext* context, void* location, uint64_t bytes);
 
   // Unregisters a memory region that was previously registered at location via
   // cuMemHostUnregister.
@@ -139,6 +139,64 @@ class GpuDriver {
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
   static bool HostUnregister(GpuContext* context, void* location);
+
+  // Virtual memory support was added to CUDA in 10.2
+#if CUDA_VERSION >= 10020
+
+  // Reserves a range of virtual device memory addresses via
+  // cuMemAddressReserve. bytes must be a multiple of the host page size.
+  // Returns nullptr base address in VmemSpan if the reservation fails.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1ge489256c107df2a07ddf96d80c86cd9b
+  struct VmemSpan {
+    GpuDevicePtr base;
+    // Size in bytes.
+    uint64_t size_bytes;
+  };
+  static port::StatusOr<VmemSpan> ReserveVirtualMemory(GpuContext* context,
+                                                       uint64_t bytes);
+
+  // Frees a range of virtual addresses that were previously reserved through
+  // ReserveVirtualMemory via cuMemAddressFree.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g6993ecea2ea03e1b802b8255edc2da5b
+  static void FreeVirtualMemory(GpuContext* context, VmemSpan reservation);
+
+  // Calculates the minimum alignment for memory allocations done through
+  // cuMemCreate via cuMemGetAllocationGranularity.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g30ee906c2cf66a0347b3dfec3d7eb31a
+  static port::StatusOr<uint64_t> GetMinAllocationGranularity(
+      GpuDeviceHandle device);
+
+  // Allocates physical memory and returns a handle that can be mapped to
+  // virtual addresses via cuMemCreate. bytes must be a multiple of the
+  // granularity returned by GetMinAllocationGranularity.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g899d69a862bba36449789c64b430dc7c
+  struct GenericMemoryHandle {
+    uint64_t handle;
+    uint64_t bytes;
+  };
+  static port::StatusOr<GenericMemoryHandle> CreateMemoryHandle(
+      GpuContext* context, uint64_t bytes);
+
+  // Frees memory represented by the provided MemoryHandle via cuMemRelease.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g3014f0759f43a8d82db951b8e4b91d68
+  static void ReleaseMemoryHandle(GpuContext* context,
+                                  GenericMemoryHandle handle);
+
+  // Maps a memory allocation handle to a reserved virtual address range via
+  // cuMemMap and sets the appropriate access settings via cuMemSetAccess.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gff1d395423af5c5c75375516959dae56
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g1b6b12b10e8324bf462ecab4e7ef30e1
+  static port::Status MapMemory(
+      GpuContext* context, GpuDevicePtr va, const GenericMemoryHandle& handle,
+      const std::vector<GpuDeviceHandle>& device_handles);
+
+  // Unmaps the backing memory from the given virtual address range. This range
+  // must fully unmap a memory handle that was mapped using MapMemory; partial
+  // unmapping is not supported.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gfb50aac00c848fd7087e858f59bf7e2a
+  static void UnmapMemory(GpuContext* context, GpuDevicePtr va, uint64_t bytes);
+
+#endif  // CUDA_VERSION >= 10200
 
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.
@@ -168,6 +226,10 @@ class GpuDriver {
   // bad things will happen.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
   static void DestroyContext(GpuContext* context);
+
+  // Returns the context handle (CUcontext for CUDA and hipCtx_t for ROCm) of a
+  // GpuContext.
+  static GpuContextHandle GetContextHandle(GpuContext* context);
 
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
@@ -200,7 +262,8 @@ class GpuDriver {
   // way.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   static port::Status LaunchKernel(
-      GpuContext* context, GpuFunctionHandle function, unsigned int grid_dim_x,
+      GpuContext* context, absl::string_view kernel_name,
+      GpuFunctionHandle function, unsigned int grid_dim_x,
       unsigned int grid_dim_y, unsigned int grid_dim_z,
       unsigned int block_dim_x, unsigned int block_dim_y,
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
@@ -279,25 +342,25 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
 
   static port::Status SynchronousMemcpyD2H(GpuContext* context, void* host_dst,
-                                           GpuDevicePtr gpu_src, uint64 size);
+                                           GpuDevicePtr gpu_src, uint64_t size);
   static port::Status SynchronousMemcpyH2D(GpuContext* context,
                                            GpuDevicePtr gpu_dst,
-                                           const void* host_src, uint64 size);
+                                           const void* host_src, uint64_t size);
   static port::Status SynchronousMemcpyD2D(GpuContext* context,
                                            GpuDevicePtr gpu_dst,
-                                           GpuDevicePtr gpu_src, uint64 size);
+                                           GpuDevicePtr gpu_src, uint64_t size);
 
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
 
   static bool AsynchronousMemcpyD2H(GpuContext* context, void* host_dst,
-                                    GpuDevicePtr gpu_src, uint64 size,
+                                    GpuDevicePtr gpu_src, uint64_t size,
                                     GpuStreamHandle stream);
   static bool AsynchronousMemcpyH2D(GpuContext* context, GpuDevicePtr gpu_dst,
-                                    const void* host_src, uint64 size,
+                                    const void* host_src, uint64_t size,
                                     GpuStreamHandle stream);
   static bool AsynchronousMemcpyD2D(GpuContext* context, GpuDevicePtr gpu_dst,
-                                    GpuDevicePtr gpu_src, uint64 size,
+                                    GpuDevicePtr gpu_src, uint64_t size,
                                     GpuStreamHandle stream);
 
   // The CUDA stream callback type signature.
@@ -351,6 +414,13 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
   static bool CanEnablePeerAccess(GpuContext* from, GpuContext* to);
 
+  // Returns whether the from device can access memory in the to
+  // device via cuDeviceCanAccessPeer. Because of differences between ROCM and
+  // CUDA, this API is not supported in ROCM builds and will result in a link
+  // error if used.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
+  static bool CanEnablePeerAccess(GpuDeviceHandle from, GpuDeviceHandle to);
+
   // Enables peer access per CanEnablePeerAccess, via cuCtxEnablePeerAccess.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g0889ec6728e61c05ed359551d67b3f5a
   static port::Status EnablePeerAccess(GpuContext* from, GpuContext* to);
@@ -403,34 +473,46 @@ class GpuDriver {
   // (supported on ROCm only)
   static port::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
 
+  // Return the full GCN Architecture Name for the the device
+  // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
+  // (supported on ROCm only)
+  static port::Status GetGpuGCNArchName(GpuDeviceHandle device,
+                                        std::string* gcnArchName);
+
+#if TENSORFLOW_USE_ROCM
+  // tests the current device for MFMA insn support (ROCm only)
+  static port::StatusOr<bool> GetMFMASupport();
+#endif
+
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).
   static port::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
 
   // Returns the limit on number of threads that can be resident in a single
   // multiprocessor.
-  static port::StatusOr<int64> GetMaxThreadsPerMultiprocessor(
+  static port::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
       GpuDeviceHandle device);
 
   // Returns the limit on number of threads which may be resident for a single
   // block (cooperative thread array).
-  static port::StatusOr<int64> GetMaxThreadsPerBlock(GpuDeviceHandle device);
+  static port::StatusOr<int64_t> GetMaxThreadsPerBlock(GpuDeviceHandle device);
 
   // Returns the amount of shared memory available on a single GPU core (i.e.
   // SM on NVIDIA devices).
-  static port::StatusOr<int64> GetMaxSharedMemoryPerCore(
+  static port::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
       GpuDeviceHandle device);
 
   // Returns the amount of shared memory available for a single block
   // (cooperative thread array).
-  static port::StatusOr<int64> GetMaxSharedMemoryPerBlock(
+  static port::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
       GpuDeviceHandle device);
 
   // Returns the maximum supported number of registers per block.
-  static port::StatusOr<int64> GetMaxRegistersPerBlock(GpuDeviceHandle device);
+  static port::StatusOr<int64_t> GetMaxRegistersPerBlock(
+      GpuDeviceHandle device);
 
   // Returns the number of threads per warp.
-  static port::StatusOr<int64> GetThreadsPerWarp(GpuDeviceHandle device);
+  static port::StatusOr<int64_t> GetThreadsPerWarp(GpuDeviceHandle device);
 
   // Queries the grid limits for device with cuDeviceGetAttribute calls.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
@@ -459,13 +541,13 @@ class GpuDriver {
 
   // Returns the total amount of memory available for allocation by the CUDA
   // context, in bytes, via cuDeviceTotalMem.
-  static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64* result);
+  static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64_t* result);
 
   // Returns the free amount of memory and total amount of memory, as reported
   // by cuMemGetInfo.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g808f555540d0143a331cc42aa98835c0
-  static bool GetDeviceMemoryInfo(GpuContext* context, int64* free,
-                                  int64* total);
+  static bool GetDeviceMemoryInfo(GpuContext* context, int64_t* free,
+                                  int64_t* total);
 
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]

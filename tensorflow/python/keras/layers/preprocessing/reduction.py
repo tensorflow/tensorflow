@@ -15,10 +15,6 @@
 """Keras reduction layer."""
 # pylint: disable=g-classes-have-attributes
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +44,7 @@ class Reduction(Layer):
   This layer performs a reduction across one axis of its input data. This
   data may optionally be weighted by passing in an identical float tensor.
 
-  Arguments:
+  Args:
     reduction: The type of reduction to perform. Can be one of the following:
       "max", "mean", "min", "prod", or "sum". This layer uses the Tensorflow
       reduce op which corresponds to that reduction (so, for "mean", we use

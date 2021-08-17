@@ -17,7 +17,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
-#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -82,7 +81,8 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
+REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 10000,
+                 MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
@@ -93,21 +93,22 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps({"AvgPool3DGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv2D", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv2DBackpropFilter", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv3D", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv3D", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv3DBackpropFilterV2", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps(
       {"Conv3DBackpropInputV2", RewriteConv2D, CreateGenericMklOp});
   InsertMKLEagerOps(
-      {"DepthwiseConv2dNative", RewriteConv2D, CreateGenericMklOp});
+      {"DepthwiseConv2dNative", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropFilter", RewriteConv2D,
                      CreateGenericMklOp});
   InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
                      CreateGenericMklOp});
+  InsertMKLEagerOps({"Einsum", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNorm", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"FusedBatchNormGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps(
@@ -144,7 +145,7 @@ Status MklEagerOpRewrite::SetupNewOp(
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
   for (int i = 0; i < num_inputs; ++i) {
-    (*new_mkl_op)->AddInput(orig_op->Inputs()[i]);
+    TF_RETURN_IF_ERROR((*new_mkl_op)->AddInput(orig_op->Inputs()[i]));
   }
 
   // Copy all attributes to the new op.
@@ -155,9 +156,11 @@ Status MklEagerOpRewrite::SetupNewOp(
     (*new_mkl_op)->MutableAttrs()->Set(attr.first, attr.second);
   }
 
-  (*new_mkl_op)
-      ->MutableAttrs()
-      ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  if (!orig_op->EagerContext().RunEagerOpAsFunction()) {
+    (*new_mkl_op)
+        ->MutableAttrs()
+        ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  }
 
   string device_name = orig_op->DeviceName();
   return (*new_mkl_op)->SetDeviceName(device_name.c_str());
@@ -173,11 +176,15 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   // Don't rewrite the op if MKL use is disabled at runtime.
-  if (DisableMKL()) {
+  if (!IsMKLEnabled()) {
     return false;
   }
   DataType data_type;
   if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+    return false;
+  }
+  // Only rewrite if op is to be run on CPU device.
+  if (op->GetDeviceParsedName().type != "CPU") {
     return false;
   }
   // Check if we have registered MKL kernel for this op.
@@ -238,7 +245,8 @@ Status MklEagerOpRewrite::RewriteToMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
   // TODO(intel-tf): mkl_eager_ops_ lookup can be reduced from twice
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
-  mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op);
+  TF_RETURN_IF_ERROR(
+      mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
   return Status::OK();
 }
 

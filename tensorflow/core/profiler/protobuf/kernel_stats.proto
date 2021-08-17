@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+// Next ID: 15
 message KernelReport {
   // Name of the kernel.
   string name = 1;
@@ -29,6 +30,8 @@ message KernelReport {
   string op_name = 12;
   // Number of occurrences.
   uint32 occurrences = 13;
+  // Occupancy percentage.
+  float occupancy_pct = 14;
 }
 
 message KernelStatsDb {

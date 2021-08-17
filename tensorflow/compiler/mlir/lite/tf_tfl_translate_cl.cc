@@ -71,6 +71,12 @@ opt<bool> output_mlir(
     llvm::cl::desc(
         "Output MLIR rather than FlatBuffer for the generated TFLite model"),
     llvm::cl::init(false));
+// NOLINTNEXTLINE
+opt<bool> allow_all_select_tf_ops(
+    "allow-all-select-tf-ops",
+    llvm::cl::desc("Allow automatic pass through of TF ops (outside the flex "
+                   "allowlist) as select Tensorflow ops"),
+    llvm::cl::init(false));
 
 // The following approach allows injecting opdefs in addition
 // to those that are already part of the global TF registry  to be linked in
@@ -109,3 +115,51 @@ opt<bool> convert_tf_while_to_tfl_while(
     "convert_tf_while_to_tfl_while",
     llvm::cl::desc("Whether to legalize TF While to TFL While."),
     llvm::cl::init(true));
+
+// A list of comma separated TF operators which are created by the user.
+// This must be used with `-emit-select-tf-ops=true`.
+// NOLINTNEXTLINE
+opt<std::string> select_user_tf_ops(
+    "select-user-tf-ops",
+    llvm::cl::desc(
+        "<list of custom tf ops created by the user (comma separated)>"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> unfold_batchmatmul(
+    "unfold_batchmatmul",
+    llvm::cl::desc(
+        "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> unfold_large_splat_constant(
+    "unfold-large-splat-constant",
+    llvm::cl::desc("Whether to unfold large splat constant tensors to reduce "
+                   "the generated model size."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> guarantee_all_funcs_one_use(
+    "guarantee-all-funcs-one-use",
+    llvm::cl::desc(
+        "Whether to clone functions to ensure each function has a single use."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> import_hlo("import-hlo",
+                     llvm::cl::desc("Whether the input file is hlo file."),
+                     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<HloImportType> hlo_import_type(
+    "hlo-import-type", llvm::cl::desc("The file type of the hlo."),
+    llvm::cl::values(clEnumVal(proto, "Import hlo in proto binary format"),
+                     clEnumVal(hlotxt, "Import hlo in hlotxt format"),
+                     clEnumVal(mlir_text, "Import hlo in mlir_text format")));
+
+// NOLINTNEXTLINE
+opt<bool> enable_hlo_to_tf_conversion(
+    "enable-hlo-to-tf-conversion",
+    llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
+    llvm::cl::init(false));

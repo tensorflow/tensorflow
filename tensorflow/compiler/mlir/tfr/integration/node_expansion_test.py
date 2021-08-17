@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for tensorflow.compiler.mlir.tfr.integrattion.node_expansion."""
+"""Tests for tensorflow.compiler.mlir.tfr.integration.node_expansion."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,10 @@ import os
 
 from tensorflow.compiler.mlir.tfr.resources import gen_composite_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -70,6 +72,24 @@ class NodeExpansionTest(test.TestCase):
     t3 = constant_op.constant([[-10.0, -10.0], [-10.0, -10.0]])
     sq = biasd_dense_elu(t1, t2, t3)
     self.assertAllClose(sq.numpy().reshape(-1), [-0.950213, 0, 5, 12])
+
+  # Regression test for an issue where VarHandleOp wasn't being properly
+  # imported into MLIR for "no-op" node expansion.
+  def testVarHandleOp(self):
+    x = constant_op.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+
+    # Note: we purposely make multiple calls to VarHandleOp to exercise the
+    # cached kernal lookup path that was exhibiting the VarHandleOp import
+    # issue.
+    unused_ = gen_resource_variable_ops.VarHandleOp(
+        dtype=dtypes.float32, shape=[3, 2])
+    handle = gen_resource_variable_ops.VarHandleOp(
+        dtype=dtypes.float32, shape=[3, 2])
+    gen_resource_variable_ops.AssignVariableOp(resource=handle, value=x)
+    self.assertAllEqual(
+        x,
+        gen_resource_variable_ops.ReadVariableOp(
+            resource=handle, dtype=dtypes.float32))
 
 
 if __name__ == '__main__':

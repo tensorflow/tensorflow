@@ -145,7 +145,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       if use_static_shape_:
         q_tf_val, r_tf_val = self.evaluate([q_tf, r_tf])
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 
       q_dims = q_tf_val.shape
@@ -295,11 +295,10 @@ if __name__ == "__main__":
                        _GetQrOpTest(dtype, shape, full_matrices,
                                     use_static_shape))
 
-  # TODO(pfau): Get working with complex types.
   # TODO(pfau): Get working with full_matrices when rows > cols
   # TODO(pfau): Get working with shapeholders (dynamic shapes)
   for full_matrices in False, True:
-    for dtype in np.float32, np.float64:
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
       for rows in 1, 2, 5, 10:
         for cols in 1, 2, 5, 10:
           if rows <= cols or (not full_matrices and rows > cols):

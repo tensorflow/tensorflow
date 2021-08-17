@@ -39,8 +39,8 @@ namespace tensorflow {
 class ScopedAllocatorOpTest : public OpsTestBase {
  protected:
   void MakeOp(const TensorShape& shape,
-              const gtl::ArraySlice<TensorShape>& shapes, DataType dtype,
-              const string& name, int32 id, int32 expected_call_count) {
+              const gtl::ArraySlice<TensorShape> shapes, DataType dtype,
+              const string& name, int32_t id, int32_t expected_call_count) {
     TF_EXPECT_OK(NodeDefBuilder("scoped_allocator_op", "_ScopedAllocator")
                      .Attr("T", dtype)
                      .Attr("shape", shape)
@@ -81,7 +81,7 @@ TEST_F(ScopedAllocatorOpTest, Simple) {
 // We won't use the AddInput* suite of functions from ops_testutil.h because
 // they allocate new tensors for each input.  We need to mimic what a
 // ScopedAllocator would do.
-void PrepOp(DataType dtype, int32 id,
+void PrepOp(DataType dtype, int32_t id,
             const std::vector<TensorShape>& fields_shapes,
             std::vector<ScopedAllocator::Field>* fields,
             Tensor** backing_tensor, Allocator* allocator,
@@ -98,7 +98,7 @@ void PrepOp(DataType dtype, int32 id,
   CHECK_EQ(num_bytes % DataTypeSize(dtype), 0);
 
   *backing_tensor = new Tensor(allocator, dtype, {num_elements});
-  int64 step_id = 10;
+  int64_t step_id = 10;
   Status s = sam->AddScopedAllocator(**backing_tensor, step_id, id,
                                      "sa_" + op_name + "_test", *fields,
                                      fields_shapes.size());
@@ -126,7 +126,7 @@ void PrepOp(DataType dtype, int32 id,
 class ScopedAllocatorConcatOpTest : public OpsTestBase {
  protected:
   void BuildNodeDef(const TensorShape& shape, DataType dtype,
-                    const string& name, int32 id, int32 num_tensors) {
+                    const string& name, int32_t id, int32_t num_tensors) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
             .Attr("shape", shape)
@@ -142,8 +142,8 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
   }
 
   void BuildNodeDefWithReshape(const TensorShape& shape, DataType dtype,
-                               bool reshape, const string& name, int32 id,
-                               int32 num_tensors) {
+                               bool reshape, const string& name, int32_t id,
+                               int32_t num_tensors) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
             .Attr("shape", shape)
@@ -160,12 +160,12 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
   }
 
   void MakeOp(const TensorShape& shape, DataType dtype, bool reshape,
-              const string& name, int32 id, int32 num_tensors) {
+              const string& name, int32_t id, int32_t num_tensors) {
     BuildNodeDefWithReshape(shape, dtype, reshape, name, id, num_tensors);
     TF_EXPECT_OK(InitOp());
   }
 
-  void ExecOp(DataType dtype, int32 id,
+  void ExecOp(DataType dtype, int32_t id,
               const std::vector<TensorShape>& fields_shapes) {
     Tensor* backing_tensor = nullptr;
     std::vector<Tensor> tensors;
@@ -260,7 +260,7 @@ TEST_F(ScopedAllocatorConcatOpTest, FailBounds) {
 class ScopedAllocatorSplitOpTest : public OpsTestBase {
  protected:
   void BuildNodeDef(const TensorShape& in_shape, DataType dtype,
-                    const string& name, int32 id, int32 num_tensors,
+                    const string& name, int32_t id, int32_t num_tensors,
                     const std::vector<TensorShape>& out_shapes) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_split_op", "_ScopedAllocatorSplit")
@@ -276,7 +276,7 @@ class ScopedAllocatorSplitOpTest : public OpsTestBase {
   }
 
   void MakeOp(const TensorShape& in_shape, DataType dtype, const string& name,
-              int32 id, int32 num_tensors,
+              int32_t id, int32_t num_tensors,
               const std::vector<TensorShape>& out_shapes) {
     BuildNodeDef(in_shape, dtype, name, id, num_tensors, out_shapes);
     TF_EXPECT_OK(InitOp());
@@ -284,7 +284,7 @@ class ScopedAllocatorSplitOpTest : public OpsTestBase {
 
   // Similar to ConcatOpTest, we add inputs that are allocated from
   // ScopedAllocator so that the memory lines up nicely.
-  void ExecOp(DataType dtype, int32 id,
+  void ExecOp(DataType dtype, int32_t id,
               const std::vector<TensorShape>& fields_shapes) {
     Tensor* backing_tensor = nullptr;
     std::vector<Tensor> tensors;

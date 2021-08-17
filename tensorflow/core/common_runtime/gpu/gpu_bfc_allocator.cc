@@ -73,16 +73,21 @@ bool GPUBFCAllocator::GetGarbageCollectionValue() {
   return true;
 }
 
-GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
-                                 size_t total_memory, const string& name)
-    : GPUBFCAllocator(sub_allocator, total_memory, GPUOptions(), name) {}
+GPUBFCAllocator::GPUBFCAllocator(SubAllocator* sub_allocator,
+                                 size_t total_memory, const string& name,
+                                 double fragmentation_fraction)
+    : GPUBFCAllocator(sub_allocator, total_memory, GPUOptions(), name,
+                      fragmentation_fraction) {}
 
-GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
+GPUBFCAllocator::GPUBFCAllocator(SubAllocator* sub_allocator,
                                  size_t total_memory,
                                  const GPUOptions& gpu_options,
-                                 const string& name)
+                                 const string& name,
+                                 double fragmentation_fraction)
     : BFCAllocator(sub_allocator, total_memory,
                    GPUBFCAllocator::GetAllowGrowthValue(gpu_options), name,
-                   GPUBFCAllocator::GetGarbageCollectionValue()) {}
+                   GPUBFCAllocator::GetGarbageCollectionValue()) {
+  SetInternalFragmentationFraction(fragmentation_fraction);
+}
 
 }  // namespace tensorflow

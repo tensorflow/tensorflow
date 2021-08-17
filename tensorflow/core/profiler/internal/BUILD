@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

@@ -22,14 +22,51 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+
 #include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
+
+// CUDA compute capability, as reported by the device description.
+struct CudaComputeCapability {
+  int major = 0;
+  int minor = 0;
+
+  // MSVC does not like "PASCAL" symbol.
+  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+
+  CudaComputeCapability() {}
+  CudaComputeCapability(int major, int minor) {
+    this->major = major;
+    this->minor = minor;
+  }
+
+  bool IsAtLeast(int other_major, int other_minor = 0) const {
+    return !(*this < CudaComputeCapability{other_major, other_minor});
+  }
+
+  bool operator<(const CudaComputeCapability &other) const {
+    return ToPair() < other.ToPair();
+  }
+
+  bool operator==(const CudaComputeCapability &other) const {
+    return ToPair() == other.ToPair();
+  }
+
+  bool operator!=(const CudaComputeCapability &other) const {
+    return !(*this == other);
+  }
+
+  std::string ToString() const { return absl::StrCat(major, ".", minor); }
+
+  std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -81,42 +118,42 @@ class DeviceDescription {
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
-  const int64 &threads_per_block_limit() const {
+  const int64_t &threads_per_block_limit() const {
     return threads_per_block_limit_;
   }
 
   // Returns the limit on the total number of threads that can be simultaneously
   // launched on a given multiprocessor.
-  const int64 &threads_per_core_limit() const {
+  const int64_t &threads_per_core_limit() const {
     return threads_per_core_limit_;
   }
 
   // Returns the number of threads per warp/wavefront.
-  const int64 &threads_per_warp() const { return threads_per_warp_; }
+  const int64_t &threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
-  const int64 &registers_per_core_limit() const {
+  const int64_t &registers_per_core_limit() const {
     return registers_per_core_limit_;
   }
 
   // Returns the limit on the total number of registers that can be
   // simultaneously used by a block.
-  const int64 &registers_per_block_limit() const {
+  const int64_t &registers_per_block_limit() const {
     return registers_per_block_limit_;
   }
 
   // Returns the number of address bits available to kernel code running on the
   // platform. This affects things like the maximum allocation size and perhaps
   // types used in kernel code such as size_t.
-  const int64 &device_address_bits() const { return device_address_bits_; }
+  const int64_t &device_address_bits() const { return device_address_bits_; }
 
   // Returns the device memory size in bytes.
-  int64 device_memory_size() const { return device_memory_size_; }
+  int64_t device_memory_size() const { return device_memory_size_; }
 
   // Returns the device's memory bandwidth in bytes/sec.  (This is for
   // reads/writes to/from the device's own memory, not for transfers between the
   // host and device.)
-  int64 memory_bandwidth() const { return memory_bandwidth_; }
+  int64_t memory_bandwidth() const { return memory_bandwidth_; }
 
   // Returns the device's core clock rate in GHz.
   float clock_rate_ghz() const { return clock_rate_ghz_; }
@@ -130,22 +167,29 @@ class DeviceDescription {
 
   // Returns the CUDA compute capability if we're running on the CUDA platform.
   // If a CUDA compute capability is not available, the major version will be
-  // zero, and the return value will be false.
-  bool cuda_compute_capability(int *major, int *minor) const;
+  // zero.
+  CudaComputeCapability cuda_compute_capability() const;
 
   // Returns the AMDGPU ISA version if we're running on the ROCm platform.
   // If the information is not available, the version is not modified,
   // and the return value will be false.
   bool rocm_amdgpu_isa_version(int *version) const;
 
+  // Returns the
+  // * AMDGPU GCN Architecture Name if we're running on the ROCm platform.
+  // * kUndefinedString otherwise
+  const std::string rocm_amdgpu_gcn_arch_name() const {
+    return rocm_amdgpu_gcn_arch_name_;
+  }
+
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
   // devices). Note that some devices, such as NVIDIA's have a configurable
   // partitioning between shared memory and L1 cache.
-  int64 shared_memory_per_core() const { return shared_memory_per_core_; }
+  int64_t shared_memory_per_core() const { return shared_memory_per_core_; }
 
   // Returns the maximum amount of shared memory available for a single block.
-  int64 shared_memory_per_block() const { return shared_memory_per_block_; }
+  int64_t shared_memory_per_block() const { return shared_memory_per_block_; }
 
   // TODO(leary): resident blocks per core will be useful.
 
@@ -179,29 +223,31 @@ class DeviceDescription {
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
 
-  int64 threads_per_core_limit_;
-  int64 threads_per_block_limit_;
-  int64 threads_per_warp_;
+  int64_t threads_per_core_limit_;
+  int64_t threads_per_block_limit_;
+  int64_t threads_per_warp_;
 
-  int64 registers_per_core_limit_;
-  int64 registers_per_block_limit_;
+  int64_t registers_per_core_limit_;
+  int64_t registers_per_block_limit_;
 
-  int64 device_address_bits_;
-  int64 device_memory_size_;
-  int64 memory_bandwidth_;
+  int64_t device_address_bits_;
+  int64_t device_memory_size_;
+  int64_t memory_bandwidth_;
 
   // Shared memory limits on a given device.
-  int64 shared_memory_per_core_;
-  int64 shared_memory_per_block_;
+  int64_t shared_memory_per_core_;
+  int64_t shared_memory_per_block_;
 
   float clock_rate_ghz_;
 
   // CUDA "CC" major value, -1 if not available.
-  int cuda_compute_capability_major_;
-  int cuda_compute_capability_minor_;
+  CudaComputeCapability cuda_compute_capability_{-1, -1};
 
   // ROCM AMDGPU ISA version, 0 if not available.
   int rocm_amdgpu_isa_version_;
+
+  // ROCm AMDGPU GCN Architecture name, "" if not available.
+  std::string rocm_amdgpu_gcn_arch_name_;
 
   int numa_node_;
   int core_count_;
@@ -247,37 +293,37 @@ class DeviceDescriptionBuilder {
     device_description_->block_dim_limit_ = value;
   }
 
-  void set_threads_per_core_limit(int64 value) {
+  void set_threads_per_core_limit(int64_t value) {
     device_description_->threads_per_core_limit_ = value;
   }
-  void set_threads_per_block_limit(int64 value) {
+  void set_threads_per_block_limit(int64_t value) {
     device_description_->threads_per_block_limit_ = value;
   }
-  void set_threads_per_warp(int64 value) {
+  void set_threads_per_warp(int64_t value) {
     device_description_->threads_per_warp_ = value;
   }
 
-  void set_registers_per_core_limit(int64 value) {
+  void set_registers_per_core_limit(int64_t value) {
     device_description_->registers_per_core_limit_ = value;
   }
-  void set_registers_per_block_limit(int64 value) {
+  void set_registers_per_block_limit(int64_t value) {
     device_description_->registers_per_block_limit_ = value;
   }
 
-  void set_device_address_bits(int64 value) {
+  void set_device_address_bits(int64_t value) {
     device_description_->device_address_bits_ = value;
   }
-  void set_device_memory_size(int64 value) {
+  void set_device_memory_size(int64_t value) {
     device_description_->device_memory_size_ = value;
   }
-  void set_memory_bandwidth(int64 value) {
+  void set_memory_bandwidth(int64_t value) {
     device_description_->memory_bandwidth_ = value;
   }
 
-  void set_shared_memory_per_core(int64 value) {
+  void set_shared_memory_per_core(int64_t value) {
     device_description_->shared_memory_per_core_ = value;
   }
-  void set_shared_memory_per_block(int64 value) {
+  void set_shared_memory_per_block(int64_t value) {
     device_description_->shared_memory_per_block_ = value;
   }
 
@@ -286,12 +332,16 @@ class DeviceDescriptionBuilder {
   }
 
   void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_major_ = major;
-    device_description_->cuda_compute_capability_minor_ = minor;
+    device_description_->cuda_compute_capability_ =
+        CudaComputeCapability{major, minor};
   }
 
   void set_rocm_amdgpu_isa_version(int version) {
     device_description_->rocm_amdgpu_isa_version_ = version;
+  }
+
+  void set_rocm_amdgpu_gcn_arch_name(const std::string &gcn_arch_name) {
+    device_description_->rocm_amdgpu_gcn_arch_name_ = gcn_arch_name;
   }
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }
@@ -325,15 +375,15 @@ bool ThreadDimOk(const DeviceDescription &device_description,
 
 // Equivalent to ceil(double(element_count) / threads_per_block).
 ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64 DivideCeil(int64 x, int64 y);
+int64_t DivideCeil(int64_t x, int64_t y);
 
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than
 // element_count due to rounding, so kernels often start with an "is this
 // thread id in the element_count range?" test.
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64 element_count, int64 *threads_per_block,
-                             int64 *block_count);
+                             int64_t element_count, int64_t *threads_per_block,
+                             int64_t *block_count);
 
 }  // namespace stream_executor
 

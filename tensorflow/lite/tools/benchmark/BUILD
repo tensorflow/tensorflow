@@ -1,15 +1,15 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-common_copts = ["-Wall"] + tflite_copts()
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 # We create a library for benchmark_main.cc to faciliate the creation of a
 # customized benchmark model binary that only needs linking with extra
@@ -154,6 +154,7 @@ cc_library(
         ":benchmark_utils",
         ":profiling_listener",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -216,6 +217,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
+        "//tensorflow/lite/profiling:memory_usage_monitor",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
@@ -237,7 +239,6 @@ cc_test(
     srcs = [
         "benchmark_utils_test.cc",
     ],
-    copts = common_copts,
     deps = [
         ":benchmark_utils",
         "//tensorflow/lite/profiling:time",

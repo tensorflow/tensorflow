@@ -18,6 +18,23 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 
+// Get the last dimension size as a 1-d single element attr.
+def GetLastDimSizeAsI32 : NativeCodeCall<
+  "DenseElementsAttr::get(RankedTensorType::get({1}, $_builder.getIntegerType(32)), "
+  "static_cast<int32_t>($0.getType().cast<RankedTensorType>().getDimSize(  "
+  "  $0.getType().cast<RankedTensorType>().getRank() - 1)))">;
+
+// Check whether the tensor is ranked and whether its last dim is static.
+def IsRankedShapeLastDimStatic : Constraint<And<[
+  CPred<"$0.getType().isa<RankedTensorType>()">,
+  CPred<"!$0.getType().cast<ShapedType>().isDynamicDim( "
+  "  $0.getType().cast<RankedTensorType>().getRank() - 1)">]>>;
+
+def IsNotComplexType : Constraint<And<[
+  CPred<"$0.getType().isa<RankedTensorType>()">,
+  CPred<"!$0.getType().cast<ShapedType>().getElementType().isa<ComplexType>()">
+]>>;
+
 // Only fuse multiplier if all dimensions other than the channel dimension
 // are equal to 1.
 def CanFuseMulAndConv2D :
@@ -85,3 +102,10 @@ def PassthroughMulAndAddV2 :
           (TF_MulOp $input, (ConstantOp $value)),
           (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
       [(DefinedByConv2D $input), (HasOneUse $output)]>;
+
+// input -> cast -> FFT  => input -> RFFT
+def ConvertCastComplexFFTToRFFT: Pat<
+  (TF_FFTOp (TF_CastOp $input, ConstBoolAttrFalse)),
+  (TF_RFFTOp $input,
+             (ConstantOp (GetLastDimSizeAsI32 $input))),
+  [(IsRankedShapeLastDimStatic $input), (IsNotComplexType $input)]>;

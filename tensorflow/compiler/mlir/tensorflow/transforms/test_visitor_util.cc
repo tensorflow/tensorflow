@@ -25,12 +25,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor_util.h"
 
-namespace tensorflow {
+namespace mlir {
+namespace tf_test {
 namespace {
 
-std::string get_stage_description(const WalkStage &stage) {
+std::string get_stage_description(const tensorflow::WalkStage &stage) {
   if (stage.IsBeforeAllRegions()) return "before all regions";
   if (stage.IsAfterAllRegions()) return "after all regions";
   return "before region #" + std::to_string(stage.GetNextRegion());
@@ -38,31 +41,32 @@ std::string get_stage_description(const WalkStage &stage) {
 
 // A pass that annotates each operation with an remarks that include a unique
 // step ID and a description of the visitor step.
-class TestVisitorUtil
-    : public mlir::PassWrapper<TestVisitorUtil, mlir::FunctionPass> {
+class TestVisitorUtil : public TestTensorFlowVisitorUtilBase<TestVisitorUtil> {
  public:
   void runOnFunction() override {
     mlir::FuncOp func = getOperation();
     int step_id = 0;
-    GenericWalk(func, [&](mlir::Operation *op, const WalkStage &stage) {
-      op->emitRemark() << step_id++ << ": " << get_stage_description(stage);
-    });
+    tensorflow::GenericWalk(
+        func, [&](mlir::Operation *op, const tensorflow::WalkStage &stage) {
+          op->emitRemark() << step_id++ << ": " << get_stage_description(stage);
+        });
 
     // Exercise static inference of operation type
-    GenericWalk(func, [&](mlir::TF::IfRegionOp op, const WalkStage &stage) {
-      op.emitRemark() << step_id++ << ": " << get_stage_description(stage);
-    });
+    tensorflow::GenericWalk(
+        func, [&](mlir::TF::IfRegionOp op, const tensorflow::WalkStage &stage) {
+          op.emitRemark() << step_id++ << ": " << get_stage_description(stage);
+        });
   }
 };
 
 class TestVisitorUtilInterrupt
-    : public mlir::PassWrapper<TestVisitorUtilInterrupt, mlir::FunctionPass> {
+    : public TestTensorFlowVisitorUtilInterruptBase<TestVisitorUtilInterrupt> {
  public:
   void runOnFunction() override {
     mlir::FuncOp func = getOperation();
     int step_id = 0;
 
-    auto walker = [&](mlir::Operation *op, const WalkStage &stage) {
+    auto walker = [&](mlir::Operation *op, const tensorflow::WalkStage &stage) {
       if (auto interrupt_before_all =
               op->getAttrOfType<mlir::BoolAttr>("interrupt_before_all"))
         if (interrupt_before_all.getValue() && stage.IsBeforeAllRegions())
@@ -84,14 +88,14 @@ class TestVisitorUtilInterrupt
     };
 
     // Interrupt the walk based on attributes on the operation.
-    auto result = GenericWalk(func, walker);
+    auto result = tensorflow::GenericWalk(func, walker);
 
     if (result.wasInterrupted())
       func.emitRemark() << step_id++ << ": walk was interrupted";
 
     // Exercise static inference of operation type for interrupting callback.
-    result =
-        GenericWalk(func, [&](mlir::TF::IfRegionOp op, const WalkStage &stage) {
+    result = tensorflow::GenericWalk(
+        func, [&](mlir::TF::IfRegionOp op, const tensorflow::WalkStage &stage) {
           return walker(op, stage);
         });
 
@@ -100,15 +104,18 @@ class TestVisitorUtilInterrupt
   }
 };
 
-mlir::PassRegistration<TestVisitorUtil> pass(
-    "tf-test-visitor-util",
-    "Add remarks that trace order of visiting operations using TF visitor "
-    "utilities.");
-
-mlir::PassRegistration<TestVisitorUtilInterrupt> pass_interrupt(
-    "tf-test-visitor-util-interrupt",
-    "Add remarks that trace order of visiting operations using TF visitor "
-    "utilities, interrupt version.");
+static mlir::PassRegistration<TestVisitorUtil> registration;
+static mlir::PassRegistration<TestVisitorUtilInterrupt> registration_interrupt;
 
 }  // anonymous namespace
-}  // namespace tensorflow
+
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass() {
+  return std::make_unique<TestVisitorUtil>();
+}
+
+std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilInterruptPass() {
+  return std::make_unique<TestVisitorUtilInterrupt>();
+}
+
+}  // namespace tf_test
+}  // namespace mlir

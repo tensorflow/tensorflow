@@ -22,7 +22,8 @@ include(FetchContent)
 OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
-  GIT_TAG v1.12.0 # TODO: What version does TFLite need?
+  # Sync with tensorflow/third_party/flatbuffers/workspace.bzl
+  GIT_TAG v1.12.0
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
@@ -32,6 +33,7 @@ if(NOT flatbuffers_POPULATED)
   OverridableFetchContent_Populate(flatbuffers)
 endif()
 
+option(FLATBUFFERS_BUILD_TESTS OFF)
 # Required for Windows, since it has macros called min & max which
 # clashes with std::min
 add_definitions(-DNOMINMAX=1)
@@ -41,3 +43,24 @@ add_subdirectory(
   EXCLUDE_FROM_ALL
 )
 remove_definitions(-DNOMINMAX)
+
+# For BuildFlatBuffers.cmake
+set(CMAKE_MODULE_PATH
+  "${flatbuffers_SOURCE_DIR}/CMake"
+  ${CMAKE_MODULE_PATH}
+)
+
+# The host-side flatc binary
+include(ExternalProject)
+
+ExternalProject_Add(flatbuffers-flatc
+  PREFIX ${CMAKE_BINARY_DIR}/flatbuffers-flatc
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/flatbuffers
+  CMAKE_ARGS -DCMAKE_CXX_FLAGS="-DNOMINMAX=1"
+             -DFLATBUFFERS_BUILD_TESTS=OFF
+             -DFLATBUFFERS_BUILD_FLATLIB=OFF
+             -DFLATBUFFERS_STATIC_FLATC=ON
+             -DFLATBUFFERS_BUILD_FLATHASH=OFF
+             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+  EXCLUDE_FROM_ALL 1
+)

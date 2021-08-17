@@ -19,12 +19,13 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -60,6 +61,26 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
+// Return an Attr representation of the value.
+static DenseElementsAttr GetF32Scalar(OpBuilder *builder, float value) {
+  return DenseElementsAttr::get(
+      RankedTensorType::get({}, builder->getF32Type()),
+      FloatAttr::get(builder->getF32Type(), value));
+}
+
+// Returns a TF_CastOp to F32. This function is used for CastOps that are
+// intermediate nodes in a TableGen pattern result. In such a case, the
+// destination type is not inferred and must be given explicitly.
+//
+// Preconditions: The given value must have a ShapedType.
+static Value CreateTFCastOpF32(OpBuilder *builder, Location loc, Value x,
+                               BoolAttr truncate) {
+  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  if (!x_type) llvm_unreachable("unsupported type");
+  Type type = x_type.clone(builder->getF32Type());
+  return builder->create<CastOp>(loc, type, x, truncate);
+}
+
 static APFloat ConvertToAPFloat(double val, Type type) {
   if (type.getIntOrFloatBitWidth() == 32) {
     return APFloat(static_cast<float>(val));
@@ -69,8 +90,9 @@ static APFloat ConvertToAPFloat(double val, Type type) {
 }
 
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the integer value.
-static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+// given element type and the value.
+template <typename T>
+static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
@@ -91,12 +113,29 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   llvm_unreachable("unsupported type");
 }
 
-// Returns float DenseElementsAttr with scalar shape with the specified value.
-static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
-  auto float_ty = ty.cast<FloatType>();
-  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  return DenseElementsAttr::get(scalar_ty, attr);
+// Return true if the passed quantized type is unsigned.
+bool QuantizedTypeIsUnsigned(Type type) {
+  return TypeSwitch<Type, bool>(type)
+      .Case<mlir::TF::Qint8Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint16Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint32Type>([](Type) { return false; })
+      .Case<mlir::TF::Quint8Type>([](Type) { return true; })
+      .Case<mlir::TF::Quint16Type>([](Type) { return true; })
+      .Default([](Type) {
+        llvm_unreachable("QuantizedTypeIsUnsigned: not a quantized type");
+        return false;
+      });
+}
+
+// Return the half_range value that is used by DequantizeOp. half_range is used
+// to offset the quantized representation before it gets scaled. In the case
+// of negative quantize types, this offset is half the type's range.
+static DenseElementsAttr DequantizeHalfRange(OpBuilder *builder, Value input) {
+  auto input_type = input.getType().dyn_cast_or_null<ShapedType>();
+  if (!input_type) llvm_unreachable("DequantizeHalfRange: not a ShapedType");
+  bool is_unsigned = QuantizedTypeIsUnsigned(input_type.getElementType());
+  float half_range = is_unsigned ? 0 : 128;
+  return GetScalarOfType(builder->getF32Type(), half_range);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -186,8 +225,8 @@ Value ValuesToRank1(PatternRewriter &rewriter, Location loc, Type dtype,
 class LowerAddNOp : public RewritePattern {
  public:
   explicit LowerAddNOp(MLIRContext *context)
-      : RewritePattern(AddNOp::getOperationName(),
-                       {AddV2Op::getOperationName()}, 1, context) {}
+      : RewritePattern(AddNOp::getOperationName(), 1, context,
+                       {AddV2Op::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -250,10 +289,9 @@ class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            OpT::getOperationName(),
+            OpT::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
-             UnpackOp::getOperationName(), PackOp::getOperationName()},
-            1, context) {}
+             UnpackOp::getOperationName(), PackOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -332,12 +370,12 @@ class LowerDynamicStitchOp : public RewritePattern {
 class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
-      : RewritePattern(FakeQuantWithMinMaxVarsOp::getOperationName(),
-                       {SubOp::getOperationName(), ConstOp::getOperationName(),
-                        MulOp::getOperationName(), FloorOp::getOperationName(),
-                        ClipByValueOp::getOperationName(),
-                        DivOp::getOperationName(), RoundOp::getOperationName()},
-                       1, context) {}
+      : RewritePattern(
+            FakeQuantWithMinMaxVarsOp::getOperationName(), 1, context,
+            {AddV2Op::getOperationName(), SubOp::getOperationName(),
+             ConstOp::getOperationName(), MulOp::getOperationName(),
+             FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
+             DivOp::getOperationName(), RoundOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -419,8 +457,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
         op.getLoc(),
         DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
 
-    quantized_input = rewriter.create<AddOp>(op.getLoc(), input_ty,
-                                             quantized_input, half_val);
+    quantized_input = rewriter.create<AddV2Op>(op.getLoc(), input_ty,
+                                               quantized_input, half_val);
 
     quantized_input = rewriter.create<FloorOp>(op.getLoc(), quantized_input);
 
@@ -428,8 +466,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
     Value output = rewriter.create<MulOp>(op.getLoc(), input_ty,
                                           quantized_input, quant_to_float);
 
-    output =
-        rewriter.create<AddOp>(op.getLoc(), input_ty, output, nudged_float_min);
+    output = rewriter.create<AddV2Op>(op.getLoc(), input_ty, output,
+                                      nudged_float_min);
 
     rewriter.replaceOp(op, {output});
     return success();
@@ -461,11 +499,10 @@ class LowerInvertPermutationOp : public RewritePattern {
  public:
   explicit LowerInvertPermutationOp(MLIRContext *context)
       : RewritePattern(
-            InvertPermutationOp::getOperationName(),
+            InvertPermutationOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), RangeOp::getOperationName(),
              ReshapeOp::getOperationName(),
-             TensorScatterUpdateOp::getOperationName()},
-            1, context) {}
+             TensorScatterUpdateOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -526,7 +563,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 class LowerLgammaOp : public RewritePattern {
  public:
   explicit LowerLgammaOp(MLIRContext *context)
-      : RewritePattern(LgammaOp::getOperationName(),
+      : RewritePattern(LgammaOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -546,8 +583,7 @@ class LowerLgammaOp : public RewritePattern {
                            GreaterOp::getOperationName(),
                            SinOp::getOperationName(),
                            IsFiniteOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -740,10 +776,9 @@ class LowerPackOp : public RewritePattern {
  public:
   explicit LowerPackOp(MLIRContext *context)
       : RewritePattern(
-            PackOp::getOperationName(),
+            PackOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ConcatV2Op::getOperationName(),
-             ExpandDimsOp::getOperationName()},
-            1, context) {}
+             ExpandDimsOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -806,12 +841,12 @@ class LowerPackOp : public RewritePattern {
 class LowerSpaceToBatchNDOp : public RewritePattern {
  public:
   explicit LowerSpaceToBatchNDOp(MLIRContext *context)
-      : RewritePattern(SpaceToBatchNDOp::getOperationName(),
+      : RewritePattern(SpaceToBatchNDOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
                            ConcatV2Op::getOperationName(),
-                           AddOp::getOperationName(),
+                           AddV2Op::getOperationName(),
                            PadOp::getOperationName(),
                            SplitOp::getOperationName(),
                            UnpackOp::getOperationName(),
@@ -819,8 +854,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -828,6 +862,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     Location loc = op.getLoc();
     auto input_type = op.input().getType().cast<TensorType>();
+    auto element_type = input_type.getElementType();
     if (!input_type.hasStaticShape()) {
       return failure();
     }
@@ -837,6 +872,9 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       return failure();
     }
     auto paddings_type = op.paddings().getType().cast<ShapedType>();
+    if (!paddings_type.hasRank()) {
+      return failure();
+    }
 
     int64_t input_rank = input_type.getRank();
     int64_t block_rank = block_shape_type.getNumElements();
@@ -895,8 +933,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       block_shape_ints.resize(block_shape_type.getNumElements(), -1);
     }
 
-    auto padded_type =
-        RankedTensorType::get(padded_shape, rewriter.getF32Type());
+    auto padded_type = RankedTensorType::get(padded_shape, element_type);
     // padded = pad(input, full_paddings)
     auto padded =
         rewriter.create<PadOp>(loc, padded_type, op.input(), full_paddings);
@@ -907,8 +944,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto paddings_split = rewriter.create<UnpackOp>(
         loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
         rewriter.getI64IntegerAttr(1));
-    auto paddings_sum = rewriter.create<AddOp>(loc, paddings_split.getResult(0),
-                                               paddings_split.getResult(1));
+    auto paddings_sum = rewriter.create<AddV2Op>(
+        loc, paddings_split.getResult(0), paddings_split.getResult(1));
 
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
@@ -918,7 +955,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     // padded_shape_tensor is the shape of padded.
     auto padded_shape_tensor =
-        rewriter.create<AddOp>(loc, paddings_sum, input_shape_tensor);
+        rewriter.create<AddV2Op>(loc, paddings_sum, input_shape_tensor);
 
     auto zero_i32 = rewriter.create<ConstOp>(
         loc, GetScalarOfType(rewriter.getIntegerType(32), 0));
@@ -974,9 +1011,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
         rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
 
     auto reshaped = rewriter.create<ReshapeOp>(
-        loc,
-        RankedTensorType::get(reshaped_shape_ints, input_type.getElementType()),
-        padded, reshaped_shape);
+        loc, RankedTensorType::get(reshaped_shape_ints, element_type), padded,
+        reshaped_shape);
 
     SmallVector<int64_t, 6> permutation_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
@@ -1021,14 +1057,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 class LowerBatchToSpaceND : public RewritePattern {
  public:
   explicit LowerBatchToSpaceND(MLIRContext *context)
-      : RewritePattern(BatchToSpaceNDOp::getOperationName(),
+      : RewritePattern(BatchToSpaceNDOp::getOperationName(), 1, context,
                        {
                            ConstOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            SliceOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1197,9 +1232,8 @@ class LowerSparseMatMulOp : public RewritePattern {
  public:
   explicit LowerSparseMatMulOp(MLIRContext *context)
       : RewritePattern(
-            SparseMatMulOp::getOperationName(),
-            {CastOp::getOperationName(), MatMulOp::getOperationName()}, 1,
-            context) {}
+            SparseMatMulOp::getOperationName(), 1, context,
+            {CastOp::getOperationName(), MatMulOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1281,7 +1315,7 @@ class Lower_UnaryOpsComposition
 class LowerResizeNearestNeighbor : public RewritePattern {
  public:
   explicit LowerResizeNearestNeighbor(MLIRContext *context)
-      : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
+      : RewritePattern(ResizeNearestNeighborOp::getOperationName(), 1, context,
                        {
                            BroadcastToOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -1292,8 +1326,7 @@ class LowerResizeNearestNeighbor : public RewritePattern {
                            ShapeOp::getOperationName(),
                            SplitOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1408,9 +1441,9 @@ class LowerResizeNearestNeighbor : public RewritePattern {
         out_w_f32);
 
     Value zero_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 0.0));
     Value one_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 1.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 1.0));
 
     Value y_range = rewriter.create<RangeOp>(
         loc,
@@ -1508,18 +1541,243 @@ class LowerResizeNearestNeighbor : public RewritePattern {
   }
 };
 
+struct LowerRollOp : public RewritePattern {
+  explicit LowerRollOp(MLIRContext *context)
+      : RewritePattern(
+            RollOp::getOperationName(), 1, context,
+            {ConstOp::getOperationName(), SliceOp::getOperationName(),
+             ConcatV2Op::getOperationName()}) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_roll_op = cast<RollOp>(op);
+
+    auto input_ty = tf_roll_op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of input to have static shapes");
+    }
+
+    DenseIntElementsAttr shift_attr;
+    Value shift = tf_roll_op.shift();
+    auto shift_ranked_attr_type = shift.getType().dyn_cast<RankedTensorType>();
+    if (!shift_ranked_attr_type ||
+        !matchPattern(shift, m_Constant(&shift_attr))) {
+      return failure();
+    }
+
+    DenseIntElementsAttr axis_attr;
+    Value axis = tf_roll_op.axis();
+    auto axis_ranked_attr_type = axis.getType().dyn_cast<RankedTensorType>();
+    if (!axis_ranked_attr_type || !matchPattern(axis, m_Constant(&axis_attr))) {
+      return failure();
+    }
+
+    // Combine duplicate axis and make sure they are in [0, rank(input)) range.
+    auto input_shape = input_ty.getShape();
+    int input_rank = input_shape.size();
+    SmallVector<int32_t, 4> shift_map(input_rank, 0);
+    for (int i = 0; i < axis_attr.getNumElements(); ++i) {
+      int32_t axis_i = axis_attr.getValue<int32_t>(i);
+      if (axis_i < 0) axis_i += input_rank;
+      int32_t shift_i = shift_attr.getValue<int32_t>(i);
+      shift_map[axis_i] += shift_i;
+    }
+
+    SmallVector<int32_t, 4> adjusted_axis;
+    SmallVector<int32_t, 4> adjusted_shift;
+    for (int i = 0; i < input_rank; ++i) {
+      int32_t input_dims_i = input_shape[i];
+      int32_t shift_i = shift_map[i] % input_dims_i;
+      if (shift_i < 0) shift_i += input_dims_i;
+      if (shift_i == 0) continue;
+      adjusted_axis.push_back(i);
+      adjusted_shift.push_back(shift_i);
+    }
+
+    // Convert rolling in each dimension to two Slice ops and one Concat op.
+    auto axis_type =
+        RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
+    auto create_slice_op = [&](int32_t axis_i, int32_t begin_i, int32_t size_i,
+                               Value input) {
+      SmallVector<int64_t, 4> begin_values(input_rank, 0);
+      begin_values[axis_i] = begin_i;
+      auto begin_attr = DenseIntElementsAttr::get(axis_type, begin_values);
+      auto begin =
+          rewriter.create<ConstOp>(op->getLoc(), axis_type, begin_attr);
+
+      SmallVector<int64_t, 4> output_shape;
+      output_shape.append(input_shape.begin(), input_shape.end());
+      output_shape[axis_i] = size_i;
+      auto size_attr = DenseIntElementsAttr::get(axis_type, output_shape);
+      auto size = rewriter.create<ConstOp>(op->getLoc(), axis_type, size_attr);
+
+      auto slice_op_ty =
+          RankedTensorType::get(output_shape, input_ty.getElementType());
+      return rewriter.create<SliceOp>(op->getLoc(), slice_op_ty, input, begin,
+                                      size);
+    };
+
+    auto result = tf_roll_op.input();
+    auto scalar_type =
+        mlir::RankedTensorType::get({}, rewriter.getIntegerType(32));
+    for (int i = 0; i < adjusted_axis.size(); ++i) {
+      int32_t axis_i = adjusted_axis[i];
+      int32_t shift_i = adjusted_shift[i];
+      auto slice_op_1 = create_slice_op(axis_i, input_shape[axis_i] - shift_i,
+                                        shift_i, result);
+      auto slice_op_2 =
+          create_slice_op(axis_i, 0, input_shape[axis_i] - shift_i, result);
+
+      auto dim_attr = DenseIntElementsAttr::get(scalar_type, {axis_i});
+      auto concat_dim =
+          rewriter.create<ConstOp>(op->getLoc(), scalar_type, dim_attr);
+      auto concat_op = rewriter.create<ConcatV2Op>(
+          op->getLoc(), input_ty,
+          ArrayRef<Value>({slice_op_1.output(), slice_op_2.output()}),
+          concat_dim);
+      result = concat_op.getResult();
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Decomposes Softmax and LogSoftmax to primitive TF ops, using the following
+// formulas:
+//
+//     softmax = div(exp(logits), sum(exp(logits)))
+//     log_softmax = sub(logits, log(sum(exp(logits))))
+//
+// TODO(jpienaar): Evaluate benefit of templating here.
+template <typename OpTy, bool use_log = true>
+class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
+ public:
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    Value logits = op.logits();
+    auto loc = op.getLoc();
+
+    // Note that the TensorFlow Softmax op verifies that the input rank is
+    // greater than or equal to one so the following sequence is valid.
+    auto reduce_dim =
+        rewriter.create<TF::ConstOp>(loc, GetI64ElementsAttr({-1}, &rewriter));
+
+    // Exponential of input values and then their sum can be very large here.
+    // Division with large denominator is numerically unstable. To improve
+    // numerical stability, subtract each batch with their max element so that
+    // the maximum input value is zero. It can be shown that softmax computed
+    // after adding or subtracting all inputs in a batch using a common value
+    // gives mathematically equivalent result.
+    auto max_logits =
+        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+    auto shifted_logits = rewriter.create<TF::SubOp>(loc, logits, max_logits);
+
+    // Exponentiate the inputs.
+    Value exp = rewriter.create<TF::ExpOp>(loc, shifted_logits);
+
+    // Compute summation of the exponentials.
+    Value sum =
+        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+
+    if (use_log) {
+      Value log = rewriter.create<TF::LogOp>(loc, sum);
+      rewriter.replaceOpWithNewOp<TF::SubOp>(op, shifted_logits, log);
+    } else {
+      rewriter.replaceOpWithNewOp<TF::DivOp>(op, exp, sum);
+    }
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition>(context);
-  populateWithGenerated(context, *patterns);
+  // clang-format off
+  patterns->insert<
+      LowerAddNOp,
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerLgammaOp,
+      LowerPackOp,
+      LowerBatchToSpaceND,
+      LowerSpaceToBatchNDOp,
+      LowerResizeNearestNeighbor,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
+  // clang-format on
+  populateWithGenerated(*patterns);
+}
+
+void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerAddNOp,
+      LowerBatchToSpaceND,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerPackOp,
+      LowerResizeNearestNeighbor,
+      LowerSoftmaxOp<TF::LogSoftmaxOp, /*use_log=*/true>,
+      LowerSoftmaxOp<TF::SoftmaxOp, /*use_log=*/false>,
+      LowerSpaceToBatchNDOp,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
+  // clang-format on
+
+  // Populate the relevant generated patterns.
+  // clang-format off
+  patterns->insert<
+      LowerBiasAddGradOp,
+      LowerDivNoNanOp,
+      LowerEmptyOp,
+      LowerFakeQuantWithMinMaxArgs,
+      LowerFillOp,
+      LowerIsNanOp,
+      LowerL2LossOp,
+      LowerMulNoNanOp,
+      LowerPadOp,
+      LowerReciprocal,
+      LowerRintOp,
+      LowerRoundOpOnFloatTensor,
+      LowerRoundOpOnIntTensor,
+      LowerRsqrtGradOp,
+      LowerScatterNdOp,
+      LowerSeluOp,
+      LowerSeluGradOp,
+      LowerSizeOp,
+      LowerSoftmaxCrossEntropyWithLogitsOp,
+      LowerSparseSoftmaxCrossEntropyWithLogitsOp,
+      LowerSqrtGradOp,
+      LowerSquareOp,
+      LowerSquaredDifferenceOpOnRealTensors,
+      LowerSquaredDifferenceOpOneComplexTensors,
+      LowerTanhGradOp,
+      LowerXdivyOp,
+      LowerXlog1pyOp,
+      LowerXlogyOp>(context);
+  // clang-format on
+}
+
+void PopulateLoweringQuantizedPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      LowerDequantizeOp>(context);
+  // clang-format on
 }
 
 }  // namespace TF

@@ -18,7 +18,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["loader.h"])
@@ -38,6 +38,14 @@ cc_library(
     hdrs = ["tag_constants.h"],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "mobile_only_deps",
+#     visibility = ["//visibility:private"],
+#     deps = if_mobile(["//tensorflow/core:portable_tensorflow_lib"]),
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "reader",
     srcs = ["reader.cc"],
@@ -45,12 +53,15 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_cc",
+        ":metrics",
+        ":util",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ]),
 )
 
@@ -63,6 +74,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":constants",
+        ":metrics",
         ":reader",
         ":tag_constants",
         "//tensorflow/core:lib",
@@ -111,6 +123,8 @@ cc_library(
         ":loader_util",
         ":reader",
     ] + if_not_mobile([
+        ":metrics",
+        ":util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -127,6 +141,9 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
+        ":metrics",
+        ":reader",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
@@ -155,6 +172,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":bundle_v2",
+        ":metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -173,6 +191,7 @@ tf_cc_test(
     deps = [
         ":constants",
         ":loader",
+        ":metrics",
         ":reader",
         ":signature_constants",
         ":tag_constants",
@@ -247,6 +266,7 @@ filegroup(
         "testdata/StaticHashTableModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
+        "testdata/SimpleV1Model/**",
     ]),
 )
 
@@ -280,4 +300,66 @@ exports_files(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
     ]),
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
+    name = "metrics_impl",
+    srcs = [
+        "metrics.cc",
+        "metrics.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
+    deps = if_static([
+        ":metrics_impl",
+    ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+)
+
+tf_cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
 )

@@ -1,0 +1,18 @@
+path: "tensorflow.data.ThreadingOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.options.ThreadingOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "max_intra_op_parallelism"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "private_threadpool_size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

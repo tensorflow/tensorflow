@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 
@@ -65,6 +65,12 @@ class ConvertSSDPostProcessFunc {
   LogicalResult AddFloatAttr(FuncOp func, DictionaryAttr attrs,
                              const std::string& attribute,
                              flexbuffers::Builder* builder);
+
+  LogicalResult HasIntAttr(FuncOp func, DictionaryAttr attrs,
+                           const std::string& attribute);
+
+  LogicalResult HasFloatAttr(FuncOp func, DictionaryAttr attrs,
+                             const std::string& attribute);
 
   FuncOp func_;
   mlir::TF::FuncAttr attr_;

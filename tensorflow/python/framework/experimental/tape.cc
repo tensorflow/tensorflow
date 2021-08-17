@@ -47,35 +47,19 @@ Status RegisterGradients(GradientRegistry* registry) {
 PYBIND11_MODULE(_tape, m) {
   py::class_<Tape>(m, "Tape")
       .def(py::init([](bool persistent) { return new Tape(persistent); }))
-      .def("Watch",
-           [](Tape* self, AbstractTensorHandle* t) { self->Watch(ToId(t)); })
+      .def("Watch", [](Tape* self, AbstractTensorHandle* t) { self->Watch(t); })
       .def("ComputeGradient",
-           [](Tape* self, TapeVSpace* vspace,
+           [](Tape* self, AbstractContext* ctx,
               std::vector<AbstractTensorHandle*> target_tensors,
               std::vector<AbstractTensorHandle*> source_tensors,
               std::vector<AbstractTensorHandle*> output_gradients) {
-             std::vector<int64> target_tensor_ids;
-             std::vector<int64> source_tensor_ids;
-             target_tensor_ids.reserve(target_tensors.size());
-             source_tensor_ids.reserve(source_tensors.size());
-             for (auto t : target_tensors) {
-               target_tensor_ids.emplace_back(ToId(t));
-             }
-             for (auto t : source_tensors) {
-               source_tensor_ids.emplace_back(ToId(t));
-             }
-             std::unordered_map<tensorflow::int64, TapeTensor>
-                 source_tensors_that_are_targets;
-             std::vector<AbstractTensorHandle*> results;
-             Status s = self->ComputeGradient(
-                 *vspace, target_tensor_ids, source_tensor_ids,
-                 source_tensors_that_are_targets, output_gradients, &results,
-                 /*build_default_zeros_grads=*/false);
+             std::vector<AbstractTensorHandle*> results(source_tensors.size());
+             Status s = self->ComputeGradient(ctx, target_tensors,
+                                              source_tensors, output_gradients,
+                                              absl::MakeSpan(results));
              MaybeRaiseRegisteredFromStatus(s);
              return results;
            });
-  py::class_<TapeVSpace>(m, "TapeVSpace")
-      .def(py::init([](AbstractContext* ctx) { return new TapeVSpace(ctx); }));
   py::class_<GradientRegistry>(m, "GradientRegistry").def(py::init([]() {
     auto registry = new GradientRegistry();
     MaybeRaiseRegisteredFromStatus(RegisterGradients(registry));

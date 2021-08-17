@@ -31,7 +31,6 @@ import six
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -167,7 +166,6 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
       return 2e-2, 1e-7
     return 2e-4, 1e-20
 
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testBadValues(self):
     q = np.random.uniform(low=0.3, high=20., size=[10])
     with self.session() as sess:
@@ -186,16 +184,36 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
 
     with self.session() as sess:
       with self.test_scope():
-        y = _zeta([1., 1.1], [-1.1, -1.])
+        y = _zeta([1.1, 1.2, 2.1, 2.2, 3.1], [-2.0, -1.1, -1.0, -0.5, -0.1])
       actual = sess.run(y)
+    # For q <= 0, x must be an integer.
+    self.assertTrue(np.all(np.isnan(actual)))
 
-    # When q is negative, zeta is not defined
-    # if q is an integer or x is not an integer.
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([2.0, 4.0, 6.0], [0.0, -1.0, -2.0])
+      actual = sess.run(y)
+    # For integer q <= 0, zeta has poles with a defined limit of +inf where x is
+    # an even integer.
     self.assertTrue(np.all(np.isinf(actual)))
+
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([3.0, 5.0, 7.0], [0.0, -1.0, -2.0])
+      actual = sess.run(y)
+    # For non-positive integer q, zeta has poles with an undefined limit where x
+    # is an odd integer.
+    self.assertTrue(np.all(np.isnan(actual)))
+
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([1.1, 2.2, 3.3], [-1.1, -1.0, 0.0])
+      actual = sess.run(y)
+    # For non-positive q, zeta is not defined if x is not an integer.
+    self.assertTrue(np.all(np.isnan(actual)))
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testLargeXSmallQ(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == np.float64:
@@ -218,7 +236,6 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testSmallValues(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     # Test values near zero.
@@ -234,7 +251,6 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testMediumValues(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     x = np.random.uniform(low=1.1, high=100., size=[NUM_SAMPLES]).astype(dtype)
@@ -247,7 +263,6 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
   @parameterized.parameters((np.float32, 2e-2, 1e-5), (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testLargeValues(self, dtype, rtol, atol):
     x = np.random.uniform(
         low=100., high=int(1e3), size=[NUM_SAMPLES]).astype(dtype)
@@ -281,7 +296,6 @@ class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
       return 2e-2, 1e-7
     return 2e-4, 1e-20
 
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testBadValues(self):
     x = np.random.uniform(low=0.3, high=20., size=[10])
     with self.session() as sess:
@@ -300,7 +314,6 @@ class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testRecoverDigamma(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     if self.device not in ['XLA_GPU', 'XLA_CPU'] and dtype == np.float64:
@@ -320,7 +333,6 @@ class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testSmallN(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     # Test values near zero.
@@ -336,7 +348,6 @@ class PolygammaTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))
-  @test_util.disable_mlir_bridge('TODO(b/165736950): Add support in MLIR')
   def testMediumLargeN(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     n = np.random.randint(low=5, high=10, size=[NUM_SAMPLES]).astype(dtype)

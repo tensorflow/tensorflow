@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_TYPES_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -104,11 +105,46 @@ struct TTypes {
 
 typedef typename TTypes<float, 1>::Tensor32Bit::Index Index32;
 
-template <typename DSizes>
-Eigen::DSizes<Index32, DSizes::count> To32BitDims(const DSizes& in) {
-  Eigen::DSizes<Index32, DSizes::count> out;
-  for (int i = 0; i < DSizes::count; ++i) {
-    out[i] = in[i];
+template <typename Index, int NumDims>
+bool SafeFor32BitIndexing(const Eigen::DSizes<Index, NumDims>& in) {
+  for (int i = 0; i < NumDims; ++i) {
+    if (in[i] > std::numeric_limits<Index32>::max()) return false;
+  }
+  return true;
+}
+
+template <typename Index, size_t NumDims>
+bool SafeFor32BitIndexing(const Eigen::array<Index, NumDims>& in) {
+  for (size_t i = 0; i < NumDims; ++i) {
+    if (in[i] > std::numeric_limits<Index32>::max()) return false;
+  }
+  return true;
+}
+
+template <typename TensorType,
+          typename Enable = typename TTypes<
+              typename TensorType::Scalar, TensorType::NumIndices>::Tensor32Bit>
+bool SafeFor32BitIndexing(TensorType in) {
+  return in.size() <= std::numeric_limits<Index32>::max();
+}
+
+template <typename Index, int NumDims>
+Eigen::DSizes<Index32, NumDims> To32Bit(
+    const Eigen::DSizes<Index, NumDims>& in) {
+  DCHECK(SafeFor32BitIndexing(in));
+  Eigen::DSizes<Index32, NumDims> out;
+  for (int i = 0; i < NumDims; ++i) {
+    out[i] = static_cast<Index32>(in[i]);
+  }
+  return out;
+}
+
+template <typename Index, size_t NumDims>
+Eigen::array<Index32, NumDims> To32Bit(const Eigen::array<Index, NumDims>& in) {
+  DCHECK(SafeFor32BitIndexing(in));
+  Eigen::array<Index32, NumDims> out;
+  for (size_t i = 0; i < NumDims; ++i) {
+    out[i] = static_cast<Index32>(in[i]);
   }
   return out;
 }
@@ -119,7 +155,44 @@ typename TTypes<typename TensorType::Scalar,
 To32Bit(TensorType in) {
   typedef typename TTypes<typename TensorType::Scalar,
                           TensorType::NumIndices>::Tensor32Bit RetType;
-  return RetType(in.data(), To32BitDims(in.dimensions()));
+  DCHECK(SafeFor32BitIndexing(in));
+  return RetType(in.data(), To32Bit(in.dimensions()));
+}
+
+namespace internal {
+
+template <typename Device>
+struct MaybeWith32BitIndexingImpl {
+  template <typename Func, typename... Args>
+  void operator()(Func func, Args&&... args) const {
+    func(std::forward<Args>(args)...);
+  }
+};
+
+template <>
+struct MaybeWith32BitIndexingImpl<Eigen::GpuDevice> {
+  template <typename Func, typename... Args>
+  void operator()(Func func, Args&&... args) const {
+    auto all = [](const auto&... bool_vals) {
+      for (bool b : {bool_vals...}) {
+        if (!b) return false;
+      }
+      return true;
+    };
+    if (all(SafeFor32BitIndexing(std::forward<Args>(args))...)) {
+      func(To32Bit(std::forward<Args>(args))...);
+    } else {
+      func(std::forward<Args>(args)...);
+    }
+  }
+};
+
+}  // namespace internal
+
+template <typename Device, typename Func, typename... Args>
+void MaybeWith32BitIndexing(Func func, Args&&... args) {
+  return internal::MaybeWith32BitIndexingImpl<Device>()(
+      func, std::forward<Args>(args)...);
 }
 
 }  // namespace tensorflow

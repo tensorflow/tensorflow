@@ -78,7 +78,7 @@ std::vector<bool> GetDynamicInputInfo(
     const xla::ComputationLayout& computation_layout) {
   std::vector<bool> input_is_dynamic;
   input_is_dynamic.reserve(computation_layout.parameter_count());
-  for (int64 i = 0; i < computation_layout.parameter_count(); ++i) {
+  for (int64_t i = 0; i < computation_layout.parameter_count(); ++i) {
     input_is_dynamic.push_back(
         !computation_layout.parameter_shape(i).is_static());
   }
@@ -88,14 +88,14 @@ std::vector<bool> GetDynamicInputInfo(
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTuples(
     xla::LocalExecutable* executable, XRTMemoryManager::WorkingSet* working_set,
     xla::Backend* backend, const std::vector<InputCoords>& input_coords,
-    bool release_inputs) {
+    bool release_inputs, se::DeviceMemoryAllocator* allocator) {
   const xla::ComputationLayout& computation_layout =
       executable->executable()->module_config().entry_computation_layout();
 
   return GetInputTupleAllocations(
       input_coords, working_set, backend, computation_layout.parameter_count(),
-      [&](int64 i) { return computation_layout.parameter_shape(i); },
-      release_inputs);
+      [&](int64_t i) { return computation_layout.parameter_shape(i); },
+      release_inputs, allocator);
 }
 
 xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetChainedOpInputTuples(
@@ -128,7 +128,7 @@ std::vector<int32> PrepareMetadata(const xla::Shape& shape) {
   DCHECK(shape.IsArray());
   // Each dimension size is stored as a S32.
   std::vector<int32> result(shape.dimensions_size());
-  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
     result[i] = shape.dimensions(i);
   }
   return result;
@@ -206,7 +206,7 @@ Status UpdateDynamicInputs(
   TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
                                          stream->parent()->platform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
-  for (int64 i = 0; i < compile_time_shapes.size(); i++) {
+  for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     const xla::Shape& compile_time_shape = compile_time_shapes[i].shape();
     if (compile_time_shape.is_static()) {
       continue;
@@ -266,26 +266,27 @@ Status UpdateDynamicInputs(
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
     se::Stream* stream, xla::ExecutionOutput run_result, xla::Backend* backend,
-    int device_ordinal) {
+    int device_ordinal, se::DeviceMemoryAllocator* allocator) {
   XRTTupleAllocation* output_tuple;
   xla::ScopedShapedBuffer* shaped_buffer = run_result.MutableResult();
   if (shaped_buffer->on_device_shape().is_dynamic()) {
     // Update dynamic shapes from output buffer, and create a XRT tensor with
     // dimension sizes read from metadata.
-    xla::Shape output_host_shape = shaped_buffer->on_host_shape();
     xla::Shape output_device_shape = shaped_buffer->on_device_shape();
     TF_ASSIGN_OR_RETURN(
         auto transfer_manager,
         xla::TransferManager::GetForPlatform(stream->parent()->platform()));
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, shaped_buffer, &output_host_shape, &output_device_shape));
+        stream, shaped_buffer, &output_device_shape));
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        *shaped_buffer, output_host_shape, output_device_shape, backend,
-        device_ordinal, &output_tuple));
+        *shaped_buffer,
+        xla::ShapeUtil::DeviceShapeToHostShape(output_device_shape),
+        output_device_shape, backend, device_ordinal, &output_tuple,
+        allocator));
   } else {
     // Fast-path: Don't copy shapes of output buffer.
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        *shaped_buffer, backend, device_ordinal, &output_tuple));
+        *shaped_buffer, backend, device_ordinal, &output_tuple, allocator));
   }
   // After the output tuple is created, we can release the output result
   // buffers, to make sure they won't be cleared by its destructor.
@@ -308,9 +309,10 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
           executable->executable()->module().input_output_alias_config(),
           input_tuples, input_is_dynamic, release_inputs));
 
+  se::DeviceMemoryAllocator* allocator = device_ref->allocator();
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(device_ref->backend()->memory_allocator());
+  run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&context->eigen_cpu_device());
   run_options.set_rng_seed(rng_seed);
   if (config.run_id() != 0) {
@@ -322,7 +324,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     run_options.set_device_assignment(
         &executable->executable()->module_config().static_device_assignment());
   }
-  xla::GpuExecutableRunOptions gpu_options;
+  xla::gpu::GpuExecutableRunOptions gpu_options;
   std::vector<xla::GlobalDeviceId> gpu_global_ids;
   if (config.local_replica_mapping_size() > 0) {
     gpu_global_ids.reserve(config.local_replica_mapping_size());
@@ -334,8 +336,8 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
   if (nccl_factory != nullptr) {
     auto uid_callback =
-        [&](const xla::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
-      std::vector<xla::int64> replicas;
+        [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
+      std::vector<int64_t> replicas;
       for (auto& device : key.devices()) {
         replicas.push_back(device.value());
       }
@@ -359,7 +361,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple_ptr,
       CreateOutputTuple(stream, std::move(run_result), device_ref->backend(),
-                        device_ref->device_ordinal()));
+                        device_ref->device_ordinal(), allocator));
   // The ScopedShapedBuffer returned by the executable Run() API, in case of
   // input/output buffer aliasing, might have holes in it, which need to be
   // filled using the proper input tuples buffers which are the source of
@@ -388,7 +390,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   // memory, until either the runfn can run, or we run out of freeable memory.
   return memory_manager->Run<RefPtr<XRTTupleAllocation>>(
       runfn, device_ref->backend(), device_ref->device_ordinal(),
-      /*requested_free_size=*/0);
+      /*requested_free_size=*/0, device_ref->allocator());
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
@@ -402,7 +404,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
   TF_ASSIGN_OR_RETURN(
       std::vector<RefPtr<XRTTupleAllocation>> input_tuples,
       GetInputTuples(executable, &working_set, device_ref->backend(),
-                     input_coords, release_inputs));
+                     input_coords, release_inputs, device_ref->allocator()));
   return ExecuteComputation(context, memory_manager.get(), device_ref,
                             executable, input_tuples, release_inputs, stream,
                             rng_seed, config);
@@ -441,7 +443,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
 
   const Tensor& execution_input = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_input.shape()));
-  int64 compilation_handle = execution_input.scalar<int64>()();
+  int64_t compilation_handle = execution_input.scalar<int64_t>()();
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
@@ -571,7 +573,8 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   };
 
   return ExecuteChained(context, memory_manager, device_ref.backend(),
-                        device_ref.device_ordinal(), plan, config, execute_op);
+                        device_ref.device_ordinal(), plan, config, execute_op,
+                        device_ref.allocator());
 }
 
 XRTExecuteChainedOp::~XRTExecuteChainedOp() = default;

@@ -34,7 +34,7 @@ namespace tensorflow {
 //
 // CancellationToken values must be created by a call to
 // CancellationManager::get_cancellation_token.
-typedef int64 CancellationToken;
+typedef int64_t CancellationToken;
 
 // A callback that is invoked when a step is canceled.
 //
@@ -181,6 +181,13 @@ class CancellationManager {
   mutex mu_;
   std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
 };
+
+// Registers the given cancellation callback, returning a function that can be
+// used to deregister the callback. If `cancellation_manager` is NULL, no
+// registration occurs and `deregister_fn` will be a no-op.
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> callback,
+                                    std::function<void()>* deregister_fn);
 
 }  // namespace tensorflow
 

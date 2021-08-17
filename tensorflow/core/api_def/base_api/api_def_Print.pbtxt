@@ -15,7 +15,7 @@ END
   out_arg {
     name: "output"
     description: <<END
-= The unmodified `input` tensor
+The unmodified `input` tensor
 END
   }
   attr {

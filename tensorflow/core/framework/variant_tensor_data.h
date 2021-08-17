@@ -125,6 +125,12 @@ class VariantTensorData {
 // For backwards compatibility for when this was a proto
 std::string ProtoDebugString(const VariantTensorData& object);
 
+template <typename... TensorConstructorArgs>
+Tensor* VariantTensorData::add_tensor(TensorConstructorArgs&&... args) {
+  tensors_.emplace_back(std::forward<TensorConstructorArgs>(args)...);
+  return &tensors_.back();
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_

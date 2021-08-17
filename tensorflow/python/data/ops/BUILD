@@ -1,16 +1,15 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":iterator_ops",
+        ":options",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -27,10 +26,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:distribute_options",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
-        "//tensorflow/python/data/experimental/ops:stats_options",
-        "//tensorflow/python/data/experimental/ops:threading_options",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:options",
         "//tensorflow/python/data/util:random_seed",
@@ -43,31 +39,12 @@ py_library(
 )
 
 py_library(
-    name = "readers",
-    srcs = ["readers.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dataset_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python:tf_export",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/util:convert",
-    ],
-)
-
-py_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":optional_ops",
+        ":options",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -84,9 +61,31 @@ py_library(
 )
 
 py_library(
+    name = "multi_device_iterator_ops",
+    srcs = ["multi_device_iterator_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dataset_ops",
+        ":iterator_ops",
+        ":options",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
     name = "optional_ops",
     srcs = ["optional_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
@@ -99,22 +98,31 @@ py_library(
 )
 
 py_library(
-    name = "multi_device_iterator_ops",
-    srcs = ["multi_device_iterator_ops.py"],
-    srcs_version = "PY2AND3",
+    name = "options",
+    srcs = ["options.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
+    ],
+)
+
+py_library(
+    name = "readers",
+    srcs = ["readers.py"],
+    srcs_version = "PY3",
     deps = [
         ":dataset_ops",
-        ":iterator_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/util:tf_export",
     ],
 )

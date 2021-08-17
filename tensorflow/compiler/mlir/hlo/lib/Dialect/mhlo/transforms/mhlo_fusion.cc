@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"              // TF:llvm-project
@@ -88,13 +90,29 @@ bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
   return lhs_value < rhs_value;
 }
 
+bool IsMhlo(Operation* op) {
+  Dialect* dialect = op->getDialect();
+  return dialect && isa<MhloDialect>(dialect);
+}
+
+bool IsFusibleWithOperand(Operation* op) {
+  return IsMhlo(op) &&
+         (op->hasTrait<::mlir::OpTrait::Elementwise>() || isa<ReduceOp>(op));
+}
+
+bool IsFusibleWithConsumer(Operation* op) {
+  return IsMhlo(op) && (op->hasTrait<::mlir::OpTrait::Elementwise>() ||
+                        matchPattern(op, m_Constant()));
+}
+
+Value InferEffectiveWorkloadShape(Value v) {
+  Operation* op = v.getDefiningOp();
+  return op && isa<ReduceOp>(op) ? op->getOperand(0) : v;
+}
+
 bool IsFusible(Operation* op) {
-  if (matchPattern(op, m_Constant())) {
-    return true;
-  }
-  auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
-  return op_fusibility && (op_fusibility.isFusibleWithOperand() ||
-                           op_fusibility.isFusibleWithConsumer());
+  return matchPattern(op, m_Constant()) || IsFusibleWithConsumer(op) ||
+         IsFusibleWithOperand(op);
 }
 
 SmallVector<Value, 4> GetInputsOfFusionPattern(const FusionPattern& pattern) {
@@ -414,16 +432,12 @@ class FusionPlanner {
       return false;
     }
 
-    auto op_from_fusibility =
-        dyn_cast<InferFusibilityOpInterface>(op_list_[node_from]);
-    if (op_from_fusibility && !op_from_fusibility.isFusibleWithConsumer()) {
+    if (!IsFusibleWithConsumer(op_list_[node_from])) {
       // This op cannot be fused with its consumers.
       return false;
     }
 
-    auto op_to_fusibility =
-        dyn_cast<InferFusibilityOpInterface>(op_list_[node_to]);
-    if (op_to_fusibility && !op_to_fusibility.isFusibleWithOperand()) {
+    if (!IsFusibleWithOperand(op_list_[node_to])) {
       // This op cannot be fused with its operands.
       return false;
     }
@@ -431,21 +445,10 @@ class FusionPlanner {
     // Output shapes of a fusion pattern should be compatible as described in
     // the document of this class.
     SmallVector<Value, 4> results = GetResultsOfFusedPattern(from, to);
-    auto get_workload_shape = [](Value v) {
-      Operation* op = v.getDefiningOp();
-      // Block argument
-      if (!op) return v;
-      auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
-      // Const value
-      if (!op_fusibility) return v;
-      llvm::Optional<Value> workload =
-          op_fusibility.inferEffectiveWorkloadShape();
-      return workload.hasValue() ? *workload : v;
-    };
 
-    Value ref = get_workload_shape(results[0]);
+    Value ref = InferEffectiveWorkloadShape(results[0]);
     if (!llvm::all_of(results, [&](Value result) {
-          Value val = get_workload_shape(result);
+          Value val = InferEffectiveWorkloadShape(result);
           return shape_analysis_.HasSameShape(ref, val);
         })) {
       return false;
@@ -479,7 +482,7 @@ class FusionPlanner {
   EquivalenceClasses<int32_t> leader_for_node_;
 };
 
-struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
+struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
     if (!IsTargetFunc(func)) {
@@ -533,7 +536,7 @@ struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
         locations.push_back(op->getLoc());
       }
       Location fused_loc =
-          FusedLoc::get(locations, pattern.back()->getContext());
+          FusedLoc::get(pattern.back()->getContext(), locations);
 
       SmallVector<Value, 4> inputs = GetInputsOfFusionPattern(pattern);
       SmallVector<Value, 4> outputs = GetOutputsOfFusionPattern(pattern);

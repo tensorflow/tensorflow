@@ -57,7 +57,7 @@ class SparseReorderTest(test.TestCase):
     self.assertAllEqual((5, 6), sp_output.get_shape())
 
   def testAlreadyInOrder(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(input_val)
 
@@ -68,7 +68,7 @@ class SparseReorderTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedAlreadyInOrder(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(sp_input)
@@ -80,7 +80,7 @@ class SparseReorderTest(test.TestCase):
 
   def testOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       for _ in range(5):  # To test various random permutations
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_output = sparse_ops.sparse_reorder(input_val)
@@ -94,7 +94,7 @@ class SparseReorderTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testFeedOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       for _ in range(5):  # To test various random permutations
         sp_input = self._SparseTensorPlaceholder()
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
@@ -108,7 +108,7 @@ class SparseReorderTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradients(self):
-    with self.session(use_gpu=False):
+    with self.session():
       for _ in range(5):  # To test various random permutations
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_input = sparse_tensor.SparseTensor(input_val.indices,
@@ -123,6 +123,18 @@ class SparseReorderTest(test.TestCase):
             input_val.values.shape,
             x_init_value=input_val.values)
         self.assertLess(err, 1e-11)
+
+  def testShapeOverflow(self):
+    # Test case for GitHub issue 45392
+    sp_input = sparse_tensor.SparseTensor(
+        indices=[[0, 0, 0, 0, 0, 0]],
+        values=[0.0],
+        dense_shape=[4096, 4096, 4096, 4096, 4096, 4096])
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reorder(sp_input)
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_output.get_shape())
 
 
 if __name__ == "__main__":

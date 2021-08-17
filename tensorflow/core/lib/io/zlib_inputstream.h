@@ -66,9 +66,13 @@ class ZlibInputStream : public InputStreamInterface {
   // ABORTED:      If inflate() fails, we return the error code with the
   //               error message in `z_stream_->msg`.
   // others:       If reading from stream failed.
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
-  int64 Tell() const override;
+#if defined(TF_CORD_SUPPORT)
+  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
+#endif
+
+  int64_t Tell() const override;
 
   Status Reset() override;
 
@@ -126,7 +130,7 @@ class ZlibInputStream : public InputStreamInterface {
   size_t NumUnreadBytes() const;
 
   // Number of *uncompressed* bytes that have been read from this stream.
-  int64 bytes_read_;
+  int64_t bytes_read_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ZlibInputStream);
 };

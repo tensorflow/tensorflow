@@ -52,7 +52,8 @@ Status EagerKernelExecute(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
-    absl::Span<TensorHandle*> retvals);
+    absl::Span<TensorHandle*> retvals,
+    const absl::optional<ManagedStackTrace>& stack_trace = {});
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for

@@ -179,8 +179,8 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       "DeleteRecursively",
       [](const std::string& dirname, PyTransactionToken* token) {
         py::gil_scoped_release release;
-        tensorflow::int64 undeleted_files;
-        tensorflow::int64 undeleted_dirs;
+        int64_t undeleted_files;
+        int64_t undeleted_dirs;
         auto status = tensorflow::Env::Default()->DeleteRecursively(
             dirname, &undeleted_files, &undeleted_dirs);
         if (status.ok() && (undeleted_files > 0 || undeleted_dirs > 0)) {
@@ -239,7 +239,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              py::gil_scoped_release release;
              auto* env = tensorflow::Env::Default();
              std::unique_ptr<WritableFile> self;
-             const auto status = mode.find("a") == std::string::npos
+             const auto status = mode.find('a') == std::string::npos
                                      ? env->NewWritableFile(filename, &self)
                                      : env->NewAppendableFile(filename, &self);
              py::gil_scoped_acquire acquire;
@@ -257,7 +257,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       // to be a reference.
       .def("tell",
            [](WritableFile* self) {
-             tensorflow::int64 pos = -1;
+             int64_t pos = -1;
              py::gil_scoped_release release;
              const auto status = self->Tell(&pos);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -294,7 +294,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
            py::arg("filename"), py::arg("buffer_size"),
            py::arg("token") = (PyTransactionToken*)nullptr)
       .def("read",
-           [](BufferedInputStream* self, tensorflow::int64 bytes_to_read) {
+           [](BufferedInputStream* self, int64_t bytes_to_read) {
              py::gil_scoped_release release;
              tensorflow::tstring result;
              const auto status = self->ReadNBytes(bytes_to_read, &result);
@@ -313,7 +313,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              return py::bytes(output);
            })
       .def("seek",
-           [](BufferedInputStream* self, tensorflow::int64 pos) {
+           [](BufferedInputStream* self, int64_t pos) {
              py::gil_scoped_release release;
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Seek(pos));
            })

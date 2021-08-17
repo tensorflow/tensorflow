@@ -150,7 +150,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testResourceAssignments(self):
-    with self.session(use_gpu=True):
+    with self.session():
       var = resource_variable_ops.ResourceVariable(0.0)
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)

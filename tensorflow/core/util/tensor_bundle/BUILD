@@ -18,7 +18,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # To be exported to tensorflow/core:mobile_srcs.

@@ -83,7 +83,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64 result_buffer_index,
+      int64_t result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
 
@@ -95,7 +95,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
     return buffer_infos_;
   }
-  int64 result_buffer_index() const { return result_buffer_index_; }
+  int64_t result_buffer_index() const { return result_buffer_index_; }
 
  private:
   // Contains the compiled computation: an object file.
@@ -108,7 +108,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // Contains which buffer index into |buffer_sizes| was designated to the
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
-  const int64 result_buffer_index_;
+  const int64_t result_buffer_index_;
 
   // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
   // otherwise is nullptr.
@@ -125,27 +125,24 @@ class CpuCompiler : public LLVMCompiler {
   CpuCompiler();
   ~CpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<
       std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
   RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor,
-                                   se::DeviceMemoryAllocator* device_allocator,
-                                   bool optimize) override;
+                                   se::StreamExecutor* executor, bool optimize,
+                                   const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
@@ -23,7 +24,6 @@ namespace stream_executor {
 namespace gpu {
 
 GpuContext* ExtractGpuContext(GpuExecutor* gpu_exec);
-GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec);
 
 ScopedActivateExecutorContext::ScopedActivateExecutorContext(
     GpuExecutor* gpu_exec)

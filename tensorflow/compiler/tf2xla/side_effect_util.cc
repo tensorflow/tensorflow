@@ -34,15 +34,6 @@ const char kXlaIsPlaceholderForTailOcAttrName[] =
 const char kXlaOriginalOutsideCompilationNodeName[] =
     "_xla_original_oc_node_name";
 
-const char kXlaHostTransferRendezvousNameAttr[] =
-    "_xla_host_transfer_rendezvous";
-
-const char kXlaHostTransferOriginalTypeAttr[] =
-    "_xla_host_transfer_original_type";
-
-const char kXlaHostTransferIsLowerBitsAttr[] =
-    "_xla_host_transfer_is_lower_bits";
-
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
     return errors::InvalidArgument("Node ", node->DebugString(),

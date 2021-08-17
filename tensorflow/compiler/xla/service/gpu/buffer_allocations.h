@@ -70,7 +70,7 @@ class BufferAllocations {
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
   Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
-                  const BufferAssignment* buffer_assignment);
+                  absl::Span<const BufferAllocation> allocations);
 
   std::string ToString() {
     std::string out;

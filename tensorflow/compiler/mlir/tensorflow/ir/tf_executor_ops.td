@@ -144,7 +144,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [
-    OpBuilderDAG<(ins),
+    OpBuilder<(ins),
     [{
       build($_builder, $_state, {});
     }]>
@@ -229,7 +229,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [
-    OpBuilderDAG<(ins),
+    OpBuilder<(ins),
     [{
       build($_builder, $_state, {});
     }]>
@@ -460,7 +460,7 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [
-    OpBuilderDAG<(ins "Type":$result_type,
+    OpBuilder<(ins "Type":$result_type,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       Type token_type = TokenType::get($_builder.getContext());
@@ -530,7 +530,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$token, "ArrayRef<Value>":$operands,
+    OpBuilder<(ins "Value":$token, "ArrayRef<Value>":$operands,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
@@ -618,7 +618,7 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   let hasCanonicalizer = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "ArrayRef<Value>":$operands,
+    OpBuilder<(ins "ArrayRef<Value>":$operands,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "

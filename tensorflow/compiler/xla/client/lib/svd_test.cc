@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace xla {
 
@@ -54,10 +55,13 @@ class SVDTest : public ClientLibraryTestBase {
             {12, 48, 6, 62, 3},
         },
     };
+
+    // Test fails with TensorFloat-32 enabled
+    tensorflow::enable_tensor_float_32_execution(false);
   }
   void TearDown() override { ClientLibraryTestBase::TearDown(); }
 
-  Array3D<float> GetUnitMatrix3D(int32 batch_dim, int32 mat_dim) {
+  Array3D<float> GetUnitMatrix3D(int32_t batch_dim, int32_t mat_dim) {
     Array3D<float> result(batch_dim, mat_dim, mat_dim, 0.0);
     for (int i = 0; i < batch_dim; ++i) {
       for (int j = 0; j < mat_dim; ++j) {
@@ -71,8 +75,8 @@ class SVDTest : public ClientLibraryTestBase {
     Shape u_shape = builder->GetShape(result.u).ValueOrDie();
     Shape v_shape = builder->GetShape(result.v).ValueOrDie();
 
-    int64 m = ShapeUtil::GetDimension(u_shape, -1);
-    int64 n = ShapeUtil::GetDimension(v_shape, -1);
+    int64_t m = ShapeUtil::GetDimension(u_shape, -1);
+    int64_t n = ShapeUtil::GetDimension(v_shape, -1);
 
     auto v = result.v;
     auto u = result.u;
@@ -85,7 +89,7 @@ class SVDTest : public ClientLibraryTestBase {
     }
 
     int num_dims = u_shape.rank();
-    std::vector<int64> broadcast_dims(num_dims - 1);
+    std::vector<int64_t> broadcast_dims(num_dims - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims[num_dims - 2] = num_dims - 1;
     return BatchDot(Mul(u, d, broadcast_dims), TransposeInMinorDims(v),
@@ -94,7 +98,7 @@ class SVDTest : public ClientLibraryTestBase {
 
   XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
     Shape shape = builder->GetShape(m1).ValueOrDie();
-    int64 size = 1;
+    int64_t size = 1;
     for (auto d : shape.dimensions()) {
       size *= d;
     }

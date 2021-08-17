@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_util.h"
@@ -116,7 +117,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
 
   // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               !DeviceFactory::IsPluggableDevice(
+                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
@@ -142,7 +145,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 
   // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               !DeviceFactory::IsPluggableDevice(
+                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::~OpKernel() {}
@@ -209,18 +214,6 @@ void AsyncOpKernel::Compute(OpKernelContext* context) {
   Notification n;
   ComputeAsync(context, [&n]() { n.Notify(); });
   n.WaitForNotification();
-}
-
-// PersistentTensor ----------------------------------------------------------
-
-Tensor* PersistentTensor::AccessTensor(OpKernelConstruction* context) {
-  // the caller has to have a valid context
-  CHECK(context);
-  return &tensor_;
-}
-
-Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
-  return &tensor_;
 }
 
 // OpKernelConstruction ------------------------------------------------------
@@ -298,22 +291,6 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
-}
-
-Status OpKernelConstruction::allocate_persistent(
-    DataType type, const TensorShape& shape, PersistentTensor* out_persistent,
-    Tensor** out_tensor) {
-  // for now just do the same thing as allocate_temp
-  // TODO(misard) add specific memory tracking for persistent tensors
-  Tensor persistent;
-  TF_RETURN_IF_ERROR(allocate_temp(type, shape, &persistent));
-
-  *out_persistent = PersistentTensor(persistent);
-  Tensor* allocated = out_persistent->AccessTensor(this);
-  if (out_tensor) {
-    *out_tensor = allocated;
-  }
   return Status::OK();
 }
 
@@ -777,10 +754,9 @@ Status OpKernelContext::allocate_temp(
     AllocatorAttributes allocator_attr,
     const AllocationAttributes& allocation_attr) {
   if (allocator_attr.scope_id > 0) {
-    // We do not allow ScopedAllocator calls from allocate_temp.  Unlike
-    // allocate_persistent where we return an error if a kernel provides a
-    // meaningful scope_id, here we clear the scope_id and return a temporary
-    // buffer.  This is because it is legal for a kernel to call allocate_temp
+    // We do not allow ScopedAllocator calls from allocate_temp.
+    // Here we clear the scope_id and return a temporary buffer.
+    // This is because it is legal for a kernel to call allocate_temp
     // and then set_output with the temp tensor.
     //
     // We achieve memory correctness by forcing an allocation in set_output and
@@ -799,59 +775,13 @@ Status OpKernelContext::allocate_temp(
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
-      int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
+      int64_t alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
   } else if (record_memory_consumption_) {
     DCHECK(tracking_state_);
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->temp_memory_allocated += out_temp->TotalBytes();
-  }
-  return s;
-}
-
-Status OpKernelContext::allocate_persistent(DataType type,
-                                            const TensorShape& shape,
-                                            PersistentTensor* out_persistent,
-                                            Tensor** out_tensor,
-                                            AllocatorAttributes attr) {
-  if (attr.scope_id > 0) {
-    // ScopedAllocator cannot be used for persistent tensors, because these
-    // tensors may persist across kernel invocations/steps, whereas the backing
-    // tensor for the scoped allocator will be reallocated every step.
-    return errors::Internal(
-        "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
-  }
-  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
-                                            step_id(), "persist", type, &shape);
-  Tensor persistent;
-  Status s = allocate_tensor(type, shape, &persistent, attr);
-  if (s.ok()) {
-    *out_persistent = PersistentTensor(persistent);
-    Tensor* t = out_persistent->AccessTensor(this);
-
-    if (out_tensor) {
-      *out_tensor = t;
-    }
-
-    if (track_allocations()) {
-      Allocator* a = get_allocator(attr);
-      if (a->TracksAllocationSizes()) {
-        // Zero-byte Tensors don't use allocators: check and skip tracking.
-        AllocationDescription alloc_desc;
-        TensorReference tensor_ref(*t);
-        tensor_ref.FillDescription(&alloc_desc);
-        tensor_ref.Unref();
-
-        if (alloc_desc.allocated_bytes()) {  // Non-zero sized tensor.
-          int64 alloc_size = a->AllocatedSize(t->tensor_data().data());
-          int64 alloc_id = a->AllocationId(t->tensor_data().data());
-          record_persistent_memory_allocation(alloc_size, alloc_id);
-        }
-      }
-    } else if (record_memory_consumption_) {
-      record_persistent_memory_allocation(t->TotalBytes());
-    }
   }
   return s;
 }
@@ -1039,7 +969,7 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                               outputs);
 }
 
-void OpKernelContext::record_temp_memory_allocation(int64 size,
+void OpKernelContext::record_temp_memory_allocation(int64_t size,
                                                     const Tensor& t) {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
@@ -1049,7 +979,7 @@ void OpKernelContext::record_temp_memory_allocation(int64 size,
   }
 }
 
-int64 OpKernelContext::temp_memory_allocated() const {
+int64_t OpKernelContext::temp_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->temp_memory_allocated;
@@ -1058,8 +988,8 @@ int64 OpKernelContext::temp_memory_allocated() const {
   }
 }
 
-void OpKernelContext::record_persistent_memory_allocation(int64 size,
-                                                          int64 alloc_id) {
+void OpKernelContext::record_persistent_memory_allocation(int64_t size,
+                                                          int64_t alloc_id) {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->persistent_memory_allocated += size;
@@ -1069,7 +999,7 @@ void OpKernelContext::record_persistent_memory_allocation(int64 size,
   }
 }
 
-int64 OpKernelContext::persistent_memory_allocated() const {
+int64_t OpKernelContext::persistent_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->persistent_memory_allocated;
@@ -1078,13 +1008,13 @@ int64 OpKernelContext::persistent_memory_allocated() const {
   }
 }
 
-std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+std::vector<int64_t> OpKernelContext::persistent_alloc_ids() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
-    return std::vector<int64>(tracking_state_->persistent_alloc_ids.begin(),
-                              tracking_state_->persistent_alloc_ids.end());
+    return std::vector<int64_t>(tracking_state_->persistent_alloc_ids.begin(),
+                                tracking_state_->persistent_alloc_ids.end());
   } else {
-    return std::vector<int64>();
+    return std::vector<int64_t>();
   }
 }
 
@@ -1469,7 +1399,7 @@ Status SupportedDeviceTypesForNode(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
       exists_attr_mismatch = exists_attr_mismatch || was_attr_mismatch;
       if (reg != nullptr) {
-        int32 priority = reg->def.priority();
+        int32_t priority = reg->def.priority();
         prioritized_device_types->emplace_back(device_type, priority);
       }
     }
@@ -1506,12 +1436,12 @@ Status SupportedDeviceTypesForNode(
       TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
     }
 
-    std::sort(prioritized_device_types->begin(),
-              prioritized_device_types->end(),
-              [](const std::pair<DeviceType, int32>& a,
-                 const std::pair<DeviceType, int32>& b) {
-                return a.second > b.second;
-              });
+    std::stable_sort(prioritized_device_types->begin(),
+                     prioritized_device_types->end(),
+                     [](const std::pair<DeviceType, int32>& a,
+                        const std::pair<DeviceType, int32>& b) {
+                       return a.second > b.second;
+                     });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {
@@ -1716,7 +1646,6 @@ template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
-
 
 void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;

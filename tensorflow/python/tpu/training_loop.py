@@ -19,15 +19,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Any, Callable, Iterable, List, Optional, Union
+
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.tpu import tensor_tracer
+from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.types import core as core_types
 
 
-def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
+def while_loop(condition: Callable[..., Any],
+               body: Callable[..., Any],
+               inputs: Optional[List[Any]] = None,
+               infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+               name: Any = None) -> Any:
   """Builds a training loop for TPUs.
 
   The set of loop-carried tensors corresponds to `inputs`.  Both
@@ -41,10 +49,10 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   Args:
     condition: a Python function that builds the loop condition.
     body: a Python function that builds the loop body.
-    inputs: a list of initial values passed into the training loop, or
-      None (equivalent to an empty list).
-    infeed_queue: if not None, the infeed queue from which to append a tuple
-      of arguments as inputs to condition.
+    inputs: a list of initial values passed into the training loop, or None
+      (equivalent to an empty list).
+    infeed_queue: if not None, the infeed queue from which to append a tuple of
+      arguments as inputs to condition.
     name: (Deprecated) Does nothing.
 
   Returns:
@@ -178,7 +186,12 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
       condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
 
-def repeat(n, body, inputs=None, infeed_queue=None, name=None):
+def repeat(
+    n: int,
+    body: Callable[..., Union[core_types.TensorLike, Iterable]],  # pylint:disable=g-bare-generic
+    inputs: Optional[List[core_types.TensorLike]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    name: Any = None) -> List[core_types.TensorLike]:
   """Builds a training loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
@@ -188,11 +201,12 @@ def repeat(n, body, inputs=None, infeed_queue=None, name=None):
   Args:
     n: the number of loop iterations
     body: a Python function that builds the loop body.
-    inputs: a list of initial values passed into the training loop or
-      None (equivalent to an empty list).
-    infeed_queue: if not None, the infeed queue from which to append a tuple
-      of arguments as inputs to condition.
+    inputs: a list of initial values passed into the training loop or None
+      (equivalent to an empty list).
+    infeed_queue: if not None, the infeed queue from which to append a tuple of
+      arguments as inputs to condition.
     name: (Deprecated) Does nothing.
+
   Returns:
     The final values of the loop-carried tensors.
   Raises:

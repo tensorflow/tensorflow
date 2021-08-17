@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import os
 import sys
+from absl import app
 
 import tensorflow as tf
 
@@ -31,7 +32,6 @@ from tensorflow.compiler.mlir.tfr.python.tfr_gen import tfr_gen_from_module
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 Composite = composite.Composite

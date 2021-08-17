@@ -42,6 +42,22 @@ namespace xla {
 // sense.
 class HloReachabilityMap {
  public:
+  // An opaque index that clients can use to make repeated operations for the
+  // same instruction faster, by calling GetIndex once for the instruction,
+  // and then calling the variants of other interfaces that take Index arguments
+  // rather than HloInstruction* arguments.
+  struct Index {
+   public:
+    bool operator==(Index other) const { return v == other.v; }
+    bool operator!=(Index other) const { return v != other.v; }
+
+   private:
+    friend class HloReachabilityMap;
+
+    // Index assigned for a particular instruction.  The value is used to index
+    // into the vector of BitVectors and the BitVectors themselves.
+    int v;
+  };
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
   explicit HloReachabilityMap(
@@ -55,6 +71,18 @@ class HloReachabilityMap {
   // reachability. Trivially an instruction is reachable from itself.
   static std::unique_ptr<HloReachabilityMap> Build(
       const HloComputation* computation);
+
+  // Similar to the above Build operation except that it tries to identify
+  // paths between instructions that do not contain control instructions
+  // and multiple operands, i.e., b is_reachable a == true iff
+  // b = f(f(f(f(f(a), constant), constant), constant).
+  // Further, the only ops allowed in a path are basic math operations such
+  // as add, sub, mul, div.
+  static std::unique_ptr<HloReachabilityMap> BuildWithRestrictions(
+      const HloComputation* computation,
+      absl::FunctionRef<void(const HloInstruction*,
+                             std::vector<HloInstruction*>*)>
+          add_dependencies);
 
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where
@@ -73,19 +101,11 @@ class HloReachabilityMap {
   void FastSetReachabilityToUnion(
       absl::Span<const HloInstruction* const> inputs,
       const HloInstruction* instruction);
+  // As above, but use Index instead if it's already looked up which is even
+  // faster since no hash map lookup will occur.
+  void FastSetReachabilityToUnion(absl::Span<const Index> input_indices,
+                                  Index index);
 
-  // An opaque index that clients can use to make repeated operations for the
-  // same instruction faster, by calling GetIndex once for the instruction,
-  // and then calling the variants of other interfaces that take Index arguments
-  // rather than HloInstruction* arguments.
-  struct Index {
-   private:
-    friend class HloReachabilityMap;
-
-    // Index assigned for a particular instruction.  The value is used to index
-    // into the vector of BitVectors and the BitVectors themselves.
-    int v;
-  };
   Index GetIndex(const HloInstruction* instruction) const {
     Index i;
     i.v = FindOrDie(indices_, GetKey(instruction));
@@ -200,8 +220,9 @@ class HloReachabilityMap {
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
   void SetReachabilityToUnionHelper(
-      absl::Span<const HloInstruction* const> inputs,
-      const HloInstruction* instruction, BitVector* bit_vector);
+      absl::Span<const HloInstruction* const> inputs, Index index);
+  void SetReachabilityToUnionHelper(absl::Span<const Index> input_indices,
+                                    Index index);
 
   uint64 GetKey(const HloInstruction* instruction) const {
     uint64 unique_id = absl::bit_cast<uint32>(instruction->unique_id());

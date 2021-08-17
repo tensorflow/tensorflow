@@ -20,4 +20,9 @@ op {
 END
   }
   summary: "returns `f(inputs)`, where `f`'s body is placed and partitioned."
+    description: <<END
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+END
 }

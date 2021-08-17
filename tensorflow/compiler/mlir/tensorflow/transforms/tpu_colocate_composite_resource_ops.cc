@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -34,6 +34,14 @@ namespace {
 // (packed tensors) with the underlying physical TPU device.
 struct TPUColocateCompositeResourceOps
     : public PassWrapper<TPUColocateCompositeResourceOps, FunctionPass> {
+  StringRef getArgument() const final {
+    return "tf-tpu-colocate-composite-resource-ops";
+  }
+
+  StringRef getDescription() const final {
+    return "Colocate resource with composite device assignment to TPU device.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -116,7 +124,7 @@ void TPUColocateCompositeResourceOps::runOnFunction() {
 
   OpBuilder builder(&getContext());
   for (auto execute_launch : execute_launches) {
-    auto replicate = execute_launch.getParentOfType<tf_device::ReplicateOp>();
+    auto replicate = execute_launch->getParentOfType<tf_device::ReplicateOp>();
     if (!replicate) continue;
 
     ColocateCompositeResourceOpsInReplicate(replicate, &builder);
@@ -129,9 +137,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
 
-static PassRegistration<TPUColocateCompositeResourceOps> pass(
-    "tf-tpu-colocate-composite-resource-ops",
-    "Colocate resource with composite device assignment to TPU device.");
+static PassRegistration<TPUColocateCompositeResourceOps> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

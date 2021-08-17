@@ -20,12 +20,14 @@ the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -47,11 +49,15 @@ class HloLiveRange {
   // LogicalTime represents the time in a virtual clock. Each instruction has
   // one monotonically increasing logical time assigned according to the
   // schedule.
-  using LogicalTime = int64;
+  using LogicalTime = int64_t;
 
   struct TimeBound {
     LogicalTime start;
     LogicalTime end;
+    // The buffer can hold multiple instructions during its life time (each
+    // tenant exclusively owns the buffer at any given time). `end_instruction`
+    // represents the last instruction that the buffer holds.
+    HloPosition end_position;
 
     bool friend operator==(const TimeBound& a, const TimeBound& b) {
       return a.start == b.start && a.end == b.end;
@@ -110,7 +116,8 @@ class HloLiveRange {
   // schedule and store it in the `instruction_schedule` and
   // 'flattened_instruction_sequence`. The end of each computation is tracked in
   // `computation_end_time`.
-  int64 FlattenSchedule(const HloComputation& computation, int64 start_time);
+  int64_t FlattenSchedule(const HloComputation& computation,
+                          int64_t start_time);
 
   // Based on the flattened schedule, calculate the start and end of each
   // buffer.
@@ -195,13 +202,15 @@ class HloLiveRange {
   // Note there is no overlap of live ranges after normalization.
   void NormalizeAliasedBuffers();
 
+  int64_t ComputePeakMemoryMoment() const;
+
   const HloSchedule& schedule_;
   const HloAliasAnalysis& alias_analysis_;
   bool module_scoped_analysis_;
   bool total_order_scheduled_ = true;
 
   HloInstructionSequence flattened_instruction_sequence_;
-  absl::flat_hash_map<const HloInstruction*, int64> instruction_schedule_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> instruction_schedule_;
   absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
   LogicalTime schedule_end_time_;

@@ -72,13 +72,14 @@ TEST(Hash, HashPtrIsNotIdentityFunction) {
   EXPECT_NE(hash<int*>()(ptr), size_t{0xcafe0000});
 }
 
-static void BM_Hash32(int iters, int len) {
+static void BM_Hash32(::testing::benchmark::State& state) {
+  int len = state.range(0);
   std::string input(len, 'x');
   uint32 h = 0;
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     h = Hash32(input.data(), len, 1);
   }
-  testing::BytesProcessed(static_cast<int64>(iters) * len);
+  state.SetBytesProcessed(state.iterations() * len);
   VLOG(1) << h;
 }
 BENCHMARK(BM_Hash32)->Range(1, 1024);

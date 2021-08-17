@@ -44,7 +44,8 @@ using ShouldMakeOperandColMajorCache =
 
 static bool ShouldMakeAllUsersColMajor(const HloInstruction* instruction) {
   for (auto* user : instruction->users()) {
-    optional<int64> operand_idx = ProfitableToMakeDotOperandColumnMajor(*user);
+    optional<int64_t> operand_idx =
+        ProfitableToMakeDotOperandColumnMajor(*user);
     if (!operand_idx || user->operand(*operand_idx) != instruction ||
         absl::c_count(user->operands(), instruction) != 1) {
       return false;
@@ -53,9 +54,9 @@ static bool ShouldMakeAllUsersColMajor(const HloInstruction* instruction) {
   return true;
 }
 
-static optional<int64> ShouldMakeOperandColumnMajor(
+static optional<int64_t> ShouldMakeOperandColumnMajor(
     ShouldMakeOperandColMajorCache* cache, const HloInstruction& instruction) {
-  optional<int64> operand_idx =
+  optional<int64_t> operand_idx =
       ProfitableToMakeDotOperandColumnMajor(instruction);
   if (!operand_idx) {
     return nullopt;
@@ -79,7 +80,7 @@ static optional<int64> ShouldMakeOperandColumnMajor(
 
 static Shape RowMajorShape(const Shape& old_shape) {
   Shape new_shape(old_shape);
-  std::vector<int64> dimension_order(new_shape.dimensions_size());
+  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
   std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
   *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
   return new_shape;
@@ -87,7 +88,7 @@ static Shape RowMajorShape(const Shape& old_shape) {
 
 static Shape ColMajorShape(const Shape& old_shape) {
   Shape new_shape(old_shape);
-  std::vector<int64> dimension_order(new_shape.dimensions_size());
+  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
   std::iota(dimension_order.begin(), dimension_order.end(), 0);
   *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
   return new_shape;
@@ -120,20 +121,20 @@ Status CpuLayoutAssignment::AddBackendConstraints(
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
             RowMajorShape(instruction->operand(i)->shape()), instruction, i));
       }
-    } else if (optional<int64> op_idx =
+    } else if (optional<int64_t> op_idx =
                    ShouldMakeOperandColumnMajor(&cache, *instruction)) {
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           ColMajorShape(op->shape()), instruction, *op_idx));
     } else {
-      for (int64 operand_no = 0; operand_no < instruction->operand_count();
+      for (int64_t operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {
         // Skip operands which already have a constraint.
         if (constraints->OperandLayout(instruction, operand_no) != nullptr) {
           continue;
         }
         // Skip over forwarded operands.
-        if (constraints->OperandBufferForwarded(instruction, operand_no)) {
+        if (constraints->AnyOperandBufferForwarded(instruction, operand_no)) {
           continue;
         }
         // Skip operands with non-array shapes.

@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Utility functions for control flow.
 
 This file is copied from tensorflow/python/ops/control_flow_util.py.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
@@ -95,7 +90,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -118,7 +113,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
 def constant_value(pred):  # pylint: disable=invalid-name
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-  Arguments:
+  Args:
     pred: A scalar, either a Python bool or a TensorFlow boolean variable
       or tensor, or the Python integer 1 or 0.
 

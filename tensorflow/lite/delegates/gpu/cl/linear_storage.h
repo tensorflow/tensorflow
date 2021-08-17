@@ -35,9 +35,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-LinearStorageType DeduceLinearStorageType(
-    TensorStorageType tensor_storage_type);
-
 // Represent GPU 1D-array of FLT4(float4/half4) values
 // Can use inside texture2d or buffer
 class LinearStorage : public GPUObject {

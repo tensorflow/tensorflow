@@ -22,6 +22,7 @@ import copy
 import functools
 import itertools
 import multiprocessing.pool
+import os
 import sys
 import time
 import weakref
@@ -70,6 +71,7 @@ from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -80,9 +82,12 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model.load import load
+from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 try:
@@ -119,6 +124,16 @@ def _spec_for_value(value):
     return value
 
 
+# This dummy decorator imitates ordinary decorators utilizing tf_decorator.
+def dummy_tf_decorator(method):
+
+  def wrapper(*args, **kwargs):
+    return method(*args, **kwargs)
+
+  return tf_decorator.make_decorator(method, wrapper)
+
+
+# TODO(mdan): Organize these tests.
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -139,6 +154,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
+
+  def testPythonFunctionNotCallable(self):
+    with self.assertRaisesRegex(TypeError, 'is not a callable object'):
+      def_function.function(1)
 
   def testOnExitCallback(self):
     values = []
@@ -272,6 +291,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
 
+  def testImplementsAttributeWorksWithGradientTape(self):
+    add = lambda x, y: x + y ** 2
+    add = def_function.function(experimental_implements='MyFunc')(add)
+    x = variables.Variable(3.0)
+    y = variables.Variable(2.0)
+
+    with backprop.GradientTape() as tape:
+      g = add(x, y)
+
+    dg_dy, dg_dx = tape.gradient(g, [y, x])
+    self.assertEqual(dg_dy.numpy(), 4.0)
+    self.assertEqual(dg_dx.numpy(), 1.0)
+
   def testImplementsAttributeWorksOnVariables(self):
     with context.graph_mode(), self.cached_session():
       v = def_function.function(
@@ -323,6 +355,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       a.initializer.run()
       numpy.testing.assert_equal(r1.eval(), [3.])
       numpy.testing.assert_equal(r2.eval(), [3., 3.])
+
+  def testImplementsWorksWithTensorSpec(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32))
+    x = v(1., 2.)
+    self.assertEqual(x.numpy(), 3.)
 
   def testImplementsAttributeAsNameAttrList(self):
     implements_attr = (
@@ -626,7 +667,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'Got type: set'):
+    with self.assertRaisesRegex(ValueError, r'got.*set'):
       f(set([]))
 
   def testFuncName(self):
@@ -1095,12 +1136,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorInitializationInFunctionRaisesError(self):
-    error_msg = ('Tensor-typed variable initializers must either be '
-                 'wrapped in an init_scope or callable.*')
 
     @def_function.function
     def tensor_init():
-      with self.assertRaisesRegex(ValueError, error_msg):
+      with self.assertRaisesRegex(ValueError, 'could not be lifted out'):
         resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
 
     tensor_init()
@@ -1372,6 +1411,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return {'name': x + 1}
 
     self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
+
+  def testWeakrefInputsRejected(self):
+
+    @def_function.function
+    def f(x):
+      return x
+
+    class Dummy:
+      pass
+    o = Dummy()
+    wr = weakref.ref(o)
+
+    with self.assertRaisesRegex(ValueError, 'weakref'):
+      f(wr)
 
   def testTensorConversionWithDefun(self):
 
@@ -1715,6 +1768,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with ops.get_default_graph().as_default():
         create_variable()
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testCallOptionsMemory(self):
+
+    @function.defun
+    def model(x):
+      return x + constant_op.constant(1.)
+
+    # This happens with a lot of option toggles, e.g. soft device placement
+    context.context().function_call_options = None
+    model(constant_op.constant(2.))
+
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInDefun(self):
     conv = convolutional.Conv2D(
@@ -1760,6 +1824,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('cpu:0'):
       has_device.f()
     self.assertIn('CPU', has_device.v.device)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMultipleDeviceCheck(self):
+
+    def f():
+      with ops.device('cpu'):
+        return test_ops.device_placement_op()
+
+    func = function.defun(f)
+    with ops.device('cpu:0'):
+      output = self.evaluate(func())
+      self.assertIn(compat.as_bytes('CPU:0'), output)
 
   @test_util.run_in_graph_and_eager_modes
   def testDeviceAnnotationsRespected(self):
@@ -1967,16 +2043,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(func)
     defined(0, baz=20)
-
-    def cache_keys():
-      """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[0] for key in total_function_cache(defined))
-
-    # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
+    self.assertLen(total_function_cache(defined), 1)
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
+    self.assertLen(total_function_cache(defined), 2)
 
     # This matches the previous call.
     defined(foo=1)
@@ -1984,7 +2054,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1993,6 +2062,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # This matches the previous call.
     defined(1, baz=3, bar=2)
     self.assertLen(total_function_cache(defined), 3)
+
+  def testDatasetIteratorCaching(self):
+    def func(it1, it2):
+      next(it1)
+      next(it2)
+      return 0
+
+    defined = function.defun(func)
+
+    d = dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3])
+    it1 = iter(d)
+    it2 = iter(d)
+    _ = defined(it1, it2)  # The two iterators are different
+    self.assertLen(total_function_cache(defined), 1)
+
+    it3 = iter(d)
+    it4 = iter(d)
+    _ = defined(it3, it4)  # The two iterators are different, should not retrace
+    self.assertLen(total_function_cache(defined), 1)
+
+    it5 = iter(d)
+    _ = defined(it5, it5)  # The two iterators are the same, should retrace
+    self.assertLen(total_function_cache(defined), 2)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
@@ -2041,6 +2133,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = defined(b)
     self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, b)
+
+  def testInputSignatureWithDictInPositionalArgs(self):
+
+    @function.defun
+    def f(*_args, **_kwargs):
+      return None
+
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, {'x': 2})
+    self.assertLen(total_function_cache(f), 2)
 
   def testInputSignatureWithCompatibleInputs(self):
 
@@ -2163,7 +2268,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Signatures must consist exclusively of `TensorSpec` objects.
     signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
-    with self.assertRaisesRegex(TypeError, 'Invalid input_signature.*'):
+    with self.assertRaisesRegex(TypeError, 'input_signature.*nested sequence'):
       def_function.function(foo, input_signature=signature)
 
     # Signatures must be either lists or tuples on their outermost levels.
@@ -2190,9 +2295,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegex(
-        TypeError, r'takes 1 positional arguments \(as specified by the '
-        r'input_signature\) but 2 were given'):
+    with self.assertRaisesRegex(TypeError, 'specifies 1 .* got 2'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegex(ValueError,
                                 'Structure of Python function inputs.*'):
@@ -2202,6 +2305,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                 'inputs incompatible with input_signature'):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
+
+  def testMismatchedConcreteSignatureRaisesError(self):
+
+    @def_function.function
+    def run_test():
+      @def_function.function
+      def f(x):
+        return x
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(constant_op.constant(1))
+
+      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
+        f.get_concrete_function(constant_op.constant(1))(1)
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(2)
+
+    run_test()
 
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
 
@@ -2532,7 +2656,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegex(ValueError, '.*Unsupported attribute type.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attribute experimental_1 must be .* Got .*'):
       with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -2804,6 +2929,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  @test_util.disable_tfrt('b/174712583: TFRT doesn\'t support behavior '
+                          'equivalent to implementation_selector for function')
   def testSwapImplementationInEager(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -2876,9 +3003,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(array_ops.zeros([12, 1]))
     self.assertLen(total_function_cache(defined), 1)
-
     defined(array_ops.zeros([1, 21]))
     self.assertLen(total_function_cache(defined), 2)
+
+    @function.defun
+    def defined_again(t):
+      return defined(t)
+
+    defined_again.get_concrete_function(array_ops.zeros([12, 1]))
+    self.assertLen(total_function_cache(defined_again), 1)
+    defined_again.get_concrete_function(array_ops.zeros([1, 21]))
+    self.assertLen(total_function_cache(defined_again), 2)
+
+  def testCacheTensorSpecIdenticalToTensor(self):
+    @function.defun
+    def defined(t):
+      return t
+
+    z = array_ops.zeros([2, 2])
+    z_spec = tensor_spec.TensorSpec.from_tensor(z)
+    self.assertIs(
+        defined.get_concrete_function(z_spec), defined.get_concrete_function(z))
 
   def testCacheKeyNestedLists(self):
     @function.defun
@@ -3414,7 +3559,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testAddFunctionCallback(self):
     functions = []
-    def function_callback(f):
+    def function_callback(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions.append(f)
 
     @def_function.function
@@ -3437,13 +3583,41 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     finally:
       function.clear_function_callbacks()
 
+  def testFunctionCallbackAddOps(self):
+    file_name = os.path.join(self.get_temp_dir(), 'test')
+
+    def function_callback(f, name, graph, inputs, outputs):
+      del f, name, inputs
+
+      with graph.as_default():
+        printer = logging_ops.print_v2(
+            'hello',
+            output_stream='file://' + file_name
+        )
+        outputs[0].op._add_control_input(printer)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    self.addCleanup(function.clear_function_callbacks)
+    function.add_function_callback(function_callback)
+    x_float32 = numpy.array(3.0, dtype=numpy.float32)
+
+    self.assertAllClose(plus_one(x_float32), 4.0)
+
+    with open(file_name, 'r') as f:
+      self.assertEqual(f.read().strip(), 'hello')
+
   def testRemoveFunctionCallback(self):
     functions_1 = []
-    def function_callback_1(f):
+    def function_callback_1(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_1.append(f)
 
     functions_2 = []
-    def function_callback_2(f):
+    def function_callback_2(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_2.append(f)
 
     @def_function.function
@@ -3627,7 +3801,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
@@ -3702,7 +3876,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -3756,13 +3930,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
               'x': constant_op.constant(1),
               'y': constant_op.constant(1)
           },
-          error=r"func\(x, y\) got two values for argument 'x'"),
+          error=r"func\(x, y\) got two values for 'x'"),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
           call_args=lambda: (constant_op.constant(1), constant_op.constant(2),
                              constant_op.constant(3)),
-          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+          error=r'func\(x, y\) takes 2 .* got 3'),
       dict(
           testcase_name='UnexpectedKeywordArg',
           conc_args=lambda: (constant_op.constant(1),),
@@ -3943,6 +4117,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         '    a: float32 Tensor, shape=<unknown>\n'
         '  Returns:\n'
         '    float32 Tensor, shape=<unknown>')
+
+  def testPrettyPrintedSignatureLoadedNamedTuple(self):
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    @def_function.function
+    def fn(b, a):  # pylint: disable=unused-argument
+      return 1.
+
+    b = Point(
+        x=constant_op.constant(1., dtype=dtypes.float32),
+        y=constant_op.constant(1., dtype=dtypes.float32))
+    a = Point(
+        x=constant_op.constant(1, dtype=dtypes.int32),
+        y=constant_op.constant(1, dtype=dtypes.int32))
+
+    mod = module.Module()
+    f = fn.get_concrete_function(b, a)
+    save(mod, '/tmp/f', signatures=f)
+    loaded = load('/tmp/f')
+
+    printed = loaded.signatures['serving_default'].pretty_printed_signature()
+    self.assertIn('a: int32 Tensor, shape=()', printed)
+    self.assertIn('a_1: int32 Tensor, shape=()', printed)
+    self.assertIn('b: float32 Tensor, shape=()', printed)
+    self.assertIn('b_1: float32 Tensor, shape=()', printed)
 
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):
@@ -4134,6 +4333,46 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(x=2, y=2, z=4, u=5)  # Retrace - change in **kwargs
     self.assertEqual(trace_count[0], 3)
 
+  def testFollowTypeHintsWithTensorSpec(self):
+    def func(x: ops.Tensor, y):
+      return x + y
+    v = def_function.function(experimental_follow_type_hints=True)(func)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32), 3)
+    x = v(constant_op.constant(1.), 3)
+    self.assertEqual(x.numpy(), 4.)
+
+  def testFollowTypeHintsTraceWithKwArgsAndNoVarKws(self):
+    trace_count = [0]
+
+    def func(a: int, b: ops.Tensor,
+             x: ops.Tensor = 0, y: int = 1):
+      del a, b, y
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(0, 0, x=1, y=2)
+    enabled(0, 0, x=2, y=2,)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 1)
+
+    # Pass args as keyword args.
+    enabled(a=0, b=0, x=2, y=2,)  # No retrace, args are the same
+    self.assertEqual(trace_count[0], 1)
+
+    enabled(a=1, b=0, x=2, y=2,)  # Retrace, since non-tensor arg changed
+    self.assertEqual(trace_count[0], 2)
+
+    enabled(a=1, b=2, x=2, y=2)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 2)
+
+    trace_count[0] = 0
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+    disabled(0, 0, x=1, y=2)
+    disabled(0, 0, x=2, y=2,)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
   def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
     trace_count = [0]
 
@@ -4255,8 +4494,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700)  # No retrace
     self.assertEqual(trace_count[0], 4)
 
-  def testWithModuleNameScope(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
+  def testWithExtraWrapper(self):
 
     class Foo(module.Module):
 
@@ -4265,16 +4503,36 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.var = None
 
       @def_function.function
-      @module.Module.with_name_scope
+      @dummy_tf_decorator
       def add(self, x, y, z=1):
         if self.var is None:
           return x + y + z
 
     foo = Foo()
-    self.assertEqual(foo.add(2, 3), 6)
+    self.assertEqual(foo.add(2, 3).numpy(), 6)
 
-  def testWithModuleNameScopeRedundantArgs(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
+  @parameterized.parameters([(def_function.function, dummy_tf_decorator),
+                             (dummy_tf_decorator, def_function.function),
+                             (def_function.function, def_function.function)])
+  def testWithExtraWrapperRedundantArgs(self, decorator1, decorator2):
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @decorator1
+      @decorator2
+      def add1(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(TypeError, 'got two values'):
+      foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
+
+  def testWithExtraWrapperMissingArgs(self):
 
     class Foo(module.Module):
 
@@ -4283,33 +4541,115 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.var = None
 
       @def_function.function
-      @module.Module.with_name_scope
-      def add(self, x, y):
+      @dummy_tf_decorator
+      def add1(self, x, y):
         if self.var is None:
           return x + y
-
-    foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'got two values for argument'):
-      foo.add(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
-
-  def testWithModuleNameScopeMissingArgs(self):
-    self.skipTest('b/166158748:function does not handle this case correctly.')
-
-    class Foo(module.Module):
-
-      def __init__(self):
-        super().__init__()
-        self.var = None
 
       @def_function.function
-      @module.Module.with_name_scope
-      def add(self, x, y):
+      @dummy_tf_decorator
+      def add2(self, x, y):
+        if self.var is None:
+          return x + y
+
+      @def_function.function
+      @def_function.function
+      def add3(self, x, y):
         if self.var is None:
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
-      foo.add(2)  # pylint: disable=no-value-for-parameter
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add1(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add1(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add2(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add2(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add3(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add3(y=2)  # pylint: disable=no-value-for-parameter
+
+  def testMissingArgsTfFunctionedMethod(self):
+
+    class A(object):
+
+      def func(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+      @def_function.function
+      def decorated_method(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+    tf_method_pos = def_function.function(a_instance.func)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_method_pos(position_arg2='foo')
+
+    # tf.function-decorated instance methods need to be tested because of
+    # the __get__ method implementation.
+    tf_func_decorated_method = def_function.function(
+        a_instance.decorated_method)
+    tf_func_decorated_method(position_arg1='foo', position_arg2='bar')
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_decorated_method(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedObject(self):
+
+    class A(object):
+
+      def __call__(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+
+    # A tf.function-decorated callable object needs to be tested because of
+    # the special inspect results.
+    tf_func_obj = def_function.function(a_instance)
+    tf_func_obj(position_arg1=1, position_arg2=2)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_obj(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedFunctions(self):
+
+    def func_pos(position_arg1, position_arg2):
+      return position_arg1, position_arg2
+
+    def func_with_default(position_arg, named_arg=None):
+      return position_arg, named_arg
+
+    def func_pos_3args(position_arg1, position_arg2, position_arg3):
+      return position_arg1, position_arg2, position_arg3
+
+    tf_func_pos = def_function.function(func_pos)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_pos(position_arg2='foo')
+
+    tf_func_with_default = def_function.function(func_with_default)
+    tf_func_with_default(position_arg='bar')
+    with self.assertRaisesRegex(TypeError,
+                                '.* missing 1 required argument: position_arg'):
+      tf_func_with_default(named_arg='foo')
+
+    tf_func_pos_3args = def_function.function(func_pos_3args)
+    with self.assertRaisesRegex(
+        TypeError,
+        '.* missing required arguments: position_arg1, position_arg3'):
+      tf_func_pos_3args(position_arg2='foo')
 
   def testShapeInferencePropagateConstNestedStack(self):
 
@@ -4903,6 +5243,16 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
+  def testFunctoolsLruCache(self):
+    self.skipTest(
+        "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
+
+    @def_function.function
+    @functools.lru_cache(maxsize=2)
+    def f(a):
+      return 2 * a
+
+    self.assertAllEqual(f(1), array_ops.constant(2))
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

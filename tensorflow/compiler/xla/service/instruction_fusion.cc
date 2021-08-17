@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -147,7 +148,12 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteDone:
@@ -198,7 +204,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
 // We use "has a smaller true rank than the output" as a heuristic
 // for "negligible" memory usage.
 bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
-  int64 output_rank = 0;
+  int64_t output_rank = 0;
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
       [&output_rank](const Shape& subshape, const ShapeIndex& shape_index) {
@@ -236,7 +242,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
     return cache_it->second;
   }
   bool result = true;
-  for (int64 i = 0, e = consumer->operand_count(); i < e; ++i) {
+  for (int64_t i = 0, e = consumer->operand_count(); i < e; ++i) {
     auto* consumer_operand = consumer->mutable_operand(i);
     // If the operand is not on a path to the producer, it doesn't matter
     // whether it's fusible.
@@ -293,7 +299,7 @@ InstructionFusion::ComputeGloballyUnfusible(
     // memory traffic. In that case, we do not forbid fusion of the operation
     // here.
     auto total_size = [](const Shape& shape) {
-      int64 size = 0;
+      int64_t size = 0;
       ShapeUtil::ForEachSubshape(
           shape, [&size](const Shape& subshape, const ShapeIndex& shape_index) {
             if (subshape.IsArray()) {
@@ -302,7 +308,7 @@ InstructionFusion::ComputeGloballyUnfusible(
           });
       return size;
     };
-    int64 operands_size = 0;
+    int64_t operands_size = 0;
     for (const HloInstruction* op : producer->unique_operands()) {
       operands_size += total_size(op->shape());
     }
@@ -358,7 +364,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     }
   }
 
-  std::pair<HloInstruction*, std::vector<int64>>
+  std::pair<HloInstruction*, std::vector<int64_t>>
   DequeueNextInstructionAndOperandsToFuseInOrder() override {
     // Instructions are "removed" from the post order by nulling out the element
     // in the vector, so if the pointer is null, continue to the next
@@ -367,7 +373,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       post_order_.pop_back();
     }
     if (post_order_.empty()) {
-      return std::pair<HloInstruction*, std::vector<int64>>{nullptr, {}};
+      return std::pair<HloInstruction*, std::vector<int64_t>>{nullptr, {}};
     }
     // We want to iterate in reverse post order, so remove from the back of the
     // vector.
@@ -419,7 +425,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     // considered before A.
     //
     // We store the original indices of the operands to pass to ShouldFuse.
-    std::vector<int64> sorted_operand_numbers;
+    std::vector<int64_t> sorted_operand_numbers;
     sorted_operand_numbers.reserve(instruction->operands().size());
     for (int i = 0; i < instruction->operands().size(); ++i) {
       // This will happen if we have two possible instructions to fuse the
@@ -432,7 +438,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       }
       sorted_operand_numbers.push_back(i);
     }
-    absl::c_sort(sorted_operand_numbers, [&](int64 i, int64 j) {
+    absl::c_sort(sorted_operand_numbers, [&](int64_t i, int64_t j) {
       // Instructions with higher priority in the queue come first.
       return (FindOrDie(post_order_index_, instruction->mutable_operand(i)) >
               FindOrDie(post_order_index_, instruction->mutable_operand(j)));
@@ -467,6 +473,12 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 
 }  // namespace
 
+std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
+    HloModule* module) {
+  // Use sorted computations because fusion configuration is order-sensitive.
+  return module->MakeNonfusionComputationsSorted();
+}
+
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
     HloComputation* computation) {
   return absl::make_unique<ReversePostOrderFusionQueue>(computation);
@@ -475,7 +487,7 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
   module_ = module;
-  int64 fuse_count = 0;
+  int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
   HloModuleConfig module_config;
   if (config_collection_mode_ != FusionConfigCollection::kOff) {
@@ -484,8 +496,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     fusion_config->clear();
   }
 
-  // Use sorted computations because fusion configuration is order-sensitive.
-  for (auto* computation : module->MakeNonfusionComputationsSorted()) {
+  for (auto* computation : GetFusionComputations(module_)) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
     reachability_ = HloReachabilityMap::Build(computation_);
@@ -516,9 +527,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         continue;
       }
 
-      std::vector<int64>& sorted_operand_numbers = next_entry.second;
+      std::vector<int64_t>& sorted_operand_numbers = next_entry.second;
 
-      for (int64 i : sorted_operand_numbers) {
+      for (int64_t i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
         VLOG(5) << "Considering fusion of: " << instruction->ToString()
                 << " with operand " << operand->name();
@@ -556,6 +567,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
 
         if (fusion_instruction == nullptr) {
+          fusion_queue->NotFusingInstruction(operand, instruction);
           continue;
         }
 
@@ -577,6 +589,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
         break;
       }
+
+      if (module->config().debug_options().xla_dump_fusion_visualization()) {
+        TF_RETURN_IF_ERROR(RegisterFusionState(
+            *computation,
+            absl::StrCat("InstructionFusion, may_duplicate=", may_duplicate_)));
+      }
     }
 
     if (config_collection_mode_ != FusionConfigCollection::kOff) {
@@ -589,7 +607,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   }
 
   if (config_collection_mode_ != FusionConfigCollection::kOff) {
-    int64 fused_count = 0;
+    int64_t fused_count = 0;
     for (auto& config_per_computation : *fusion_config) {
       for (auto edge : config_per_computation) {
         if (edge) {
@@ -599,7 +617,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
     VLOG(1) << "There are " << fused_count << " fused bits that cause "
             << fuse_count << " fusion actions.";
-    VLOG(1) << FusionConfigToString(*fusion_config);
     module->set_config(module_config);
   }
 
@@ -694,7 +711,7 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
 }
 
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                   int64 operand_index) {
+                                   int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Cost condition: don't duplicate expensive instructions.
@@ -715,7 +732,7 @@ HloInstruction::FusionKind InstructionFusion::ChooseKind(
 }
 
 bool InstructionFusion::ReusesOperandElements(const HloInstruction* consumer,
-                                              int64 operand_index) {
+                                              int64_t operand_index) {
   auto operand = consumer->operand(operand_index);
   auto it = reused_fusion_operands_.find(consumer);
   if (it != reused_fusion_operands_.end() && it->second.contains(operand)) {

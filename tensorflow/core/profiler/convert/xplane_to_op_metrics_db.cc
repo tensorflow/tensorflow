@@ -102,19 +102,8 @@ void ProcessOneTfActivity(const TfActivity& activity,
         parent_info->children_duration_ps += tf_op_span.duration_ps();
       }
       if (IsInfeedEnqueueOp(activity.tf_op.type)) {
-        if (tf_metrics_data->last_infeed_enq_duration_ps > 0) {
-          DCHECK(tf_metrics_data->last_infeed_enq_start_timestamp_ps <=
-                 info->start_timestamp_ps);
-          uint64 start_timestamps_ps_diff =
-              info->start_timestamp_ps -
-              tf_metrics_data->last_infeed_enq_start_timestamp_ps;
-          tf_metrics_data->tf_metrics_db_builder.UpdateHostInfeedEnqInfo(
-              tf_metrics_data->last_infeed_enq_duration_ps,
-              start_timestamps_ps_diff);
-        }
-        tf_metrics_data->last_infeed_enq_start_timestamp_ps =
-            info->start_timestamp_ps;
-        tf_metrics_data->last_infeed_enq_duration_ps = tf_op_span.duration_ps();
+        tf_metrics_data->tf_metrics_db_builder.EnterHostInfeedEnqueue(
+            tf_op_span);
       }
       break;
     }
@@ -133,12 +122,13 @@ void ProcessTfActivities(std::vector<TfActivity>* tf_activities,
   for (const auto& tf_activity : *tf_activities) {
     ProcessOneTfActivity(tf_activity, &tf_op_stack, tf_metrics_db_data);
   }
-  tf_metrics_db_data->tf_metrics_db.set_total_time_ps(
+  SetTotalTimePs(
+      tf_metrics_db_data->tf_metrics_db,
       tf_activities->back().timestamp_ps - tf_activities->front().timestamp_ps);
 }
 
 void CollectTfActivities(const XLineVisitor& line,
-                         const absl::flat_hash_map<int64, TfOp>& tf_ops,
+                         const absl::flat_hash_map<int64_t, TfOp>& tf_ops,
                          std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
   tf_activities->reserve(line.NumEvents() * 2);
@@ -152,7 +142,7 @@ void CollectTfActivities(const XLineVisitor& line,
               event.GetStat(StatType::kIsEager)) {
         is_eager = stat->IntValue();
       }
-      Timespan span(event.TimestampPs(), event.DurationPs());
+      Timespan span = event.GetTimespan();
       tf_activities->push_back(
           {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
       tf_activities->push_back(
@@ -163,9 +153,9 @@ void CollectTfActivities(const XLineVisitor& line,
 
 }  // namespace
 
-absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
+absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
     const XPlane& host_trace) {
-  absl::flat_hash_map<int64, TfOp> tf_ops;
+  absl::flat_hash_map<int64_t, TfOp> tf_ops;
   for (const auto& id_metadata : host_trace.event_metadata()) {
     const XEventMetadata& metadata = id_metadata.second;
     // On the host, we have added some user-specified TraceMe's in addition to
@@ -181,7 +171,8 @@ absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
 }
 
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
-    const XLineVisitor& line, const absl::flat_hash_map<int64, TfOp>& tf_ops) {
+    const XLineVisitor& line,
+    const absl::flat_hash_map<int64_t, TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
   if (!tf_ops.empty()) {
     std::vector<TfActivity> tf_activities;
@@ -192,13 +183,13 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
 }
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
-  AddIdleOp(&src.tf_metrics_db);
+  AddIdleOp(src.tf_metrics_db);
   dst->Combine(src.tf_metrics_db);
   src.tf_metrics_db.Clear();
 }
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
-  absl::flat_hash_map<int64, TfOp> tf_ops =
+  absl::flat_hash_map<int64_t, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(host_trace);
   OpMetricsDb result;
   OpMetricsDbCombiner combiner(&result);
@@ -210,15 +201,12 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
   return result;
 }
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
-    const XPlane& device_trace, double peak_tera_flops_per_second,
-    double peak_hbm_bw_giga_bytes_per_second) {
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
   OpMetricsDb result;
-  DeviceOpMetricsDbBuilder device_op_metrics_db_builder(
-      &result, peak_tera_flops_per_second, peak_hbm_bw_giga_bytes_per_second);
+  DeviceOpMetricsDbBuilder device_op_metrics_db_builder(&result);
 
-  int64 first_op_offset_ps = kint64max;
-  int64 last_op_offset_ps = 0;
+  int64_t first_op_offset_ps = kint64max;
+  int64_t last_op_offset_ps = 0;
 
   TfOpRoofLineCostEstimator op_level_cost_estimator;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
@@ -251,8 +239,9 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
   });
-  result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);
-  AddIdleOp(&result);
+  SetTotalTimePs(
+      result, last_op_offset_ps ? last_op_offset_ps - first_op_offset_ps : 0);
+  AddIdleOp(result);
   return result;
 }
 

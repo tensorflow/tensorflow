@@ -16,17 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESHAPE_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_RESHAPE_UTIL_H_
 
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 
 class OpKernelContext;
 class Tensor;
 
 // Reshapes the input indices and input shape to the target shape.
+// Note: This template is explicitly instantiated for CPU and GPU devices.
+template <typename Device>
 void ReshapeSparseTensor(OpKernelContext *context,
                          const Tensor &input_indices_in,
                          const Tensor &input_shape_in,
                          const Tensor &target_shape_in, int output_indices_idx,
                          int output_shape_idx);
+
+namespace functor {
+
+template <typename Device>
+struct ReshapeSparseTensorFunctor {
+  Status operator()(OpKernelContext *context, const TensorShape &input_shape,
+                    const TensorShape &output_shape,
+                    typename TTypes<int64_t>::ConstMatrix input_indices,
+                    typename TTypes<int64_t>::Matrix output_indices) const;
+};
+
+}  // namespace functor
 
 }  // namespace tensorflow
 

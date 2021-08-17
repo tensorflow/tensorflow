@@ -142,27 +142,6 @@ class InterfaceTests(test.TestCase):
     self.assertEqual(dtypes.float64, v2.dtype)
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
-  def testNotTrackable(self):
-
-    class CallsFunctionalStuff(
-        tracking.NotTrackable, tracking.AutoTrackable):
-      pass
-
-    test_dir = self.get_temp_dir()
-    prefix = os.path.join(test_dir, "ckpt")
-    checkpoint = trackable_utils.Checkpoint(x=CallsFunctionalStuff())
-    with self.assertRaises(NotImplementedError):
-      checkpoint.save(prefix)
-
-    class CallsFunctionalStuffOtherMRO(
-        tracking.AutoTrackable, tracking.NotTrackable):
-      pass
-
-    checkpoint_reversed = trackable_utils.Checkpoint(
-        x=CallsFunctionalStuffOtherMRO())
-    with self.assertRaises(NotImplementedError):
-      checkpoint_reversed.save(prefix)
-
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 
@@ -881,8 +860,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     new_model = self._create_trackable()
     load_checkpoint = trackable_utils.Checkpoint(new_model)
 
-    with self.assertRaisesRegex(errors_impl.NotFoundError,
-                                "Could not find checkpoint or SavedModel"):
+    with self.assertRaisesRegex(
+        errors_impl.NotFoundError,
+        "Failed to restore from checkpoint or SavedModel"):
       load_checkpoint.restore(saved_model_dir + "no").expect_partial()
 
     load_checkpoint.restore(saved_model_dir).expect_partial()

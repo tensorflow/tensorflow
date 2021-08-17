@@ -27,10 +27,10 @@ namespace xla {
 namespace gpu {
 
 // Rewrites Cholesky calls into CustomCall HLOs that call into cuSolver.
-class CusolverRewriter : public HloModulePass {
+class GpusolverRewriter : public HloModulePass {
  public:
-  CusolverRewriter();
-  absl::string_view name() const override { return "cusolver-rewriter"; }
+  GpusolverRewriter();
+  absl::string_view name() const override { return "gpusolver-rewriter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

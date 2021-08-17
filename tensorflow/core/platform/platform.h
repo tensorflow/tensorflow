@@ -47,6 +47,11 @@ limitations under the License.
 // EMSCRIPTEN builds are considered "mobile" for the sake of portability.
 #define IS_MOBILE_PLATFORM
 
+#elif defined(__TF_CHROMIUMOS__)
+#define PLATFORM_PORTABLE_GOOGLE
+#define PLATFORM_POSIX
+#define PLATFORM_CHROMIUMOS
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
@@ -59,6 +64,16 @@ limitations under the License.
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_IX86) || \
     defined(_M_X64)
 #define PLATFORM_IS_X86
+#endif
+
+// Check if we are compmiling for an arm device.
+#if defined(__arm__) || defined(__aarch64__)
+#define PLATFORM_IS_ARM
+#if defined(__aarch64__)
+#define PLATFORM_IS_ARM64
+#else
+#define PLATFORM_IS_ARM32
+#endif
 #endif
 
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

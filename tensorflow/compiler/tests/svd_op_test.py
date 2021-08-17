@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -75,8 +76,8 @@ class SvdOpTest(xla_test.XLATestCase, parameterized.TestCase):
       no_uv_s_val, no_uv_u_val, no_uv_v_val = sess.run(
           [no_uv_s, no_uv_u, no_uv_v], feed_dict={x_tf: x_np})
       self.assertAllClose(no_uv_s_val, s_val, atol=1e-4, rtol=1e-4)
-      self.assertEqual(no_uv_u_val, 0.0)
-      self.assertEqual(no_uv_v_val, 0.0)
+      self.assertEqual(no_uv_u_val.shape, tensor_shape.TensorShape([0]))
+      self.assertEqual(no_uv_v_val.shape, tensor_shape.TensorShape([0]))
 
   SIZES = [1, 2, 5, 10, 32, 64]
   DTYPES = [np.float32]

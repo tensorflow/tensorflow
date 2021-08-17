@@ -22,17 +22,17 @@
 ARG UBUNTU_VERSION=18.04
 
 ARG ARCH=
-ARG CUDA=10.1
-FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
+ARG CUDA=11.2
+FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}.1-base-ubuntu${UBUNTU_VERSION} as base
 # ARCH and CUDA are specified again because the FROM directive resets ARGs
 # (but their default value is retained if set previously)
 ARG ARCH
 ARG CUDA
-ARG CUDNN=7.6.4.38-1
-ARG CUDNN_MAJOR_VERSION=7
+ARG CUDNN=8.1.0.77-1
+ARG CUDNN_MAJOR_VERSION=8
 ARG LIB_DIR_PREFIX=x86_64
-ARG LIBNVINFER=6.0.1-1
-ARG LIBNVINFER_MAJOR_VERSION=6
+ARG LIBNVINFER=7.2.2-1
+ARG LIBNVINFER_MAJOR_VERSION=7
 
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
@@ -40,17 +40,14 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-${CUDA/./-} \
-        # There appears to be a regression in libcublas10=10.2.2.89-1 which
-        # prevents cublas from initializing in TF. See
-        # https://github.com/tensorflow/tensorflow/issues/9489#issuecomment-562394257
-        libcublas10=10.2.1.243-1 \ 
+        libcublas-${CUDA/./-} \
         cuda-nvrtc-${CUDA/./-} \
-        cuda-cufft-${CUDA/./-} \
-        cuda-curand-${CUDA/./-} \
-        cuda-cusolver-${CUDA/./-} \
-        cuda-cusparse-${CUDA/./-} \
+        libcufft-${CUDA/./-} \
+        libcurand-${CUDA/./-} \
+        libcusolver-${CUDA/./-} \
+        libcusparse-${CUDA/./-} \
         curl \
-        libcudnn7=${CUDNN}+cuda${CUDA} \
+        libcudnn8=${CUDNN}+cuda${CUDA} \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libzmq3-dev \
@@ -59,9 +56,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         unzip
 
 # Install TensorRT if not building for PowerPC
+# NOTE: libnvinfer uses cuda11.1 versions
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
-        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
+        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
+        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 
@@ -82,7 +80,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
-    pip \
+    "pip<20.3" \
     setuptools
 
 # Some TF tools expect a "python" binary

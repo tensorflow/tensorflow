@@ -1,6 +1,7 @@
 # Bazel BUILD file for LLVM.
 #
-# This BUILD file is auto-generated; do not edit!
+# This BUILD file use to be auto-generated, but is now manually maintained.
+# TODO(tensorflow-team): should migrate to use the Bazel file in LLVM.
 
 licenses(["notice"])
 
@@ -109,6 +110,22 @@ template_rule(
     },
 )
 
+# List of targets with mca, filtered to our list of overall targets.
+llvm_target_mcas = [t for t in [
+    "AMDGPU",
+] if t in llvm_targets]
+
+template_rule(
+    name = "target_mca_def_gen",
+    src = "include/llvm/Config/TargetMCAs.def.in",
+    out = "include/llvm/Config/TargetMCAs.def",
+    substitutions = {
+        "@LLVM_ENUM_TARGETMCAS@": "\n".join(
+            ["LLVM_TARGETMCA({})".format(t) for t in llvm_target_disassemblers],
+        ),
+    },
+)
+
 # A common library that all LLVM targets depend on.
 # TODO(b/113996071): We need to glob all potentially #included files and stage
 # them here because LLVM's build files are not strict headers clean, and remote
@@ -124,6 +141,7 @@ cc_library(
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
+        "include/llvm/Config/TargetMCAs.def",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
         "include/llvm/Config/abi-breaking.h",
@@ -408,7 +426,6 @@ cc_library(
         "utils/TableGen/GlobalISel/*.h",
     ]),
     deps = [
-        ":MC",
         ":Support",
         ":TableGen",
         ":config",
@@ -480,6 +497,7 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64O0PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerLoweringHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc"),
@@ -743,7 +761,7 @@ gentbl(
 
 gentbl(
     name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
     td_srcs = [
@@ -1001,6 +1019,7 @@ cc_library(
         ":IPO",
         ":MC",
         ":MIRParser",
+        ":Passes",
         ":Scalar",
         ":SelectionDAG",
         ":Support",
@@ -1252,6 +1271,7 @@ cc_library(
         ":CodeGen",
         ":Core",
         ":GlobalISel",
+        ":IPO",
         ":MC",
         ":Scalar",
         ":SelectionDAG",
@@ -2187,7 +2207,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
+    ]),
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",
@@ -2201,6 +2221,57 @@ cc_library(
         ":config",
         ":omp_gen",
         ":omp_gen_impl",
+    ],
+)
+
+filegroup(
+    name = "acc_td_files",
+    srcs = glob([
+        "include/llvm/Frontend/OpenACC/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
+gentbl(
+    name = "acc_gen",
+    library = False,
+    tbl_outs = [
+        ("--gen-directive-decl", "include/llvm/Frontend/OpenACC/ACC.h.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenACC/ACC.td",
+    td_srcs = [":acc_td_files"],
+)
+
+gentbl(
+    name = "acc_gen_impl",
+    library = False,
+    tbl_outs = [
+        ("--gen-directive-impl", "include/llvm/Frontend/OpenACC/ACC.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenACC/ACC.td",
+    td_srcs = [":acc_td_files"],
+)
+
+cc_library(
+    name = "FrontendOpenACC",
+    srcs = glob([
+        "lib/Frontend/OpenACC/*.cpp",
+    ]) + [
+        "include/llvm/Frontend/OpenACC/ACC.inc",
+    ],
+    hdrs = glob([
+        "include/llvm/Frontend/OpenACC/*.h",
+    ]) + [
+        "include/llvm/Frontend/OpenACC/ACC.h.inc",
+    ],
+    copts = llvm_copts,
+    deps = [
+        ":Analysis",
+        ":Core",
+        ":Support",
+        ":TransformUtils",
     ],
 )
 
@@ -2826,6 +2897,7 @@ cc_library(
     deps = [
         ":BinaryFormat",
         ":DebugInfoCodeView",
+        ":ProfileData",
         ":Support",
         ":config",
     ],
@@ -4177,7 +4249,6 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
-        ":MC",
         ":Support",
         ":config",
     ],
@@ -4237,25 +4308,13 @@ cc_library(
         "lib/TextAPI/*.c",
         "lib/TextAPI/*.cpp",
         "lib/TextAPI/*.inc",
-        "lib/TextAPI/ELF/*.cpp",
-        "lib/TextAPI/MachO/*.cpp",
-        "lib/TextAPI/MachO/*.h",
         "lib/TextAPI/*.h",
     ]),
     hdrs = glob([
         "include/llvm/TextAPI/*.h",
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
-    ]) + [
-        "include/llvm/TextAPI/MachO/Architecture.def",
-        "include/llvm/TextAPI/MachO/PackedVersion.h",
-        "include/llvm/TextAPI/MachO/InterfaceFile.h",
-        "include/llvm/TextAPI/MachO/Symbol.h",
-        "include/llvm/TextAPI/MachO/ArchitectureSet.h",
-        "include/llvm/TextAPI/MachO/TextAPIWriter.h",
-        "include/llvm/TextAPI/MachO/TextAPIReader.h",
-        "include/llvm/TextAPI/MachO/Architecture.h",
-    ],
+    ]),
     copts = llvm_copts,
     deps = [
         ":BinaryFormat",

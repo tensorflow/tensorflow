@@ -38,8 +38,10 @@ tf_export(
         "saved_model.tag_constants.TRAINING"]).export_constant(
             __name__, "TRAINING")
 
+# LINT.IfChange
 # Tag for the `eval` graph. Not exported while the export logic is in contrib.
 EVAL = "eval"
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/unexported_constants.py)
 
 # Tag for the `gpu` graph.
 GPU = "gpu"

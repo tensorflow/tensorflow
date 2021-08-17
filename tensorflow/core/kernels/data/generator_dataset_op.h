@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_GENERATOR_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_GENERATOR_DATASET_OP_H_
 
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 
 namespace tensorflow {
 namespace data {

@@ -136,8 +136,6 @@ class GlInteropFabric {
   const EGLDisplay egl_display_;
   cl_context context_;
   cl_command_queue queue_;
-  CLEvent inbound_event_;
-  CLEvent outbound_event_;
   std::vector<cl_mem> memory_;
   AcquiredGlObjects gl_objects_;  // transient during Start/Finish calls.
 };

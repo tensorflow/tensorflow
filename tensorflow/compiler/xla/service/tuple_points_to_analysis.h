@@ -256,6 +256,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSend(HloInstruction* send) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
 
   string ToString() const;
 
@@ -330,12 +331,13 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     }
   }
 
-  std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
-      HloInstruction* instruction, const ShapeIndex& index) const;
+  std::vector<std::pair<HloInstruction*, int64_t>>
+  GetAllUsesOfInstructionAtIndex(HloInstruction* instruction,
+                                 const ShapeIndex& index) const;
   bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
                                     const ShapeIndex& operand_index,
                                     HloInstruction* fusion,
-                                    const int64 use_operand_index) const;
+                                    const int64_t use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;

@@ -52,8 +52,8 @@ class SnappyOutputBuffer : public WritableFile {
   // 2. the deflated output
   // with sizes `input_buffer_bytes` and `output_buffer_bytes` respectively.
   // Does not take ownership of `file`.
-  SnappyOutputBuffer(WritableFile* file, int32 input_buffer_bytes,
-                     int32 output_buffer_bytes);
+  SnappyOutputBuffer(WritableFile* file, int32_t input_buffer_bytes,
+                     int32_t output_buffer_bytes);
 
   // Per convention, the dtor does not call Flush() or Close(). We expect the
   // caller to call those manually when done.
@@ -65,7 +65,7 @@ class SnappyOutputBuffer : public WritableFile {
   // later time. To immediately write contents to file call `Flush()`.
   Status Append(StringPiece data) override;
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& cord) override;
 #endif
 
@@ -87,7 +87,7 @@ class SnappyOutputBuffer : public WritableFile {
 
   // Returns the write position in the underlying file. The position does not
   // reflect buffered, un-flushed data.
-  Status Tell(int64* position) override;
+  Status Tell(int64_t* position) override;
 
   // Adds `data` to the compression pipeline.
   //

@@ -950,7 +950,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
   batch_dim->set_base_dilation(1);
 
   // Second and third dimension are reduced.
-  for (int64 i = 0; i < 2; ++i) {
+  for (int64_t i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(2);
     dim->set_stride(2);
@@ -1000,7 +1000,7 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   batch_dim->set_base_dilation(1);
 
   // Second and third dimension are reduced.
-  for (int64 i = 0; i < 2; ++i) {
+  for (int64_t i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(2);
     dim->set_stride(2);
@@ -1275,6 +1275,32 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), dynamic_size);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
+  auto builder = HloComputation::Builder(TestName());
+  auto input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {9, 2}), "data_input"));
+  auto six = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(6)));
+  input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, false}), input, six, 0));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+  input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, true}), input, one, 1));
+
+  // Reshape [<=9, <=2] into [<=9, 1, <=2]
+
+  auto dynamic_reshape = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {9, 1, 2}, {true, false, true}), input));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 0), six);
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 2), one);
 }
 
 }  // namespace

@@ -82,7 +82,7 @@ def _validate_cluster_spec(cluster_spec,
 
   cluster_spec = normalize_cluster_spec(cluster_spec)
 
-  if any([job not in allowed_task_types for job in cluster_spec.jobs]):
+  if any(job not in allowed_task_types for job in cluster_spec.jobs):
     raise ValueError("Disallowed task type found in cluster spec. Allowed "
                      "types are {} and the cluster spec is {}.".format(
                          allowed_task_types, cluster_spec))

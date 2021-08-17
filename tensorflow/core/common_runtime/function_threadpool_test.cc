@@ -67,7 +67,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
-            [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
               return Status::OK();
             }}));

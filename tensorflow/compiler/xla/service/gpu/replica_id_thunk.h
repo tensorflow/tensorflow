@@ -17,21 +17,34 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_REPLICA_ID_THUNK_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
 namespace xla {
 namespace gpu {
 
-// Thunk that implements the ReplicaId HLO.
-class ReplicaIdThunk : public Thunk {
- public:
-  ReplicaIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest);
-
+// Thunk that implements the ReplicaId(Idx == 0) or PartitionId(Idx == 1).
+class ReplicaOrPartitionIdThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ protected:
+  ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,
+                            const BufferAllocation::Slice& dest)
+      : Thunk(kind, thunk_info), dest_(dest) {}
 
  private:
   const BufferAllocation::Slice dest_;
+};
+
+class ReplicaIdThunk : public ReplicaOrPartitionIdThunk {
+ public:
+  ReplicaIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest)
+      : ReplicaOrPartitionIdThunk(Kind::kReplicaId, thunk_info, dest) {}
+};
+
+class PartitionIdThunk : public ReplicaOrPartitionIdThunk {
+ public:
+  PartitionIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest)
+      : ReplicaOrPartitionIdThunk(Kind::kPartitionId, thunk_info, dest) {}
 };
 
 }  // namespace gpu

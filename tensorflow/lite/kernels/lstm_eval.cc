@@ -63,61 +63,48 @@ void ComputeRowSums(
     const float* aux_input_ptr) {
   // Compute the row sums for dequantization
   if (!use_cifg) {
-    std::fill_n(input_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(input_to_input_weights_ptr,
                                      input_to_input_row_sums, n_cell, n_input);
   }
-  std::fill_n(input_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_forget_weights_ptr,
                                    input_to_forget_row_sums, n_cell, n_input);
-  std::fill_n(input_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_cell_weights_ptr,
                                    input_to_cell_row_sums, n_cell, n_input);
-  std::fill_n(input_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_output_weights_ptr,
                                    input_to_output_row_sums, n_cell, n_input);
 
   if (aux_input_ptr) {
     if (!use_cifg) {
-      std::fill_n(aux_input_to_input_row_sums, n_cell, 0);
       tensor_utils::ReductionSumVector(aux_input_to_input_weights_ptr,
                                        aux_input_to_input_row_sums, n_cell,
                                        n_aux_input);
     }
-    std::fill_n(aux_input_to_forget_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_forget_weights_ptr,
                                      aux_input_to_forget_row_sums, n_cell,
                                      n_aux_input);
-    std::fill_n(aux_input_to_cell_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_cell_weights_ptr,
                                      aux_input_to_cell_row_sums, n_cell,
                                      n_aux_input);
-    std::fill_n(aux_input_to_output_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_output_weights_ptr,
                                      aux_input_to_output_row_sums, n_cell,
                                      n_aux_input);
   }
   if (!use_cifg) {
-    std::fill_n(recurrent_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(recurrent_to_input_weights_ptr,
                                      recurrent_to_input_row_sums, n_cell,
                                      n_output);
   }
-  std::fill_n(recurrent_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_forget_weights_ptr,
                                    recurrent_to_forget_row_sums, n_cell,
                                    n_output);
-  std::fill_n(recurrent_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_cell_weights_ptr,
                                    recurrent_to_cell_row_sums, n_cell,
                                    n_output);
-  std::fill_n(recurrent_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_output_weights_ptr,
                                    recurrent_to_output_row_sums, n_cell,
                                    n_output);
 
   if (projection_weights_ptr != nullptr) {
-    std::fill_n(projection_weights_row_sums, n_output, 0);
     tensor_utils::ReductionSumVector(
         projection_weights_ptr, projection_weights_row_sums, n_output, n_cell);
   }
@@ -1559,6 +1546,7 @@ inline void LstmStepInteger8x8_16(
 //   cell_state_scale: the power of two scale for cell state.
 //
 // Zero points:
+//   input_zp: zero point for input tensor.
 //   output_state_zp: zero point of output state.
 //   hidden_zp: zero point for hidden state.
 //
@@ -1577,7 +1565,8 @@ inline void LstmStepInteger8x8_16(
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
-// TODO(b/148688698): Move zero point calculation into Prepare().
+//
+// Can move zero point calculation into Prepare() for better perfomance.
 // TODO(b/159947023): scratch5 is unused, remove.
 inline void LstmStepInteger8x8_8(
     const int8_t* input_ptr, int32_t input_zp,

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 
-#include "c_api_types.h"
+#include "tensorflow/lite/c/c_api_types.h"
 
 // -----------------------------------------------------------------------------
 // Experimental C APIs for the benchmark tool, mainly intended to be used for

@@ -24,12 +24,12 @@ To update renames_v2.py, run:
 # pylint: enable=line-too-long
 import sys
 
+from absl import app
 import six
 import tensorflow as tf
 
 from tensorflow import python as tf_python  # pylint: disable=unused-import
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 from tensorflow.tools.common import public_api

@@ -31,7 +31,7 @@ DOCKER_CONTEXT_PATH="$(realpath ${SCRIPT_DIR}/..)"
 ROOT_DIR="$(realpath ${SCRIPT_DIR}/../../../../)"
 
 DOCKER_IMAGE="tf-libtensorflow-cpu"
-DOCKER_FILE="Dockerfile.cpu"
+DOCKER_FILE="Dockerfile.rbe.ubuntu16.04-manylinux2010"
 DOCKER_BINARY="docker"
 if [ "${TF_NEED_CUDA}" == "1" ]; then
   DOCKER_IMAGE="tf-tensorflow-gpu"

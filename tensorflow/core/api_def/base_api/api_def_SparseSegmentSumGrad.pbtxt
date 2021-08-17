@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "SparseSegmentSumGrad"
+  in_arg {
+    name: "grad"
+    description: <<END
+gradient propagated to the SparseSegmentSum op.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+indices passed to the corresponding SparseSegmentSum op.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+segment_ids passed to the corresponding SparseSegmentSum op.
+END
+  }
+  in_arg {
+    name: "output_dim0"
+    description: <<END
+dimension 0 of "data" passed to SparseSegmentSum op.
+END
+  }
+  summary: "Computes gradients for SparseSegmentSum."
+  description: <<END
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+END
+}

@@ -5,7 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available",
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Don't depend on this directly; this is only used for the benchmark test
@@ -289,7 +289,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

@@ -1,5 +1,3 @@
-
-#include <stdint.h>
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
 #include <string.h>
 
 #include "tensorflow/lite/c/common.h"
@@ -38,6 +37,7 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context, const TfLiteTensor& input,
     axis = input_dims.size + 1 + axis;
   }
   TF_LITE_ENSURE(context, axis <= input_dims.size);
+  TF_LITE_ENSURE(context, axis >= 0);
 
   TfLiteIntArray* output_dims = TfLiteIntArrayCreate(input_dims.size + 1);
   for (int i = 0; i < output_dims->size; ++i) {

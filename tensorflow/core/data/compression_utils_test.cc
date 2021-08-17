@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/compression_utils.h"
 
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -37,12 +37,12 @@ TEST_P(ParameterizedCompressionUtilsTest, RoundTrip) {
 
 std::vector<std::vector<Tensor>> TestCases() {
   return {
-      CreateTensors<int64>(TensorShape{1}, {{1}}),             // int64
-      CreateTensors<int64>(TensorShape{1}, {{1}, {2}}),        // multiple int64
+      CreateTensors<int64_t>(TensorShape{1}, {{1}}),           // int64
+      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),      // multiple int64
       CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),  // tstring
       {CreateTensor<tstring>(TensorShape{1}, {"a"}),
-       CreateTensor<int64>(TensorShape{1}, {1})},  // mixed tstring/int64
-      {},                                          // empty
+       CreateTensor<int64_t>(TensorShape{1}, {1})},  // mixed tstring/int64
+      {},                                            // empty
   };
 }
 

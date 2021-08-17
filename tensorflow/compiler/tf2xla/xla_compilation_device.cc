@@ -83,18 +83,36 @@ Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_.get();
 }
 
+// Attaches location from the node stack trace to metadata. As a heuristic,
+// picks the last frame which does not contain the "tensorflow/python" substring
+// (making exception for frames containing "test" to allow for testing the
+// feature).
+static void AttachLocationToMetadata(xla::OpMetadata& metadata,
+                                     OpKernel* op_kernel, XlaContext& context) {
+  if (const AbstractStackTrace* stack_trace =
+          context.StackTraceForNodeName(op_kernel->def().name())) {
+    if (absl::optional<StackFrame> frame = stack_trace->LastUserFrame()) {
+      metadata.set_source_file(frame->file_name);
+      metadata.set_source_line(frame->line_number);
+    }
+  }
+}
+
 void XlaCompilationDevice::Compute(OpKernel* op_kernel,
                                    OpKernelContext* context) {
   VLOG(4) << "XlaCompilationDevice::Compute "
           << FormatNodeDefForError(op_kernel->def());
-  auto* b = XlaContext::Get(context).builder();
+  XlaContext& xla_context = XlaContext::Get(context);
+  auto* b = xla_context.builder();
   xla::OpMetadata metadata;
   metadata.set_op_type(op_kernel->type_string());
   metadata.set_op_name(op_kernel->name());
+  AttachLocationToMetadata(metadata, op_kernel, xla_context);
   b->SetOpMetadata(metadata);
 
-  auto sharding_parse_result = ParseShardingFromDevice(
-      op_kernel->def(), std::numeric_limits<int>::max());
+  auto sharding_parse_result =
+      ParseShardingFromDevice(op_kernel->def(), std::numeric_limits<int>::max(),
+                              /*add_metadata=*/false);
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();

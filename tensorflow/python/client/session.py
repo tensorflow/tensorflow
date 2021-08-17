@@ -689,7 +689,7 @@ class BaseSession(SessionInterface):
       raise TypeError('config must be a tf.ConfigProto, but got %s' %
                       type(config))
 
-    if (mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled
+    if (mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled()
         and config.graph_options.rewrite_options.auto_mixed_precision !=
         rewriter_config_pb2.RewriterConfig.OFF):
       new_config = config_pb2.ConfigProto()
@@ -699,7 +699,7 @@ class BaseSession(SessionInterface):
       config = new_config
     elif (config.graph_options.rewrite_options.auto_mixed_precision !=
           rewriter_config_pb2.RewriterConfig.ON):
-      mixed_precision_global_state.non_mixed_precision_session_created = True
+      mixed_precision_global_state.set_non_mixed_precision_session_created(True)
 
     self._config = config
     self._add_shapes = config.graph_options.infer_shapes
@@ -1391,7 +1391,7 @@ class BaseSession(SessionInterface):
                     '\nby modifying the config for creating the session eg.'
                     '\nsession_config.graph_options.rewrite_options.'
                     'disable_meta_optimizer = True')
-      raise type(e)(node_def, op, message)
+      raise type(e)(node_def, op, message)  # pylint: disable=no-value-for-parameter
 
   def _extend_graph(self):
     with self._graph._session_run_lock():  # pylint: disable=protected-access
@@ -1440,7 +1440,7 @@ class BaseSession(SessionInterface):
         fetches.append(mover[1])
       handles = self.run(fetches, feed_dict=feeds)
       for handle_mover, handle in zip(handle_movers, handles):
-        np_val = np.array(handle.handle, dtype=np.object)
+        np_val = np.array(handle.handle, dtype=np.object_)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
         feed_dict[feed_tensor.ref()] = np_val
@@ -1472,8 +1472,6 @@ class BaseSession(SessionInterface):
         tf_session.TF_DeleteBuffer(options_ptr)
 
     def __call__(self, *args, **kwargs):
-      # TODO(b/74355905): Support argument and return value nested structures,
-      # and tensor-like objects such as SparseTensors.
       run_metadata = kwargs.get('run_metadata', None)
       try:
         run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
@@ -1499,8 +1497,6 @@ class BaseSession(SessionInterface):
 
   # pylint: enable=protected-access
 
-  # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
-  # where possible.
   def _make_callable_from_options(self, callable_options):
     """Returns a handle to a "callable" with the given options.
 
@@ -1570,6 +1566,15 @@ class Session(BaseSession):
       allow_soft_placement=True,
       log_device_placement=True))
   ```
+
+  @compatibility(TF2)
+  `Session` does not work with either eager execution or `tf.function`, and you
+  should not invoke it directly. To migrate code that uses sessions to TF2,
+  rewrite the code without it. See the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls.
+  @end_compatibility
   """
 
   def __init__(self, target='', graph=None, config=None):

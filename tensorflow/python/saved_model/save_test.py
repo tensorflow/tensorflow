@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 
 from google.protobuf import text_format
@@ -47,6 +48,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -686,6 +689,82 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(imported.signatures["key"].structured_input_signature[1],
                      {"name": tensor_spec.TensorSpec((None, 1), name="name")})
 
+  def test_save_composite_tensor_signature(self):
+    @def_function.function(
+        input_signature=[ragged_tensor.RaggedTensorSpec(ragged_rank=2)])
+    def f(x):
+      return {"output_key": x}
+    root = tracking.AutoTrackable()
+    path = os.path.join(self.get_temp_dir(), "saved_model")
+    inp = ragged_factory_ops.constant([[[1.0, 2.0], [3.0]], [[5.]]])
+    flat_inp = {
+        "x": constant_op.constant([1., 2., 3., 5]),
+        "x_1": constant_op.constant([0, 2, 3], dtype=dtypes.int64),
+        "x_2": constant_op.constant([0, 2, 3, 4], dtype=dtypes.int64)
+    }
+    save.save(root, path, signatures={"key": f.get_concrete_function()})
+
+    # Test that the ragged signature can be loaded back into Python with V2 APIs
+    imported = load.load(path)
+    self.assertAllEqual(inp,
+                        imported.signatures["key"](**flat_inp)["output_key"])
+    graph = ops.Graph()
+
+    # Try running the signature with V1 APIs.
+    with graph.as_default(), session_lib.Session() as session:
+      meta_graph_def = loader.load(session, [tag_constants.SERVING], path)
+      signature = meta_graph_def.signature_def["key"]
+
+      feed_dict = {}
+      for arg_name in flat_inp:
+        input_tensor = session.graph.get_tensor_by_name(
+            signature.inputs[arg_name].name)
+        feed_dict[input_tensor] = flat_inp[arg_name].numpy()
+
+      # Get composite tensor components
+      output_components = (
+          signature.outputs["output_key"].composite_tensor.components)
+      fetches = {}
+      components_keys = ["x", "x_1", "x_2"]
+      for k, output_tensor_info in zip(components_keys, output_components):
+        fetches[k] = session.graph.get_tensor_by_name(output_tensor_info.name)
+
+      outputs = session.run(fetches, feed_dict)
+
+    self.assertAllClose(flat_inp, outputs)
+
+  def test_save_uses_sanitized_signature_name(self):
+
+    @def_function.function(
+        input_signature=[ragged_tensor.RaggedTensorSpec(ragged_rank=2)])
+    def f(x):
+      return {"output_key": x}
+
+    # Colons are not usable as name scopes.
+    unsanitized_name = "foo:bar"
+    root = tracking.AutoTrackable()
+    path = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, path, signatures={unsanitized_name: f.get_concrete_function()})
+    graph = ops.Graph()
+    with graph.as_default(), session_lib.Session() as session:
+      meta_graph_def = loader.load(session, [tag_constants.SERVING], path)
+      signature = meta_graph_def.signature_def[unsanitized_name]
+      tensor_names = [
+          session.graph.get_tensor_by_name(signature.inputs[key].name).name
+          for key in signature.inputs
+      ]
+      # The placeholder names will have the sanitized version.
+      self.assertCountEqual(tensor_names,
+                            ["foo_bar_x:0", "foo_bar_x_1:0", "foo_bar_x_2:0"])
+
+  def test_save_returns_none(self):
+    # Test that `tf.saved_model.save` API returns None to user.
+    root = tracking.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    result = save.save(root, save_dir)
+    self.assertIsNone(result)
+
 
 class VariablePolicyEnumTest(test.TestCase):
 
@@ -713,7 +792,7 @@ class VariablePolicyEnumTest(test.TestCase):
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
         save_options.VariablePolicy.from_obj("eXpAnD_dIsTrIbUtEd_VaRiAbLeS"))
     for invalid in ["not_a_valid_value", 2.0, []]:
-      with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+      with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
         save_options.VariablePolicy.from_obj(invalid)
 
   def testNamingConvention(self):
@@ -745,6 +824,21 @@ class SavingOptionsTest(test.TestCase):
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
+
+  def test_save_custom_op_with_no_whitelist_specified(self):
+    # Test that we are able to save a model that contains a custom op with a
+    # custom namespace when the user has not explicitly specified a namespace
+    # whitelist (i.e. that we default to allowing all custom ops when saving
+    # and no whitelist is specified, rather than throwing an exception).
+    graph_def = graph_pb2.GraphDef()
+    text_format.Parse("node { name: 'A' op: 'Test>CustomOp' }", graph_def)
+    save._verify_ops(graph_def, namespace_whitelist=None)
+
+    # If the user passes an empty list for the namespace whitelist rather than
+    # nothing, we should then throw an exception if a custom op is used.
+    with self.assertRaisesRegex(
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+      save._verify_ops(graph_def, [])
 
   def test_save_debug_info_enabled(self):
     root = tracking.AutoTrackable()
@@ -834,7 +928,7 @@ class SavingOptionsTest(test.TestCase):
         experimental_variable_policy="expand_distributed_variables")
     self.assertEqual(save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
                      options.experimental_variable_policy)
-    with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+    with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
 

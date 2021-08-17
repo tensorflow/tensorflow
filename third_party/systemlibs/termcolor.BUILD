@@ -7,6 +7,6 @@ filegroup(
 
 py_library(
     name = "termcolor",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

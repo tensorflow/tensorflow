@@ -52,6 +52,12 @@ constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
     : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-replicate-to-island"; }
+
+  StringRef getDescription() const final {
+    return "Lowers device replicate to executor islands";
+  }
+
   void runOnFunction() override;
 };
 
@@ -121,7 +127,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
       if (auto device_by_replica = devices.getValue().get(launch.device()))
-        launch.setAttr(
+        launch->setAttr(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
 
@@ -316,7 +322,7 @@ void ReplicateToIslandPass::runOnFunction() {
   });
 
   for (tf_executor::IslandOp island_op : replicate_op_islands) {
-    auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
+    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
@@ -330,8 +336,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 
-static PassRegistration<ReplicateToIslandPass> pass(
-    "tf-replicate-to-island", "Lowers device replicate to executor islands");
+static PassRegistration<ReplicateToIslandPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

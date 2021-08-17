@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for division with division imported from __future__.
 
-This file should be exactly the same as division_past_test.py except
+This file should be exactly the same as division_future_test.py except
 for the __future__ division line.
 """
 
@@ -46,7 +46,7 @@ class DivisionTestCase(test.TestCase):
       tensors.append((x, y))
       def f(x, y):
         self.assertEqual(x.dtype, y.dtype)
-        self.assertEqual(x, y)
+        self.assertAllClose(x, y)
       checks.append(f)
 
     with self.cached_session() as sess:

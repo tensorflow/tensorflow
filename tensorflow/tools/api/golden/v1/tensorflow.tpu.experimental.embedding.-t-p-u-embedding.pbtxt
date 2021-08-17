@@ -26,6 +26,6 @@ tf_class {
   }
   member_method {
     name: "enqueue"
-    argspec: "args=[\'self\', \'features\', \'weights\', \'training\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'features\', \'weights\', \'training\', \'name\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
   }
 }

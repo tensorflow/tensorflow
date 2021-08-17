@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_volume_patch.h"
+#include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
 
 namespace Eigen {
 

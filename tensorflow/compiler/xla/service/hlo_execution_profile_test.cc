@@ -43,7 +43,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
   Shape shape = ShapeUtil::MakeShape(F32, {30, 30});
 
   auto shape_size_function = [&](const Shape& shape) {
-    const int64 pointer_size = 8;
+    const int64_t pointer_size = 8;
     if (shape.IsOpaque()) {
       return pointer_size;
     }
@@ -58,14 +58,17 @@ TEST_F(HloExecutionProfileTest, Basic) {
   HloExecutionProfile execution_profile(profile_printer.get(),
                                         &profile_index_map);
 
-  const int64 add_cycles = 1000;
-  const int64 dot_cycles = 4000;
+  const int64_t add_cycles = 1000;
+  const int64_t dot_cycles = 4000;
 
   execution_profile.SetCyclesTakenBy(add_instruction, add_cycles);
   execution_profile.SetCyclesTakenBy(dot_instruction, dot_cycles);
 
-  EXPECT_THAT(execution_profile.ToString(
-                  backend().default_stream_executor()->GetDeviceDescription()),
+  float clock_rate_ghz = backend()
+                             .default_stream_executor()
+                             ->GetDeviceDescription()
+                             .clock_rate_ghz();
+  EXPECT_THAT(execution_profile.ToString(clock_rate_ghz),
               AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
                     ContainsRegex(StrCat(add_cycles, " cycles.*%",

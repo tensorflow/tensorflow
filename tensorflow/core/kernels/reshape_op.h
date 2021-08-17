@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RESHAPE_OP_H_
 
 #include <memory>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -47,7 +49,7 @@ class ReshapeOp : public OpKernel {
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one.
     TensorShape shape;
-    int64 product = 1;
+    int64_t product = 1;
     int unknown_index = -1;
     bool sizes_has_zero_dim;
     switch (sizes.dtype()) {
@@ -58,8 +60,8 @@ class ReshapeOp : public OpKernel {
         break;
       case DT_INT64:
         OP_REQUIRES_OK(context,
-                       ValidateSizes<int64>(sizes, &product, &unknown_index,
-                                            &shape, &sizes_has_zero_dim));
+                       ValidateSizes<int64_t>(sizes, &product, &unknown_index,
+                                              &shape, &sizes_has_zero_dim));
         break;
       default:
         context->CtxFailure(errors::InvalidArgument(
@@ -68,7 +70,7 @@ class ReshapeOp : public OpKernel {
         return;
     }
     if (unknown_index != -1) {
-      int64 input_num_elements = 1;
+      int64_t input_num_elements = 1;
       bool input_has_zero_dim = false;
       for (int dim = 0; dim < input.dims(); dim++) {
         // For zero dimension, we don't count it into `input_num_elements`
@@ -81,7 +83,7 @@ class ReshapeOp : public OpKernel {
         }
       }
 
-      const int64 missing = input_num_elements / product;
+      const int64_t missing = input_num_elements / product;
       if (!input_has_zero_dim) {
         OP_REQUIRES(
             context, product * missing == input_num_elements,
@@ -108,12 +110,13 @@ class ReshapeOp : public OpKernel {
 
  private:
   template <typename Tshape>
-  Status ValidateSizes(const Tensor& sizes, int64* product, int* unknown_index,
-                       TensorShape* shape, bool* has_zero_dim) {
+  Status ValidateSizes(const Tensor& sizes, int64_t* product,
+                       int* unknown_index, TensorShape* shape,
+                       bool* has_zero_dim) {
     *product = 1;
     *unknown_index = -1;
     *has_zero_dim = false;
-    const int64 num_dims = sizes.NumElements();
+    const int64_t num_dims = sizes.NumElements();
     auto Svec = sizes.flat<Tshape>();
     for (int d = 0; d < num_dims; ++d) {
       const Tshape size = Svec(d);
@@ -135,6 +138,17 @@ class ReshapeOp : public OpKernel {
         shape->AddDim(size);
         *has_zero_dim = true;
       } else {
+        if (MultiplyWithoutOverflow(shape->num_elements(), size) < 0) {
+          string msg;
+          for (int ii = 0; ii < num_dims; ++ii) {
+            if (ii != 0) {
+              strings::StrAppend(&msg, ", ");
+            }
+            strings::StrAppend(&msg, Svec(ii));
+          }
+          return errors::InvalidArgument("Shape [", msg,
+                                         "] has too many elements");
+        }
         shape->AddDim(size);
         (*product) *= size;
       }

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/journal.h"
 
+#include <string>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.pb.h"
@@ -21,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,7 +45,8 @@ Update MakeCreateJobUpdate() {
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_dataset_id(3);
   create_job->set_job_id(8);
-  create_job->set_processing_mode(ProcessingModeDef::PARALLEL_EPOCHS);
+  create_job->mutable_processing_mode_def()->set_sharding_policy(
+      ProcessingModeDef::OFF);
   return update;
 }
 

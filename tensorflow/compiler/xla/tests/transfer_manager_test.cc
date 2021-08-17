@@ -65,7 +65,7 @@ class TransferManagerTest : public LocalClientTestBase {
   se::Stream* stream_;
 
  private:
-  std::function<int64(const Shape&)> shape_size_fn_;
+  std::function<int64_t(const Shape&)> shape_size_fn_;
 };
 
 XLA_TEST_F(TransferManagerTest, TransferR0U32) {
@@ -310,7 +310,7 @@ XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
 }
 
 XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
-  const int64 kIterationCount = 5000;
+  const int64_t kIterationCount = 5000;
   Literal literal1 = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),
        LiteralUtil::MakeTupleFromSlices(
@@ -388,7 +388,6 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
 
   void Run(::testing::benchmark::State& state, int num_tuple_elements,
            int array_size) {
-    tensorflow::testing::StopTiming();
     SetUp();
 
     std::vector<Literal> tuple_elements;
@@ -398,12 +397,11 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     }
     Literal literal = LiteralUtil::MakeTupleOwned(std::move(tuple_elements));
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
-    tensorflow::testing::StartTiming();
+
     for (auto s : state) {
       TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                              device_buffer));
     }
-    tensorflow::testing::StopTiming();
     TearDown();
   }
 

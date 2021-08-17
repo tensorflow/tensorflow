@@ -46,7 +46,7 @@ void AlarmLoop() {
       // Fire the alarm if applicable.
       if (alarm->deadline() <= now) {
         outstanding_alarms->erase(it);
-        int64 count =
+        int64_t count =
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
         // If the alarm has a counter, only fire if the count is a power of 2.
         if (count == 0 || (count & (count - 1)) == 0) {
@@ -96,8 +96,9 @@ void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
 
 }  // namespace
 
-SlowOperationAlarm::SlowOperationAlarm(absl::Duration timeout, string msg,
-                                       std::atomic<int64>* counter /*=nullptr*/)
+SlowOperationAlarm::SlowOperationAlarm(
+    absl::Duration timeout, string msg,
+    std::atomic<int64_t>* counter /*=nullptr*/)
     : deadline_(absl::Now() + timeout),
       msg_(std::move(msg)),
       counter_(counter) {
@@ -106,12 +107,19 @@ SlowOperationAlarm::SlowOperationAlarm(absl::Duration timeout, string msg,
 
 SlowOperationAlarm::~SlowOperationAlarm() { UnscheduleAlarm(this); }
 
-std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm() {
+std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
+    absl::string_view msg) {
   // Pass a counter to these alarms so they only log once every power-of-two
   // occurrences.
-  static auto* counter = new std::atomic<int64>(0);
+  static auto* counter = new std::atomic<int64_t>(0);
 
   const char* separator = "\n********************************";
+
+  std::string msg_suffix;
+  if (!msg.empty()) {
+    msg_suffix = absl::StrCat("\n", msg);
+  }
+
 #if NDEBUG
   return absl::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Minutes(2)),
@@ -119,7 +127,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm() {
           separator,
           "\nVery slow compile?  If you want to file a bug, run with envvar "
           "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
-          separator),
+          msg_suffix, separator),
       counter);
 #else
   return absl::make_unique<SlowOperationAlarm>(
@@ -128,7 +136,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm() {
           separator,
           "\nSlow compile?  XLA was built without compiler optimizations, "
           "which can be slow.  Try rebuilding with -c opt.",
-          separator),
+          msg_suffix, separator),
       counter);
 #endif
 }

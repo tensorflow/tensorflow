@@ -28,3 +28,42 @@ def UnaryEinsumToEinsum : Pat<
   (HLO_UnaryEinsumOp $operand, $equation),
   (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
                 $operand, (UnaryToBinaryEinsumEq $equation))>;
+
+// A dynamic reshape of a dynamic reshape is a dynamic reshape.
+def RemoveRedundantDynamicReshape : Pat<
+  (HLO_DynamicReshapeOp (HLO_DynamicReshapeOp $operand, $shape1), $shape2),
+  (HLO_DynamicReshapeOp $operand, $shape2)>;
+
+// A dynamic broadcast of a dynamic reshape with the same shape operand
+// is a dynamic reshape.
+def RemoveRedundantDynamicBroadcast : Pat<
+  (HLO_DynamicBroadcastInDimOp
+    (HLO_DynamicReshapeOp $operand, $shape),
+     $shape, IdentityBroadcastDims:$dims),
+  (HLO_DynamicReshapeOp $operand, $shape)>;
+
+
+// Convert DPad to Pad if edge_padding_low, edge_padding_high and
+// interior_paddin are HLO_ConstOp
+def DPadToPad: Pat<
+          (HLO_DynamicPadOp HLO_Tensor:$input,
+            HLO_Tensor:$padding_value,
+            (HLO_ConstOp I64ElementsAttr:$edge_padding_low),
+            (HLO_ConstOp I64ElementsAttr:$edge_padding_high),
+            (HLO_ConstOp I64ElementsAttr:$interior_paddin)),
+          (HLO_PadOp $input, $padding_value,
+            (CastIntElementsAttr $edge_padding_low),
+            (CastIntElementsAttr $edge_padding_high),
+            (CastIntElementsAttr $interior_paddin))>;
+
+// Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
+// strides are HLO_ConstOp
+def RealDSliceToSlice: Pat<
+          (HLO_RealDynamicSliceOp HLO_Tensor:$operand,
+            (HLO_ConstOp I64ElementsAttr:$start_indices),
+            (HLO_ConstOp I64ElementsAttr:$limit_indices),
+            (HLO_ConstOp I64ElementsAttr:$strides)),
+          (HLO_SliceOp $operand,
+            (CastIntElementsAttr $start_indices),
+            (CastIntElementsAttr $limit_indices),
+            (CastIntElementsAttr $strides))>;

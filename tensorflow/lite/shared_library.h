@@ -29,13 +29,15 @@ namespace tflite {
 class SharedLibrary {
  public:
 #if defined(_WIN32)
-  static inline void* LoadLibrary(const char* lib) {
-    return ::LoadLibrary(lib);
+  static inline void* LoadLibrary(const wchar_t* lib) {
+    return ::LoadLibraryW(lib);
   }
   static inline void* GetLibrarySymbol(void* handle, const char* symbol) {
     return reinterpret_cast<void*>(
         GetProcAddress(static_cast<HMODULE>(handle), symbol));
   }
+  // Warning: Unlike dlsym(RTLD_DEFAULT), it doesn't search the symbol from
+  // dependent DLLs.
   static inline void* GetSymbol(const char* symbol) {
     return reinterpret_cast<void*>(GetProcAddress(nullptr, symbol));
   }

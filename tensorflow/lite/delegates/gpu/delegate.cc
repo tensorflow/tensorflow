@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -44,6 +45,11 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
+
+using delegates::Serialization;
+using delegates::SerializationParams;
+
+constexpr char kSerializedDataPrefix[] = "gpuv2_data_";
 
 InferencePriority ToPriority(int32_t priority) {
   switch (priority) {
@@ -76,13 +82,28 @@ class Delegate {
  public:
   explicit Delegate(const TfLiteGpuDelegateOptionsV2* options)
       : num_delegate_kernels_(0) {
+    delegate_.data_ = reinterpret_cast<void*>(this);
+    delegate_.Prepare = DelegatePrepare;
+    delegate_.CopyFromBufferHandle = nullptr;
+    delegate_.CopyToBufferHandle = nullptr;
+    delegate_.FreeBufferHandle = nullptr;
+    delegate_.flags = kTfLiteDelegateFlagsNone;
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
     }
+    if (options->experimental_flags &
+            TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION &&
+        options->model_token && options->serialization_dir) {
+      SerializationParams params;
+      params.model_token = options->model_token;
+      params.cache_dir = options->serialization_dir;
+      serialization_.reset(new Serialization(params));
+    }
   }
 
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
+  Serialization* serialization() { return serialization_.get(); }
   const TfLiteGpuDelegateOptionsV2& options() const { return options_; }
 
   bool IsQuantOpsAllowed() const {
@@ -95,17 +116,11 @@ class Delegate {
   int num_delegate_kernels() const { return num_delegate_kernels_; }
 
  private:
-  TfLiteDelegate delegate_ = {
-      .data_ = reinterpret_cast<void*>(this),
-      .Prepare = DelegatePrepare,
-      .CopyFromBufferHandle = nullptr,
-      .CopyToBufferHandle = nullptr,
-      .FreeBufferHandle = nullptr,
-      .flags = kTfLiteDelegateFlagsNone,
-  };
-
+  TfLiteDelegate delegate_;
   TfLiteGpuDelegateOptionsV2 options_;
   int num_delegate_kernels_ = 0;
+
+  std::unique_ptr<Serialization> serialization_;
 
   friend class DelegateKernel;
 };
@@ -134,14 +149,16 @@ class DelegateKernel {
     bool graph_is_destroyed;
     const int experimental_flags = delegate_->options().experimental_flags;
     if (experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY) {
-      RETURN_IF_ERROR(
-          InitializeOpenClApi(&graph, &builder, &graph_is_destroyed));
+      RETURN_IF_ERROR(InitializeOpenClApi(&graph, &builder, &graph_is_destroyed,
+                                          context, delegate_params,
+                                          delegate_->serialization()));
     } else if (experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY) {
       RETURN_IF_ERROR(InitializeOpenGlApi(&graph, &builder));
     } else {
       // By default, we try CL first & fall back to GL if that fails.
       absl::Status status =
-          InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
+          InitializeOpenClApi(&graph, &builder, &graph_is_destroyed, context,
+                              delegate_params, delegate_->serialization());
       if (!status.ok()) {
         TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
         TF_LITE_KERNEL_LOG(context, "Falling back to OpenGL");
@@ -285,12 +302,15 @@ class DelegateKernel {
 
   absl::Status InitializeOpenClApi(GraphFloat32* graph,
                                    std::unique_ptr<InferenceBuilder>* builder,
-                                   bool* graph_is_destroyed) {
+                                   bool* graph_is_destroyed,
+                                   TfLiteContext* context,
+                                   const TfLiteDelegateParams* delegate_params,
+                                   Serialization* serialization = nullptr) {
     *graph_is_destroyed = false;
     cl::InferenceEnvironmentOptions env_options;
     cl::InferenceEnvironmentProperties properties;
-    RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
-                                                &properties));
+
+    // OpenCL initialization is parameterized by these InferenceOptions.
     auto delegate_options = delegate_->options();
     cl::InferenceOptions options;
     // If is_precision_loss_allowed == -1, then just use priorities instead
@@ -308,11 +328,94 @@ class DelegateKernel {
       }
     }
     options.usage = ToUsage(delegate_options.inference_preference);
-    *graph_is_destroyed = true;
-    RETURN_IF_ERROR(cl_environment_->NewInferenceBuilder(
-        options, std::move(*graph), builder));
+
+    if (!serialization) {
+      // This path is faster when there is no serialization involved.
+      RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
+                                                  &properties));
+      *graph_is_destroyed = true;
+      RETURN_IF_ERROR(cl_environment_->NewInferenceBuilder(
+          options, std::move(*graph), builder));
+    } else {
+      // If serialization data is found, initialize CL from it & return early.
+      if (MaybeInitializeSerializedOpenCL(context, delegate_params, builder,
+                                          &options, &env_options, &properties,
+                                          serialization)
+              .ok())
+        return absl::OkStatus();
+
+      RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
+                                                  &properties));
+      *graph_is_destroyed = true;
+      std::vector<uint8_t> serialized_model;
+      RETURN_IF_ERROR(cl_environment_->BuildSerializedModel(
+          options, std::move(*graph), &serialized_model));
+      RETURN_IF_ERROR(
+          cl_environment_->NewInferenceBuilder(serialized_model, builder));
+
+      RETURN_IF_ERROR(SaveSerializedOpenCL(context, delegate_params, &options,
+                                           serialization, serialized_model));
+    }
+
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenCL-based API.");
+    return absl::OkStatus();
+  }
+
+  // Returns Ok only if serialized data is successsfully found.
+  absl::Status MaybeInitializeSerializedOpenCL(
+      TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+      std::unique_ptr<InferenceBuilder>* builder, cl::InferenceOptions* options,
+      cl::InferenceEnvironmentOptions* env_options,
+      cl::InferenceEnvironmentProperties* properties,
+      Serialization* serialization) {
+    if (!serialization) return absl::InvalidArgumentError("No serialization");
+    // We use a fingerprint of the options to ensure compatibility.
+    std::string options_fingerprint =
+        delegates::StrFingerprint(options, sizeof(cl::InferenceOptions));
+    auto data_key = serialization->GetEntryForKernel(
+        std::string(kSerializedDataPrefix) + options_fingerprint, context,
+        delegate_params);
+
+    std::string model_data;
+    auto model_data_status = data_key.GetData(context, &model_data);
+    if (model_data_status == kTfLiteOk) {
+      absl::Span<const uint8_t> model_span = absl::Span<const uint8_t>{
+          reinterpret_cast<const uint8_t*>(model_data.data()),
+          model_data.size()};
+      RETURN_IF_ERROR(cl::NewInferenceEnvironment(
+          *env_options, &cl_environment_, properties));
+      RETURN_IF_ERROR(
+          cl_environment_->NewInferenceBuilder(model_span, builder));
+      TFLITE_LOG_PROD_ONCE(
+          tflite::TFLITE_LOG_INFO,
+          "Initialized OpenCL-based API from serialized data.");
+      return absl::OkStatus();
+    }
+
+    return absl::NotFoundError("Serialization data not found");
+  }
+
+  // Returns Ok only if serialization happens successfully.
+  absl::Status SaveSerializedOpenCL(
+      TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+      cl::InferenceOptions* options, Serialization* serialization,
+      const std::vector<uint8_t>& serialized_model) {
+    if (!serialization) return absl::InvalidArgumentError("No serialization");
+    // We use a fingerprint of the options to ensure compatibility.
+    std::string options_fingerprint =
+        delegates::StrFingerprint(options, sizeof(cl::InferenceOptions));
+
+    // Save data.
+    auto data_key = serialization->GetEntryForKernel(
+        std::string(kSerializedDataPrefix) + options_fingerprint, context,
+        delegate_params);
+    auto save_status = data_key.SetData(
+        context, reinterpret_cast<const char*>(serialized_model.data()),
+        serialized_model.size());
+    if (save_status != kTfLiteOk) {
+      return absl::InvalidArgumentError("Failed to save serialized data");
+    }
     return absl::OkStatus();
   }
 
@@ -334,8 +437,10 @@ class DelegateKernel {
     enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
-#endif
     return absl::OkStatus();
+#else
+    return absl::UnavailableError("OpenGL-based API disabled");
+#endif
   }
 
   // The Delegate instance that's shared across all DelegateKernel instances.
@@ -440,17 +545,18 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace tflite
 
 TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
-  TfLiteGpuDelegateOptionsV2 options = {
-      // set it to -1 to detect whether it was later adjusted.
-      .is_precision_loss_allowed = -1,
-      .inference_preference =
-          TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-      .inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION,
-      .inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO,
-      .inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO,
-      .experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT,
-      .max_delegated_partitions = 1,
-  };
+  TfLiteGpuDelegateOptionsV2 options;
+  // set it to -1 to detect whether it was later adjusted.
+  options.is_precision_loss_allowed = -1;
+  options.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+  options.max_delegated_partitions = 1;
+  options.model_token = nullptr;
+  options.serialization_dir = nullptr;
   return options;
 }
 

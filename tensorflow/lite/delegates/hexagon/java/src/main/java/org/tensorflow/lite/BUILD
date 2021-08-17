@@ -1,4 +1,4 @@
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 filegroup(
     name = "hexagon_delegate",

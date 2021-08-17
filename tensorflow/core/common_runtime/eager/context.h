@@ -24,28 +24,45 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-// clang-format off
-// Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
-#include "absl/types/optional.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
+#include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+// "tensorflow/core/platform/platform.h" must be included first before using
+// IS_MOBILE_PLATFORM.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -53,23 +70,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #endif  // !IS_MOBILE_PLATFORM
-#include "tensorflow/core/framework/collective.h"
-#include "tensorflow/core/framework/log_memory.h"
-#include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -83,26 +83,6 @@ class RemoteMgr;
 class TensorHandle;
 class EagerOperation;
 
-class CustomDevice {
- public:
-  virtual ~CustomDevice() {}
-  virtual const string& name() = 0;
-  virtual Status CopyTensorToDevice(TensorHandle* tensor,
-                                    TensorHandle** result) = 0;
-
-  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
-                                      const string& target_device_name,
-                                      TensorHandle** result) = 0;
-
-  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
-                         int* num_retvals) = 0;
-};
-
-// Custom devices do many of the same things as physical Devices, but have a
-// much more restricted interface. We pass around ambiguous pointers since
-// TensorHandles may be placed either on custom or physical devices.
-using VariantDevice = absl::variant<Device*, CustomDevice*>;
-
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
@@ -115,18 +95,20 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return context_id;
   }
 
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, const bool lazy_copy_function_remote_inputs,
-               const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
+  EagerContext(
+      const SessionOptions& opts,
+      ContextDevicePlacementPolicy default_device_placement_policy, bool async,
+      /*const*/ DeviceMgr* device_mgr, bool device_mgr_owned,
+      /*const*/ Rendezvous* rendezvous,
+      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+      CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
+      bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 
-  AbstractTensorInterface* CreateInt64Scalar(int64 value) override;
+  AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
   AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
-  AbstractTensorInterface* CreateInt32Scalar(int32 value) override;
+  AbstractTensorInterface* CreateInt32Scalar(int32_t value) override;
   AbstractTensorInterface* CreateFloatScalar(float value) override;
   AbstractTensorInterface* CreateDoubleScalar(double value) override;
   AbstractTensorInterface* CreateHalfScalar(Eigen::half value) override;
@@ -137,7 +119,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   AbstractTensorInterface* CreateBoolScalar(bool value) override;
 
   AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) override;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) override;
   AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
                                         int num_dims, void* data, size_t len,
                                         MemoryReleaser memory_releaser,
@@ -153,8 +135,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       Status* status) override;
   ImmediateExecutionOperation* CreateOperation() override;
 
-  // Convert a TFRT TensorHandle to tensorflow::TensorHandle. In this case,
-  // just forward the input TensorHandle.
+  // This is a virtual helper function to convert TFRT TensorHandle to
+  // tensorflow::TensorHandle. In current runtime EagerContext, just forward
+  // the input since the input tensor handle is already a
+  // tensorflow::TensorHandle.
   ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) override;
 
@@ -162,7 +146,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   bool UsesTFRT() override;
 
+  bool RunEagerOpAsFunction() const;
+
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
+
+  Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {
@@ -209,8 +197,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 
-  bool LazyCopyFunctionRemoteInputs() const;
-
   bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
@@ -226,6 +212,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return HostCPU()->parsed_name();
   }
 
+  const string& HostCPUName() const override { return HostCPU()->name(); }
+
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
   EagerExecutor& Executor() override;
@@ -233,15 +221,22 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Add the given `fdef` to the local FunctionLibraryDefinition. And add an
   // entry to the KernelAndDevice cache for it if it's not exist.
   Status AddFunctionDef(const FunctionDef& fdef) override;
+
+  Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) override;
+
   // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
   // it to the local FunctionLibraryDefinition as well, but no need to add it
   // to the KernelAndDevice cache since they won't be executed as
   // KernelAndDevices.
   Status AddFunctionDef(const FunctionDef& fdef,
                         const FunctionDefLibrary& library,
-                        const bool add_to_local_only = false);
+                        bool add_to_local_only = false,
+                        const StackTracesMap& stack_traces = {});
 
   const FunctionDef* GetFunctionDef(const string& function_name);
+
+  std::vector<string> ListFunctionNames() override;
 
   Status RemoveFunction(const string& func) override;
 
@@ -262,6 +257,19 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void SetLogDevicePlacement(bool enable) override {
     log_device_placement_ = enable;
   }
+
+  // When tensor transfer across functions/eager executions using send/recv ops
+  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
+  // function executions and eager executions use the same rendezvous instance,
+  // instead of creating new instance per function calls.
+  void SetReuseRendezvousForFunctions(
+      bool reuse_rendezvous_for_functions) override {
+    reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
+  }
+  bool GetReuseRendezvousForFunctions() const {
+    return reuse_rendezvous_for_functions_;
+  }
+
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
     allow_soft_placement_ = enable;
@@ -269,24 +277,30 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
-  Rendezvous* CreateRendezvous(const int64 step_id) const {
-    if (rendezvous_creator_ != nullptr) {
-      return rendezvous_creator_(step_id);
-    }
 
-#if !defined(IS_MOBILE_PLATFORM)
-    if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
-      auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
-      remote_r->Initialize(worker_session_.get()).IgnoreError();
-      return remote_r;
-    }
-#endif
+  void ResetGlobalRendezvousForFunction() override {
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
 
-    if (remote_device_mgr() == nullptr) {
-      return new IntraProcessRendezvous(local_device_mgr());
+  // Returns a function which maps from step_id to rendezvous. This closure
+  // respects the value of `SetReuseRendezvousForFunctions` at the time the
+  // closure was created, which allows the setting to be toggled around async op
+  // launches.
+  //
+  // The caller of the returned function owns a reference to the resulting
+  // Rendezvous.
+  std::function<Rendezvous*(int64_t)> RendezvousCreator() {
+    if (reuse_rendezvous_for_functions_) {
+      return [this](int64_t step_id) {
+        mutex_lock l(global_rendezvous_mu_);
+        global_rendezvous_for_functions_->Ref();
+        return global_rendezvous_for_functions_.get();
+      };
+    } else {
+      return [this](int64_t step_id) { return CreateRendezvous(step_id); };
     }
-
-    return nullptr;
   }
 
   CollectiveExecutorMgrInterface* collective_executor_mgr() {
@@ -298,7 +312,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
             collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/));
   }
 
-  const tensorflow::DeviceMgr* local_device_mgr() const {
+  tensorflow::DeviceMgr* local_device_mgr() const {
     return local_device_manager_.Get();
   }
   const tensorflow::DynamicDeviceMgr* remote_device_mgr() const {
@@ -307,6 +321,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   tensorflow::DynamicDeviceMgr* GetOwnedRemoteDeviceMgr() {
     return remote_device_manager_.GetOwned();
+  }
+
+  std::vector<Device*> ListLocalTfDevices() override {
+    return local_device_mgr()->ListDevices();
   }
 
   // TODO(apassos) clean up RunMetadata storage.
@@ -343,6 +361,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   uint64 GetContextViewId() const;
   void IncrementContextViewId();
 
+  Status EnableCollectiveOps(const ServerDef& server_def) override;
+
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
   //
@@ -357,14 +377,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
   // - remote_contexts: A vector containing task names.
+  // TODO(b/184375824): clean up parameter order for better readability.
   Status InitializeRemoteMaster(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       const std::vector<string>& remote_contexts, uint64 context_id,
-      Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr,
+      /*const*/ Rendezvous* r, /*const*/ DeviceMgr* local_device_mgr,
+      int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
@@ -387,7 +408,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DynamicDeviceMgr* remote_device_mgr,
       const std::vector<string>& remote_contexts, uint64 context_id,
       uint64 context_view_id,
-      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr,
@@ -400,7 +421,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       const std::vector<string>& remote_contexts, uint64 context_id);
 
   Status StoreCollectiveOpsServer(
-      std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
+      std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
   // For the specified remote worker, preprocess and set its device filters.
@@ -440,6 +461,20 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return ptr->getKind() == kEager;
   }
 
+  // Function to support distributed C API.
+  void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed)
+      override {
+    distributed_manager_ = std::move(distributed);
+  }
+  ImmediateExecutionDistributedManager* GetDistributedManager() override {
+    return distributed_manager_.get();
+  }
+
+  // May only be used during multi-client setup so that a RemoteRendezvous
+  // can be initialized instead of defaulting to the IntraProcessRendezvous.
+  void SetWorkerEnv(WorkerEnv* worker_env,
+                    std::shared_ptr<WorkerSession> worker_session);
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
@@ -462,11 +497,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
-  bool FindCustomDeviceFromName(const string& device_name,
-                                CustomDevice** dev) const;
-
   Status RegisterCustomDevice(const string& name,
-                              std::unique_ptr<CustomDevice> device);
+                              std::unique_ptr<CustomDevice> device) override;
+
+  CustomDeviceOpHandler& GetCustomDeviceOpHandler() override {
+    return custom_device_op_handler_;
+  };
 
   // Find or create a composite device with the given `underlying_devices` and
   // `device_name` (if not empty).
@@ -479,11 +515,31 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
   const SessionOptions& session_options() const { return opts_; }
+  void InitPrioritizedDeviceTypeList();
 
  private:
+  Rendezvous* CreateRendezvous(int64_t step_id) const {
+    if (rendezvous_creator_ != nullptr) {
+      return rendezvous_creator_(step_id);
+    }
+
+#if !defined(IS_MOBILE_PLATFORM)
+    if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
+      remote_r->Initialize(worker_session_.get()).IgnoreError();
+      return remote_r;
+    }
+#endif
+
+    if (remote_device_mgr() == nullptr) {
+      return new IntraProcessRendezvous(local_device_mgr());
+    }
+
+    return nullptr;
+  }
+
   ~EagerContext() override;
 
-  void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<string>& remote_workers);
@@ -496,6 +552,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                  DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
+
+  void ClearResourceContainer(const string& name);
 
   template <typename T>
   struct OwnedOrUnownedHelper {
@@ -540,9 +598,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
       device_placement_policy_ TF_GUARDED_BY(policy_map_mu_);
 
-  OwnedOrUnownedHelper<const DeviceMgr> local_device_manager_;
+  OwnedOrUnownedHelper<DeviceMgr> local_device_manager_;
   // Maintain copy of all previously created local device managers.
-  std::vector<std::unique_ptr<const DeviceMgr>> old_local_device_managers_;
+  std::vector<std::unique_ptr<DeviceMgr>> old_local_device_managers_;
 
   // Unowned DynamicDeviceMgr is set on remote worker to allow running
   // multi-device function on remote worker.
@@ -553,15 +611,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list_
       TF_GUARDED_BY(device_type_list_mu_);
   Rendezvous* rendezvous_;
-  std::function<Rendezvous*(const int64)> rendezvous_creator_;
-  std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
+  CustomDeviceOpHandler custom_device_op_handler_;
 
   mutable mutex composite_devices_mu_;
   // Maps from the fingerprint of a set of device names to a virtual
   // CompositeDevice.
   // TODO(b/145922293): Consider taking device names as keys.
   absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
-      composite_devices_ GUARDED_BY(composite_devices_mu_);
+      composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
@@ -613,6 +671,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   const bool log_memory_;
 
+  // Whether to use same rendezvous instance across function/eager executions.
+  std::atomic<bool> reuse_rendezvous_for_functions_{false};
+  mutable mutex global_rendezvous_mu_;
+  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
+      TF_GUARDED_BY(global_rendezvous_mu_);
+
   Env* const env_;
 
   OwnedOrUnownedHelper<CollectiveExecutorMgrInterface> collective_executor_mgr_;
@@ -624,13 +688,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
                            uint64 context_id, uint64 context_view_id);
 
+  // TODO(b/184375824): clean up parameter order for better readability.
   Status SetMasterContextState(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
-      uint64 context_id, uint64 context_view_id, Rendezvous* r,
-      const DeviceMgr* local_device_mgr, int keep_alive_secs,
+      uint64 context_id, uint64 context_view_id, /*const*/ Rendezvous* r,
+      /*const*/ DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
@@ -669,6 +734,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
       cluster_device_filters_ TF_GUARDED_BY(remote_state_mu_);
 
+  // A distributed manager that helps setup, update, and check liveness of
+  // member tasks in the cluster.
+  std::unique_ptr<ImmediateExecutionDistributedManager> distributed_manager_;
+
 #endif  // IS_MOBILE_PLATFORM
 
   // For a multi device function, the target device of each input is unknown
@@ -683,6 +752,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Function that will be invoked in destructor to deallocate resources related
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
+  bool run_eager_op_as_function_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

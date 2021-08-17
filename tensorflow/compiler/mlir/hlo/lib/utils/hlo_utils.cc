@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y,
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
                                                 bool allow_empty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
   TensorType yType = y.getType().dyn_cast<RankedTensorType>();
@@ -78,7 +78,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
 
 static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
                                          ScalarLimit limit) {
-  auto &semantics = float_ty.getFloatSemantics();
+  auto& semantics = float_ty.getFloatSemantics();
   switch (limit) {
     case kLowest:
       return APFloat::getLargest(semantics, /*negative=*/true);
@@ -100,10 +100,11 @@ static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
 static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
                                          ScalarLimit limit) {
   unsigned width = integer_ty.getWidth();
+  bool is_bool = (width == 1);
   switch (limit) {
     case kLowest:
     case kInfinityLowest:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMinValue(width);
       } else {
         return APInt::getSignedMinValue(width);
@@ -111,7 +112,7 @@ static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
 
     case kMax:
     case kInfinityMax:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMaxValue(width);
       } else {
         return APInt::getSignedMaxValue(width);
@@ -130,6 +131,35 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
         scalar_ty, GetScalarLimitOfIntegerType(integer_ty, limit));
   }
   llvm_unreachable("unsupported type");
+}
+
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext* context) {
+  assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
+
+  if (op_name == "lmhlo.dot") {
+    return "mhlo.dot_general";
+  }
+
+  if (op_name == "lmhlo.dynamic_slice") {
+    return "mhlo.dynamic-slice";
+  }
+
+  std::string mhlo_op_name(op_name.drop_front(1));
+  if (context->isOperationRegistered(mhlo_op_name)) return mhlo_op_name;
+  return "";
+}
+
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+    if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
+  return true;
+}
+
+int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
+  BlockArgument arg = value.dyn_cast<BlockArgument>();
+  if (!arg || arg.getOwner() != &op.front()) return -1;
+  return arg.getArgNumber();
 }
 
 }  // namespace hlo

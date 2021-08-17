@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -79,8 +80,28 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
+  pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
+
+  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
+  // introduces reshapes and transposes that can be eliminated using
+  // AlgebraicSimplifier  We run algsimp to a fixed point.
+  //
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  AlgebraicSimplifierOptions options;
+  options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
+  options.set_cudnn_batchnorm_forward_training_metadata(
+      kCudnnBatchNormForwardTrainingCallTarget);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -93,40 +114,39 @@ AMDGPUCompiler::AMDGPUCompiler()
                   amdgpu::kDataLayout) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  int isa_version = 0;
-  if (!stream_exec->GetDeviceDescription().rocm_amdgpu_isa_version(
-          &isa_version)) {
-    LOG(WARNING)
-        << "Couldn't get AMDGPU ISA version for device; assuming gfx803.";
-    isa_version = 803;
+  std::string gcn_arch_name =
+      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  if (gcn_arch_name == stream_exec->GetDeviceDescription().kUndefinedString) {
+    LOG(WARNING) << "Couldn't get AMDGPU GCN Arch for device; assuming gfx900.";
+    gcn_arch_name = "gfx900";
   }
 
-  return isa_version;
+  return gcn_arch_name;
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
+AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version,
-                                    se::StreamExecutor* stream_exec) {
+                                    se::StreamExecutor* stream_exec,
+                                    bool relocatable,
+                                    const HloModule* debug_module) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
-    rocdl_dir_ = GetROCDLDir(module->config());
+    rocdl_dir_ = GetROCDLDir(module_config);
+  }
+
+  if (relocatable) {
+    return Unimplemented("relocatable target binary is not implemented");
   }
 
   std::vector<uint8> hsaco;
   {
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
-    TF_ASSIGN_OR_RETURN(hsaco,
-                        amdgpu::CompileToHsaco(llvm_module, gpu_version,
-                                               module->config(), rocdl_dir_));
-  }
-
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
+    TF_ASSIGN_OR_RETURN(
+        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version, module_config,
+                                      rocdl_dir_));
   }
 
   return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));

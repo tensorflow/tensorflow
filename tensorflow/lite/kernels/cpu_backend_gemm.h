@@ -50,14 +50,7 @@ namespace cpu_backend_gemm {
 //  ENABLED && (AVX
 //  or above available)
 
-
-#if (defined(__i386) || defined(_M_IX86) || defined(__x86_64__) || \
-     defined(_M_X64))
-#define TFLITE_X86_PLATFORM
-#endif
-
-// TODO(b/168923364)  Set TFLITE_X86_RUY_ENABLED default 'on' when ready.
-#if defined(TFLITE_X86_PLATFORM) && defined(TFLITE_X86_RUY_ENABLED)
+#if !defined(TFLITE_WITH_RUY) && defined(TFLITE_X86_PLATFORM)
 /* GEMM dispatch implementation for x86.
  */
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -72,12 +65,10 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar, QuantizationFlavor quantization_flavor>
 struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
                                            DstScalar, quantization_flavor> {};
-#endif
 
-#if !defined(TFLITE_WITH_RUY) && !defined(TFLITE_X86_RUY_ENABLED)
+#if !defined(TFLITE_WITH_RUY)
 
 /* Specializations using gemmlowp */
-
 template <typename SrcScalar, typename DstScalar,
           QuantizationFlavor quantization_flavor>
 struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar,
@@ -114,7 +105,9 @@ template <>
 struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
     : detail::GemmImplUsingEigen {};
 
-#endif  // not TFLITE_WITH_RUY && not TFLITE_X86_RUY_ENABLED
+#endif  // not TFLITE_WITH_RUY
+
+#endif  // not TFLITE_WITH_RUY and TFLITE_X86_PLATFORM
 
 /* Public entry point */
 
@@ -127,6 +120,13 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
+  if (!IsValidGemm(lhs_params, rhs_params, dst_params)) {
+    // For now, assert in debug mode, return in opt.
+    // TODO(b/183099395) Eliminate debug/release discrepancy by plumbing in
+    // TFLiteStatus so we can return an error here.
+    TFLITE_DCHECK(false);
+    return;
+  }
   // In some cases we want to unconditionally use ruy as the backend, overriding
   // the `tflite_with_ruy` setting and the platform default.
   bool must_use_ruy = false;

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
@@ -211,7 +212,7 @@ class Conv3DTest(test.TestCase):
         x2, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionClass3DExpandedBatch(self):
@@ -237,7 +238,7 @@ class Conv3DTest(test.TestCase):
     conv2 = convolver2(x2, filter_in)
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
@@ -253,7 +254,7 @@ class Conv3DTest(test.TestCase):
         x2, filter_in, strides=[1, 1, 1], padding="VALID")
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
-    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   def testConv3D1x1x1Filter(self):
     expected_output = [
@@ -459,6 +460,16 @@ class Conv3DTest(test.TestCase):
         stride=1,
         padding="VALID",
         expected=[1.5625, 1.875])
+
+  def testZeroSizedFilterThrowsIllegalArgument(self):
+    tensor_in_sizes = [1, 1, 1, 1, 1]
+    x1 = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = np.ones((1, 1, 0, 1, 1), dtype=np.float32)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "filter must not have zero elements"
+        "|has a non-positive dimension"):
+      self.evaluate(
+          nn_ops.conv3d(x1, filter_in, strides=[1, 1, 1, 1, 1], padding="SAME"))
 
   def _ConstructAndTestGradientForConfig(
       self, batch, input_shape, filter_shape, in_depth, out_depth, stride,

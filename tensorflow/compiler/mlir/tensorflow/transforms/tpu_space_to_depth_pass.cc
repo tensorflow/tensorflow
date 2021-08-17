@@ -24,13 +24,13 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -59,57 +60,10 @@ struct BlockArgumentInfo {
   unsigned num_users;
 };
 
-// A pass that applies automatic space to depth transform for the first or
-// frontier convolutions consume host inputs on TPU.
-// This is done by adding space to depth transform op after host input and
-// applying space to depth transform for the first convolution and its backprop
-// filter on TPU.
-//
-// Example: original program:
-//
-// module {
-//   func @while_body {
-//     %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}:
-//              -> tensor<2x224x224x3xf32>
-//     %device_launch = "tf_device.cluster_func"(%input,...) {func = @_func,...)
-//     return ...
-//   }
-//   func @_func(%input: tensor<2x224x224x3xf32>,
-//               %filter: tensor<7x7x3x64xf32>) {
-//     %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}:
-//      (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) ->
-//      tensor<2x112x112x64xf32>
-//   }
-// }
-//
-// With this pass, the program will be transformed into:
-// module {
-//   func @while_body {
-//     %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//               -> tensor<2x224x224x3xf32>
-//     %space_to_depth = "tf.SpaceToDepth"(%input) {block_size = 2, ...}:
-//        (tensor<2x224x224x3xf32>) -> tensor<2x112x112x12xf32>
-//     %device_launch = "tf_device.cluster_func"(%space_to_depth,...)
-//       {func = @_func,...)
-//     return ...
-//   }
-//   func @_func(%input: tensor<2x112x112x12xf32>,
-//               %filter: tensor<7x7x3x64xf32>) {
-//     %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter):
-//       tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
-//     %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}:
-//       (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) ->
-//       tensor<2x112x112x64xf32>
-//   }
-// }
-//
-// This way, the first convolution with 3 feature dimension will be transformed
-// to 12 feature dimension, which has better performance on TPU.
-//
 // TODO(wangtao): add a pass to check if it is profitable to space to depth
 // transform and invoke the transform if it is needed.
 struct TPUSpaceToDepthPass
-    : public PassWrapper<TPUSpaceToDepthPass, OperationPass<ModuleOp>> {
+    : public TF::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
   void runOnOperation() override;
 };
 
@@ -117,7 +71,7 @@ struct TPUSpaceToDepthPass
 void UpdateFuncType(FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
-  func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
@@ -196,11 +150,11 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
   MLIRContext* context = conv2d.getContext();
   SmallVector<int64_t, 4> values = {1, 1, 1, 1};
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
-    return IntegerAttr::get(IntegerType::get(64, context), v);
+    return IntegerAttr::get(IntegerType::get(context, 64), v);
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
-  conv2d.setAttr("strides", strides);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
+  conv2d->setAttr("strides", strides);
 }
 
 // Transforms input shape for the first convolution.
@@ -351,9 +305,9 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   MLIRContext* context = backprop.getContext();
   SmallVector<int64_t, 4> values = {1, 1, 1, 1};
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
-    return IntegerAttr::get(IntegerType::get(64, context), APInt(64, v));
+    return IntegerAttr::get(IntegerType::get(context, 64), APInt(64, v));
   });
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
 
   // new result type.
   SmallVector<int64_t, 4> new_shape(new_filter_shape.begin(),
@@ -453,26 +407,23 @@ bool HandleHostReplicatedInputs(int64_t index,
                                 BlockArgument block_arg,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
-  int64_t replicate_arg_index = block_arg.getArgNumber();
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n();
-  // Gets inputs at replicate_arg_index for each replica.
-  auto inputs = replicate.getOperands()
-                    .drop_front(replicate_arg_index * num_replicas)
-                    .take_front(num_replicas);
-  for (auto input : inputs) {
-    auto input_op = input.getDefiningOp();
+
+  MutableArrayRef<OpOperand> inputs =
+      replicate.GetOperandsForBlockArgument(block_arg);
+  for (auto& input : inputs) {
+    auto input_op = input.get().getDefiningOp();
     if (!input_op || !IsSupportedHostInputOp(input_op)) return false;
   }
   for (auto entry : llvm::enumerate(inputs)) {
-    auto ranked_type = entry.value().getType().dyn_cast<RankedTensorType>();
+    Value input = entry.value().get();
+    auto ranked_type = input.getType().dyn_cast<RankedTensorType>();
     if (!ranked_type) return false;
     auto input_shape = ranked_type.getShape();
     auto space_to_depth =
-        BuildSpaceToDepth(cluster_func, entry.value(), block_size, input_shape);
-    replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
-                         space_to_depth);
+        BuildSpaceToDepth(cluster_func, input, block_size, input_shape);
+    entry.value().set(space_to_depth);
     block_arg.setType(space_to_depth.getType());
   }
   return true;
@@ -483,7 +434,7 @@ bool HandleHostReplicatedInputs(int64_t index,
 void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
                    unsigned arg_num) {
   auto maybe_replicate =
-      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func.getParentOp());
+      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func->getParentOp());
 
   llvm::SmallVector<int64_t, 8> transform_input_indices;
   for (auto input : llvm::enumerate(cluster_func.operands())) {
@@ -750,11 +701,6 @@ void TPUSpaceToDepthPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass() {
   return std::make_unique<TPUSpaceToDepthPass>();
 }
-
-static PassRegistration<TPUSpaceToDepthPass> pass(
-    "tf-tpu-space-to-depth-pass",
-    "Adds ops that allow TPU program enable automaic space to depth for the"
-    "convolution determined at JIT compile time.");
 
 }  // namespace TFTPU
 }  // namespace mlir

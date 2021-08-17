@@ -16,10 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <string>
 #include <utility>
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -69,7 +80,14 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
-constexpr int64 kWarpSize = 32;
+constexpr int64_t kWarpSize = 32;
+
+// Need at least 256 threads/block for reasonable tree reduction
+// performance (assuming all data fits).
+constexpr int64_t kMinThreadsXRowReduction = 256;
+
+// When doing batched row reduction, how big the batch dimension could be.
+static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
@@ -105,7 +123,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 //
 // These CustomCalls have window() and convolution_dimension_numbers() set like
 // regular convolution ops.  They have the same LHS and RHS operands, plus two
-// additional constant operands: an int64 operand for the cudnn algorithm and
+// additional constant operands: an int64_t operand for the cudnn algorithm and
 // a bool operand for whether tensor_ops is enabled. A value of -1 for the cudnn
 // algorithm means that the implementation is free to choose the best algorithm
 // it can.
@@ -155,15 +173,37 @@ extern const char* const kCusolverCholeskyCallTarget;
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
+// Layout analysis for fusion. The constructor will analyze the given LMHLO
+// fusion operation and store the inferred layouts of fusion internal values.
+// The default constructor will be used when dealing with LMHLO operations, in
+// which case there no analysis is needed and the layout can be inferred from
+// the memref types (so that we can have a unified interface in helper functions
+// to query layouts).
+class FusionLayoutAnalysis {
+ public:
+  FusionLayoutAnalysis() {}
+  explicit FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op);
+
+  // Gets the shape of a given value, including its inferred layout.
+  Shape GetShape(mlir::Value value) const;
+
+ private:
+  llvm::DenseMap<mlir::Value, Layout> layouts_;
+};
+
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
+// MLIR variant that relies on the shape layouts from fusion layout analysis.
+bool IsReductionFromOrToContiguousDimensions(
+    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
+
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
-bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
-                          bool verify_no_strides = false);
+bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
+                          bool verify_no_strides);
 
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
@@ -174,7 +214,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  std::array<int64, 3> dimensions;
+  std::array<int64_t, 3> dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
@@ -185,15 +225,14 @@ struct ReductionDimensions {
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    mlir::Operation* reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W] per
-// thread.
-// If the device isn't known pass null for device_description and you will get
-// non-optimized value.
-std::array<int64, 3> GetReductionTiling(
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability);
+    se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -217,10 +256,65 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-// Returns whether the outputs of a fusion with reduction are consistent.
-bool AreFusedReductionOutputsConsistent(
+// Returns whether the output of a fusion with reduction are consistent with
+// `first_reduce`.
+bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
+                                      const HloInstruction* first_reduce);
+bool IsFusedReductionOutputConsistent(
+    mlir::mhlo::ReduceOp inst, mlir::mhlo::ReduceOp first_reduce,
+    const FusionLayoutAnalysis& layout_analysis);
+
+inline bool AreFusedReductionOutputsConsistent(
     absl::Span<const HloInstruction* const> output_instructions,
-    const HloInstruction* first_reduce);
+    const HloInstruction* first_reduce) {
+  return absl::c_all_of(output_instructions, [=](const HloInstruction* inst) {
+    return IsFusedReductionOutputConsistent(inst, first_reduce);
+  });
+}
+
+inline std::string MlirToString(mlir::Operation* op) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    op->print(os);
+  }
+  return s;
+}
+
+inline std::string MlirToString(const mlir::Location& loc) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    loc.print(os);
+  }
+  return s;
+}
+
+int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
+
+template <typename T>
+std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
+  return std::vector<T>(v.begin(), v.end());
+}
+
+StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    std::string* constant_name = nullptr);
+
+bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    mlir::lmhlo::FusionOp fusion,
+    absl::Span<const BufferAllocation> allocations);
+
+Shape GetShape(mlir::Value value);
+
+// Returns whether the given reduction can be safely generated without atomics:
+// that is, at most one block will write to every output element.
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const std::array<int64_t, 3>& reduction_tiling);
 
 }  // namespace gpu
 }  // namespace xla

@@ -61,7 +61,7 @@ namespace wrap {
     static const char *kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
@@ -155,14 +155,15 @@ bool SetStream(GpuExecutor *parent, hipfftHandle plan, Stream *stream) {
 }  // namespace
 
 port::Status ROCMFftPlan::Initialize(
-    GpuExecutor *parent, Stream *stream, int rank, uint64 *elem_count,
-    uint64 *input_embed, uint64 input_stride, uint64 input_distance,
-    uint64 *output_embed, uint64 output_stride, uint64 output_distance,
+    GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
+    uint64_t *input_embed, uint64 input_stride, uint64 input_distance,
+    uint64_t *output_embed, uint64 output_stride, uint64 output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
   if (IsInitialized()) {
     LOG(FATAL) << "Try to repeatedly initialize.";
   }
   is_initialized_ = true;
+  scratch_allocator_ = scratch_allocator;
   int elem_count_[3], input_embed_[3], output_embed_[3];
   for (int i = 0; i < rank; ++i) {
     elem_count_[i] = elem_count[i];
@@ -230,12 +231,11 @@ port::Status ROCMFftPlan::Initialize(
         return port::Status{port::error::INTERNAL,
                             "Failed to set auto allocation for rocFFT plan."};
       }
-      size_t size_in_bytes;
       switch (rank) {
         case 1:
           ret = wrap::hipfftMakePlan1d(parent, plan_, elem_count_[0],
                                        ROCMFftType(type), /*batch=*/1,
-                                       &size_in_bytes);
+                                       &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 1d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -245,7 +245,7 @@ port::Status ROCMFftPlan::Initialize(
         case 2:
           ret = wrap::hipfftMakePlan2d(parent, plan_, elem_count_[0],
                                        elem_count_[1], ROCMFftType(type),
-                                       &size_in_bytes);
+                                       &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 2d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -255,7 +255,7 @@ port::Status ROCMFftPlan::Initialize(
         case 3:
           ret = wrap::hipfftMakePlan3d(parent, plan_, elem_count_[0],
                                        elem_count_[1], elem_count_[2],
-                                       ROCMFftType(type), &size_in_bytes);
+                                       ROCMFftType(type), &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 3d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -269,23 +269,7 @@ port::Status ROCMFftPlan::Initialize(
           return port::Status{port::error::INVALID_ARGUMENT,
                               "hipfftPlan only takes rank 1, 2, or 3."};
       }
-      // TODO(yangzihao): refactor this code and the one with the same function
-      // in the batch mode.
-      if (size_in_bytes != 0) {
-        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
-        if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "failed to allocate work area.";
-          return allocated.status();
-        }
-      }
-      // Connect work area with allocated space.
-      ret = wrap::hipfftSetWorkArea(parent, plan_, scratch_.opaque());
-      if (ret != HIPFFT_SUCCESS) {
-        LOG(ERROR) << "failed to set work area for rocFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for rocFFT plan."};
-      }
-      return port::Status::OK();
+      return UpdateScratchAllocator(stream, scratch_allocator);
     }
   } else {
     // For either multiple batches or rank higher than 3, use hipfftPlanMany().
@@ -315,38 +299,25 @@ port::Status ROCMFftPlan::Initialize(
             port::error::INTERNAL,
             "Failed to set auto allocation for rocFFT batched plan."};
       }
-      size_t size_in_bytes;
       ret = wrap::hipfftMakePlanMany(
           parent, plan_, rank, elem_count_,
           input_embed ? input_embed_ : nullptr, input_stride, input_distance,
           output_embed ? output_embed_ : nullptr, output_stride,
-          output_distance, ROCMFftType(type), batch_count, &size_in_bytes);
+          output_distance, ROCMFftType(type), batch_count,
+          &scratch_size_bytes_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to make rocFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
                             "Failed to make rocFFT batched plan."};
       }
-      if (size_in_bytes != 0) {
-        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
-        if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "failed to allocate work area.";
-          return allocated.status();
-        }
-      }
-      // Connect work area with allocated space.
-      ret = wrap::hipfftSetWorkArea(parent, plan_, scratch_.opaque());
-      if (ret != HIPFFT_SUCCESS) {
-        LOG(ERROR) << "failed to set work area for rocFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for rocFFT batched plan."};
-      }
+      return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
   return port::Status::OK();
 }
 
 port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
-                                     int rank, uint64 *elem_count,
+                                     int rank, uint64_t *elem_count,
                                      fft::Type type,
                                      ScratchAllocator *scratch_allocator) {
   return Initialize(parent_, stream, rank, elem_count,
@@ -354,6 +325,26 @@ port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
                     /*input_distance=*/0,
                     /*output_embed=*/nullptr, /*output_stride=*/0,
                     /*output_distance=*/0, type, 1, scratch_allocator);
+}
+
+port::Status ROCMFftPlan::UpdateScratchAllocator(
+    Stream *stream, ScratchAllocator *scratch_allocator) {
+  scratch_allocator_ = scratch_allocator;
+  if (scratch_size_bytes_ != 0) {
+    auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
+    if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
+      LOG(ERROR) << "failed to allocate work area.";
+      return allocated.status();
+    }
+  }
+  // Connect work area with allocated space.
+  auto ret = wrap::hipfftSetWorkArea(parent_, plan_, scratch_.opaque());
+  if (ret != HIPFFT_SUCCESS) {
+    LOG(ERROR) << "failed to set work area for rocFFT plan:" << ret;
+    return port::Status(port::error::INTERNAL,
+                        "Failed to set work area for rocFFT plan.");
+  }
+  return port::Status::OK();
 }
 
 ROCMFftPlan::~ROCMFftPlan() { wrap::hipfftDestroy(parent_, plan_); }
@@ -379,11 +370,11 @@ int ROCMFftPlan::GetFftDirection() const {
   }
 }
 
-std::unique_ptr<fft::Plan> ROCMFft::Create1dPlan(Stream *stream, uint64 num_x,
+std::unique_ptr<fft::Plan> ROCMFft::Create1dPlan(Stream *stream, uint64_t num_x,
                                                  fft::Type type,
                                                  bool in_place_fft) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[1] = {num_x};
+  uint64_t elem_count[1] = {num_x};
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
   // TODO(yangzihao): In the future, send error msg back to TensorFlow
@@ -396,10 +387,10 @@ std::unique_ptr<fft::Plan> ROCMFft::Create1dPlan(Stream *stream, uint64 num_x,
 }
 
 std::unique_ptr<fft::Plan> ROCMFft::Create1dPlanWithScratchAllocator(
-    Stream *stream, uint64 num_x, fft::Type type, bool in_place_fft,
+    Stream *stream, uint64_t num_x, fft::Type type, bool in_place_fft,
     ScratchAllocator *scratch_allocator) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[1] = {num_x};
+  uint64_t elem_count[1] = {num_x};
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
@@ -410,11 +401,11 @@ std::unique_ptr<fft::Plan> ROCMFft::Create1dPlanWithScratchAllocator(
   return std::move(fft_plan_ptr);
 }
 
-std::unique_ptr<fft::Plan> ROCMFft::Create2dPlan(Stream *stream, uint64 num_x,
-                                                 uint64 num_y, fft::Type type,
+std::unique_ptr<fft::Plan> ROCMFft::Create2dPlan(Stream *stream, uint64_t num_x,
+                                                 uint64_t num_y, fft::Type type,
                                                  bool in_place_fft) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[2] = {num_x, num_y};
+  uint64_t elem_count[2] = {num_x, num_y};
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
@@ -425,10 +416,10 @@ std::unique_ptr<fft::Plan> ROCMFft::Create2dPlan(Stream *stream, uint64 num_x,
 }
 
 std::unique_ptr<fft::Plan> ROCMFft::Create2dPlanWithScratchAllocator(
-    Stream *stream, uint64 num_x, uint64 num_y, fft::Type type,
+    Stream *stream, uint64_t num_x, uint64 num_y, fft::Type type,
     bool in_place_fft, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[2] = {num_x, num_y};
+  uint64_t elem_count[2] = {num_x, num_y};
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
@@ -439,12 +430,12 @@ std::unique_ptr<fft::Plan> ROCMFft::Create2dPlanWithScratchAllocator(
   return std::move(fft_plan_ptr);
 }
 
-std::unique_ptr<fft::Plan> ROCMFft::Create3dPlan(Stream *stream, uint64 num_x,
-                                                 uint64 num_y, uint64 num_z,
+std::unique_ptr<fft::Plan> ROCMFft::Create3dPlan(Stream *stream, uint64_t num_x,
+                                                 uint64_t num_y, uint64 num_z,
                                                  fft::Type type,
                                                  bool in_place_fft) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[3] = {num_x, num_y, num_z};
+  uint64_t elem_count[3] = {num_x, num_y, num_z};
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 3, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
@@ -455,10 +446,10 @@ std::unique_ptr<fft::Plan> ROCMFft::Create3dPlan(Stream *stream, uint64 num_x,
 }
 
 std::unique_ptr<fft::Plan> ROCMFft::Create3dPlanWithScratchAllocator(
-    Stream *stream, uint64 num_x, uint64 num_y, uint64 num_z, fft::Type type,
+    Stream *stream, uint64_t num_x, uint64 num_y, uint64 num_z, fft::Type type,
     bool in_place_fft, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
-  uint64 elem_count[3] = {num_x, num_y, num_z};
+  uint64_t elem_count[3] = {num_x, num_y, num_z};
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
@@ -470,9 +461,9 @@ std::unique_ptr<fft::Plan> ROCMFft::Create3dPlanWithScratchAllocator(
 }
 
 std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlan(
-    Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,
-    uint64 input_stride, uint64 input_distance, uint64 *output_embed,
-    uint64 output_stride, uint64 output_distance, fft::Type type,
+    Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
+    uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
+    uint64_t output_stride, uint64 output_distance, fft::Type type,
     bool in_place_fft, int batch_count) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
   port::Status status = fft_plan_ptr->Initialize(
@@ -488,9 +479,9 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlan(
 }
 
 std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
-    Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,
-    uint64 input_stride, uint64 input_distance, uint64 *output_embed,
-    uint64 output_stride, uint64 output_distance, fft::Type type,
+    Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
+    uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
+    uint64_t output_stride, uint64 output_distance, fft::Type type,
     bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
   port::Status status = fft_plan_ptr->Initialize(
@@ -507,7 +498,13 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
 
 void ROCMFft::UpdatePlanWithScratchAllocator(
     Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
-  LOG(ERROR) << "update plan with scratch allocator not implemented";
+  ROCMFftPlan *rocm_fft_plan = dynamic_cast<ROCMFftPlan *>(plan);
+  port::Status status =
+      rocm_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
+  if (!status.ok()) {
+    LOG(FATAL) << "failed to update custom allocator for hipfft plan: "
+               << status.error_message();
+  }
 }
 
 template <typename FuncT, typename InputT, typename OutputT>
@@ -524,8 +521,33 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     return false;
   }
 
-  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+  // As per rocFFT documentation, input buffers may be overwritten during
+  // execution of the C2R / D2Z transforms, even if the transform is not
+  // in-place.
+  // see rocFFT issue #298 for more info
+  //
+  // Same seems to apply for the R2C / Z2D transforms, as reported in
+  // see ROCm TF issue # 1150
+  //
+  // Hence for all those transforms, copy the input buffer
+  DeviceMemory<InputT> input_maybe_copy = input;
+  if (input.opaque() != output->opaque() && (input.size() > 0)) {
+    auto *allocator = rocm_fft_plan->GetScratchAllocator();
+    if (allocator) {
+      auto allocated = allocator->AllocateBytes(input.size());
+      if (allocated.ok()) {
+        if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
+                .ok()) {
+          input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
+        } else {
+          LOG(ERROR) << "failed to copy input buffer for rocFFT.";
+        }
+      }
+    }
+  }
+
+  InputT *ip = const_cast<InputT *>(GpuMemory(input_maybe_copy));
+  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(), GpuComplex(ip),
                         GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != HIPFFT_SUCCESS) {

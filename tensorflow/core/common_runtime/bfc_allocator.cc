@@ -42,28 +42,30 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name,
                            bool garbage_collection)
     : garbage_collection_(garbage_collection),
+      coalesce_regions_(sub_allocator->SupportsCoalescing()),
       sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
   if (allow_growth) {
-    // 1MiB smallest initial allocation, unless total memory available
+    // 2MiB smallest initial allocation, unless total memory available
     // is less.
     curr_region_allocation_bytes_ =
-        RoundedBytes(std::min(total_memory, size_t{1048576}));
+        RoundedBytes(std::min(total_memory, size_t{2 << 20}));
   } else {
     curr_region_allocation_bytes_ = RoundedBytes(total_memory);
   }
 
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
-  stats_.bytes_limit = static_cast<int64>(total_memory);
+  stats_.bytes_limit = static_cast<int64_t>(total_memory);
 
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
   // memory_limit_ starting from allocations up to 256 bytes to
   // allocations up to (and including) the memory limit.
+  VLOG(1) << "Creating new BFCAllocator named: " << name;
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
     VLOG(1) << "Creating bin of max chunk size "
@@ -125,7 +127,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = sub_allocator_->Alloc(alignment, bytes);
+  size_t bytes_received;
+  void* mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -136,7 +139,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = sub_allocator_->Alloc(alignment, bytes);
+      mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
     }
   }
 
@@ -149,23 +152,31 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     curr_region_allocation_bytes_ *= 2;
   }
 
-  VLOG(1) << "Extending allocation by " << strings::HumanReadableNumBytes(bytes)
-          << " bytes.";
+  VLOG(1) << "Extending allocation by "
+          << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
+          << Name() << ".";
 
-  total_region_allocated_bytes_ += bytes;
+  total_region_allocated_bytes_ += bytes_received;
   VLOG(1) << "Total allocated bytes: "
           << strings::HumanReadableNumBytes(total_region_allocated_bytes_);
 
   VLOG(1) << "Allocated memory at " << mem_addr << " to "
-          << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+          << static_cast<void*>(static_cast<char*>(mem_addr) + bytes_received);
+
+  AllocationRegion* maybe_extended_region = nullptr;
+  if (coalesce_regions_) {
+    maybe_extended_region =
+        region_manager_.AddOrExtendAllocationRegion(mem_addr, bytes_received);
+  } else {
+    region_manager_.AddAllocationRegion(mem_addr, bytes_received);
+  }
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
   ChunkHandle h = AllocateChunk();
   BFCAllocator::Chunk* c = ChunkFromHandle(h);
   c->ptr = mem_addr;
-  c->size = bytes;
+  c->size = bytes_received;
   c->allocation_id = -1;
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
@@ -173,8 +184,23 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   region_manager_.set_handle(c->ptr, h);
 
-  // Insert the chunk into the right bin.
-  InsertFreeChunkIntoBin(h);
+  // If the region was extended, then there exists a previous chunk that should
+  // be linked to the new chunk.
+  if (maybe_extended_region != nullptr) {
+    ChunkHandle prev =
+        maybe_extended_region->get_handle(maybe_extended_region->ptr());
+    BFCAllocator::Chunk* prev_chunk = ChunkFromHandle(prev);
+    // Find the last recorded chunk in the extended region.
+    while (prev_chunk->next != kInvalidChunkHandle) {
+      prev = prev_chunk->next;
+      prev_chunk = ChunkFromHandle(prev);
+    }
+    c->prev = prev;
+    prev_chunk->next = h;
+  }
+
+  // Maybe merge adjacent chunks and insert the chunk into the right bin.
+  InsertFreeChunkIntoBin(TryToCoalesce(h, /*ignore_freed_at=*/false));
 
   return true;
 }
@@ -213,7 +239,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
   if (r != nullptr) {
     return r;
   } else {
-    static const int64 kMaxMillisToWait = 10000;  // 10 seconds
+    static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
     r = retry_helper_.AllocateRaw(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
           uint64 freed_by_count = 0;
@@ -229,37 +255,40 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
-  VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
-  if (!allocation_attr.retry_on_failure) {
-    // Return immediately upon the first failure if this is for allocating an
-    // optional scratch space.
-    bool dump_log_on_failure = VLOG_IS_ON(2);
-    uint64 freed_by_count = 0;
-    if (allocation_attr.freed_by_func != nullptr) {
-      freed_by_count = (*allocation_attr.freed_by_func)();
-    }
-    void* result = AllocateRawInternal(unused_alignment, num_bytes,
-                                       dump_log_on_failure, freed_by_count);
-    if (result == nullptr) {
-      static std::atomic<int32> log_counter{0};
-      int32 counter_value = log_counter.load(std::memory_order_relaxed);
-      if (counter_value < 10) {
-        log_counter.store(counter_value + 1, std::memory_order_relaxed);
-        LOG(WARNING)
-            << "Allocator (" << Name() << ") ran out of memory trying "
-            << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-            << " with freed_by_count=" << freed_by_count
-
-            << ". The caller indicates that this is not a failure, but"
-            << " may mean that there could be performance gains if more"
-            << " memory were available.";
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
+  void* result = [&] {
+    if (!allocation_attr.retry_on_failure) {
+      // Return immediately upon the first failure if this is for allocating an
+      // optional scratch space.
+      bool dump_log_on_failure = VLOG_IS_ON(2);
+      uint64 freed_by_count = 0;
+      if (allocation_attr.freed_by_func != nullptr) {
+        freed_by_count = (*allocation_attr.freed_by_func)();
       }
+      void* res = AllocateRawInternal(unused_alignment, num_bytes,
+                                      dump_log_on_failure, freed_by_count);
+      if (res == nullptr) {
+        static std::atomic<int32> log_counter{0};
+        int32 counter_value = log_counter.load(std::memory_order_relaxed);
+        if (counter_value < 10) {
+          log_counter.store(counter_value + 1, std::memory_order_relaxed);
+          LOG(WARNING)
+              << "Allocator (" << Name() << ") ran out of memory trying "
+              << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+              << " with freed_by_count=" << freed_by_count
+              << ". The caller indicates that this is not a failure, but"
+              << " may mean that there could be performance gains if more"
+              << " memory were available.";
+        }
+      }
+      return res;
+    } else {
+      return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
+                                          allocation_attr);
     }
-    return result;
-  } else {
-    return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
-                                        allocation_attr);
-  }
+  }();
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes << " " << result;
+  return result;
 }
 
 // static
@@ -436,6 +465,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
         << ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_op_name
+        << "\nIf the cause is memory fragmentation maybe the environment "
+        << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
+        << "improve the situation. \nCurrent allocation summary follows."
         << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
@@ -443,7 +475,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   return nullptr;
 }
 
-int64 BFCAllocator::LargestFreeChunk() {
+int64_t BFCAllocator::LargestFreeChunk() {
   for (int i = kNumBins - 1; i >= 0; i--) {
     if (!BinFromIndex(i)->free_chunks.empty()) {
       return ChunkFromHandle(*BinFromIndex(i)->free_chunks.rbegin())->size;
@@ -453,7 +485,7 @@ int64 BFCAllocator::LargestFreeChunk() {
 }
 
 double BFCAllocator::GetFragmentation() {
-  int64 bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
+  int64_t bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
   DCHECK_GT(bytes_available, 0);
   return static_cast<double>(bytes_available - LargestFreeChunk()) /
          bytes_available;
@@ -465,35 +497,35 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 }
 
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
-                              const void* chunk_ptr, int64 req_bytes,
-                              int64 alloc_bytes) {
+                              const void* chunk_ptr, int64_t req_bytes,
+                              int64_t alloc_bytes) {
   tensorflow::profiler::TraceMe::InstantActivity(
-      [this, traceme_name, chunk_ptr, req_bytes,
-       alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
-        int64 bytes_available =
-            memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
-        const auto& annotation =
-            ScopedMemoryDebugAnnotation::CurrentAnnotation();
-        std::string tensor_shape;
-        if (annotation.pending_shape) {
-          tensor_shape = annotation.pending_shape->DebugString();
-        }
-        return tensorflow::profiler::TraceMeEncode(
-            traceme_name, {{"allocator_name", name_},
-                           {"bytes_reserved", stats_.bytes_reserved},
-                           {"bytes_allocated", stats_.bytes_in_use},
-                           {"bytes_available", bytes_available},
-                           {"fragmentation", GetFragmentation()},
-                           {"peak_bytes_in_use", stats_.peak_bytes_in_use},
-                           {"requested_bytes", req_bytes},
-                           {"allocation_bytes", alloc_bytes},
-                           {"addr", reinterpret_cast<uint64>(chunk_ptr)},
-                           {"tf_op", annotation.pending_op_name},
-                           {"id", annotation.pending_step_id},
-                           {"region_type", annotation.pending_region_type},
-                           {"data_type", annotation.pending_data_type},
-                           {"shape", tensor_shape}});
-      },
+      [this, traceme_name, chunk_ptr, req_bytes, alloc_bytes]()
+          TF_NO_THREAD_SAFETY_ANALYSIS {
+            int64_t bytes_available =
+                memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
+            const auto& annotation =
+                ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            std::string tensor_shape;
+            if (annotation.pending_shape) {
+              tensor_shape = annotation.pending_shape->DebugString();
+            }
+            return tensorflow::profiler::TraceMeEncode(
+                traceme_name, {{"allocator_name", name_},
+                               {"bytes_reserved", stats_.bytes_reserved},
+                               {"bytes_allocated", stats_.bytes_in_use},
+                               {"bytes_available", bytes_available},
+                               {"fragmentation", GetFragmentation()},
+                               {"peak_bytes_in_use", stats_.peak_bytes_in_use},
+                               {"requested_bytes", req_bytes},
+                               {"allocation_bytes", alloc_bytes},
+                               {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                               {"tf_op", annotation.pending_op_name},
+                               {"id", annotation.pending_step_id},
+                               {"region_type", annotation.pending_region_type},
+                               {"data_type", annotation.pending_data_type},
+                               {"shape", tensor_shape}});
+          },
       /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
@@ -518,11 +550,16 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
         // If we can break the size of the chunk into two reasonably large
-        // pieces, do so.  In any case don't waste more than
-        // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64 kMaxInternalFragmentation = 128 << 20;  // 128mb
+        // pieces, do so.  In any case don't waste more than a threshold of
+        // kMaxInternalFragmentation bytes on padding this alloc. If this
+        // threshold is not set by the user, then use 128MB as the default
+        // threshold.
+        const int64_t kMaxInternalFragmentation =
+            (internal_fragmentation_fraction_ > 0.0)
+                ? internal_fragmentation_fraction_ * memory_limit_
+                : 128 << 20;
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64>(chunk->size) - rounded_bytes >=
+            static_cast<int64_t>(chunk->size) - rounded_bytes >=
                 kMaxInternalFragmentation) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
@@ -538,6 +575,10 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // Update stats.
         ++stats_.num_allocs;
         stats_.bytes_in_use += chunk->size;
+        if (stats_.bytes_in_use > stats_.peak_bytes_in_use) {
+          VLOG(2) << "New Peak memory usage of " << stats_.bytes_in_use
+                  << " bytes for " << Name();
+        }
         stats_.peak_bytes_in_use =
             std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
         stats_.largest_alloc_size =
@@ -615,7 +656,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
-  VLOG(1) << "DeallocateRaw " << Name() << " "
+  VLOG(3) << "DeallocateRaw " << Name() << " "
           << (ptr ? RequestedSize(ptr) : 0);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
@@ -634,8 +675,8 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   // Record chunk information before it's freed.
   Chunk* chunk = ChunkFromHandle(h);
   void* chunk_ptr = chunk->ptr;
-  int64 req_bytes = chunk->requested_size;
-  int64 alloc_bytes = chunk->size;
+  int64_t req_bytes = chunk->requested_size;
+  int64_t alloc_bytes = chunk->size;
 
   MarkFree(h);
 
@@ -887,7 +928,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
   return c->size;
 }
 
-int64 BFCAllocator::AllocationId(const void* ptr) const {
+int64_t BFCAllocator::AllocationId(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
@@ -1144,11 +1185,12 @@ absl::optional<AllocatorStats> BFCAllocator::GetStats() {
   return stats_;
 }
 
-void BFCAllocator::ClearStats() {
+bool BFCAllocator::ClearStats() {
   mutex_lock l(lock_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;
+  return true;
 }
 
 std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>

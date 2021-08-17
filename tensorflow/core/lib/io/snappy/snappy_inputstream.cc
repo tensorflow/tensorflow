@@ -43,7 +43,7 @@ SnappyInputStream::~SnappyInputStream() {
   }
 }
 
-Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 
@@ -68,8 +68,9 @@ Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return Status::OK();
 }
 
-#if defined(PLATFORM_GOOGLE)
-Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
+#if defined(TF_CORD_SUPPORT)
+Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
+                                     absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
@@ -140,7 +141,7 @@ size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
   return can_read_bytes;
 }
 
-int64 SnappyInputStream::Tell() const { return bytes_read_; }
+int64_t SnappyInputStream::Tell() const { return bytes_read_; }
 
 Status SnappyInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());

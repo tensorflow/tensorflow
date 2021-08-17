@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -302,10 +305,10 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertEqual([17.5], self.evaluate(v1_avg))
 
   def testBasicEager(self):
-    v0 = variables.Variable(1.0)
-    v1 = variables.Variable(2.0)
+    v0 = variables.Variable(1.0, name="v0")
+    v1 = variables.Variable(2.0, name="v1")
 
-    ema = moving_averages.ExponentialMovingAverage(0.25)
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo")
     op = ema.apply([v0, v1])
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
@@ -315,6 +318,10 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.evaluate(v1.assign(4.0))
 
     self.evaluate(ema.apply([v0, v1]))
+
+    self.assertEqual("foo", ema.name)
+    self.assertEqual("v0/foo", ema.average_name(v0))
+    self.assertEqual("v1/foo", ema.average_name(v1))
 
     self.assertAllEqual(self.evaluate(ema.average(v0)), 1.75)
     self.assertAllEqual(self.evaluate(ema.average(v1)), 3.5)
@@ -442,6 +449,24 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
     self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
+  def testSubsetAverageVariablesNamesEager(self):
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(30.0, name="v1")
+    # Add a non-trainable variable.
+    v2 = variables.Variable(20.0, name="v2", trainable=False)
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+    self.assertEqual("v0/foo_avg", ema.average_name(v0))
+    self.assertEqual("v1/foo_avg", ema.average_name(v1))
+    vars_to_restore = ema.variables_to_restore([v0, v1, v2])
+    self.assertAllEqual(
+        sorted(vars_to_restore.keys()),
+        sorted([
+            ema.average_name(v0), ema.average_name(v1), ema.average_name(v2)
+        ]))
+    ema.apply([v0, v1])
+    self.assertEqual(ema.average(v0).name[:-len(":0")], ema.average_name(v0))
+    self.assertEqual(ema.average(v1).name[:-len(":0")], ema.average_name(v1))
+
   @test_util.deprecated_graph_mode_only
   def testAverageVariablesDeviceAssignment(self):
     with ops.device("/job:dev_v0"):
@@ -490,6 +515,20 @@ class ExponentialMovingAverageTest(test.TestCase):
       # both get added to vars_to_restore.
       self.assertEqual(len(vars_to_restore), 1)
       self.assertIn("v/foo_avg", vars_to_restore)
+
+  @test_util.deprecated_graph_mode_only
+  def testCopyXlaSharding(self):
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+    v = variables.Variable(_Repeat(10.0, 2), name="v")
+    self.assertIsNone(xla_sharding.get_tensor_sharding(v))
+    v = xla_sharding.mesh_split(v, np.array([0, 1]), [0], use_sharding_op=False)
+    self.assertIsNotNone(xla_sharding.get_tensor_sharding(v))
+    self.evaluate(variables.global_variables_initializer())
+    ema.apply([v])
+    avg = ema.average(v)
+    self.assertEqual(
+        xla_sharding.get_tensor_sharding(v),
+        xla_sharding.get_tensor_sharding(avg))
 
 
 if __name__ == "__main__":

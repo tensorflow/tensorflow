@@ -41,11 +41,12 @@ class BufferedInputStream : public InputStreamInterface {
 
   ~BufferedInputStream() override;
 
-  tensorflow::Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  tensorflow::Status ReadNBytes(int64_t bytes_to_read,
+                                tstring* result) override;
 
-  tensorflow::Status SkipNBytes(int64 bytes_to_skip) override;
+  tensorflow::Status SkipNBytes(int64_t bytes_to_skip) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   // Seek to this offset within the file.
   //
@@ -56,7 +57,7 @@ class BufferedInputStream : public InputStreamInterface {
   // Note: When seeking backwards in a stream, this implementation uses
   // Reset() + SkipNBytes(), so its performance will be dependent
   // largely on the performance of SkipNBytes().
-  tensorflow::Status Seek(int64 position);
+  tensorflow::Status Seek(int64_t position);
 
   // Read one text line of data into "*result" until end-of-file or a
   // \n is read.  (The \n is not included in the result.)  Overwrites
@@ -65,7 +66,7 @@ class BufferedInputStream : public InputStreamInterface {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  tensorflow::Status ReadLine(string* result);
+  tensorflow::Status ReadLine(std::string* result);
   tensorflow::Status ReadLine(tstring* result);
 
   // Returns one text line of data until end-of-file or a '\n' is read. The '\n'
@@ -74,7 +75,14 @@ class BufferedInputStream : public InputStreamInterface {
   // the expectation in the python File::readline() API.
   // Also, '\0's are treated like any other character within the line and given
   // no special treatment.
-  string ReadLineAsString();
+  std::string ReadLineAsString();
+
+  // Skip one text line of data.
+  //
+  // If successful, returns OK.  If we are already at the end of the
+  // file, we return an OUT_OF_RANGE error.  Otherwise, we return
+  // some other non-OK status.
+  tensorflow::Status SkipLine();
 
   // Reads the entire contents of the file into *result.
   //
@@ -106,8 +114,8 @@ class BufferedInputStream : public InputStreamInterface {
 
 // Explicit instantiations defined in buffered_inputstream.cc.
 #ifndef SWIG
-extern template tensorflow::Status BufferedInputStream::ReadAll<string>(
-    string* result);
+extern template tensorflow::Status BufferedInputStream::ReadAll<std::string>(
+    std::string* result);
 extern template tensorflow::Status BufferedInputStream::ReadAll<tstring>(
     tstring* result);
 #endif  // SWIG

@@ -20,6 +20,18 @@ END
   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
+END
+  }
+  summary: "SpaceToBatch for N-D tensors of type T."
+  description: <<END
+This operation divides "spatial" dimensions `[1, ..., M]` of the input into a
+grid of blocks of shape `block_shape`, and interleaves these blocks with the
+"batch" dimension (0) such that in the output, the spatial dimensions
+`[1, ..., M]` correspond to the position within the grid, and the batch
+dimension combines both the position within a spatial block and the original
+batch position.  Prior to division into blocks, the spatial dimensions of the
+input are optionally zero padded according to `paddings`. See below for a
+precise description.
 
 This operation is equivalent to the following steps:
 
@@ -124,17 +136,5 @@ x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 
 Among others, this operation is useful for reducing atrous convolution into
 regular convolution.
-END
-  }
-  summary: "SpaceToBatch for N-D tensors of type T."
-  description: <<END
-This operation divides "spatial" dimensions `[1, ..., M]` of the input into a
-grid of blocks of shape `block_shape`, and interleaves these blocks with the
-"batch" dimension (0) such that in the output, the spatial dimensions
-`[1, ..., M]` correspond to the position within the grid, and the batch
-dimension combines both the position within a spatial block and the original
-batch position.  Prior to division into blocks, the spatial dimensions of the
-input are optionally zero padded according to `paddings`.  See below for a
-precise description.
 END
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
 #include "absl/base/thread_annotations.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -41,49 +42,24 @@ namespace gpu {
 // memory. Potential solution is to pre-allocate a fixed amount of
 // memory and block when that memory is full.
 
-// Defines an infeed buffer that is passed to the runtime by
-// the client. The client manages the memory of the buffer.
-class InfeedBuffer {
- public:
-  InfeedBuffer() = default;
-  InfeedBuffer(se::StreamExecutor* executor, int64 length)
-      : device_memory_(executor, executor->AllocateArray<uint8>(length)),
-        length_(length) {
-    CHECK(!device_memory_->is_null());
-  }
-
-  int64 length() const { return length_; }
-
-  se::DeviceMemoryBase* device_memory() { return device_memory_.ptr(); }
-
- private:
-  se::ScopedDeviceMemory<uint8> device_memory_;
-  int64 length_;
-};
-
 // Client-side class used to enqueue infeed buffers.
-class InfeedManager : public XfeedQueue<ShapeTree<InfeedBuffer>> {
+class InfeedManager
+    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8>>> {
  public:
-  // Returns a cached stream associated with an executor. Allocates a
-  // new stream on the first invocation. On subsequent invocations, if
-  // the cached executor is not the same as the requested executor,
-  // returns null.
-  se::Stream* GetStream(se::StreamExecutor* executor);
+  explicit InfeedManager(se::StreamExecutor* executor);
+
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal);
 
  private:
-  // Mutex for serializing the creation of host_to_device_stream_.
-  tensorflow::mutex host_to_device_stream_mu_;
+  se::Stream* stream() const { return stream_.get(); }
 
-  // Cached host to device stream for queuing infeed data.
-  std::unique_ptr<se::Stream> host_to_device_stream_
-      ABSL_GUARDED_BY(host_to_device_stream_mu_);
-
-  // Executor that the host_to_device_stream belongs to. Not owned.
-  se::StreamExecutor* host_to_device_executor_ = nullptr;
+  // Stream used to enqueue infeed device copies.
+  std::unique_ptr<se::Stream> stream_;
 };
 
-// Singleton creator-or-accessor: Returns the GPU infeed manager.
-InfeedManager* GetOrCreateInfeedManager();
+// Returns the GPU infeed manager for the given stream executor,
+InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

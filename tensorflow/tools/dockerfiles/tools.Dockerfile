@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,11 @@
 #
 # You can use this image to quickly develop changes to the Dockerfile assembler
 # or set of TF Docker partials. See README.md for usage instructions.
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 LABEL maintainer="Austin Anderson <angerson@google.com>"
 
-RUN apt-get update && apt-get install -y python3 python3-pip bash curl
-RUN curl -sSL https://get.docker.com/ | sh
-RUN pip3 install --upgrade pip setuptools pyyaml absl-py cerberus docker
+RUN apt-get update && apt-get install -y python3 python3-pip bash curl docker.io
+RUN pip3 install --upgrade pip setuptools pyyaml absl-py cerberus 'docker<=4.3.0'
 
 WORKDIR /tf
 VOLUME ["/tf"]

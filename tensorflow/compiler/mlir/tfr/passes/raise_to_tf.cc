@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -34,13 +35,14 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -103,7 +105,7 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
       llvm::StringMap<Attribute>* derived_attrs) const;
 
   // Uses the collected attribute values to derive all the output types.
-  LogicalResult DeriveOutputTypes(FunctionType signature,
+  LogicalResult DeriveOutputTypes(Location loc, FunctionType signature,
                                   const llvm::StringMap<Attribute>& attrs,
                                   SmallVectorImpl<Type>* output_types) const;
 
@@ -114,6 +116,17 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
       const SmallVectorImpl<Type>& output_types,
       const SmallVectorImpl<Value>& inputs, const NamedAttrList& attr_list,
       const llvm::StringMap<Attribute>& derived_attrs) const;
+
+  // Converts the attribute to the specific type.
+  Attribute ProcessAttributeValue(Attribute attr, StringAttr attr_type) const;
+
+  Type GetFixedElementType(StringRef element_type, Builder& builder) const {
+    if (element_type == "i32_") return builder.getI32Type();
+    if (element_type == "i64_") return builder.getI64Type();
+    if (element_type == "f32_") return builder.getF32Type();
+    if (element_type == "i1_") return builder.getI1Type();
+    return {};
+  }
 
   // Adds a tf.Cast op if the tfr.tensor attribute indicated a fixed element
   // type.
@@ -129,16 +142,8 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
     StringRef tfr_type_attr = attr_names[0].getValue();
     if (!fixed_elt_type_attrs_.contains(tfr_type_attr)) return cast_op.arg();
 
-    Type result_elt_type;
-    if (tfr_type_attr == "i32_") {
-      result_elt_type = rewriter.getI32Type();
-    } else if (tfr_type_attr == "i64_") {
-      result_elt_type = rewriter.getI64Type();
-    } else if (tfr_type_attr == "f32_") {
-      result_elt_type = rewriter.getF32Type();
-    } else if (tfr_type_attr == "i1_") {
-      result_elt_type = rewriter.getI1Type();
-    } else {
+    Type result_elt_type = GetFixedElementType(tfr_type_attr, rewriter);
+    if (!result_elt_type) {
       return cast_op.arg();
     }
 
@@ -292,24 +297,52 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     }
     auto attr_name = signature.getArgAttrOfType<StringAttr>(
         operand.index(), kAttrArgumentNameAttr);
-    arg_attrs->push_back(
-        rewriter.getNamedAttr(attr_name.getValue(), arg_value));
+    auto attr_type = signature.getArgAttrOfType<StringAttr>(
+        operand.index(), kAttrArgumentTypeAttr);
+    auto value = ProcessAttributeValue(arg_value, attr_type);
+    arg_attrs->push_back(rewriter.getNamedAttr(attr_name.getValue(), value));
   }
   return success();
+}
+
+Attribute RewriteTFRCallOp::ProcessAttributeValue(Attribute attr,
+                                                  StringAttr attr_type) const {
+  if (!attr_type) return attr;
+
+  if (attr_type.getValue() == "tensor") {
+    if (auto f = attr.dyn_cast<FloatAttr>()) {
+      RankedTensorType type = RankedTensorType::get({}, f.getType());
+      return DenseFPElementsAttr::get(type, attr);
+    }
+    // TODO(fengliuai): handles ArrayAttr. Note that it can be nested ArrayAttr.
+  }
+
+  return attr;
 }
 
 // For each output, uses the attribute name associated to the tfr types to find
 // out the attribute value from the collected `attrs` and create the output type
 // of the result op by using the attribute value as the element type.
 LogicalResult RewriteTFRCallOp::DeriveOutputTypes(
-    FunctionType signature, const llvm::StringMap<Attribute>& attrs,
+    Location loc, FunctionType signature,
+    const llvm::StringMap<Attribute>& attrs,
     SmallVectorImpl<Type>* output_types) const {
   for (auto res : llvm::enumerate(signature.getResults())) {
     if (auto tensor_type = res.value().dyn_cast<TFRTensorType>()) {
       // tfr.tensor should only have one attribute attached.
       auto attr_key = tensor_type.getAttrKeys().front();
-      output_types->push_back(UnrankedTensorType::get(
-          attrs.lookup(attr_key.getValue()).cast<TypeAttr>().getValue()));
+      Builder builder(signature.getContext());
+      if (auto attr = attrs.lookup(attr_key.getValue())) {
+        output_types->push_back(
+            UnrankedTensorType::get(attr.cast<TypeAttr>().getValue()));
+      } else if (Type element_type =
+                     GetFixedElementType(attr_key.getValue(), builder)) {
+        output_types->push_back(UnrankedTensorType::get(element_type));
+      } else {
+        emitError(loc) << "type " << attr_key.getValue()
+                       << " can't be resolved for the signature of the op";
+        return failure();
+      }
       continue;
     }
 
@@ -355,7 +388,6 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       }
     }
   }
-
   // Create the tfr.cast ops on the results and replace the uses of the
   // original call op.
   TFRTensorType unconstrainted_type = rewriter.getType<TFRTensorType>();
@@ -378,6 +410,10 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       new_results.push_back(list_op.out());
     }
   }
+
+  // Copy all the allowed attributes to the new op.
+  if (failed(CopyNonSymbolRefAttrs(call_op, new_op))) return failure();
+
   rewriter.replaceOp(call_op, new_results);
   return success();
 }
@@ -414,7 +450,8 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
   // Derive the output types by using the attributes attached to the tfr
   // types.
-  if (failed(DeriveOutputTypes(func.getType(), derived_attrs, &output_types))) {
+  if (failed(DeriveOutputTypes(call_op->getLoc(), func.getType(), derived_attrs,
+                               &output_types))) {
     return failure();
   }
 
@@ -424,7 +461,8 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 }
 
 // Raise TFR call ops to the TF ops.
-struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+ public:
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
                     StandardOpsDialect>();
@@ -432,30 +470,35 @@ struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,
                             bool materialize_derived_attrs)
-      : external_tfr_module(tfr_module),
-        materialize_derived_attrs(materialize_derived_attrs) {}
+      : external_tfr_module_(tfr_module),
+        materialize_derived_attrs_(materialize_derived_attrs) {}
+
+  StringRef getArgument() const final { return "tfr-raise-to-tf"; }
+
+  StringRef getDescription() const final {
+    return "Raise all the TFR call ops to TF ops.";
+  }
 
   void runOnFunction() override;
 
  private:
-  llvm::Optional<ModuleOp> external_tfr_module;
-  const bool materialize_derived_attrs;
+  llvm::Optional<ModuleOp> external_tfr_module_;
+  const bool materialize_derived_attrs_;
 };
 
 void RaiseToTFOpsPass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = &getContext();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
+                        : func->getParentOfType<ModuleOp>());
 
-  OwningRewritePatternList patterns;
-  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);
-  for (auto* op : ctx->getRegisteredOperations()) {
-    op->getCanonicalizationPatterns(patterns, ctx);
-  }
+  OwningRewritePatternList patterns(&getContext());
+  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  populateCanonicalizationPatterns(func, patterns);
+
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 
@@ -466,9 +509,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseToTFOpsPass(
                                             materialize_derived_attrs);
 }
 
-static PassRegistration<RaiseToTFOpsPass> pass(
-    "tfr-raise-to-tf", "Raise all the TFR call ops to TF ops.",
-    [] { return CreateRaiseToTFOpsPass(); });
+static PassRegistration<RaiseToTFOpsPass> pass([] {
+  return CreateRaiseToTFOpsPass();
+});
 
 }  // namespace TFR
 }  // namespace mlir

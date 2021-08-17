@@ -69,6 +69,10 @@ LOG_FILE="/tmp/tf-gcs-test.log"
 rm -rf ${LOG_FILE} || \
     die "ERROR: Failed to remove existing log file ${LOG_FILE}"
 
+# Since https://github.com/tensorflow/tensorflow/pull/47247 we need to
+# enable legacy filesystem for GCS (or switch to the modular one)
+export TF_ENABLE_LEGACY_FILESYSTEM=1
+
 # Invoke main Python file
 python "${GCS_SMOKE_PY}" --gcs_bucket_url="${GCS_BUCKET_URL}" \
     > "${LOG_FILE}" 2>&1

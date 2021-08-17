@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -46,7 +45,7 @@ class SquaredDifferenceOpTest(test.TestCase):
     l = np.random.randn(*left_shape)
     r = np.random.randn(*right_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       left_tensor = constant_op.constant(l, shape=left_shape)
       right_tensor = constant_op.constant(r, shape=right_shape)
       output = math_ops.squared_difference(left_tensor, right_tensor)
@@ -83,7 +82,7 @@ class AbsOpTest(test.TestCase):
           self._biasedRandN(
               shape, bias=bias), dtype=dtype)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       output = math_ops.abs(value)
       error = gradient_checker.compute_gradient_error(
           value, shape, output, output.get_shape().as_list())
@@ -636,16 +635,12 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    try:
-      check_numerics_callback.enable_check_numerics()
-      x = constant_op.constant([-1, 0., 1.])
-      with backprop.GradientTape() as tape:
-        tape.watch(x)
-        g = tape.gradient(math_ops.pow(x, 2), x)
-      g = self.evaluate(g)
-      self.assertAllClose([-2., 0., 2.], g)
-    finally:
-      check_numerics_callback.disable_check_numerics()
+    x = constant_op.constant([-1, 0., 1.])
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      g = tape.gradient(math_ops.pow(x, 2), x)
+    g = self.evaluate(g)
+    self.assertAllClose([-2., 0., 2.], g)
 
 
 @test_util.run_all_in_graph_and_eager_modes

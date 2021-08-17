@@ -22,11 +22,14 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -230,7 +233,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
-    with self.session(use_gpu=True):
+    with self.session():
       v = variables.Variable(
           array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
       n = random_ops.truncated_normal(v.shape)
@@ -238,7 +241,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNoCSE(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3, 4]
       rnd1 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
       rnd2 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
@@ -371,7 +374,7 @@ class RandomUniformTest(RandomOpTestCommon):
   def testNoCSE(self):
     shape = [2, 3, 4]
     for dtype in dtypes.float16, dtypes.float32, dtypes.int32:
-      with self.session(use_gpu=True):
+      with self.session():
         rnd1 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         rnd2 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         diff = (rnd2 - rnd1).eval()
@@ -454,6 +457,45 @@ class RandomShapeTest(test.TestCase):
     # Unknown shape.
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))
     self.assertIs(None, rnd3.get_shape().ndims)
+
+
+class DeterministicOpsTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    random_seed.set_random_seed(None)
+    config.enable_deterministic_ops(True)
+
+  def tearDown(self):
+    super().tearDown()
+    config.enable_deterministic_ops(False)
+
+  def testDeterministicOpsErrors(self):
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.random_normal((1,))
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.truncated_normal((1,))
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.random_uniform((1,))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32))
+
+  def testErrorNotThrownWithSeed(self):
+    random_ops.random_normal((1,), seed=0)
+    random_seed.set_random_seed(0)
+    random_ops.random_normal((1,))
+    self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32,
+                                                        seed=1))
+    self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32,
+                                                        seed2=1))
 
 
 if __name__ == "__main__":

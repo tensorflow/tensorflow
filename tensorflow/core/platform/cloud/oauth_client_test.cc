@@ -177,7 +177,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   BIO_free_all(bio);
 
   // Now check the content of the header and the claim.
-  int dot = header_dot_claim.find_last_of(".");
+  int dot = header_dot_claim.find_last_of('.');
   string header_encoded = header_dot_claim.substr(0, dot);
   string claim_encoded = header_dot_claim.substr(dot + 1);
 

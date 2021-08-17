@@ -18,10 +18,14 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -44,11 +48,11 @@ class BatchResourceBase : public ResourceBase {
 
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
-  Status RegisterInput(int64 guid, OpKernelContext* context,
+  Status RegisterInput(int64_t guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback);
 
- protected:
+ public:
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
@@ -60,7 +64,7 @@ class BatchResourceBase : public ResourceBase {
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
     // A unique ID to identify this invocation of Batch.
-    int64 guid;
+    int64_t guid;
 
     Context propagated_context;
 
@@ -96,6 +100,17 @@ class BatchResourceBase : public ResourceBase {
     std::unique_ptr<BatchTask> CreateSplitTask(
         int split_index, AsyncOpKernel::DoneCallback done_callback);
 
+    // RequestCost is for collecting the cost and must outlive the batching
+    // processing.
+    //
+    // For example, to collect cost in rpc processing, `request_cost` is owned
+    // by rpc handler and points to the RequestCost of an rpc which provides
+    // the inputs to this BatchTask.
+    //
+    // After the batch processing, the request cost will be incremented with
+    // this task's processing costs.
+    RequestCost* request_cost = nullptr;
+
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
@@ -106,6 +121,8 @@ class BatchResourceBase : public ResourceBase {
   // tensorflow::serving namespace, because some versions of compiler complain
   // about changing meaning of the symbols.
   using BatcherT = SharedBatchScheduler<BatchResourceBase::BatchTask>;
+  using AdaptiveBatcherT =
+      AdaptiveSharedBatchScheduler<BatchResourceBase::BatchTask>;
   using BatcherQueueT = BatchScheduler<BatchResourceBase::BatchTask>;
   using BatchT = Batch<BatchResourceBase::BatchTask>;
 
@@ -116,12 +133,67 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {
+    allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
+  }
+
+  BatchResourceBase(bool has_process_batch_function,
+                    std::shared_ptr<AdaptiveBatcherT> batcher,
+                    const AdaptiveBatcherT::QueueOptions& batcher_queue_options,
+                    std::vector<int32> allowed_batch_sizes)
+      : has_process_batch_function_(has_process_batch_function),
+        adaptive_batcher_(std::move(batcher)),
+        adaptive_batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
-      int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting);
+
+  static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
+      int32_t max_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches, bool enable_large_batch_splitting,
+      const std::vector<int32>& allowed_batch_sizes);
+
+  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
+  // 'output_tasks'.
+  // Task sizes are determined by
+  // 1) open_batch_remaining_slot
+  // 2) max_batch_size
+  // 3) size-of-input-task
+  // in a way that
+  // 1) Task sizes add up to `size-of-input-task`.
+  // 2) Task sizes from left to right are like
+  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
+  //    `size-of-input-task` - `sum-of-previous-elements`].
+  //
+  // REQUIRES:
+  // Caller should make sure size-of-input-task is greater than
+  // open_batch_remaining_slot.
+  static Status SplitInputTask(
+      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
+      int max_batch_size,
+      std::vector<std::unique_ptr<BatchTask>>* output_tasks);
+
+  // Splits the batch cost to each task.
+  //
+  // Inputs:
+  // 1) batch_cost_measurement, which provides the total cost and cost type;
+  // 2) processed_size, it's the batch size plus the padding amount;
+  // 3) batch, provides the batch size.
+  //
+  // Outputs:
+  // The request_cost in each batch task will be updated. This function will use
+  // two approaches to split the batch cost (if it's non-zero), thus two costs
+  // will be output.
+  // 1) smeared cost: batch cost is split proportionally to each task's size,
+  //    and paddings do not share any cost;
+  // 2) non-smeared cost: batch cost is split proportionally to each task or
+  //    padding's size. Here padding's cost is not assigned to any tasks.
+  static void SplitBatchCost(CostMeasurement* batch_cost_measurement,
+                             const int64_t processed_size, BatchT& batch);
 
  private:
   // Implementation of calling the process batch function.
@@ -146,26 +218,6 @@ class BatchResourceBase : public ResourceBase {
 
   Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
                             std::vector<Tensor>* concatenated_tensors) const;
-
-  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
-  // 'output_tasks'.
-  // Task sizes are determined by
-  // 1) open_batch_remaining_slot
-  // 2) max_batch_size
-  // 3) size-of-input-task
-  // in a way that
-  // 1) Task sizes add up to `size-of-input-task`.
-  // 2) Task sizes from left to right are like
-  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
-  //    `size-of-input-task` - `sum-of-previous-elements`].
-  //
-  // REQUIRES:
-  // Caller should make sure size-of-input-task is greater than
-  // open_batch_remaining_slot.
-  static Status SplitInputTask(
-      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
-      int max_batch_size,
-      std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
   Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
                             BatchT* batch) const;
@@ -196,6 +248,10 @@ class BatchResourceBase : public ResourceBase {
   std::shared_ptr<BatcherT> batcher_;
   BatcherT::QueueOptions batcher_queue_options_;
 
+  // A batch scheduler, and options for creating queues.
+  std::shared_ptr<AdaptiveBatcherT> adaptive_batcher_;
+  AdaptiveBatcherT::QueueOptions adaptive_batcher_queue_options_;
+
   // A collection of batcher queues, keyed on queue name.
   // TODO(olston): Garbage-collect unused queues (perhaps simply remove empty
   // ones (with a time delay?); it's okay if they get recreated later).
@@ -204,6 +260,9 @@ class BatchResourceBase : public ResourceBase {
       TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
+  // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
+  // used to record batching parameter.
+  string allowed_batch_sizes_str_;
 };
 
 }  // namespace serving

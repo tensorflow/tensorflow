@@ -12,12 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Part of the Keras training engine related to plain array data.
-"""
+"""Part of the Keras training engine related to plain array data."""
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 
@@ -27,7 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.engine import training_utils_v1
@@ -66,7 +62,7 @@ def model_iteration(model,
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       inputs: Either a list or dictionary of arrays, or a dataset instance.
       targets: List/dictionary of input arrays.
@@ -231,7 +227,7 @@ def model_iteration(model,
     indices_for_conversion_to_dense = []
     feed = _get_model_feed(model, mode)
     for i, (input_data, feed_tensor) in enumerate(zip(ins, feed)):
-      if issparse(input_data) and not K.is_sparse(feed_tensor):
+      if issparse(input_data) and not backend.is_sparse(feed_tensor):
         indices_for_conversion_to_dense.append(i)
 
   # Select aggregation method.
@@ -486,7 +482,7 @@ def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
-  Arguments:
+  Args:
     model: Model to prepare feed values for.
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.
@@ -527,8 +523,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   targets = list(targets or [])
   sample_weights = list(sample_weights or [])
   ins = inputs + targets + sample_weights
-  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
-                                               int):
+  if mode == ModeKeys.TRAIN and not isinstance(
+      backend.symbolic_learning_phase(), int):
     ins += [True]  # Add learning phase value.
   return ins
 
@@ -570,7 +566,8 @@ def _update_sample_weight_mode(model, mode, inputs):
   if not callable(inputs):
     sample_weights = inputs[len(model._feed_inputs) + len(model._feed_targets):]
     has_learning_phase_pl = (mode == ModeKeys.TRAIN and
-                             not isinstance(K.symbolic_learning_phase(), int))
+                             not isinstance(backend.symbolic_learning_phase(),
+                                            int))
     if has_learning_phase_pl:
       sample_weights = sample_weights[:-1]
     model._update_sample_weight_modes(sample_weights=sample_weights)

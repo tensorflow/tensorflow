@@ -10,7 +10,7 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -35,7 +35,7 @@ cc_library(
     hdrs = ["alias_analysis.h"],
     deps = [
         ":ir_array",
-        ":llvm_util",
+        ":llvm_type_conversion_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -66,6 +66,7 @@ cc_library(
     srcs = ["llvm_util.cc"],
     hdrs = ["llvm_util.h"],
     deps = [
+        ":llvm_type_conversion_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -85,6 +86,27 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "llvm_type_conversion_util",
+    hdrs = ["llvm_type_conversion_util.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "llvm_command_line_options",
+    hdrs = ["llvm_command_line_options.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -93,7 +115,9 @@ cc_library(
     srcs = ["ir_array.cc"],
     hdrs = ["ir_array.h"],
     deps = [
+        ":llvm_type_conversion_util",
         ":llvm_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -214,6 +238,7 @@ cc_library(
     hdrs = ["tuple_ops.h"],
     deps = [
         ":ir_array",
+        ":llvm_type_conversion_util",
         ":llvm_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -230,6 +255,7 @@ cc_library(
     hdrs = ["kernel_support_library.h"],
     deps = [
         ":llvm_loop",
+        ":llvm_type_conversion_util",
         ":llvm_util",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",

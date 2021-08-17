@@ -96,10 +96,6 @@ GpuContext* ExtractGpuContext(GpuExecutor* rocm_exec) {
   return rocm_exec->gpu_context();
 }
 
-GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec->implementation());
-}
-
 GpuExecutor::~GpuExecutor() {
   for (auto& it : disk_modules_) {
     GpuDriver::UnloadModule(context_, it.second);
@@ -340,14 +336,14 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                     HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
 
   return GpuDriver::LaunchKernel(
-      GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y, block_dims.z,
-      thread_dims.x, thread_dims.y, thread_dims.z,
+      GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
+      block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
-                                    uint64 registers_per_thread,
-                                    uint64 shared_memory_per_block,
+                                    uint64_t registers_per_thread,
+                                    uint64_t shared_memory_per_block,
                                     const ThreadDim& thread_dims,
                                     GpuFunctionHandle func) {
   LOG(FATAL) << "Feature not supported on ROCM platform (CalculateOccupancy)";
@@ -356,8 +352,8 @@ int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
 
 int GpuExecutor::CompareOccupancy(int* initial_blocks,
                                   const DeviceDescription& device_description,
-                                  uint64 registers_per_thread,
-                                  uint64 shared_memory_per_block,
+                                  uint64_t registers_per_thread,
+                                  uint64_t shared_memory_per_block,
                                   const ThreadDim& thread_dims,
                                   GpuFunctionHandle func) {
   LOG(FATAL) << "Feature not supported on ROCM platform (CompareOccupancy)";
@@ -422,13 +418,13 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
   // TODO(ROCm) implement this feature in HIP
 }
 
-DeviceMemoryBase GpuExecutor::Allocate(uint64 size, int64 memory_space) {
+DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }
 
-void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                                uint64 size_bytes) {
+void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64_t offset_bytes,
+                                uint64_t size_bytes) {
   // offset and size are in bytes, so char* works as the pointer type.
   return reinterpret_cast<char*>(mem->opaque()) + offset_bytes;
 }
@@ -437,7 +433,7 @@ void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
   GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
-bool GpuExecutor::HostMemoryRegister(void* location, uint64 size) {
+bool GpuExecutor::HostMemoryRegister(void* location, uint64_t size) {
   if (location == nullptr || size == 0) {
     LOG(WARNING) << "attempting to register null or zero-sized memory: "
                  << location << "; size " << size;
@@ -456,7 +452,7 @@ bool GpuExecutor::SynchronizeAllActivity() {
 }
 
 port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                             uint64 size) {
+                                             uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -467,7 +463,7 @@ port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                            int value, uint64 size) {
+                                            int value, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // hipMemset reinterprets "value" as a uint8.
@@ -482,26 +478,27 @@ port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                            const void* host_src, uint64 size) {
+                                            const void* host_src,
+                                            uint64_t size) {
   return GpuDriver::SynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
                                          host_src, size);
 }
 
 port::Status GpuExecutor::SynchronousMemcpy(void* host_dst,
                                             const DeviceMemoryBase& gpu_src,
-                                            uint64 size) {
+                                            uint64_t size) {
   return GpuDriver::SynchronousMemcpyD2H(context_, host_dst,
                                          AsROCmDevicePtr(gpu_src), size);
 }
 
 port::Status GpuExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64 size) {
+    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   return GpuDriver::SynchronousMemcpyD2D(context_, AsROCmDevicePtr(gpu_dst),
                                          AsROCmDevicePtr(gpu_src), size);
 }
 
 port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                  uint64 size) {
+                                  uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return Memset32(stream, location, 0x0, size);
@@ -511,7 +508,7 @@ port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                 uint8 pattern, uint64 size) {
+                                 uint8 pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -521,7 +518,7 @@ port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32 pattern, uint64 size) {
+                                   uint32 pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset32 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -533,14 +530,14 @@ port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
 }
 
 bool GpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                         const DeviceMemoryBase& gpu_src, uint64 size) {
+                         const DeviceMemoryBase& gpu_src, uint64_t size) {
   return GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
                                           AsROCmDevicePtr(gpu_src), size,
                                           AsGpuStreamValue(stream));
 }
 
 bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                         const void* host_src, uint64 size) {
+                         const void* host_src, uint64_t size) {
   return GpuDriver::AsynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
                                           host_src, size,
                                           AsGpuStreamValue(stream));
@@ -549,7 +546,7 @@ bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
 bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
                                        DeviceMemoryBase* gpu_dst,
                                        const DeviceMemoryBase& gpu_src,
-                                       uint64 size) {
+                                       uint64_t size) {
   return GpuDriver::AsynchronousMemcpyD2D(context_, AsROCmDevicePtr(gpu_dst),
                                           AsROCmDevicePtr(gpu_src), size,
                                           AsGpuStreamValue(stream));
@@ -720,7 +717,7 @@ port::Status GpuExecutor::EnablePeerAccessTo(StreamExecutorInterface* other) {
   return GpuDriver::EnablePeerAccess(context_, rocm_other->context_);
 }
 
-bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
+bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }
 
@@ -820,6 +817,12 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
+  std::string gcn_arch_name;
+  status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
+  if (!status.ok()) {
+    return status;
+  }
+
   internal::DeviceDescriptionBuilder builder;
 
   {
@@ -856,6 +859,11 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
     float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
     builder.set_clock_rate_ghz(clock_rate_ghz);
+
+    // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
+    int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
+                               (int64_t(prop.memoryClockRate) * 1000);
+    builder.set_memory_bandwidth(memory_bandwidth);
   }
 
   {
@@ -865,7 +873,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    uint64 device_memory_size = -1;
+    uint64_t device_memory_size = -1;
     (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
     builder.set_device_memory_size(device_memory_size);
   }
@@ -883,7 +891,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   builder.set_platform_version(
-      absl::StrCat("AMDGPU ISA version: gfx", version));
+      absl::StrCat("AMDGPU ISA version: ", gcn_arch_name));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
@@ -891,6 +899,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   builder.set_device_vendor("Advanced Micro Devices, Inc");
   builder.set_rocm_amdgpu_isa_version(version);
+  builder.set_rocm_amdgpu_gcn_arch_name(gcn_arch_name);
+
   builder.set_shared_memory_per_core(
       GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());
   builder.set_shared_memory_per_block(

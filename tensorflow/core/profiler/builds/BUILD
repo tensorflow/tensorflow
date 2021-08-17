@@ -1,10 +1,10 @@
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # ONLY FOR DEV TESTING. DO NOT USE IF YOU DO NOT KNOW ABOUT IT ALREADY.
 config_setting(
     name = "profiler_build_oss",
-    values = {"define": "profiler_build=oss"},
+    define_values = {"profiler_build": "oss"},
 )

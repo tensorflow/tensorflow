@@ -83,7 +83,7 @@ class XfeedQueueManager {
   // error status. In the case of outfeed, this indicates the layout of the
   // shape that has been outfed. In the case of infeed, this can be used for
   // sanity checking purposes.
-  void ReleaseCurrentBuffer(int32 length, void* data, StatusOr<Shape> shape);
+  void ReleaseCurrentBuffer(int32_t length, void* data, StatusOr<Shape> shape);
 
  private:
   const string queue_name_;
@@ -117,6 +117,8 @@ class XfeedManager {
   XfeedQueueManager infeed_ = {"infeed"};
   XfeedQueueManager outfeed_ = {"outfeed"};
 };
+
+int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size);
 
 }  // namespace runtime
 }  // namespace cpu

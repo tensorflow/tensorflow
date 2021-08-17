@@ -53,12 +53,11 @@ class GenericTransferManager : public TransferManager {
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    const Shape& literal_shape,
                                     MutableBorrowingLiteral literal) override;
 
   Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) const override;
+  int64_t GetByteSizeRequirement(const Shape& shape) const override;
 
   Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,

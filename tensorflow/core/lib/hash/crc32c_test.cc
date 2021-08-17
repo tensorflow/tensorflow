@@ -81,13 +81,14 @@ TEST(CRC, ExtendWithCord) {
 }
 #endif
 
-static void BM_CRC(int iters, int len) {
+static void BM_CRC(::testing::benchmark::State& state) {
+  int len = state.range(0);
   std::string input(len, 'x');
   uint32 h = 0;
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     h = Extend(h, input.data() + 1, len - 1);
   }
-  testing::BytesProcessed(static_cast<int64>(iters) * len);
+  state.SetBytesProcessed(state.iterations() * len);
   VLOG(1) << h;
 }
 BENCHMARK(BM_CRC)->Range(1, 256 * 1024);

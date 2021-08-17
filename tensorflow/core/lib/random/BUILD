@@ -16,7 +16,7 @@ package(
         "//tensorflow/core/lib/io:__pkg__",
         "//tensorflow/core/lib/strings:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.
@@ -73,6 +73,7 @@ cc_library(
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/grappler/optimizers:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
         "//tensorflow/core/lib/io:__pkg__",

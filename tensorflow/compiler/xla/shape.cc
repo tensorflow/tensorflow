@@ -24,7 +24,7 @@ namespace xla {
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   dimensions_.reserve(shape_proto.dimensions_size());
-  for (const int64 dimension : shape_proto.dimensions()) {
+  for (const int64_t dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
   // A malformed proto may have different is_dynamic_dimension_size and
@@ -41,7 +41,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
       LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
     }
   }
-  int64 num_dynamic_dimension_fields = std::min(
+  int64_t num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
   for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
@@ -59,7 +59,7 @@ ShapeProto Shape::ToProto() const {
   ShapeProto proto;
   proto.set_element_type(element_type_);
   proto.mutable_dimensions()->Reserve(dimensions_size());
-  for (const int64 dimension : dimensions()) {
+  for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
   for (const bool dynamic : dynamic_dimensions_) {
@@ -83,6 +83,25 @@ string Shape::ToString(bool print_layout) const {
   }
 }
 
+bool Shape::IsInteger() const {
+  switch (element_type()) {
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+      return true;
+    case PrimitiveType::TUPLE:
+      return absl::c_any_of(tuple_shapes_,
+                            [](const Shape& s) { return s.IsInteger(); });
+    default:
+      return false;
+  }
+}
+
 bool Shape::is_static() const {
   if (IsTuple()) {
     for (const Shape& subshape : tuple_shapes_) {
@@ -94,7 +113,7 @@ bool Shape::is_static() const {
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
-void Shape::DeleteDimension(int64 dim_to_delete) {
+void Shape::DeleteDimension(int64_t dim_to_delete) {
   CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, dimensions_.size());
@@ -102,7 +121,7 @@ void Shape::DeleteDimension(int64 dim_to_delete) {
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
     layout_.set_format(DENSE);
-    for (int64 i = 0; i < layout_.minor_to_major().size();) {
+    for (int64_t i = 0; i < layout_.minor_to_major().size();) {
       if (layout_.minor_to_major(i) == dim_to_delete) {
         layout_.mutable_minor_to_major()->erase(
             layout_.mutable_minor_to_major()->begin() + i);
@@ -141,9 +160,16 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
     }
   }
 
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
+  if (!ignore_dimensions_) {
+    if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+      return false;
+    }
+  } else {
+    if (!ShapeUtil::SameRank(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs rank != rhs rank";
+      return false;
+    }
   }
 
   if (!ignore_layout_) {

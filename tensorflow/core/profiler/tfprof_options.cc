@@ -43,7 +43,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
 
   std::set<string> output_types(kOutput,
                                 kOutput + sizeof(kOutput) / sizeof(*kOutput));
-  auto opt_split = output_opt.find(":");
+  auto opt_split = output_opt.find(':');
   std::vector<string> kv_split;
   if (opt_split == output_opt.npos) {
     if (output_types.find(output_opt) == output_types.end()) {

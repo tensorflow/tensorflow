@@ -27,7 +27,6 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -44,7 +43,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -138,7 +136,7 @@ class StaticHashTableTest(BaseLookupTableTest):
 
   def testStaticHashTableInitWithNumPyArrays(self):
     default_val = -1
-    keys = np.array(["brain", "salad", "surgery"], dtype=np.str)
+    keys = np.array(["brain", "salad", "surgery"], dtype=np.str_)
     values = np.array([0, 1, 2], dtype=np.int64)
     table = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
@@ -543,94 +541,6 @@ class KeyValueTensorInitializerTest(BaseLookupTableTest):
     with self.assertRaises(errors_impl.OpError):
       table = self.getHashTable()(init, default_value=-1)
       self.initialize_table(table)
-
-
-class DatasetInitializerTest(BaseLookupTableTest):
-
-  def _createVocabFile(self, basename, values=("brain", "salad", "surgery")):
-    vocabulary_file = os.path.join(self.get_temp_dir(), basename)
-    with open(vocabulary_file, "w") as f:
-      f.write("\n".join(values) + "\n")
-    return vocabulary_file
-
-  def test_basic(self):
-    keys = dataset_ops.Dataset.range(100)
-    values = dataset_ops.Dataset.range(100).map(
-        lambda x: string_ops.as_string(x * 2))
-    ds = dataset_ops.Dataset.zip((keys, values))
-    init = lookup_ops.DatasetInitializer(ds)
-    table = self.getHashTable()(init, default_value="")
-    self.initialize_table(table)
-
-    output = table.lookup(constant_op.constant([0, 2, 5], dtypes.int64))
-    result = self.evaluate(output)
-    self.assertAllEqual(["0", "4", "10"], result)
-
-  def test_basic_bad_shape(self):
-    keys = dataset_ops.Dataset.range(100)
-    values = dataset_ops.Dataset.range(100).map(
-        lambda x: string_ops.as_string(x * 2))
-    values = values.batch(4)
-    ds = dataset_ops.Dataset.zip((keys, values))
-    with self.assertRaises(ValueError):
-      lookup_ops.DatasetInitializer(ds)
-
-  def test_from_file(self):
-    vocabulary_file = self._createVocabFile("test.txt", ("one", "two", "three"))
-    ds = reader_ops.TextLineDataset(vocabulary_file)
-    ds = ds.enumerate(start=1)
-    init = lookup_ops.DatasetInitializer(ds)
-    table = self.getHashTable()(init, default_value="")
-    self.initialize_table(table)
-
-    output = table.lookup(constant_op.constant([2, 3, 4], dtypes.int64))
-    result = self.evaluate(output)
-    self.assertAllEqual(["two", "three", ""], result)
-
-  def test_from_multiple_files(self):
-    vocabulary_file1 = self._createVocabFile("test1.txt",
-                                             ("one", "two", "three"))
-    vocabulary_file2 = self._createVocabFile("test2.txt",
-                                             ("four", "five", "six"))
-    ds = reader_ops.TextLineDataset([vocabulary_file1, vocabulary_file2])
-    ds = ds.enumerate(start=1)
-    init = lookup_ops.DatasetInitializer(ds)
-    table = self.getHashTable()(init, default_value="")
-    self.initialize_table(table)
-
-    output = table.lookup(constant_op.constant([2, 3, 4], dtypes.int64))
-    result = self.evaluate(output)
-    self.assertAllEqual(["two", "three", "four"], result)
-
-  def test_map_variable(self):
-    ds = dataset_ops.Dataset.range(100)
-    captured_var = variables.Variable(0)
-
-    def func(_):
-      return captured_var.assign_add(1)
-
-    ds = ds.map(func)
-    ds = ds.enumerate(start=1)
-    init = lookup_ops.DatasetInitializer(ds)
-    table = self.getHashTable()(init, default_value=-1)
-    self.evaluate(captured_var.initializer)
-    self.initialize_table(table)
-
-    output = table.lookup(constant_op.constant([1, 2, 101], dtypes.int64))
-    result = self.evaluate(output)
-    self.assertAllEqual([1, 2, -1], result)
-
-  def test_compatibility(self):
-    with ops.Graph().as_default():
-      keys = dataset_ops.Dataset.range(100)
-      values = dataset_ops.Dataset.range(100).map(string_ops.as_string)
-      ds = dataset_ops.Dataset.zip((keys, values))
-      init = lookup_ops.DatasetInitializer(ds)
-      table = self.getHashTable()(init, default_value="")
-      output = table.lookup(constant_op.constant([0, 2, 5], dtypes.int64))
-      self.evaluate(lookup_ops.tables_initializer())
-      result = self.evaluate(output)
-    self.assertAllEqual(["0", "2", "5"], result)
 
 
 class InitializeTableFromFileOpTest(BaseLookupTableTest):
@@ -2273,7 +2183,7 @@ class IndexTableFromFile(test.TestCase):
   def test_index_table_from_file_str_fails_with_zero_size_vocabulary(self):
     vocabulary_file = self._createVocabFile("zero_vocab_str.txt")
     self.assertRaisesRegex(
-        ValueError, "vocab_size must be greater than 0, got 0. "
+        ValueError, "`vocab_size` must be greater than 0, got 0 for "
         "vocabulary_file: .*zero_vocab_str.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2283,7 +2193,7 @@ class IndexTableFromFile(test.TestCase):
     vocabulary_file = constant_op.constant(
         self._createVocabFile("zero_vocab_tensor.txt"))
     self.assertRaisesRegex(
-        ValueError, "vocab_size must be greater than 0, got 0. "
+        ValueError, "`vocab_size` must be greater than 0, got 0 for "
         "vocabulary_file: .*zero_vocab_tensor.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2417,7 +2327,7 @@ class IndexTableFromTensor(test.TestCase):
 
   def test_index_table_from_tensor_missing_vocabulary_list(self):
     with self.assertRaisesRegex(ValueError,
-                                "vocabulary_list must be specified"):
+                                "`vocabulary_list` must be specified"):
       lookup_ops.index_table_from_tensor(
           vocabulary_list=None, num_oov_buckets=1)
 
@@ -2698,12 +2608,12 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertEqual(oov_buckets, self.evaluate(table.size()))
 
   def testFloat64IdTableWithOnlyHashBucket(self):
-    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+    with self.assertRaisesRegex(TypeError, "Invalid `key_dtype`"):
       lookup_ops.IdTableWithHashBuckets(
           None, num_oov_buckets=5, key_dtype=dtypes.float64)
 
   def testBoolIdTableWithOnlyHashBucket(self):
-    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+    with self.assertRaisesRegex(TypeError, "Invalid `key_dtype`"):
       lookup_ops.IdTableWithHashBuckets(
           None, num_oov_buckets=5, key_dtype=dtypes.bool)
 

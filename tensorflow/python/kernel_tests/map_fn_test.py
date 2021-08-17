@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=anomalous-backslash-in-string
+
 """Tests for tensorflow.kernels.functional_ops."""
 
 from __future__ import absolute_import
@@ -94,9 +96,9 @@ class MapFnTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
-    with self.assertRaisesRegex(ValueError, "not scalars"):
+    with self.assertRaisesRegex(ValueError, "must be .* Tensor.* not scalar"):
       map_fn.map_fn(lambda x: x, [1, 2])
-    with self.assertRaisesRegex(ValueError, "not a scalar"):
+    with self.assertRaisesRegex(ValueError, "must be .* Tensor.* not scalar"):
       map_fn.map_fn(lambda x: x, 1)
 
   @test_util.run_deprecated_v1
@@ -138,10 +140,11 @@ class MapFnTest(test.TestCase):
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
       y = map_fn.map_fn(
           lambda x: math_ops.multiply(math_ops.square(x), param), elems)
-      r = gradients_impl.gradients(y, param)[0]
-      self.assertAllEqual(91.0, self.evaluate(r))
-      r = gradients_impl.gradients(y, elems)[0]
-      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], self.evaluate(r))
+      r_param = gradients_impl.gradients(y, param)[0]
+      r_elems = gradients_impl.gradients(y, elems)[0]
+      self.assertAllEqual(91.0, self.evaluate(r_param))
+      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0],
+                          self.evaluate(r_elems))
 
   @test_util.run_in_graph_and_eager_modes
   def testMap_SimpleNotTensor(self):

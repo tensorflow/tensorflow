@@ -34,7 +34,7 @@ namespace graph_transforms {
 Status QuantizeWeights(const GraphDef& input_graph_def,
                        const TransformFuncContext& context,
                        GraphDef* output_graph_def) {
-  int32 minimum_size;
+  int32_t minimum_size;
   TF_RETURN_IF_ERROR(
       context.GetOneInt32Parameter("minimum_size", 1024, &minimum_size));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(

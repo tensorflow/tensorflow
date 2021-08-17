@@ -40,16 +40,16 @@ class Operation {
   explicit Operation(Node* n);
 
   int32 num_inputs() const { return node_->num_inputs(); }
-  DataType input_type(int32 o) const { return node_->input_type(o); }
-  Output input(int32 i) const;
+  DataType input_type(int32_t o) const { return node_->input_type(o); }
+  Output input(int32_t i) const;
 
   int32 num_outputs() const { return node_->num_outputs(); }
-  DataType output_type(int32 o) const { return node_->output_type(o); }
-  Output output(int32 i) const;
+  DataType output_type(int32_t o) const { return node_->output_type(o); }
+  Output output(int32_t i) const;
 
   Node* node() const { return node_; }
 
-  uint64 hash(int32 index) const;
+  uint64 hash(int32_t index) const;
 
   bool operator==(const Operation& other) const { return node_ == other.node_; }
 
@@ -66,14 +66,16 @@ class Output {
  public:
   Output() = default;
   explicit Output(Node* n) : op_(n) {}
-  Output(Node* n, int32 index) : op_(n), index_(index) {}
-  Output(const Operation& op, int32 index) : op_(op), index_(index) {}
+  Output(Node* n, int32_t index) : op_(n), index_(index) {}
+  Output(const Operation& op, int32_t index) : op_(op), index_(index) {}
 
   Operation op() const { return op_; }
   Node* node() const { return op().node(); }
   int32 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
-  string name() const { return strings::StrCat(node()->name(), ":", index()); }
+  std::string name() const {
+    return strings::StrCat(node()->name(), ":", index());
+  }
   bool operator==(const Output& other) const {
     return op_ == other.op_ && index_ == other.index_;
   }
@@ -107,7 +109,7 @@ class Input {
     /// be converted to a string (eg. a string literal).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const T& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), TensorShape());
@@ -120,11 +122,11 @@ class Input {
     /// Construct from a scalar value and an explicit shape
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const T& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      for (int64 i = 0; i < t.NumElements(); ++i) {
+      for (int64_t i = 0; i < t.NumElements(); ++i) {
         t.flat<RealT>()(i) = RealT(v);
       }
       tensor = t;
@@ -133,7 +135,7 @@ class Input {
     /// Construct from a initializer list of scalars (a one-dimensional tensor).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(
         const std::initializer_list<T>& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
@@ -146,11 +148,11 @@ class Input {
     /// Construct from a initializer list of scalars and an explicit shape.
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      if (t.NumElements() != static_cast<int64>(v.size())) {
+      if (t.NumElements() != static_cast<int64_t>(v.size())) {
         status = errors::InvalidArgument(
             "Cannot construct a tensor with ", t.NumElements(),
             " from an initializer list with ", v.size(), " elements");
@@ -168,7 +170,7 @@ class Input {
     Initializer(const std::initializer_list<Initializer>& v);
 
     // START_SKIP_DOXYGEN
-    template <typename T, bool = std::is_convertible<T, string>::value>
+    template <typename T, bool = std::is_convertible<T, std::string>::value>
     struct RealType {
       typedef tstring type;
     };
@@ -205,7 +207,7 @@ class Input {
 
   template <typename T, typename = typename std::enable_if<
                             std::is_arithmetic<T>::value ||
-                            std::is_convertible<T, string>::value>::type>
+                            std::is_convertible<T, std::string>::value>::type>
   Input(const T& v)  // NOLINT(runtime/explicit)
       : Input(Initializer(v)) {}
 
@@ -230,11 +232,11 @@ class Input {
 
   /// Constructor specifying a node name, index and datatype. This should only
   /// be used for specifying a backward edge, needed by control flow.
-  Input(const string& name, int32 i, DataType dt)
+  Input(const std::string& name, int32_t i, DataType dt)
       : node_name_(name), index_(i), data_type_(dt) {}
 
   Node* node() const { return output_.node(); }
-  string node_name() const { return node_name_; }
+  std::string node_name() const { return node_name_; }
   int32 index() const { return node_name_.empty() ? output_.index() : index_; }
   DataType data_type() const { return data_type_; }
   Status status() const { return status_; }
@@ -244,7 +246,7 @@ class Input {
   Status status_;
   Output output_ = Output(Operation(nullptr), 0);
   Tensor tensor_;
-  const string node_name_ = "";
+  const std::string node_name_ = "";
   int32 index_ = 0;
   DataType data_type_ = DT_INVALID;
 };

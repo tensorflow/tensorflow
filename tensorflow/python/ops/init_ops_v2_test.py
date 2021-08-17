@@ -47,10 +47,7 @@ class InitializersTest(test.TestCase):
     self.assertEqual(tensor_shape.as_shape(shape), t2.shape)
     self.assertEqual(assertion, np.allclose(t1, t2, rtol=1e-15, atol=1e-15))
 
-  def _duplicated_test(self,
-                       init,
-                       shape=None,
-                       dtype=dtypes.float32):
+  def _duplicated_test(self, init, shape=None, dtype=dtypes.float32):
     if shape is None:
       shape = [100]
     t1 = self.evaluate(init(shape, dtype))
@@ -98,8 +95,8 @@ class ConstantInitializersTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testZeros(self):
-    self._range_test(init_ops_v2.Zeros(), shape=(4, 5),
-                     target_mean=0., target_max=0.)
+    self._range_test(
+        init_ops_v2.Zeros(), shape=(4, 5), target_mean=0., target_max=0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testZerosPartition(self):
@@ -115,8 +112,8 @@ class ConstantInitializersTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testOnes(self):
-    self._range_test(init_ops_v2.Ones(), shape=(4, 5),
-                     target_mean=1., target_max=1.)
+    self._range_test(
+        init_ops_v2.Ones(), shape=(4, 5), target_mean=1., target_max=1.)
 
   @test_util.run_in_graph_and_eager_modes
   def testOnesPartition(self):
@@ -176,15 +173,13 @@ class ConstantInitializersTest(InitializersTest):
 
     self._testNDimConstantInitializer(value, shape, expected)
     self._testNDimConstantInitializer(np.asarray(value), shape, expected)
-    self._testNDimConstantInitializer(np.asarray(value).reshape(tuple(shape)),
-                                      shape, expected)
+    self._testNDimConstantInitializer(
+        np.asarray(value).reshape(tuple(shape)), shape, expected)
 
   def _testNDimConstantInitializerIncorrectNumberValues(self, value, shape):
     with test_util.use_gpu():
       init = init_ops_v2.constant_initializer(value)
-      self.assertRaises(TypeError,
-                        init,
-                        shape=shape)
+      self.assertRaises(TypeError, init, shape=shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testNDimConstantInitializerIncorrectNumberValues(self):
@@ -192,8 +187,8 @@ class ConstantInitializersTest(InitializersTest):
 
     for shape in [[2, 4], [2, 2]]:
       self._testNDimConstantInitializerIncorrectNumberValues(value, shape)
-      self._testNDimConstantInitializerIncorrectNumberValues(np.asarray(value),
-                                                             shape)
+      self._testNDimConstantInitializerIncorrectNumberValues(
+          np.asarray(value), shape)
       self._testNDimConstantInitializerIncorrectNumberValues(
           np.asarray(value).reshape(tuple([2, 3])), shape)
 
@@ -351,8 +346,7 @@ class VarianceScalingInitializerTest(InitializersTest):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
-    init = init_ops_v2.VarianceScaling(
-        distribution="untruncated_normal")
+    init = init_ops_v2.VarianceScaling(distribution="untruncated_normal")
 
     with test_util.use_gpu(), test.mock.patch.object(
         random_ops, "random_normal",
@@ -399,8 +393,8 @@ class OrthogonalInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testRangeInitializer(self):
-    self._range_test(init_ops_v2.Orthogonal(seed=123), shape=(20, 20),
-                     target_mean=0.)
+    self._range_test(
+        init_ops_v2.Orthogonal(seed=123), shape=(20, 20), target_mean=0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testInitializerIdentical(self):
@@ -443,10 +437,6 @@ class OrthogonalInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapesValues(self):
-
-    if test.is_built_with_rocm():
-      self.skipTest("Disable subtest on ROCm due to missing QR op support")
-
     for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
       init = init_ops_v2.Orthogonal()
       tol = 1e-5
@@ -518,11 +508,12 @@ class IdentityInitializerTest(InitializersTest):
       init_default = init_ops_v2.Identity()
       init_custom = init_ops_v2.Identity(gain=0.9)
       with test_util.use_gpu():
-        self.assertAllClose(self.evaluate(init_default(shape, dtype=dtype)),
-                            np.eye(*shape))
+        self.assertAllClose(
+            self.evaluate(init_default(shape, dtype=dtype)), np.eye(*shape))
       with test_util.use_gpu():
-        self.assertAllClose(self.evaluate(init_custom(shape, dtype=dtype)),
-                            np.eye(*shape) * 0.9)
+        self.assertAllClose(
+            self.evaluate(init_custom(shape, dtype=dtype)),
+            np.eye(*shape) * 0.9)
 
   @test_util.run_in_graph_and_eager_modes
   def testPartition(self):
@@ -577,10 +568,7 @@ class MethodInitializers(InitializersTest):
     fan_in, _ = init_ops_v2._compute_fans(shape)
     std = np.sqrt(2. / fan_in)
     self._range_test(
-        init_ops_v2.he_uniform(seed=123),
-        shape,
-        target_mean=0.,
-        target_std=std)
+        init_ops_v2.he_uniform(seed=123), shape, target_mean=0., target_std=std)
 
   @test_util.run_in_graph_and_eager_modes
   def testLecunNormal(self):
@@ -599,10 +587,7 @@ class MethodInitializers(InitializersTest):
     fan_in, _ = init_ops_v2._compute_fans(shape)
     std = np.sqrt(2. / fan_in)
     self._range_test(
-        init_ops_v2.he_normal(seed=123),
-        shape,
-        target_mean=0.,
-        target_std=std)
+        init_ops_v2.he_normal(seed=123), shape, target_mean=0., target_std=std)
 
 
 if __name__ == "__main__":

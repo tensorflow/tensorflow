@@ -174,6 +174,7 @@ def update_checkpoint_state(save_dir,
       last_preserved_timestamp=last_preserved_timestamp)
 
 
+@tf_export("__internal__.train.update_checkpoint_state", v1=[])
 def update_checkpoint_state_internal(save_dir,
                                      model_checkpoint_path,
                                      all_model_checkpoint_paths=None,
@@ -752,7 +753,7 @@ class CheckpointManager(object):
     """Returns the `tf.train.Checkpoint` object."""
     return self._checkpoint
 
-  def save(self, checkpoint_number=None, check_interval=True):
+  def save(self, checkpoint_number=None, check_interval=True, options=None):
     """Creates a new checkpoint and manages it.
 
     Args:
@@ -768,6 +769,9 @@ class CheckpointManager(object):
         larger than `checkpoint_interval`. Otherwise it will always save the
         checkpoint unless a checkpoint has already been saved for the current
         step.
+      options: Optional `tf.train.CheckpointOptions` object. This argument only
+        works with TF2 checkpoint objects. For example, options =
+        tf.saved_model.SaveOptions(experimental_io_device='/job:localhost')
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
@@ -809,7 +813,10 @@ class CheckpointManager(object):
       checkpoint_number = training_util.global_step(
           sess=session, global_step_tensor=checkpoint_number)
     prefix = "%s-%d" % (self._prefix, checkpoint_number)
-    save_path = self._checkpoint.write(prefix)
+    if options is None:
+      save_path = self._checkpoint.write(prefix)
+    else:
+      save_path = self._checkpoint.write(prefix, options=options)
     timestamp = time.time()
     # If this is an overwritten checkpoint we were previously tracking, delete
     # and reinsert it to make sure it goes to the end of the queue.

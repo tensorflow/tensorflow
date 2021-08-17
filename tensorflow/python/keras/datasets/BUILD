@@ -5,7 +5,7 @@ package(
     default_visibility = [
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -27,7 +27,7 @@ py_library(
         "mnist.py",
         "reuters.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:platform",
@@ -35,6 +35,5 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:engine_utils",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )

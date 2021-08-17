@@ -38,9 +38,6 @@ from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 
-tensor_to_ndarray = np_arrays.tensor_to_ndarray
-
-
 def _canonicalize_axis(axis, rank):
   return _canonicalize_axes([axis], rank)[0]
 
@@ -349,7 +346,9 @@ def _add_np_doc(doc, np_fun_name, np_f, link):
         import requests  # pylint: disable=g-import-not-at-top
         r = requests.head(url)
         if r.status_code != 200:
-          raise ValueError("Can't open link for %s: %s" % (np_fun_name, url))
+          raise ValueError(
+              f'Check link failed at [{url}] with status code {r.status_code}. '
+              f'Argument `np_fun_name` is {np_fun_name}.')
       doc += 'See the NumPy documentation for [`numpy.%s`](%s).' % (
           np_fun_name, url)
   return doc
@@ -368,7 +367,8 @@ def set_is_sig_mismatch_an_error(value):
   _is_sig_mismatch_an_error = value
 
 
-def np_doc(np_fun_name, np_fun=None, export=True, link=None):
+def np_doc(np_fun_name, np_fun=None, export=True, unsupported_params=None,
+           link=None):
   """Attachs numpy docstring to a function.
 
   Args:
@@ -379,6 +379,8 @@ def np_doc(np_fun_name, np_fun=None, export=True, link=None):
       `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
       a function directly under the `numpy` module, not under any submodule of
       `numpy` (e.g. `numpy.random`).
+    unsupported_params: (optional) the list of parameters not supported
+      by tf.numpy.
     link: (optional) which link to use. If `None`, a default link generated from
       `np_fun_name` will be used. If an instance of `AliasOf`, `link.value` will
       be used in place of `np_fun_name` for the link generation. If an instance
@@ -389,12 +391,14 @@ def np_doc(np_fun_name, np_fun=None, export=True, link=None):
     A function decorator that attaches the docstring from `np_fun` to the
     decorated function.
   """
+  np_fun_name_orig, np_fun_orig = np_fun_name, np_fun
   np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
   np_sig = _np_signature(np_fun)
+  if unsupported_params is None:
+    unsupported_params = []
 
   def decorator(f):
     """The decorator."""
-    unsupported_params = []
     if hasattr(inspect, 'signature') and np_sig is not None:
       try:
         sig = inspect.signature(f)
@@ -406,21 +410,26 @@ def np_doc(np_fun_name, np_fun=None, export=True, link=None):
           if np_param is None:
             if is_sig_mismatch_an_error():
               raise TypeError(
-                  'Cannot find parameter "%s" in the numpy function\'s '
-                  'signature (which has these parameters: %s)' %
-                  (name, list(np_sig.parameters.keys())))
+                  f'Cannot find parameter {name} in the numpy function\'s '
+                  f'signature (which has these parameters: '
+                  f'{list(np_sig.parameters.keys())}). Argument `np_fun_name` '
+                  f'is {np_fun_name_orig}. Argument `np_fun` is {np_fun_orig}.')
             else:
               continue
           if (is_sig_mismatch_an_error() and
               not _is_compatible_param_kind(param.kind, np_param.kind)):
             raise TypeError(
-                'Parameter "%s" is of kind %s while in numpy it is of '
-                'kind %s' % (name, param.kind, np_param.kind))
+                f'Parameter {name} is of kind {param.kind} while in numpy it '
+                f'is of kind {np_param.kind}. Argument `np_fun_name` is '
+                f'{np_fun_name_orig}. Argument `np_fun` is {np_fun_orig}.')
           has_default = (param.default != inspect.Parameter.empty)
           np_has_default = (np_param.default != inspect.Parameter.empty)
           if is_sig_mismatch_an_error() and has_default != np_has_default:
-            raise TypeError('Parameter "%s" should%s have a default value' %
-                            (name, '' if np_has_default else ' not'))
+            raise TypeError(
+                'Parameter {} should{} have a default value. Argument '
+                '`np_fun_name` is {}. Argument `np_fun` is {}.'.format(
+                    name, '' if np_has_default else ' not', np_fun_name_orig,
+                    np_fun_orig))
         for name in np_sig.parameters:
           if name not in sig.parameters:
             unsupported_params.append(name)
@@ -478,8 +487,6 @@ def _maybe_get_dtype(x):
   """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
   # Don't put np.ndarray in this list, because np.result_type looks at the
   # value (not just dtype) of np.ndarray to decide the result type.
-  if isinstance(x, np_arrays.ndarray):
-    return x.dtype
   if isinstance(x, numbers.Real):
     return x
   if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
@@ -487,7 +494,10 @@ def _maybe_get_dtype(x):
   if isinstance(x, dtypes.DType):
     return x.as_numpy_dtype
   if isinstance(x, (list, tuple)):
-    raise ValueError('Got sequence')
+    raise ValueError(
+        f'Cannot find dtype for type inference from argument `x` of a sequence '
+        f'type {type(x)}. For sequences, please call this function on each '
+        f'element individually.')
   return x
 
 

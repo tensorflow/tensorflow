@@ -26,7 +26,7 @@ func @tf_unknown_op(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // -----
 
 func @tf_known_op(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
 }
 
@@ -38,7 +38,7 @@ func @tf_unknown_known_mix(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // expected-error@+1 {{'tf.OpA' op is not legalizable}}
   %0 = "tf.OpA"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   %1 = "tf.OpB"(%0, %0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  %2 = "tf.Add"(%1, %1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %2 = "tf.AddV2"(%1, %1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   %3 = "tf.OpB"(%2, %2) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %2: tensor<2xi32>
 }

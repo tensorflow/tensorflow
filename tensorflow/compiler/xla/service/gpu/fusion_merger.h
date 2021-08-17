@@ -22,16 +22,41 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// An HLO pass that attempts to merge fusion instructions to reduce kernel
-// launch overhead and improve data locality.
+// An HLO pass that attempts to merge fusion instructions to reduce memory
+// bandwidth requirements and kernel launch overhead.
 //
-// Fusion instructions are merged into their users if two conditions are met:
+// Consider the example below. On the left-hand side, op A is the producer and
+// ops B and C are its consumers. FusionMerger duplicates producer ops and fuses
+// them into all consumers. The result is depicted on the right-hand side below.
 //
-// 1) The flops_to_bytes ratio of the fusion instruction is below the threshold
-//    value of 1.0.
-// 2) The result of merging the fusion instruction into its users would not
-//    increase bytes transferred.
+//        p                    p
+//        |                  /   \
+//        v                 /     \
+//        A            +fusion+  +fusion+
+//      /   \          |  A'  |  |  A"  |
+//     |     |         |  |   |  |  |   |
+//     v     v         |  v   |  |  v   |
+//     B     C         |  B   |  |  C   |
+//                     +------+  +------+
 //
+// Op A has been cloned twice and fused with B and C. The kernel launch overhead
+// is reduced from 3 to 2. The memory bandwidth requirements may be reduced.
+// We trade 1 read of input(A) + 1 write and 2 reads of output(A) for 2 reads of
+// input(A). In general the achieveable savings in memory bandwidth depend on
+// the differences in memory read and written and the number of consumers. The
+// FusionMeger pass takes this into account when making fusion decisions.
+//
+// The pass traverses the HLO module in reverse post-order (defs before uses).
+// Fusion instructions are merged into their users if some conditions are met:
+// * The result of merging the fusion instruction into its users would not
+//   increase bytes transferred.
+// * Producer ops are fusible with _all_ consumers. If they are not fusible with
+//   at least one consumers, they won't be fused at all.
+// * Producers are kLoop fusion ops.
+//
+// None of these restrictions are necessary for correctness. In fact, lifting
+// the latter two could be beneficial.
+
 class FusionMerger : public HloModulePass {
  public:
   absl::string_view name() const override { return "fusion_merger"; }

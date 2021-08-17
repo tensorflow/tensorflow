@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -30,9 +32,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -73,6 +77,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kConditional:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kCustomCall:
     case HloOpcode::kParameter:
     case HloOpcode::kWhile:
@@ -96,8 +101,16 @@ bool CanBeRematerialized(
   return rematerializable;
 }
 
+// Return if this is an instruction that relays the buffers it uses to its own
+// users and if this is one of these instructions we support the
+// rematerialization of.
+bool IsSupportedIndirectUser(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kBitcast ||
+         instruction->opcode() == HloOpcode::kGetTupleElement;
+}
+
 // Type holding a unique identifier for each Buffer object.
-using BufferId = int64;
+using BufferId = int64_t;
 using BufferIdList = absl::InlinedVector<BufferId, 3>;
 
 struct RematStrategy {
@@ -150,10 +163,28 @@ struct Item {
   // List is ordered by position, which can however be duplicated as
   // new instructions are inserted.  See InsertBeforeInstructions
   // comment for details.
-  int64 position;
+  int64_t position;
+};
+
+// Data structure meant to record the user of the buffer defined from an Item.
+// It records also the operand_number from where such use derives, so that
+// indirect uses can be better identified (like for example a buffer used
+// through a bitcast).
+struct ItemUse {
+  Item* user;
+  int64_t operand_number;
+  absl::optional<int64_t> index;
+
+  ItemUse(Item* user, int64_t op_num, absl::optional<int64_t> index)
+      : user(user), operand_number(op_num), index(index) {}
+  bool operator==(const ItemUse& other) const {
+    return user == other.user && operand_number == other.operand_number &&
+           index == other.index;
+  }
 };
 
 using ItemList = absl::InlinedVector<Item*, 3>;
+using UsesList = absl::InlinedVector<ItemUse, 3>;
 
 // Class which maintains an ordered list of instructions with fast insertion
 // before arbitrary elements.
@@ -170,7 +201,7 @@ using ItemList = absl::InlinedVector<Item*, 3>;
 class InstructionList {
  public:
   explicit InstructionList(const HloInstructionSequence& order) {
-    int64 position = 0;
+    int64_t position = 0;
     Item* last = nullptr;
     last_skip_node_ = nullptr;
     first_skip_node_ = nullptr;
@@ -289,7 +320,7 @@ class InstructionList {
   // Scan the list and promote nodes to express lane if should_promote(Item)
   // returns true;
   void PromoteNodesToSkip(std::function<bool(Item*)> should_promote) {
-    int64 count = 0;
+    int64_t count = 0;
     for (auto* item = first(); item != nullptr; item = next(item)) {
       if (should_promote(item)) {
         count += 1;
@@ -412,11 +443,11 @@ class InstructionList {
 // has_indirect_users to whether any of the uses is indirect. A use is indirect
 // if the instruction defining logical_buffer is not an operand of the use. This
 // can happen via buffer aliasing (eg, tuples).
-ItemList GetUsers(const InstructionList& instruction_list,
+UsesList GetUsers(const InstructionList& instruction_list,
                   const LogicalBuffer* logical_buffer,
                   const TuplePointsToAnalysis& points_to_analysis,
                   bool* has_indirect_users) {
-  ItemList users;
+  UsesList users;
   // To identify uses iterate through all HloInstruction users of the
   // BufferAliases of the logical buffer.
   *has_indirect_users = false;
@@ -431,14 +462,24 @@ ItemList GetUsers(const InstructionList& instruction_list,
         // instruction (the GTE instruction only uses the pointer vector).
         continue;
       }
-      if (buffer_alias.instruction() != logical_buffer->instruction()) {
+      if (buffer_alias.instruction() != logical_buffer->instruction() &&
+          !IsSupportedIndirectUser(buffer_alias.instruction())) {
         *has_indirect_users = true;
       }
       // A buffer may be used by the instruction via more than one alias. For
       // example, a buffer which appears in more than one element of a tuple.
       Item* user_item = instruction_list.GetItem(user);
-      if (!absl::c_linear_search(users, user_item)) {
-        users.push_back(user_item);
+      absl::optional<int64_t> user_index =
+          logical_buffer->index().size() != 1
+              ? absl::nullopt
+              : absl::make_optional(logical_buffer->index().back());
+      for (int64_t op_idx : user->OperandIndices(buffer_alias.instruction())) {
+        if (!absl::c_linear_search(
+                users,
+                ItemUse{user_item, static_cast<int>(op_idx), user_index})) {
+          users.push_back(
+              ItemUse{user_item, static_cast<int>(op_idx), user_index});
+        }
       }
     }
   }
@@ -466,8 +507,9 @@ class MemoryUsageTracker {
   // EndInstruction memory for dead operand(s) is freed.
   Status BeginInstruction(Item* item);
 
-  int64 RematerializationCost(const std::vector<Item*>& items,
-                              int64 memory_reduced, int64 memory_limit_bytes) {
+  int64_t RematerializationCost(const std::vector<Item*>& items,
+                                int64_t memory_reduced,
+                                int64_t memory_limit_bytes) {
     // If none of the users of any 'item' have been placed in the
     // sequence (as tracked by memory_tracker), then rematerialization of
     // 'item' is a zero-cost move of 'item->instruction' in the sequence.
@@ -496,16 +538,13 @@ class MemoryUsageTracker {
   Status EndInstruction();
 
   // Returns the number of bytes that the current memory usage will be reduced
-  // if the given instruction is rematerialized.
-  int64 MemoryReducedIfRematerialized(Item* item) const;
-
-  // Returns the number of bytes that the current memory usage will be reduced
   // if the given instruction is compact.
-  int64 MemoryReducedIfCompressed(Item* item, const Shape& compact_shape) const;
+  int64_t MemoryReducedIfCompressed(Item* item,
+                                    const Shape& compact_shape) const;
 
   // Returns the number of bytes that the current memory usage will be reduced
   // by if the given sequence of instructions is rematerialized.
-  int64 MemoryReducedIfRematerialized(
+  int64_t MemoryReducedIfRematerialized(
       absl::Span<const Item* const> items) const;
 
   Status AddCompressInstructions(Item* original_item, Item* compressed_item,
@@ -516,16 +555,20 @@ class MemoryUsageTracker {
   // is remat_item. This method should be called after the HLO graph has
   // been transformed (rematerialization instruction created and connected
   // to uses).
-  Status AddRematerializedInstruction(Item* original_item, Item* remat_item);
+  Status AddRematerializedInstruction(Item* original_item, Item* remat_item,
+                                      absl::Span<Item*> indirect_users);
 
   // Selects and returns the best candidate instructions for rematerialization.
   // A sequence of candidate instructions of length between min_block_size and
   // max_block_size (both inclusive) with the lowest rematerialization cost is
   // selected among those candidates which reduce memory use at the program
   // point of the current instruction as indicated by memory_tracker. Returns an
-  // empty vector if no candidates are found.
-  std::pair<std::vector<Item*>, RematStrategy> PickRematerializationCandidates(
-      const InstructionList& instruction_list, int64 memory_limit_bytes,
+  // empty vector if no candidates are found. Also returns an integer that
+  // represents the amount of "effort" expended to find the candidate
+  // instructions.
+  std::tuple<std::vector<Item*>, RematStrategy, int>
+  PickRematerializationCandidates(
+      const InstructionList& instruction_list, int64_t memory_limit_bytes,
       absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
       int min_block_size, int max_block_size);
 
@@ -538,16 +581,19 @@ class MemoryUsageTracker {
   // Returns whether 'item' has any unplaced users.
   bool HasUnplacedUsers(Item* item) const;
 
+  // Returns the list of uses for a specific 'item'.
+  const UsesList GetItemUses(Item* item) const;
+
   // Returns whether 'item' is currently in progress.
   bool IsInProgressItem(Item* item) const { return item == in_progress_item_; }
 
   // Returns the current memory usage. This is the sum of sizes of all live
   // values.
-  int64 memory_usage() const { return memory_usage_; }
+  int64_t memory_usage() const { return memory_usage_; }
 
   //
-  int64 AllocatedSize(Item* item) const {
-    int64 size = 0;
+  int64_t AllocatedSize(Item* item) const {
+    int64_t size = 0;
     for (auto buffer_id : item->buffers_defined) {
       size += AllocatedSize(buffer_id);
     }
@@ -574,7 +620,7 @@ class MemoryUsageTracker {
     Item* defining_instruction;
 
     // The materialized size of the buffer in bytes.
-    const int64 size;
+    const int64_t size;
 
     // Shape of the buffer.
     Shape shape;
@@ -587,12 +633,15 @@ class MemoryUsageTracker {
     // buffer aliasing (eg, tuples).
     bool has_indirect_uses;
 
+    // Position in the tuple this buffer definition lives in.
+    ShapeIndex index;
+
     // The instructions which use this buffer.
-    ItemList users;
+    UsesList users;
 
     // The number of users (HloInstructions) of this buffer which have not yet
     // been placed in the sequence.
-    int64 unfinished_user_count;
+    int64_t unfinished_user_count;
 
     string ToString() const {
       return absl::StrCat("Buffer ", id, " (defined by ",
@@ -611,25 +660,25 @@ class MemoryUsageTracker {
       const LogicalBuffer* logical_buffer,
       const TuplePointsToAnalysis& points_to_analysis, bool live_out) {
     bool has_indirect_uses = false;
-    ItemList users = GetUsers(instruction_list_, logical_buffer,
+    UsesList users = GetUsers(instruction_list_, logical_buffer,
                               points_to_analysis, &has_indirect_uses);
     return NewBuffer(instruction_list_.GetItem(logical_buffer->instruction()),
-                     logical_buffer->shape(), std::move(users), live_out,
-                     has_indirect_uses);
+                     logical_buffer->shape(), logical_buffer->index(),
+                     std::move(users), live_out, has_indirect_uses);
   }
 
   // Create a new buffer representing a rematerialization of given buffer for
   // the given uses.
   Buffer& RematerializeBuffer(const Buffer& original_buffer, Item* remat_item,
-                              ItemList&& rematerialized_uses) {
+                              UsesList&& rematerialized_uses) {
     CHECK(original_buffer.defining_instruction->placed)
         << original_buffer.defining_instruction->instruction->name();
     CHECK(!original_buffer.has_indirect_uses) << original_buffer.ToString();
     CHECK(!original_buffer.live_out) << original_buffer.ToString();
-    for (Item* use : rematerialized_uses) {
-      CHECK(!use->placed) << use->instruction->name();
+    for (ItemUse& use : rematerialized_uses) {
+      CHECK(!use.user->placed) << use.user->instruction->name();
     }
-    return NewBuffer(remat_item, original_buffer.shape,
+    return NewBuffer(remat_item, original_buffer.shape, original_buffer.index,
                      std::move(rematerialized_uses), /*live_out=*/false,
                      /*has_indirect_uses=*/false);
   }
@@ -638,7 +687,7 @@ class MemoryUsageTracker {
   // allocated by the calling computation (eg, parameter and output buffers) are
   // considered to have zero bytes because the memory is accounted for in a
   // different computation.
-  int64 AllocatedSize(BufferId buffer_id) const {
+  int64_t AllocatedSize(BufferId buffer_id) const {
     const Buffer& buffer = buffers_.at(buffer_id);
     HloInstruction* inst = buffer.defining_instruction->instruction;
     HloOpcode def_opcode = inst->opcode();
@@ -665,8 +714,6 @@ class MemoryUsageTracker {
     return absl::c_linear_search(in_progress_uses, buffer_id);
   }
 
-  // Returns whether the given buffer is live at the current program
-  // point.
   bool IsCurrentlyLive(BufferId buffer_id) const {
     const Buffer& buffer = buffers_[buffer_id];
     return (buffer.defining_instruction->placed &&
@@ -692,11 +739,19 @@ class MemoryUsageTracker {
 
   // Create a new buffer, add it to buffers_, and return a reference.
   Buffer& NewBuffer(Item* defining_instruction, const Shape& shape,
-                    ItemList&& users, bool live_out, bool has_indirect_uses) {
+                    const ShapeIndex& index, UsesList&& uses, bool live_out,
+                    bool has_indirect_uses) {
     int buffer_id = buffers_.size();
+    auto get_num_of_unique_users = [](const UsesList& uses) -> int64_t {
+      absl::flat_hash_set<Item*> users_set;
+      for (const ItemUse& use : uses) {
+        users_set.insert(use.user);
+      }
+      return users_set.size();
+    };
     buffers_.push_back(Buffer{
         buffer_id, defining_instruction, size_function_(shape), shape, live_out,
-        has_indirect_uses, users, static_cast<int64>(users.size())});
+        has_indirect_uses, index, uses, get_num_of_unique_users(uses)});
     return buffers_.back();
   }
 
@@ -718,7 +773,7 @@ class MemoryUsageTracker {
   absl::flat_hash_map<const HloInstruction*, Shape> compact_shape_;
 
   // Memory usage at the currently placed instruction.
-  int64 memory_usage_ = 0;
+  int64_t memory_usage_ = 0;
 
   // The instruction currently being placed. This value is non-null only
   // between the calling of BeginInstruction and EndInstruction.
@@ -771,12 +826,15 @@ MemoryUsageTracker::MemoryUsageTracker(
 
         // Add users of while to Buffer users.
         bool unused;
-        for (Item* user_item : GetUsers(instruction_list_, logical_buffer,
-                                        points_to_analysis, &unused)) {
-          if (!absl::c_linear_search(buffer->users, user_item)) {
-            buffer->users.push_back(user_item);
+        for (ItemUse& user_item : GetUsers(instruction_list_, logical_buffer,
+                                           points_to_analysis, &unused)) {
+          auto existing_user_it = absl::c_find_if(
+              buffer->users,
+              [&](const ItemUse& use) { return user_item.user == use.user; });
+          if (existing_user_it == buffer->users.end()) {
             buffer->unfinished_user_count++;
-            user_item->buffers_used.push_back(buffer->id);
+            user_item.user->buffers_used.push_back(buffer->id);
+            buffer->users.push_back(user_item);
           }
         }
       } else {
@@ -784,8 +842,10 @@ MemoryUsageTracker::MemoryUsageTracker(
             logical_buffer, points_to_analysis,
             ContainsKey(live_out_set, logical_buffer));
         item->buffers_defined.push_back(buffer->id);
-        for (Item* user : buffer->users) {
-          user->buffers_used.push_back(buffer->id);
+        for (ItemUse& user : buffer->users) {
+          if (!absl::c_linear_search(user.user->buffers_used, buffer->id)) {
+            user.user->buffers_used.push_back(buffer->id);
+          }
         }
       }
 
@@ -872,14 +932,14 @@ Status MemoryUsageTracker::EndInstruction() {
   return Status::OK();
 }
 
-int64 MemoryUsageTracker::MemoryReducedIfCompressed(
+int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
     Item* item, const Shape& compact_shape) const {
   CHECK_NE(in_progress_item_, nullptr);
   if (!item->placed || item == in_progress_item_) {
     return 0;
   }
 
-  int64 memory_reduced = 0;
+  int64_t memory_reduced = 0;
 
   // We only compress a single piece of an output at one time.
   CHECK_EQ(item->buffers_output.size(), 1);
@@ -889,62 +949,17 @@ int64 MemoryUsageTracker::MemoryReducedIfCompressed(
     const Buffer& buffer = buffers_.at(buffer_id);
     memory_reduced += buffer.size;
 
-    int64 compact_shape_size = size_function_(compact_shape);
+    int64_t compact_shape_size = size_function_(compact_shape);
     // Account for buffers that are compressed after instruction.
     memory_reduced -= compact_shape_size;
   }
   return memory_reduced;
 }
 
-int64 MemoryUsageTracker::MemoryReducedIfRematerialized(Item* item) const {
-  CHECK_NE(in_progress_item_, nullptr);
-  if (!item->placed || item == in_progress_item_) {
-    return 0;
-  }
-
-  // TODO(b/37687140): Rematerialization can increase peak memory consumption at
-  // an earlier point in the program if rematerialization extends the live range
-  // of the operand of the instruction being rematerialized across the live
-  // range of the value of instruction being rematerialized. Don't rematerialize
-  // in this case (ie, return 0 here).
-
-  // Compute the amount of memory reduced (if any) by rematerializing
-  // 'instruction'. The LogicalBuffers defined by 'instruction' will no longer
-  // be live at this program point, so initially set memory_reduced to the
-  // size of its defined values.
-  int64 memory_reduced = 0;
-  for (BufferId buffer_id : item->buffers_defined) {
-    // Avoid rematerializing instructions with indirect uses as it is difficult
-    // to reason about liveness after rematerializing the instruction.
-    // TODO(b/37714814): Consider rematerializing instructions with indirect
-    // uses.
-    if (buffers_.at(buffer_id).has_indirect_uses) {
-      return 0;
-    }
-
-    if (IsCurrentlyLive(buffer_id) && !IsInUse(buffer_id)) {
-      memory_reduced += AllocatedSize(buffer_id);
-    }
-  }
-
-  // Account for any logical buffers whose live range must be extended across
-  // this program point.
-  for (BufferId buffer_id : item->buffers_used) {
-    if (!IsCurrentlyLive(buffer_id)) {
-      // This logical buffer is used by 'instruction' but is not live at this
-      // program point. Rematerializing 'instruction' will extend the buffer's
-      // live range across this program point.
-      memory_reduced -= AllocatedSize(buffer_id);
-    }
-  }
-
-  return memory_reduced;
-}
-
-int64 MemoryUsageTracker::MemoryReducedIfRematerialized(
+int64_t MemoryUsageTracker::MemoryReducedIfRematerialized(
     absl::Span<const Item* const> items) const {
   CHECK_NE(in_progress_item_, nullptr);
-  int64 memory_reduced = 0;
+  int64_t memory_reduced = 0;
   absl::flat_hash_set<const Item*> remat_candidates;
 
   for (const Item* item : items) {
@@ -959,17 +974,21 @@ int64 MemoryUsageTracker::MemoryReducedIfRematerialized(
     // will no longer be live at this program point, so initially set
     // memory_reduced to the size of its defined values.
     for (BufferId buffer_id : item->buffers_defined) {
+      const Buffer& buffer = buffers_.at(buffer_id);
       // Avoid rematerializing instructions with indirect uses as it is
       // difficult to reason about liveness after rematerializing the
       // instruction.
       // Avoid rematerializing instructions with live out buffers.
+      // Avoid rematerializing buffers that are in nested tuples.
       // TODO(mpurohit): Check why live_out buffers are an issue here.
-      if (buffers_.at(buffer_id).has_indirect_uses ||
-          buffers_.at(buffer_id).live_out) {
+      if (buffer.has_indirect_uses || buffer.live_out ||
+          buffer.index.size() > 1) {
         return 0;
       }
-
-      if (IsCurrentlyLive(buffer_id) && !IsInUse(buffer_id)) {
+      if (IsInUse(buffer_id)) {
+        return 0;
+      }
+      if (IsCurrentlyLive(buffer_id)) {
         memory_reduced += AllocatedSize(buffer_id);
       }
     }
@@ -1003,14 +1022,14 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
   // Compressed buffer is now alive.
   memory_usage_ += size_function_(compressed_item->instruction->shape());
 
-  ItemList placed_users;
-  ItemList unplaced_users;
+  UsesList placed_users;
+  UsesList unplaced_users;
   CHECK_EQ(original_item->buffers_output.size(), 1);
   BufferId original_buffer_id = original_item->buffers_output[0];
   Buffer& original_buffer = buffers_.at(original_buffer_id);
-  for (Item* user : original_buffer.users) {
-    if (user->placed) {
-      CHECK(IsFinished(user)) << user->instruction->name();
+  for (ItemUse& user : original_buffer.users) {
+    if (user.user->placed) {
+      CHECK(IsFinished(user.user)) << user.user->instruction->name();
       placed_users.push_back(user);
     } else {
       unplaced_users.push_back(user);
@@ -1018,10 +1037,15 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
   }
   original_buffer.users = std::move(placed_users);
   original_buffer.unfinished_user_count = 0;
-  original_buffer.users.push_back(compressed_item);
+  original_buffer.users.push_back(ItemUse{compressed_item, 0, absl::nullopt});
+  // We are reallocating the vector containing the buffers potentially,
+  // invalidating the original_buffer reference, so copy the index that we need
+  // across NewBuffer calls.
+  ShapeIndex copied_index = original_buffer.index;
   Buffer& compressed_buffer =
       NewBuffer(compressed_item, compressed_item->instruction->shape(),
-                {uncompressed_item}, /*live_out=*/false,
+                copied_index, {ItemUse{uncompressed_item, 0, absl::nullopt}},
+                /*live_out=*/false,
                 /*has_indirect_uses=*/false);
   compressed_item->buffers_used = original_item->buffers_output;
   compressed_item->buffers_output = {compressed_buffer.id};
@@ -1029,15 +1053,15 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
 
   Buffer& uncompressed_buffer =
       NewBuffer(uncompressed_item, uncompressed_item->instruction->shape(),
-                std::move(unplaced_users), /*live_out=*/false,
+                copied_index, std::move(unplaced_users), /*live_out=*/false,
                 /*has_indirect_uses=*/false);
 
   uncompressed_item->buffers_used = {compressed_item->buffers_output[0]};
   uncompressed_item->buffers_output = {uncompressed_buffer.id};
   uncompressed_item->buffers_defined = {uncompressed_buffer.id};
 
-  for (Item* user : uncompressed_buffer.users) {
-    BufferIdList& buffers_used = user->buffers_used;
+  for (ItemUse& user : uncompressed_buffer.users) {
+    BufferIdList& buffers_used = user.user->buffers_used;
     std::replace(buffers_used.begin(), buffers_used.end(), original_buffer_id,
                  uncompressed_buffer.id);
   }
@@ -1045,8 +1069,8 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
   return Status::OK();
 }
 
-Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
-                                                        Item* remat_item) {
+Status MemoryUsageTracker::AddRematerializedInstruction(
+    Item* original_item, Item* remat_item, absl::Span<Item*> indirect_users) {
   VLOG(3) << "AddRematerializedInstruction: original_instruction = "
           << original_item->instruction->name()
           << ", remat_instruction = " << remat_item->instruction->name();
@@ -1067,24 +1091,43 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
       // Buffer used by this instruction was dead, now is alive.
       memory_usage_ += AllocatedSize(buffer.id);
     }
-
     buffer.unfinished_user_count++;
-    buffer.users.push_back(remat_item);
+    absl::InlinedVector<ItemUse, 2> filtered_users;
+    std::copy_if(buffer.users.begin(), buffer.users.end(),
+                 std::back_inserter(filtered_users),
+                 [&](const ItemUse& iu) { return iu.user == original_item; });
+    for (ItemUse& u : filtered_users) {
+      buffer.users.push_back(ItemUse{remat_item, u.operand_number, u.index});
+    }
   }
 
+  const absl::flat_hash_set<Item*> indirect_users_set(indirect_users.begin(),
+                                                      indirect_users.end());
   // Create a new set of Buffers defined by the new rematerialization
   // instruction. Update the internal data structures and memory use to account
   // for them.
   for (BufferId old_buffer_id : original_item->buffers_defined) {
     Buffer& old_buffer = buffers_.at(old_buffer_id);
 
-    ItemList placed_users;
-    ItemList unplaced_users;
-    for (Item* user : old_buffer.users) {
-      if (user->placed) {
+    UsesList placed_users;
+    UsesList unplaced_users;
+    for (ItemUse& user : old_buffer.users) {
+      if (user.user->placed) {
         placed_users.push_back(user);
       } else {
-        unplaced_users.push_back(user);
+        // We keep only the indirect users that are in the provided list.
+        // We consider all the other dead and remove any buffer use they might
+        // perform and remove it from the buffer user list.
+        if (!IsSupportedIndirectUser(user.user->instruction) ||
+            indirect_users_set.contains(user.user)) {
+          unplaced_users.push_back(user);
+        } else {
+          CHECK(user.user->buffers_defined.empty())
+              << "Buffers defined expected to be empty for use passthrough "
+                 "instructions";
+          user.user->buffers_output.clear();
+          user.user->buffers_used.clear();
+        }
       }
     }
     old_buffer.users = std::move(placed_users);
@@ -1097,10 +1140,68 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
         RematerializeBuffer(old_buffer, remat_item, std::move(unplaced_users));
 
     remat_item->buffers_defined.push_back(new_buffer.id);
-    for (Item* user : new_buffer.users) {
-      BufferIdList& buffers_used = user->buffers_used;
-      std::replace(buffers_used.begin(), buffers_used.end(), old_buffer_id,
-                   new_buffer.id);
+    auto update_buffers = [old_buffer_id, new_buffer_id = new_buffer.id](
+                              BufferIdList& to_update) {
+      std::replace(to_update.begin(), to_update.end(), old_buffer_id,
+                   new_buffer_id);
+    };
+    // Update users with the id of the new buffer.
+    for (ItemUse& user : new_buffer.users) {
+      update_buffers(user.user->buffers_used);
+      update_buffers(user.user->buffers_output);
+    }
+  }
+
+  // Update the indirect users with the id of the new buffers.
+  for (Item* indirect_user : indirect_users) {
+    // Source of the buffers that are gonna be passthrough.
+    const Item* source_item =
+        instruction_list_.GetItem(indirect_user->instruction->operand(0));
+    switch (indirect_user->instruction->opcode()) {
+      case HloOpcode::kBitcast: {
+        // If the source is another indirect user then copy the output
+        // in the used and output lists of the bitcast as they don't define any
+        // buffer.
+        if (IsSupportedIndirectUser(source_item->instruction)) {
+          indirect_user->buffers_used = source_item->buffers_output;
+          indirect_user->buffers_output = source_item->buffers_output;
+        } else {
+          // If it's a real instruction producing a buffer then copy the defined
+          // buffers into used and output.
+          indirect_user->buffers_used = source_item->buffers_defined;
+          indirect_user->buffers_output = source_item->buffers_defined;
+        }
+        break;
+      }
+      case HloOpcode::kGetTupleElement: {
+        // GTEs just use the tuple buffer and output the buffer they actually
+        // extract from the tuple.
+        const HloGetTupleElementInstruction* gte =
+            Cast<HloGetTupleElementInstruction>(indirect_user->instruction);
+        for (BufferId buffer_id : source_item->buffers_defined) {
+          const Buffer& def_buffer = buffers_.at(buffer_id);
+          if (def_buffer.index == ShapeIndex{gte->tuple_index()}) {
+            indirect_user->buffers_output.push_back(buffer_id);
+          }
+          // This is the tuple buffer.
+          if (def_buffer.index.empty()) {
+            indirect_user->buffers_used.push_back(buffer_id);
+          }
+        }
+        break;
+      }
+      default: {
+        LOG(FATAL) << "Unsupported indirect instruction with opcode "
+                   << HloOpcodeString(indirect_user->instruction->opcode());
+        break;
+      }
+    }
+    // Fixup buffer users for the indirect instructions. For GTEs is only the
+    // tuple buffer, while for bitcast is the buffer they pass through.
+    for (BufferId buffer_id : indirect_user->buffers_used) {
+      Buffer& buffer = buffers_.at(buffer_id);
+      buffer.unfinished_user_count++;
+      buffer.users.push_back(ItemUse{indirect_user, 0, absl::nullopt});
     }
   }
 
@@ -1130,6 +1231,10 @@ string MemoryUsageTracker::ToString() const {
       string live = IsCurrentlyLive(buffer_id) ? " live" : "";
       absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
                       buffer.unfinished_user_count, " unfinished uses\n");
+    }
+    absl::StrAppend(&output, "    Outputs:\n");
+    for (BufferId buffer_id : item->buffers_output) {
+      absl::StrAppend(&output, "      ", buffers_[buffer_id].ToString(), "\n");
     }
     absl::StrAppend(&output, "    Uses:\n");
     for (BufferId buffer_id : item->buffers_used) {
@@ -1189,13 +1294,15 @@ bool MemoryUsageTracker::Check() const {
                });
   }
   for (const Buffer& buffer : buffers_) {
-    int64 unfinished_uses = 0;
-    for (Item* user : buffer.users) {
-      const BufferIdList& used_buffers = user->buffers_used;
+    int64_t unfinished_uses = 0;
+    absl::flat_hash_set<Item*> already_counted_user;
+    for (const ItemUse& user : buffer.users) {
+      const BufferIdList& used_buffers = user.user->buffers_used;
       CHECK(absl::c_linear_search(used_buffers, buffer.id))
-          << "Instruction " << user->instruction->name()
+          << "Instruction " << user.user->instruction->name()
           << " used buffers is missing " << buffer.ToString();
-      if (!IsFinished(user)) {
+      if (!IsFinished(user.user) &&
+          already_counted_user.insert(user.user).second) {
         unfinished_uses++;
       }
     }
@@ -1213,9 +1320,10 @@ bool MemoryUsageTracker::Check() const {
 // The idea is to choose the operation that will save the most memory for
 // rematerialization and do not worry about how much the compute costs since
 // running out of memory is more harmful than taking longer to get the answer.
-int64 RematerializationCost(const HloInstruction* instruction,
-                            const MemoryUsageTracker& memory_tracker,
-                            int64 memory_reduced, int64 memory_limit_bytes) {
+int64_t RematerializationCost(const HloInstruction* instruction,
+                              const MemoryUsageTracker& memory_tracker,
+                              int64_t memory_reduced,
+                              int64_t memory_limit_bytes) {
   // If none of the users of 'instruction' have been placed in the sequence (as
   // tracked by memory_tracker), then rematerialization of 'instruction' is a
   // zero-cost move of 'instruction' in the sequence.
@@ -1267,15 +1375,16 @@ bool AnyDenylistedOrNonRematerializable(
   return false;
 }
 
-std::pair<std::vector<Item*>, RematStrategy>
+std::tuple<std::vector<Item*>, RematStrategy, int>
 MemoryUsageTracker::PickRematerializationCandidates(
-    const InstructionList& instruction_list, int64 memory_limit_bytes,
+    const InstructionList& instruction_list, int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     int min_block_size, int max_block_size) {
   std::vector<Item*> best_items;
-  int64 best_cost = 0;
+  int64_t best_cost = 0;
   RematStrategy best_strategy;
 
+  int effort = 0;
   VLOG(5) << "Picking candidate block with size in [" << min_block_size << ", "
           << max_block_size << "]";
 
@@ -1315,10 +1424,11 @@ MemoryUsageTracker::PickRematerializationCandidates(
             if (original_shape.IsArray()) {
               Shape compact_shape =
                   GetCompactShape(item->instruction).ValueOrDie();
-              const int64 memory_reduced =
+              const int64_t memory_reduced =
                   MemoryReducedIfCompressed(item, compact_shape);
+              effort++;
               if (memory_reduced > 0) {
-                const int64 cost = memory_limit_bytes / memory_reduced;
+                const int64_t cost = memory_limit_bytes / memory_reduced;
                 if (best_items.empty() || cost < best_cost) {
                   VLOG(3) << "candidate " << candidate->name() << "("
                           << candidate->ToShortString() << ")"
@@ -1359,8 +1469,12 @@ MemoryUsageTracker::PickRematerializationCandidates(
         // break out of this loop. Move on to the next start_item.
         break;
       }
-      const int64 memory_reduced = MemoryReducedIfRematerialized(block);
-
+      VLOG(5) << "Block contains:";
+      for (auto* hlo : block) {
+        VLOG(5) << hlo->instruction->name();
+      }
+      const int64_t memory_reduced = MemoryReducedIfRematerialized(block);
+      effort++;
       if (memory_reduced > 0) {
         const int cost =
             RematerializationCost(block, memory_reduced, memory_limit_bytes);
@@ -1391,14 +1505,14 @@ MemoryUsageTracker::PickRematerializationCandidates(
       block.push_back(next_item);
     }
   }
-  return {best_items, best_strategy};
+  return {best_items, best_strategy, effort};
 }
 
 bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
   for (BufferId buffer_id : item->buffers_defined) {
     const Buffer& buffer = buffers_.at(buffer_id);
-    for (Item* user : buffer.users) {
-      if (!user->placed) {
+    for (const ItemUse& user : buffer.users) {
+      if (!user.user->placed) {
         return true;
       }
     }
@@ -1406,12 +1520,23 @@ bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
   return false;
 }
 
-StatusOr<int64> RematerializeInstructions(
+const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
+  UsesList combined_users;
+  for (BufferId buffer_id : item->buffers_defined) {
+    const Buffer& buffer = buffers_.at(buffer_id);
+    for (const ItemUse& user : buffer.users) {
+      combined_users.push_back(user);
+    }
+  }
+  return combined_users;
+}
+
+StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
     InstructionList* instruction_list) {
-  int64 net_instructions_added = 0;
-  int64 total_memory_saved =
+  int64_t net_instructions_added = 0;
+  int64_t total_memory_saved =
       memory_tracker->MemoryReducedIfRematerialized(*best_items);
   std::vector<string> instruction_names(best_items->size());
   // Rematerialize the block of instructions in the reverse order to account for
@@ -1443,18 +1568,42 @@ StatusOr<int64> RematerializeInstructions(
     Item* remat_item = instruction_list->CreateItem(remat);
 
     // Replace each remaining use of 'best' with the rematerialization.
-    std::vector<HloInstruction*> best_users_copy = best->users();
-    for (HloInstruction* user : best_users_copy) {
-      if (!memory_tracker->IsPlaced(user)) {
+    absl::InlinedVector<Item*, 4> indirect_users;
+    absl::flat_hash_map<int64_t, HloInstruction*> gte_cache;
+    for (auto& user : memory_tracker->GetItemUses(best_item)) {
+      if (!memory_tracker->IsPlaced(user.user->instruction)) {
         VLOG(2) << "  Replacing use of " << best->name() << " in "
-                << user->name() << " with " << remat->name();
-        TF_RETURN_IF_ERROR(best->ReplaceUseWith(user, remat));
+                << user.user->instruction->name() << " with " << remat->name();
+        const int64_t op_idx = user.operand_number;
+        HloInstruction* remat_use = remat;
+        if (user.index) {
+          auto cached_gte = gte_cache.find(*user.index);
+          if (cached_gte == gte_cache.end()) {
+            remat_use = computation->AddInstruction(
+                HloInstruction::CreateGetTupleElement(
+                    ShapeUtil::GetTupleElementShape(remat_use->shape(),
+                                                    *user.index),
+                    remat_use, *user.index));
+            indirect_users.push_back(instruction_list->CreateItem(remat_use));
+            gte_cache[*user.index] = remat_use;
+          } else {
+            remat_use = cached_gte->second;
+          }
+        }
+        if (user.user->instruction->operand(op_idx)->shape() !=
+            remat_use->shape()) {
+          remat_use = computation->AddInstruction(HloInstruction::CreateBitcast(
+              user.user->instruction->operand(op_idx)->shape(), remat_use));
+          indirect_users.push_back(instruction_list->CreateItem(remat_use));
+        }
+        TF_RETURN_IF_ERROR(
+            user.user->instruction->ReplaceOperandWith(op_idx, remat_use));
       }
     }
 
     // Account for the rematerialization in the memory tracker.
-    TF_RETURN_IF_ERROR(
-        memory_tracker->AddRematerializedInstruction(best_item, remat_item));
+    TF_RETURN_IF_ERROR(memory_tracker->AddRematerializedInstruction(
+        best_item, remat_item, absl::MakeSpan(indirect_users)));
 
     // Insert rematerialized instruction right before the earliest unplaced
     // use of the instruction *and* the earliest unplaced last use of any
@@ -1462,8 +1611,19 @@ StatusOr<int64> RematerializeInstructions(
     // because we don't want to extend the live range of remat's operands as
     // this could increase memory usage.
     ItemList place_before;
+    const absl::flat_hash_set<Item*> indirect_users_set(indirect_users.begin(),
+                                                        indirect_users.end());
     for (auto user : remat->users()) {
-      place_before.push_back(instruction_list->GetItem(user));
+      if (!indirect_users_set.contains(instruction_list->GetItem(user))) {
+        place_before.push_back(instruction_list->GetItem(user));
+      }
+    }
+    for (auto* indirect_user : indirect_users) {
+      for (auto user : indirect_user->instruction->users()) {
+        if (!indirect_users_set.contains(instruction_list->GetItem(user))) {
+          place_before.push_back(instruction_list->GetItem(user));
+        }
+      }
     }
     for (auto* operand : remat->operands()) {
       for (auto* operand_user : operand->users()) {
@@ -1486,12 +1646,25 @@ StatusOr<int64> RematerializeInstructions(
     }
     instruction_list->InsertBeforeInstructions(remat_item, place_before);
 
+    for (auto* bitcast : indirect_users) {
+      instruction_list->InsertBeforeInstructions(bitcast, place_before);
+    }
+    // Helper function that looks through indirect users when determining if
+    // there is an active user for an HloInstruction.
+    std::function<bool(HloInstruction*)> uses_empty = [&](HloInstruction* i) {
+      for (auto* u : i->users()) {
+        if (!IsSupportedIndirectUser(u) || !uses_empty(u)) {
+          return false;
+        }
+      }
+      return true;
+    };
     // If the rematerialized instruction is dead then rematerialization is
     // essentially a move. Don't delete the instruction now because we don't
     // want duplicate HloInstruction* values during the course of the
     // transformation because we keep maps with HloInstruction* values as
     // keys.
-    if (best->users().empty()) {
+    if (uses_empty(best)) {
       VLOG(2) << best->name() << " is now dead";
       if (ContainsKey(*remat_move_instructions, best)) {
         // Previously, 'best' was a rematerialization which killed the
@@ -1501,8 +1674,12 @@ StatusOr<int64> RematerializeInstructions(
         instruction_list->Denylist(remat);
       }
       remat_move_instructions->insert(remat);
+      net_instructions_added += indirect_users.size();
     } else {
-      net_instructions_added++;
+      net_instructions_added += indirect_users.size() + 1;
+    }
+    for (auto* indirect_user : indirect_users) {
+      instruction_list->Denylist(indirect_user->instruction);
     }
   }
   VLOG(1) << "Rematerializing instructions ["
@@ -1511,9 +1688,10 @@ StatusOr<int64> RematerializeInstructions(
   return net_instructions_added;
 }
 
-StatusOr<int64> CompressInstruction(MemoryUsageTracker* memory_tracker,
-                                    Item* best_item, const Shape& compact_shape,
-                                    InstructionList* instruction_list) {
+StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
+                                      Item* best_item,
+                                      const Shape& compact_shape,
+                                      InstructionList* instruction_list) {
   HloInstruction* best = best_item->instruction;
   VLOG(5) << "Transposing instruction " << best->name() << " (saving "
           << HumanReadableNumBytes(memory_tracker->MemoryReducedIfCompressed(
@@ -1573,6 +1751,8 @@ struct InstructionsAdded {
   // Total count of instructions rematerialized minus number of original
   // instructions that are now dead.
   int net_instructions_added;
+  // Amount of effort expended to find the instructions to rematerialize.
+  int effort;
 };
 
 // Rematerializes the best block of instructions of size between min_block_size
@@ -1580,19 +1760,21 @@ struct InstructionsAdded {
 // instructions can be found. Returns number of instructions rematerialized.
 StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
-    InstructionList* instruction_list, int64 memory_limit_bytes,
+    InstructionList* instruction_list, int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions) {
   CHECK(min_block_size > 0) << "Negative block size.";
 
   std::vector<Item*> best_items;
   RematStrategy best_strategy;
-  std::tie(best_items, best_strategy) =
+  int effort;
+  std::tie(best_items, best_strategy, effort) =
       memory_tracker->PickRematerializationCandidates(
           *instruction_list, memory_limit_bytes, rematerializable_map,
           min_block_size, max_block_size);
   InstructionsAdded num_instructions_added;
   num_instructions_added.remat_count = best_items.size();
+  num_instructions_added.effort = effort;
   if (best_items.empty()) {
     num_instructions_added.net_instructions_added = 0;
     return num_instructions_added;
@@ -1621,22 +1803,22 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
 }
 }  // namespace
 
-StatusOr<int64> HloRematerialization::ComputePeakMemory(
+StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
     const HloComputation* computation,
     const HloInstructionSequence& order) const {
   InstructionList instruction_list(order);
   MemoryUsageTracker tracker(computation, size_function_,
                              compact_shape_function_, *points_to_analysis_,
                              instruction_list, mode_);
-  int64 peak_memory = tracker.memory_usage();
+  int64_t peak_memory = tracker.memory_usage();
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
     const HloInstruction* instruction = item->instruction;
     TF_RETURN_IF_ERROR(tracker.BeginInstruction(item));
-    TF_ASSIGN_OR_RETURN(int64 callee_usage,
+    TF_ASSIGN_OR_RETURN(int64_t callee_usage,
                         CalledComputationsMemoryUsage(instruction));
     peak_memory =
-        std::max<int64>(peak_memory, tracker.memory_usage() + callee_usage);
+        std::max<int64_t>(peak_memory, tracker.memory_usage() + callee_usage);
     TF_RETURN_IF_ERROR(tracker.EndInstruction());
   }
   VLOG(1) << "Peak memory for " << computation->name() << ": "
@@ -1644,14 +1826,14 @@ StatusOr<int64> HloRematerialization::ComputePeakMemory(
   return peak_memory;
 }
 
-StatusOr<int64> HloRematerialization::CalledComputationsMemoryUsage(
+StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
     const HloInstruction* instruction) const {
   const CallSite* callsite =
       call_graph_->GetNode(instruction->parent()).GetCallSite(instruction);
-  if (callsite == nullptr || callsite->context() == CallContext::kParallel) {
+  if (callsite == nullptr || callsite->context() == CallContext::kEmbedded) {
     return 0;
   }
-  int64 callee_usage = 0;
+  int64_t callee_usage = 0;
   for (const HloComputation* computation : callsite->called_computations()) {
     TF_RET_CHECK(ContainsKey(computation_peak_memory_, computation));
     callee_usage += computation_peak_memory_.at(computation);
@@ -1661,7 +1843,7 @@ StatusOr<int64> HloRematerialization::CalledComputationsMemoryUsage(
 
 StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
-    int64 memory_limit_bytes, int64 min_remat_size) {
+    int64_t memory_limit_bytes, int64_t min_remat_size) {
   VLOG(1) << "Rematerializing computation " << computation->name()
           << " with limit " << HumanReadableNumBytes(memory_limit_bytes);
   VLOG(1) << "peak memory usage is "
@@ -1690,24 +1872,24 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
   // The peak memory of the computation at any point in the instruction
   // sequence.
-  int64 peak_memory = memory_tracker.memory_usage();
+  int64_t peak_memory = memory_tracker.memory_usage();
 
   // Total count of instructions rematerialized.
-  int64 remat_count = 0;
+  int64_t remat_count = 0;
   // Total count of clones created minus number of original rematerialized
   // instructions which are dead.
-  int64 net_instructions_added = 0;
+  int64_t net_instructions_added = 0;
 
   const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
 
   // Iterate through all instructions in the sequence. At each instruction
   // (program point) if memory_usage exceeds the specified limit then
   // rematerialize HLO instructions until memory_usage is reduced.
-  int64 instruction_index = 0;
+  int64_t instruction_index = 0;
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
     const HloInstruction* instruction = item->instruction;
-    TF_ASSIGN_OR_RETURN(int64 callee_usage,
+    TF_ASSIGN_OR_RETURN(int64_t callee_usage,
                         CalledComputationsMemoryUsage(instruction));
     TF_RETURN_IF_ERROR(memory_tracker.BeginInstruction(item));
 
@@ -1723,6 +1905,14 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     int max_block_size = 1;
     // Only trigger rematerialization when the memory usage changes.
     if (memory_tracker.AllocatedSize(item) + callee_usage > 0) {
+      // Finding larger blocks of instructions to rematerialize can be time
+      // consuming. To limit the amount of time spent attempting to find such
+      // large blocks, count the amount of effort expended to find single
+      // instructions to rematerialize and then limit the total amount of effort
+      // to at most a factor of block_rematerialization_factor_ more.
+      bool is_first_phase = true;
+      int64_t first_phase_effort = 0;
+      int64_t second_phase_effort = 0;
       while (memory_tracker.memory_usage() + callee_usage >
              memory_limit_bytes) {
         VLOG(2) << "Over memory limit at instruction " << instruction->name()
@@ -1739,7 +1929,11 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
                                    &remat_move_instructions));
         net_instructions_added += instructions_added.net_instructions_added;
         remat_count += instructions_added.remat_count;
-
+        if (is_first_phase) {
+          first_phase_effort += instructions_added.effort;
+        } else {
+          second_phase_effort += instructions_added.effort;
+        }
         VLOG(1) << "memory_usage after rematerialization = "
                 << HumanReadableNumBytes(memory_tracker.memory_usage());
         if (instructions_added.remat_count == 0) {
@@ -1747,6 +1941,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           // Consider doubling the block size.
           min_block_size = max_block_size + 1;
           max_block_size = 2 * max_block_size;
+          is_first_phase = false;
         } else {
           // Found a valid block. Reset to start looking for single instructions
           // again.
@@ -1756,14 +1951,16 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           min_block_size = 1;
           max_block_size = 1;
         }
-        if (max_block_size > block_size_limit_) {
+        if (max_block_size > block_size_limit_ ||
+            second_phase_effort >
+                block_rematerialization_factor_ * first_phase_effort) {
           break;
         }
       }
     }
     const CallSite* callsite = call_graph_node.GetCallSite(instruction);
     if (callsite != nullptr &&
-        callsite->context() == CallContext::kSequential &&
+        callsite->context() == CallContext::kControlFlow &&
         memory_tracker.memory_usage() + callee_usage > memory_limit_bytes) {
       // Memory usage exceeds the limit. Try to rematerialize any
       // subcomputation(s) that this instruction calls.
@@ -1780,7 +1977,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         if (!ContainsKey(rematerialized_computations_, called_computation)) {
           // Memory limit for the subcomputation is the memory limit less the
           // amount of memory used at this point in the computation.
-          int64 subcomputation_memory_limit_bytes = std::max<int64>(
+          int64_t subcomputation_memory_limit_bytes = std::max<int64_t>(
               0, memory_limit_bytes - memory_tracker.memory_usage());
           TF_ASSIGN_OR_RETURN(
               bool subcomputation_changed,
@@ -1795,8 +1992,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
                           CalledComputationsMemoryUsage(instruction));
     }
 
-    peak_memory = std::max<int64>(peak_memory,
-                                  memory_tracker.memory_usage() + callee_usage);
+    peak_memory = std::max<int64_t>(
+        peak_memory, memory_tracker.memory_usage() + callee_usage);
     VLOG(3) << "peak memory usage = " << HumanReadableNumBytes(peak_memory);
 
     TF_RETURN_IF_ERROR(memory_tracker.EndInstruction());
@@ -1852,7 +2049,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   // computation. This is necessary because the per-computation accounting in
   // MemoryUsageTracker do not include output as these are typically allocated
   // by the caller.
-  int64 module_output_size = 0;
+  int64_t module_output_size = 0;
   ShapeUtil::ForEachSubshape(
       module->result_shape(),
       [&module_output_size, module, this](const Shape& subshape,
@@ -1860,7 +2057,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
         module_output_size += size_function_(subshape);
       });
 
-  const int64 adjusted_memory_limit_bytes =
+  const int64_t adjusted_memory_limit_bytes =
       memory_limit_bytes_ - module_output_size;
   VLOG(1) << "Adjusted memory limit accounting for output ("
           << HumanReadableNumBytes(module_output_size)
@@ -1871,7 +2068,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   call_graph_ = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
       [this, module](const CallGraphNode& node) -> Status {
-        if (node.context() == CallContext::kSequential) {
+        if (node.context() == CallContext::kControlFlow) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
               ComputePeakMemory(node.computation(), module->schedule().sequence(
@@ -1885,7 +2082,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   // computation plus the output size of the computation. This is because the
   // peak memory for a computation does not include the output as this is
   // typically accounted for in the caller.
-  const int64 before_peak_memory =
+  const int64_t before_peak_memory =
       computation_peak_memory_.at(module->entry_computation()) +
       module_output_size;
   VLOG(1) << "Peak memory usage of module (before): "
@@ -1913,7 +2110,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   VLOG(1) << "Rematerialized " << instructions_rematerialized_
           << " instructions in module " << module->name() << "; "
           << net_instructions_added_ << " net instructions added";
-  const int64 current_peak_memory =
+  const int64_t current_peak_memory =
       computation_peak_memory_.at(module->entry_computation()) +
       module_output_size;
   VLOG(1) << "Peak memory usage of module now "
@@ -1921,7 +2118,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
           << current_peak_memory << " bytes), was "
           << HumanReadableNumBytes(before_peak_memory) << " ("
           << before_peak_memory << " bytes)";
-  const int64 reduced_peak_memory = before_peak_memory - current_peak_memory;
+  const int64_t reduced_peak_memory = before_peak_memory - current_peak_memory;
   VLOG(1) << "Reduced peak memory by "
           << HumanReadableNumBytes(reduced_peak_memory) << " ("
           << reduced_peak_memory << " bytes)";

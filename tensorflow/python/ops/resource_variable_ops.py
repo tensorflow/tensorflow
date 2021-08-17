@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -36,6 +35,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -53,8 +53,10 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 acd.register_read_only_resource_op("ReadVariableOp")
 acd.register_read_only_resource_op("VariableShape")
@@ -134,7 +136,7 @@ def _combine_handle_data(handle, initial_value):
         len(variable_handle_data.shape_and_type) != 1):
       raise RuntimeError(
           "Expected VarHandleOp to return a length==1 shape_and_type, "
-          "but saw: '%s'" % (variable_handle_data,))
+          f"but saw: '{variable_handle_data}'")
     variable_handle_data.shape_and_type.extend(extra_handle_data.shape_and_type)
   return variable_handle_data
 
@@ -153,7 +155,7 @@ def _variable_handle_from_shape_and_dtype(shape,
   dtype = dtypes.as_dtype(dtype)
   if not graph_mode:
     if shared_name is not None:
-      raise errors.InternalError(
+      raise errors.InternalError(  # pylint: disable=no-value-for-parameter
           "Using an explicit shared_name is not supported executing eagerly.")
     shared_name = context.shared_name()
 
@@ -182,7 +184,7 @@ def _variable_handle_from_shape_and_dtype(shape,
         if (not handle_data.is_set or len(handle_data.shape_and_type) != 1):
           raise RuntimeError(
               "Expected VarHandleOp to return a length==1 shape_and_type, "
-              "but saw: '%s'" % (handle_data,))
+              f"but saw: '{handle_data}'")
         handle_data.shape_and_type.extend(extra_handle_data.shape_and_type)
 
     _set_handle_shapes_and_types(handle, handle_data, graph_mode)
@@ -264,8 +266,8 @@ class EagerResourceDeleter(object):
   def __init__(self, handle, handle_device):
     if not isinstance(handle, ops.Tensor):
       raise ValueError(
-          ("Passed handle=%s to EagerResourceDeleter. Was expecting a handle "
-           "Tensor." % (handle,)))
+          (f"Passed handle={handle} to EagerResourceDeleter. Was expecting "
+           f"the handle to be a `tf.Tensor`."))
     self._handle = handle
     self._handle_device = handle_device
     # This is held since the __del__ function runs an op, and if the context()
@@ -353,6 +355,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       save_slice_info=None,
       handle_deleter=None,
       caching_device=None,
+      in_graph_mode=None,
       **unused_kwargs):
     """Creates a variable from a handle.
 
@@ -398,9 +401,15 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         device.  If not `None`, caches on another device.  Typical use is to
         cache on the device where the Ops using the Variable reside, to
         deduplicate copying through `Switch` and other conditional statements.
+      in_graph_mode: whether we are executing in TF1 graph mode. If None, will
+        detect within the function. This is to avoid repeated init_scope()
+        conetxt entrances which can add up.
     """
-    with ops.init_scope():
-      self._in_graph_mode = not context.executing_eagerly()
+    if in_graph_mode is None:
+      with ops.init_scope():
+        self._in_graph_mode = not context.executing_eagerly()
+    else:
+      self._in_graph_mode = in_graph_mode
     synchronization, aggregation, trainable = (
         variables.validate_synchronization_aggregation_trainable(
             synchronization, aggregation, trainable, name))
@@ -501,7 +510,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name,
-        distribute_strategy=self._distribute_strategy)
+        distribute_strategy=self._distribute_strategy,
+        synchronization=self.synchronization,
+        aggregation=self.aggregation)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -513,12 +524,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle.device
+    return self.handle.device
 
   @property
   def graph(self):
     """The `Graph` of this variable."""
-    return self._handle.graph
+    return self.handle.graph
 
   @property
   def name(self):
@@ -548,8 +559,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def create(self):
     """The op responsible for initializing this variable."""
     if not self._in_graph_mode:
-      raise RuntimeError("Calling create is not supported when eager execution"
-                         " is enabled.")
+      raise RuntimeError("This operation is not supported "
+                         "when eager execution is enabled.")
     return self._initializer_op
 
   @property
@@ -577,7 +588,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
     if context.executing_eagerly():
-      raise RuntimeError("initial_value not supported in EAGER mode.")
+      raise RuntimeError("This property is not supported "
+                         "when eager execution is enabled.")
     return self._initial_value
 
   @property
@@ -593,7 +605,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @property
   def op(self):
     """The op for this variable."""
-    return self._handle.op
+    return self.handle.op
 
   @property
   def trainable(self):
@@ -610,7 +622,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
     if context.executing_eagerly():
-      raise RuntimeError("Trying to eval in EAGER mode")
+      raise RuntimeError("This operation is not supported "
+                         "when eager execution is enabled.")
     return self._graph_element.eval(session=session)
 
   def numpy(self):
@@ -652,7 +665,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       new_variable = copy_to_graph_uninitialized(self)
     obj_map = {self: new_variable}
-    resource_map = {self._handle: new_variable.handle}
+    resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
   def _read_variable_op(self):
@@ -660,8 +673,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
     def read_and_set_handle():
       result = gen_resource_variable_ops.read_variable_op(
-          self._handle, self._dtype)
-      _maybe_set_handle_data(self._dtype, self._handle, result)
+          self.handle, self._dtype)
+      _maybe_set_handle_data(self._dtype, self.handle, result)
       return result
 
     if getattr(self, "_caching_device", None) is not None:
@@ -675,7 +688,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle],
+          "ReadVariableOp", [result], [self.handle],
           backward_function=lambda x: [x],
           forward_function=lambda x: [x])
     return result
@@ -700,12 +713,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     with ops.name_scope("Gather" if name is None else name) as name:
       variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
       if self._dtype == dtypes.variant:
         # For DT_VARIANT types, the handle's shape_and_type[1:] stores the
         # variant's handle data.  Extract it.
-        handle_data = get_eager_safe_handle_data(self._handle)
+        handle_data = get_eager_safe_handle_data(self.handle)
         if handle_data.is_set and len(handle_data.shape_and_type) > 1:
           value._handle_data = (  # pylint: disable=protected-access
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
@@ -719,7 +732,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       if self.trainable:
         variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather_nd(
-          self._handle, indices, dtype=self._dtype, name=name)
+          self.handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
@@ -737,7 +750,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       in the specified name scope.
     """
     if context.executing_eagerly():
-      raise RuntimeError("to_proto not supported in EAGER mode.")
+      raise RuntimeError("This operation is not supported "
+                         "when eager execution is enabled.")
     if export_scope is None or self.handle.name.startswith(export_scope):
       var_def = variable_pb2.VariableDef()
       var_def.variable_name = ops.strip_name_scope(self.handle.name,
@@ -771,7 +785,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     if context.executing_eagerly():
-      raise RuntimeError("from_proto not supported in EAGER mode.")
+      raise RuntimeError("This operation is not supported "
+                         "when eager execution is enabled.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
@@ -788,13 +803,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Returns:
       A `Tensor` of type `bool`.
     """
-    # TODO(b/169792703): The current device placement logic never overrides an
-    # explicit placement with a custom device, causing `v.is_initalized()` to
-    # fail under a non-custom device context if `v` is in a custom device. The
-    # explicit placement below makes this work, but should not be necessary once
-    # the logic is updated to handle cases like this.
-    with ops.device(self.device):
-      return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
+    return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     """Subtracts a value from this variable.
@@ -852,7 +861,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def _lazy_read(self, op):
     variable_accessed(self)
     return _UnreadVariable(
-        handle=self._handle,
+        handle=self.handle,
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
@@ -886,9 +895,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         else:
           tensor_name = " " + str(self.name)
         raise ValueError(
-            ("Cannot assign to variable%s due to variable shape %s and value "
-             "shape %s are incompatible") %
-            (tensor_name, self._shape, value_tensor.shape))
+            (f"Cannot assign value to variable '{tensor_name}': Shape mismatch."
+             f"The variable shape {self._shape}, and the "
+             f"assigned value shape {value_tensor.shape} are incompatible."))
       assign_op = gen_resource_variable_ops.assign_variable_op(
           self.handle, value_tensor, name=name)
       if read_value:
@@ -921,7 +930,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_sub(
             self.handle,
@@ -944,7 +954,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_add(
             self.handle,
@@ -968,7 +979,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_max(
             self.handle,
@@ -992,7 +1004,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_min(
             self.handle,
@@ -1015,7 +1028,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_mul(
             self.handle,
@@ -1038,7 +1052,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_div(
             self.handle,
@@ -1061,7 +1076,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         gen_resource_variable_ops.resource_scatter_update(
             self.handle,
@@ -1114,7 +1130,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError(f"Argument `sparse_delta` must be a "
+                      f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
         state_ops.batch_scatter_update(
             self,
@@ -1351,6 +1368,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
             ops.convert_to_tensor(updates, self.dtype),
             name=name))
 
+  def _write_object_proto(self, proto, options):
+    """Writes additional information of the variable into the SavedObject proto.
+
+    Subclasses of ResourceVariables could choose to override this method to
+    customize extra information to provide when saving a SavedModel.
+
+    Ideally, this should contain the logic in
+    write_object_proto_for_resource_variable but `DistributedValue` is an
+    outlier at the momemnt. Once `DistributedValue` becomes a proper
+    ResourceVariable, we should remove the helper method below.
+
+    Args:
+      proto: `SavedObject` proto to update.
+      options: A `SaveOption` instance that configures save behavior.
+    """
+    write_object_proto_for_resource_variable(self, proto, options)
+
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
@@ -1385,49 +1419,54 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     del name
     if dtype is not None and not dtype.is_compatible_with(self.dtype):
       raise ValueError(
-          "Incompatible type conversion requested to type {!r} for variable "
-          "of type {!r}".format(dtype.name, self.dtype.name))
+          f"Incompatible type conversion requested to type {dtype.name} for "
+          f"`tf.Variable of type {self.dtype.name}. (Variable: {self})")
     if as_ref:
       return self.read_value().op.inputs[0]
     else:
       return self.value()
 
   def __iadd__(self, unused_other):
-    raise RuntimeError("Variable += value not supported. Use "
-                       "variable.assign_add(value) to modify the variable "
-                       "value and variable = variable + value to get a new "
-                       "Tensor object.")
+    raise RuntimeError("`variable += value` with `tf.Variable`s is not "
+                       "supported. Use `variable.assign_add(value)` to modify "
+                       "the variable, or `out = variable + value` if you "
+                       "need to get a new output Tensor.")
 
   def __isub__(self, unused_other):
-    raise RuntimeError("Variable -= value not supported. Use "
-                       "variable.assign_sub(value) to modify the variable "
-                       "value and variable = variable - value to get a new "
-                       "Tensor object.")
+    raise RuntimeError("`variable -= value` with `tf.Variable`s is not "
+                       "supported. Use `variable.assign_sub(value)` to modify "
+                       "the variable, or `out = variable * value` if you "
+                       "need to get a new output Tensor.")
 
   def __imul__(self, unused_other):
-    raise RuntimeError("Variable *= value not supported. Use "
-                       "`var.assign(var * value)` to modify the variable or "
-                       "`var = var * value` to get a new Tensor object.")
+    raise RuntimeError("`var *= value` with `tf.Variable`s is not "
+                       "supported. Use `var.assign(var * value)` to modify "
+                       "the variable, or `out = var * value` if you "
+                       "need to get a new output Tensor.")
 
   def __idiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported. Use "
-                       "`var.assign(var / value)` to modify the variable or "
-                       "`var = var / value` to get a new Tensor object.")
+    raise RuntimeError("`var /= value` with `tf.Variable`s is not "
+                       "supported. Use `var.assign(var / value)` to modify "
+                       "the variable, or `out = var / value` if you "
+                       "need to get a new output Tensor.")
 
   def __itruediv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported. Use "
-                       "`var.assign(var / value)` to modify the variable or "
-                       "`var = var / value` to get a new Tensor object.")
+    raise RuntimeError("`var /= value` with `tf.Variable`s is not "
+                       "supported. Use `var.assign(var / value)` to modify "
+                       "the variable, or `out = var / value` if you "
+                       "need to get a new output Tensor.")
 
   def __irealdiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported. Use "
-                       "`var.assign(var / value)` to modify the variable or "
-                       "`var = var / value` to get a new Tensor object.")
+    raise RuntimeError("`var /= value` with `tf.Variable`s is not "
+                       "supported. Use `var.assign(var / value)` to modify "
+                       "the variable, or `out = var / value` if you "
+                       "need to get a new output Tensor.")
 
   def __ipow__(self, unused_other):
-    raise RuntimeError("Variable **= value not supported. Use "
-                       "`var.assign(var ** value)` to modify the variable or "
-                       "`var = var ** value` to get a new Tensor object.")
+    raise RuntimeError("`var **= value` with `tf.Variable`s is not "
+                       "supported. Use `var.assign(var ** value)` to modify "
+                       "the variable, or `out = var ** value` if you "
+                       "need to get a new output Tensor.")
 
 
 class ResourceVariable(BaseResourceVariable):
@@ -1564,11 +1603,14 @@ class ResourceVariable(BaseResourceVariable):
     """
     if variable_def:
       if initial_value is not None:
-        raise ValueError("variable_def and initial_value are mutually "
-                         "exclusive.")
+        raise ValueError(f"The variable_def and initial_value args to "
+                         f"`tf.Variable` are mutually exclusive, but got both: "
+                         f"variable_def={variable_def},\n"
+                         f"initial_value={initial_value}")
       if context.executing_eagerly():
-        raise ValueError("Creating ResourceVariable from variable_def is "
-                         "not supported when eager execution is enabled.")
+        raise ValueError(f"Creating a `tf.Variable` with a `variable_def` arg "
+                         f"is not supported when eager execution is enabled. "
+                         f"Got: variable_def={variable_def}")
       self._init_from_proto(variable_def, import_scope=import_scope)
     else:
       self._init_from_args(
@@ -1659,26 +1701,34 @@ class ResourceVariable(BaseResourceVariable):
         variables.validate_synchronization_aggregation_trainable(
             synchronization, aggregation, trainable, name))
     if initial_value is None:
-      raise ValueError("initial_value must be specified.")
+      raise ValueError("The `initial_value` arg to `tf.Variable` must "
+                       "be specified except when you are not providing a "
+                       "`variable_def`. You provided neither.")
     init_from_fn = callable(initial_value)
 
     if isinstance(initial_value, ops.Tensor) and hasattr(
         initial_value, "graph") and initial_value.graph.building_function:
-      raise ValueError("Tensor-typed variable initializers must either be "
-                       "wrapped in an init_scope or callable "
+      raise ValueError(f"Argument `initial_value` ({initial_value}) could not "
+                       "be lifted out of a `tf.function`. "
+                       "(Tried to create variable with name='{name}'). "
+                       "To avoid this error, when constructing `tf.Variable`s "
+                       "inside of `tf.function` you can create the "
+                       "`initial_value` tensor in a "
+                       "`tf.init_scope` or pass a callable `initial_value` "
                        "(e.g., `tf.Variable(lambda : "
-                       "tf.truncated_normal([10, 40]))`) when building "
-                       "functions. Please file a feature request if this "
+                       "tf.truncated_normal([10, 40]))`). "
+                       "Please file a feature request if this "
                        "restriction inconveniences you.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
       raise ValueError(
-          "collections argument to Variable constructor must be a list, tuple, "
-          "or set. Got %s of type %s" % (collections, type(collections)))
+          f"collections argument to Variable constructor must be a list, "
+          f"tuple, or set. Got {collections} of type {type(collections)}")
     if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
+      raise ValueError(f"Argument `constraint` must be None or a callable. "
+                       f"a callable. Got a {type(constraint)}:  {constraint}")
 
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
@@ -1720,9 +1770,9 @@ class ResourceVariable(BaseResourceVariable):
           if shape is not None:
             if not initial_value.shape.is_compatible_with(shape):
               raise ValueError(
-                  "The initial value's shape (%s) is not compatible with "
-                  "the explicitly supplied `shape` argument (%s)." %
-                  (initial_value.shape, shape))
+                  f"In this `tf.Variable` creation, the initial value's shape "
+                  f"({initial_value.shape}) is not compatible with "
+                  f"the explicitly supplied `shape` argument ({shape}).")
           else:
             shape = initial_value.shape
           handle = eager_safe_variable_handle(
@@ -1735,10 +1785,11 @@ class ResourceVariable(BaseResourceVariable):
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
           raise ValueError(
-              "Initializer for variable %s is from inside a control-flow "
-              "construct, such as a loop or conditional. When creating a "
-              "variable inside a loop or conditional, use a lambda as the "
-              "initializer." % name)
+              f"The `initial_value` passed to `tf.Variable` {name} is from "
+              f"inside a control-flow  construct, such as a loop or "
+              f"conditional. When creating a "
+              f"`tf.Variable` inside a loop or conditional, use a lambda as "
+              f"the `initial_value`. Got: initial_value=({initial_value})")
         # pylint: enable=protected-access
         dtype = initial_value.dtype.base_dtype
 
@@ -1832,7 +1883,10 @@ class ResourceVariable(BaseResourceVariable):
     self._in_graph_mode = True
     assert isinstance(variable_def, variable_pb2.VariableDef)
     if not variable_def.is_resource:
-      raise ValueError("Trying to restore Variable as ResourceVariable.")
+      raise ValueError(f"The `variable_def` you passed to `tf.Variable` is "
+                       f"Trying to restore a TF 1.x Reference Variable "
+                       f"as a TF 2.x ResourceVariable. This is unsupported. "
+                       f"Got variable_def={variable_def}")
 
     # Create from variable_def.
     g = ops.get_default_graph()
@@ -1939,8 +1993,9 @@ class UninitializedVariable(BaseResourceVariable):
         created inside of.
     """
     with ops.init_scope():
+      # Here we are detecting eagerness within an init_scope, so this will only
+      # be true when we are running in TF1 graph mode.
       self._in_graph_mode = not context.executing_eagerly()
-    with ops.init_scope():
       with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1956,7 +2011,8 @@ class UninitializedVariable(BaseResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
-        if not context.executing_eagerly():
+        if self._in_graph_mode:
+          # We only need to add the read_variable_op in TF1.
           with ops.name_scope("Read"):
             # Manually assign reads to the handle's device to avoid log
             # messages.
@@ -1981,7 +2037,8 @@ class UninitializedVariable(BaseResourceVariable):
         graph_element=graph_element,
         trainable=trainable,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        in_graph_mode=self._in_graph_mode)
 
 
 _pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
@@ -2139,10 +2196,10 @@ def _ReadGrad(_, grad):
 
 
 def variable_shape(handle, out_type=dtypes.int32):
-  if getattr(handle, "_handle_data",
-             None) is None or not handle._handle_data.is_set:  # pylint: disable=protected-access
+  handle_data = get_eager_safe_handle_data(handle)
+  if handle_data is None or not handle_data.is_set:
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
-  shape_proto = handle._handle_data.shape_and_type[0].shape  # pylint: disable=protected-access
+  shape_proto = handle_data.shape_and_type[0].shape
   if shape_proto.unknown_rank or any(x.size == -1 for x in shape_proto.dim):
     return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
   return constant_op.constant([x.size for x in shape_proto.dim], dtype=out_type)
@@ -2211,6 +2268,7 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 
 
+@tf_export("__internal__.ops.is_resource_variable", v1=[])
 def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
   return isinstance(var, BaseResourceVariable) or hasattr(
@@ -2244,9 +2302,14 @@ ops.NotDifferentiable("VariableShape")
 class VariableSpec(tensor_spec.DenseSpec):
   """Describes a tf.Variable."""
 
-  __slots__ = []
+  __slots__ = ["trainable"]
 
   value_type = property(lambda self: BaseResourceVariable)
+
+  def __init__(self, shape, dtype=dtypes.float32,
+               name=None, trainable=True):
+    super(VariableSpec, self).__init__(shape, dtype=dtype, name=name)
+    self.trainable = trainable
 
   def _to_components(self, value):
     raise NotImplementedError
@@ -2260,3 +2323,36 @@ class VariableSpec(tensor_spec.DenseSpec):
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
+
+
+def write_object_proto_for_resource_variable(resource_variable, proto, options):
+  """Writes additional information of the variable into the SavedObject proto.
+
+  This allows users to define a `hook` to provide extra information of the
+  variable to the SavedObject.
+
+  For example, DistritubtedVariable class would fill in components in the
+  distributed context.
+
+  Args:
+    resource_variable: A `ResourceVariable` or `DistributedValue` that has the
+      information to be saved into the proto.
+    proto: `SavedObject` proto to update.
+    options: A `SaveOption` instance that configures save behavior.
+  """
+  proto.variable.SetInParent()
+  if not resource_variable.name.endswith(":0"):
+    raise ValueError(f"Cowardly refusing to save variable "
+                     f"{resource_variable.name} because of "
+                     f"unexpected suffix in the name (':0') "
+                     f"which won't be restored.")
+  proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
+  proto.variable.trainable = resource_variable.trainable
+  proto.variable.dtype = resource_variable.dtype.as_datatype_enum
+  proto.variable.synchronization = resource_variable.synchronization.value
+  proto.variable.aggregation = resource_variable.aggregation.value
+  proto.variable.shape.CopyFrom(resource_variable.shape.as_proto())
+  if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
+  ):
+    if hasattr(resource_variable, "device"):
+      proto.variable.device = resource_variable.device

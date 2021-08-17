@@ -139,7 +139,7 @@ TEST_F(XlaExpressionTest, ResolveConstantOnResource) {
   EXPECT_TRUE(constant_resource.ResolveConstant(client_).ok());
   EXPECT_TRUE(resource_->SetZeroValue(builder_.get()).ok());
   LOG(ERROR) << "Resource is overwritten: " << resource_->IsOverwritten();
-  xla::StatusOr<absl::optional<Tensor>> resolved_constant =
+  StatusOr<absl::optional<Tensor>> resolved_constant =
       constant_resource.ResolveConstant(client_);
   EXPECT_TRUE(resolved_constant.ok());
   EXPECT_FALSE(resolved_constant->has_value());

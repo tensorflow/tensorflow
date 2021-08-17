@@ -23,6 +23,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_block_diag as block_diag
@@ -49,7 +50,7 @@ def _block_diag_dense(expected_shape, blocks):
         shape=zeros_to_pad_before_shape, dtype=block.dtype)
     num_cols += array_ops.shape(block)[-1]
     zeros_to_pad_after_shape = array_ops.concat(
-        [batch_row_shape, [expected_shape[-2] - num_cols]], axis=-1)
+        [batch_row_shape, [expected_shape[-1] - num_cols]], axis=-1)
     zeros_to_pad_after = array_ops.zeros(
         zeros_to_pad_after_shape, dtype=block.dtype)
 
@@ -246,6 +247,86 @@ class SquareLinearOperatorBlockDiagTest(
         block_diag.LinearOperatorBlockDiag)
     self.assertEqual(2, len(inverse.operators))
 
+  def test_block_diag_matmul_type(self):
+    matrices1 = []
+    matrices2 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [2, i], dtype=dtypes.float32)))
+
+      matrices2.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, 3], dtype=dtypes.float32)))
+
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1, is_square=False)
+    operator2 = block_diag.LinearOperatorBlockDiag(matrices2, is_square=False)
+
+    expected_matrix = math_ops.matmul(
+        operator1.to_dense(), operator2.to_dense())
+    actual_operator = operator1.matmul(operator2)
+
+    self.assertIsInstance(
+        actual_operator, block_diag.LinearOperatorBlockDiag)
+    actual_, expected_ = self.evaluate([
+        actual_operator.to_dense(), expected_matrix])
+    self.assertAllClose(actual_, expected_)
+
+  def test_block_diag_matmul_raises(self):
+    matrices1 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [2, i], dtype=dtypes.float32)))
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1, is_square=False)
+    operator2 = linalg.LinearOperatorFullMatrix(
+        linear_operator_test_util.random_normal(
+            [15, 3], dtype=dtypes.float32))
+
+    with self.assertRaisesRegex(ValueError, "Operators are incompatible"):
+      operator1.matmul(operator2)
+
+  def test_block_diag_solve_type(self):
+    matrices1 = []
+    matrices2 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_tril_matrix(
+              [i, i],
+              dtype=dtypes.float32,
+              force_well_conditioned=True)))
+
+      matrices2.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, 3], dtype=dtypes.float32)))
+
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1)
+    operator2 = block_diag.LinearOperatorBlockDiag(matrices2, is_square=False)
+
+    expected_matrix = linalg.solve(
+        operator1.to_dense(), operator2.to_dense())
+    actual_operator = operator1.solve(operator2)
+
+    self.assertIsInstance(
+        actual_operator, block_diag.LinearOperatorBlockDiag)
+    actual_, expected_ = self.evaluate([
+        actual_operator.to_dense(), expected_matrix])
+    self.assertAllClose(actual_, expected_)
+
+  def test_block_diag_solve_raises(self):
+    matrices1 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, i], dtype=dtypes.float32)))
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1)
+    operator2 = linalg.LinearOperatorFullMatrix(
+        linear_operator_test_util.random_normal(
+            [15, 3], dtype=dtypes.float32))
+
+    with self.assertRaisesRegex(ValueError, "Operators are incompatible"):
+      operator1.solve(operator2)
+
   def test_tape_safe(self):
     matrices = []
     for _ in range(4):
@@ -297,14 +378,6 @@ class SquareLinearOperatorBlockDiagTest(
     with self.assertRaisesRegex(TypeError, "same dtype"):
       block_diag.LinearOperatorBlockDiag(operators)
 
-  def test_non_square_operator_raises(self):
-    operators = [
-        linalg.LinearOperatorFullMatrix(rng.rand(3, 4), is_square=False),
-        linalg.LinearOperatorFullMatrix(rng.rand(3, 3))
-    ]
-    with self.assertRaisesRegex(ValueError, "square matrices"):
-      block_diag.LinearOperatorBlockDiag(operators)
-
   def test_empty_operators_raises(self):
     with self.assertRaisesRegex(ValueError, "non-empty"):
       block_diag.LinearOperatorBlockDiag([])
@@ -324,6 +397,92 @@ class SquareLinearOperatorBlockDiagTest(
       operator.matmul(x)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class NonSquareLinearOperatorBlockDiagTest(
+    linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
+  """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  def setUp(self):
+    # Increase from 1e-6 to 1e-4
+    self._atol[dtypes.float32] = 1e-4
+    self._atol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.complex64] = 1e-4
+    super(NonSquareLinearOperatorBlockDiagTest, self).setUp()
+
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
+    return [
+        shape_info((1, 0)),
+        shape_info((1, 2, 3)),
+        shape_info((5, 3), blocks=[(2, 1), (3, 2)]),
+        shape_info((3, 6, 5), blocks=[(1, 2, 1), (3, 1, 2), (1, 3, 2)]),
+        shape_info((2, 1, 5, 2), blocks=[(2, 1, 2, 1), (1, 3, 1)]),
+    ]
+
+  @staticmethod
+  def skip_these_tests():
+    return [
+        "cholesky",
+        "cond",
+        "det",
+        "diag_part",
+        "eigvalsh",
+        "inverse",
+        "log_abs_det",
+        "solve",
+        "solve_with_broadcast",
+        "trace"]
+
+  @staticmethod
+  def use_blockwise_arg():
+    return True
+
+  def operator_and_matrix(
+      self, shape_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
+    shape = list(shape_info.shape)
+    expected_blocks = (
+        shape_info.__dict__["blocks"] if "blocks" in shape_info.__dict__
+        else [shape])
+    matrices = [
+        linear_operator_test_util.random_normal(block_shape, dtype=dtype)
+        for block_shape in expected_blocks
+    ]
+
+    lin_op_matrices = matrices
+
+    if use_placeholder:
+      lin_op_matrices = [
+          array_ops.placeholder_with_default(
+              matrix, shape=None) for matrix in matrices]
+
+    blocks = []
+    for l in lin_op_matrices:
+      blocks.append(
+          linalg.LinearOperatorFullMatrix(
+              l,
+              is_square=False,
+              is_self_adjoint=False,
+              is_positive_definite=False))
+    operator = block_diag.LinearOperatorBlockDiag(blocks)
+
+    # Broadcast the shapes.
+    expected_shape = list(shape_info.shape)
+
+    matrices = linear_operator_util.broadcast_matrix_batch_dims(matrices)
+
+    block_diag_dense = _block_diag_dense(expected_shape, matrices)
+
+    if not use_placeholder:
+      block_diag_dense.set_shape(expected_shape)
+
+    return operator, block_diag_dense
+
+
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(SquareLinearOperatorBlockDiagTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorBlockDiagTest)
   test.main()

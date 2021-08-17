@@ -12,8 +12,13 @@ message Profile {
   Node by_category = 1;
   // Root of a profile broken down by program.
   Node by_program = 4;
+
   // Device type.
   string device_type = 5;
+
+  // Exclude idle ops.
+  Node by_category_exclude_idle = 6;
+  Node by_program_exclude_idle = 7;
 }
 
 // An entry in the profile tree. (An instruction, or set of instructions).

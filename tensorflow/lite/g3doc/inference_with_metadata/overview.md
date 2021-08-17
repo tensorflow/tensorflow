@@ -4,25 +4,32 @@ Inferencing [models with metadata](../convert/metadata.md) can be as easy as
 just a few lines of code. TensorFlow Lite metadata contains a rich description
 of what the model does and how to use the model. It can empower code generators
 to automatically generate the inference code for you, such as using the
-[TensorFlow Lite Android code generator](codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
-and the
-[Android Studio ML Binding feature](codegen.md#generate-code-with-android-studio-ml-model-binding).
-It can also be used to configure your custom inference pipeline.
+[Android Studio ML Binding feature](codegen.md#mlbinding) or
+[TensorFlow Lite Android code generator](codegen.md#codegen). It can also be
+used to configure your custom inference pipeline.
 
 ## Tools and libraries
 
 TensorFlow Lite provides varieties of tools and libraries to serve different
 tiers of deployment requirements as follows:
 
-### Generate model interface with the TensorFlow Lite Code Generator
+### Generate model interface with Android code generators
 
-[TensorFlow Lite Code Generator](codegen.md) is an executable that generates
-model interface automatically based on the metadata. It currently supports
-Android with Java. The wrapper code removes the need to interact directly with
-`ByteBuffer`. Instead, developers can interact with the TensorFlow Lite model
-with typed objects such as `Bitmap` and `Rect`. Android Studio users can also
-get access to the codegen feature through
-[Android Studio ML Binding](codegen.md#generate-code-with-android-studio-ml-model-binding).
+There are two ways to automatically generate the necessary Android wrapper code
+for TensorFlow Lite model with metadata:
+
+1.  [Android Studio ML Model Binding](codegen.md#mlbinding) is tooling available
+    within Android Studio to import TensorFlow Lite model through a graphical
+    interface. Android Studio will automatically configure settings for the
+    project and generate wrapper classes based on the model metadata.
+
+2.  [TensorFlow Lite Code Generator](codegen.md#codegen) is an executable that
+    generates model interface automatically based on the metadata. It currently
+    supports Android with Java. The wrapper code removes the need to interact
+    directly with `ByteBuffer`. Instead, developers can interact with the
+    TensorFlow Lite model with typed objects such as `Bitmap` and `Rect`.
+    Android Studio users can also get access to the codegen feature through
+    [Android Studio ML Binding](codegen.md#mlbinding).
 
 ### Leverage out-of-box APIs with the TensorFlow Lite Task Library
 

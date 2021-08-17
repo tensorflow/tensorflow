@@ -147,6 +147,34 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     *result = StringPiece(scratch, dst - scratch);
     return s;
   }
+
+#if defined(TF_CORD_SUPPORT)
+  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+    if (n == 0) {
+      return Status::OK();
+    }
+    if (n < 0) {
+      return errors::InvalidArgument(
+          "Attempting to read ", n,
+          " bytes. You cannot read a negative number of bytes.");
+    }
+
+    char* scratch = new char[n];
+    if (scratch == nullptr) {
+      return errors::ResourceExhausted("Unable to allocate ", n,
+                                       " bytes for file reading.");
+    }
+
+    StringPiece tmp;
+    Status s = Read(offset, n, &tmp, scratch);
+
+    absl::Cord tmp_cord = absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char*>(scratch), tmp.size()),
+        [scratch](absl::string_view) { delete[] scratch; });
+    cord->Append(tmp_cord);
+    return s;
+  }
+#endif
 };
 
 class WindowsWritableFile : public WritableFile {
@@ -176,6 +204,24 @@ class WindowsWritableFile : public WritableFile {
     assert(size_t(bytes_written) == data.size());
     return Status::OK();
   }
+
+#if defined(TF_CORD_SUPPORT)
+  // \brief Append 'data' to the file.
+  Status Append(const absl::Cord& cord) override {
+    for (const auto& chunk : cord.Chunks()) {
+      DWORD bytes_written = 0;
+      DWORD data_size = static_cast<DWORD>(chunk.size());
+      BOOL write_result =
+          ::WriteFile(hfile_, chunk.data(), data_size, &bytes_written, NULL);
+      if (FALSE == write_result) {
+        return IOErrorFromWindowsError("Failed to WriteFile: " + filename_);
+      }
+
+      assert(size_t(bytes_written) == chunk.size());
+    }
+    return Status::OK();
+  }
+#endif
 
   Status Tell(int64* position) override {
     Status result = Flush();
@@ -529,17 +575,35 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target,
                                      TransactionToken* token) {
-  Status result;
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
   std::wstring ws_translated_src = Utf8ToWideChar(TranslateName(src));
   std::wstring ws_translated_target = Utf8ToWideChar(TranslateName(target));
-  if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
-                     MOVEFILE_REPLACE_EXISTING)) {
-    string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
-    result = IOErrorFromWindowsError(context);
+
+  // Calling MoveFileExW with the MOVEFILE_REPLACE_EXISTING flag can fail if
+  // another process has a handle to the file that it didn't close yet. On the
+  // other hand, calling DeleteFileW + MoveFileExW will work in that scenario
+  // because it allows the process to keep using the old handle while also
+  // creating a new handle for the new file.
+  WIN32_FIND_DATAW find_file_data;
+  HANDLE target_file_handle =
+      ::FindFirstFileW(ws_translated_target.c_str(), &find_file_data);
+  if (target_file_handle != INVALID_HANDLE_VALUE) {
+    if (!::DeleteFileW(ws_translated_target.c_str())) {
+      ::FindClose(target_file_handle);
+      return IOErrorFromWindowsError(
+          strings::StrCat("Failed to rename: ", src, " to: ", target));
+    }
+    ::FindClose(target_file_handle);
   }
-  return result;
+
+  if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
+                     0)) {
+    return IOErrorFromWindowsError(
+        strings::StrCat("Failed to rename: ", src, " to: ", target));
+  }
+
+  return Status::OK();
 }
 
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
@@ -570,9 +634,9 @@ bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
 Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
                                FileStatistics* stat) {
   Status result;
-  struct _stat sbuf;
+  struct _stat64 sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
+  if (_wstat64(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;

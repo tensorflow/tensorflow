@@ -4,7 +4,7 @@ load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # EXPERIMENTAL: Native target that runs inference on the Hexagon backend.
@@ -27,8 +27,13 @@ cc_library(
     srcs = [
         "libtensorflowlite_hexagon_jni.so",
     ] + select({
+        # copybara:uncomment_begin(separate repo in OSS)
+        # "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so"],
+        # "//tensorflow:android_arm": ["//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so"],
+        # copybara:uncomment_end_and_comment_begin
         "//tensorflow:android_arm64": ["@hexagon_nn//:hexagon/arm64-v8a/libhexagon_interface.so"],
         "//tensorflow:android_arm": ["@hexagon_nn//:hexagon/armeabi-v7a/libhexagon_interface.so"],
+        # copybara:comment_end
         "//conditions:default": [],
     }),
     tags = [

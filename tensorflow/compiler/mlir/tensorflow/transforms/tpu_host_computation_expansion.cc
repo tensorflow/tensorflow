@@ -26,12 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
-
-// This pass expands outside compilation attributes to Identity/Cast ops
-// at the head of TPU computation if it's only used by outside compiled ops.
 
 namespace {
 
@@ -112,12 +110,13 @@ void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
   }
 }
 
-struct TPUHostComputationExpansion
-    : public PassWrapper<TPUHostComputationExpansion, FunctionPass> {
+struct TPUHostComputationExpansionPass
+    : public TF::TPUHostComputationExpansionPassBase<
+          TPUHostComputationExpansionPass> {
   void runOnFunction() override;
 };
 
-void TPUHostComputationExpansion::runOnFunction() {
+void TPUHostComputationExpansionPass::runOnFunction() {
   OpBuilder builder(&getContext());
   getFunction().walk([&](tf_device::ClusterOp cluster) {
     ExpandHeadOutsideCompiledOps(cluster, &builder);
@@ -127,12 +126,8 @@ void TPUHostComputationExpansion::runOnFunction() {
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass() {
-  return std::make_unique<TPUHostComputationExpansion>();
+  return std::make_unique<TPUHostComputationExpansionPass>();
 }
-
-static PassRegistration<TPUHostComputationExpansion> pass(
-    "tf-tpu-host-computation-expansion",
-    "Expands host computation before and after TPU computation.");
 
 }  // namespace TFTPU
 }  // namespace mlir

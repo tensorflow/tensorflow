@@ -52,6 +52,39 @@ TEST(RandomInputStream, ReadNBytes) {
   EXPECT_EQ(10, in.Tell());
 }
 
+#if defined(TF_CORD_SUPPORT)
+TEST(RandomInputStream, ReadNBytesWithCords) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/random_inputbuffer_test";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  absl::Cord read;
+  RandomAccessInputStream in(file.get());
+
+  // Reading into `absl::Cord`s does not clear existing data from the cord.
+  TF_ASSERT_OK(in.ReadNBytes(3, &read));
+  EXPECT_EQ(read, "012");
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(read, "012");
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(5, &read));
+  EXPECT_EQ(read, "01234567");
+  EXPECT_EQ(8, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(read, "01234567");
+  EXPECT_EQ(8, in.Tell());
+  EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(20, &read)));
+  EXPECT_EQ(read, "0123456789");
+  EXPECT_EQ(10, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(read, "0123456789");
+  EXPECT_EQ(10, in.Tell());
+}
+#endif
+
 TEST(RandomInputStream, SkipNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/random_inputbuffer_test";

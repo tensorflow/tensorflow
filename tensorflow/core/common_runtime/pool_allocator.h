@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <vector>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
@@ -81,17 +82,17 @@ class PoolAllocator : public Allocator {
   // consistency with other threads is not important.
 
   // Number of Get() requests satisfied from pool.
-  int64 get_from_pool_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t get_from_pool_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return get_from_pool_count_;
   }
   // Number of Put() requests.
-  int64 put_count() const TF_NO_THREAD_SAFETY_ANALYSIS { return put_count_; }
+  int64_t put_count() const TF_NO_THREAD_SAFETY_ANALYSIS { return put_count_; }
   // Number of Get() requests requiring a fresh allocation.
-  int64 allocated_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t allocated_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return allocated_count_;
   }
   // Number of pool evictions.
-  int64 evicted_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t evicted_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return evicted_count_;
   }
   // Current size limit.
@@ -126,10 +127,10 @@ class PoolAllocator : public Allocator {
   std::multimap<const size_t, PtrRecord*> pool_ TF_GUARDED_BY(mutex_);
   PtrRecord* lru_head_ TF_GUARDED_BY(mutex_) = nullptr;
   PtrRecord* lru_tail_ TF_GUARDED_BY(mutex_) = nullptr;
-  int64 get_from_pool_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 put_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 allocated_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 evicted_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t get_from_pool_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t put_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t allocated_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t evicted_count_ TF_GUARDED_BY(mutex_) = 0;
 };
 
 // Do-nothing rounder. Passes through sizes unchanged.
@@ -154,9 +155,12 @@ class BasicCPUAllocator : public SubAllocator {
 
   ~BasicCPUAllocator() override {}
 
-  void* Alloc(size_t alignment, size_t num_bytes) override;
+  void* Alloc(size_t alignment, size_t num_bytes,
+              size_t* bytes_received) override;
 
   void Free(void* ptr, size_t num_bytes) override;
+
+  bool SupportsCoalescing() const override { return false; }
 
  private:
   int numa_node_;

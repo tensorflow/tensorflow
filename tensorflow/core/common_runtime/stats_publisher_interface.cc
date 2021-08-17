@@ -32,7 +32,7 @@ class NoOpStatsPublisher : public StatsPublisherInterface {
       const std::vector<const GraphDef*>& graph_defs) override {}
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(
-      uint64 step, int64 execution_count, const RunOptions& ropts) override {
+      uint64 step, int64_t execution_count, const RunOptions& ropts) override {
     return nullptr;
   }
 

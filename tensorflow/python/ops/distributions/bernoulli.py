@@ -152,8 +152,8 @@ class Bernoulli(distribution.Distribution):
     return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
 
   def _entropy(self):
-    return (-self.logits * (math_ops.sigmoid(self.logits) - 1) +
-            nn.softplus(-self.logits))
+    return (-self.logits * (math_ops.sigmoid(self.logits) - 1) +  # pylint: disable=invalid-unary-operand-type
+            nn.softplus(-self.logits))  # pylint: disable=invalid-unary-operand-type
 
   def _mean(self):
     return array_ops.identity(self.probs)
