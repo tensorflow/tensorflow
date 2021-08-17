@@ -1729,6 +1729,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
+    tags = ["no_cuda_asan"],  # TODO(b/3)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
