@@ -2086,7 +2086,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_load_registered(self, cycles):
 
-    @registration.register_serializable()
+    @registration.register_serializable(name=f"Module{cycles}")
     class Module(tracking.AutoTrackable):
 
       def __init__(self, name="module"):
