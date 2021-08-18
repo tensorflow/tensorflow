@@ -174,13 +174,15 @@ def _running_from_pip_package():
 
 if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
-  for _s in _site_packages_dirs:
-    # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
-    if _os.path.exists(_main_dir):
-      _ll.load_library(_main_dir)
 
-    # Load third party dynamic kernels.
+  # Load first party dynamic kernels.
+  _tf_dir = _os.path.dirname(_current_file_location)
+  _kernel_dir = _os.path.join(_tf_dir, 'core', 'kernels')
+  if _os.path.exists(_kernel_dir):
+    _ll.load_library(_kernel_dir)
+
+  # Load third party dynamic kernels.
+  for _s in _site_packages_dirs:
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
