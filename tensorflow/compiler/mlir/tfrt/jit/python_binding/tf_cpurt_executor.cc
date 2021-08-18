@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -75,6 +76,7 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   opts.register_pass_pipeline = CreateTfCpuRtPipeline;
   opts.specialization = specialization;
+  opts.type_converter = mlir::BufferizeTypeConverter();
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =

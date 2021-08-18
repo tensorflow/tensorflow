@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -307,13 +308,14 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.num_worker_threads = workers->NumThreads();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
     opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+    opts.type_converter = mlir::BufferizeTypeConverter();
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();
 
     // Instantiate new JitExecutable from the MLIR source.
     Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, opts, runner);
+        JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
