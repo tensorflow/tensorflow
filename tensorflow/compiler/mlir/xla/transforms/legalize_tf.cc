@@ -5453,7 +5453,7 @@ class ConvertInfeedDequeueTupleOp
       RankedTensorType t) const {
     // Call the TPU API to determine the right infeed layout. Note that
     // this can fail if we're not running on a TPU-enabled node.
-    // TODO(kramm): Move this into a separate pass. See b/181724526
+    // TODO(kramm): Move this into a separate pass. See b/184944903
     xla::Shape old_shape = xla::TypeToShape(t);
     XLA_Shape old_shape_c = {};
     XLA_Shape new_shape_c = {};

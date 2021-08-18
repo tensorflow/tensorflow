@@ -236,8 +236,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
+      /*allow_partial_conversion=*/false));
   pm.addNestedPass<mlir::FuncOp>(
       mlir::mhlo::createRankSpecializationClusterPass());
   pm.addNestedPass<mlir::FuncOp>(

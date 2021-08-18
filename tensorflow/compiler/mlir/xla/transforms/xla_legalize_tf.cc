@@ -44,8 +44,6 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-constexpr char kShardingAttr[] = "mhlo.sharding";
-
 class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
