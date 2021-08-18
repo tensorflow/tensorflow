@@ -144,6 +144,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   void EndStep() override;
 
   tensorflow::Status AsyncWait() override {
+    TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
     return tensorflow::Status::OK();
   }
