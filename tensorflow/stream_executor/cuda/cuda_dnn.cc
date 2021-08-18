@@ -4948,10 +4948,13 @@ port::Status CudnnSupport::DoFusedConvolve(
       (side_input_scale == 0) ? output_data.opaque() : side_input_data.opaque();
 
   VLOG(2) << "\nconv_input_scale = " << conv_input_scale
+          << "\nconv_input_descriptor = " << conv_input_descriptor.ToString()
           << "\nconv_input_nd.handle() = " << conv_input_nd.handle()
           << "\nconv_input_data.opaque() = " << conv_input_data.opaque()
+          << "\nfilter_descriptor = " << filter_descriptor.ToString()
           << "\nfilter.handle() = " << filter.handle()
           << "\nfilter_data.opaque() = " << filter_data.opaque()
+          << "\nconvolution_descriptor = " << convolution_descriptor.ToString()
           << "\nconv.handle() = " << conv.handle()
           << "\nalgo = " << algo_desc.algo_id()
           << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
