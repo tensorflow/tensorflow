@@ -2,7 +2,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    default_visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+        "//third_party/cloud_tpu/inference_converter:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
