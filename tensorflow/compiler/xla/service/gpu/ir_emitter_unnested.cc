@@ -4770,9 +4770,7 @@ int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 bool IsUnrollingColumnReductionBeneficial(
     mlir::Operation* unnested_hlo, const Shape& input_shape,
     int64_t num_kept_minor, const FusionLayoutAnalysis& layout_analysis) {
-  // TODO(b/122468062): Need further investigate to see whether we can
-  // remove the constraint on IsPowerOfTwo.
-  if (!IsPowerOfTwo(static_cast<uint64_t>(num_kept_minor))) {
+  if (num_kept_minor % (kWarpSize * 2) != 0) {
     return false;
   }
 
