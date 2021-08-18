@@ -3161,6 +3161,14 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
+  def testLargeDim(self):
+    with self.session():
+      with self.assertRaises(errors.InternalError):
+        x = np.ones((5, 1, 1, 2))
+        v = image_ops.resize_images_v2(x, [1610637938, 1610637938],
+                                       image_ops.ResizeMethod.BILINEAR)
+        _ = self.evaluate(v)
+
 
 class ResizeImagesTest(test_util.TensorFlowTestCase,
                        parameterized.TestCase):
