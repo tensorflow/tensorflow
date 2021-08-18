@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
@@ -950,6 +951,27 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   return changed;
 }
 
+// Helper structure to capture shapes & types for Dataset input.
+struct DatasetInput {
+  explicit operator bool() const { return shapes && types; }
+
+  ArrayAttr shapes;
+  ArrayAttr types;
+};
+
+// Returns the input elements shapes and types for Dataset ops.
+DatasetInput GetDatasetInput(Operation* op) {
+  // TODO(haoliang): add an interface for DatasetOp to avoid the following
+  // enumeration.
+  if (!llvm::isa_and_nonnull<BatchDatasetV2Op, MapDatasetOp, RepeatDatasetOp,
+                             ParallelMapDatasetOp, ParallelMapDatasetV2Op,
+                             TakeDatasetOp>(op))
+    return DatasetInput{nullptr, nullptr};
+
+  return DatasetInput{op->getAttrOfType<ArrayAttr>("output_shapes"),
+                      op->getAttrOfType<ArrayAttr>("output_types")};
+}
+
 bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
                                              int64_t max_iterations) {
   // MapDatasetOp's relationship with its associated function is as
@@ -969,12 +991,19 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
   // Initialize with function input types.
   SmallVector<Type> input_types(f.getArgumentTypes());
 
+  DatasetInput input_elements =
+      GetDatasetInput(op.input_dataset().getDefiningOp());
+  if (!input_elements) {
+    op.emitWarning("unexpected dataset input; skipping function refinement");
+    return false;
+  }
+
   // Track if changed to skip enqueueing.
   bool changed = false;
   auto it = input_types.begin();
   // First set first M argument shapes & types.
   for (int i = 0; i < M; ++i) {
-    Type t = GetType(op.output_shapes()[i], op.output_types()[i]);
+    Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
     t = TypeMeet(*it, t);
     changed = changed || (t != *it);
     *it++ = t;
@@ -990,7 +1019,7 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
   FailureOr<bool> res =
       PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
   if (failed(res)) {
-    op->emitOpError("propagating shapes for MapDataset failed");
+    op.emitOpError("propagating shapes for MapDataset failed");
     return false;
   }
   return *res;
@@ -1006,14 +1035,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   // captured arguments. Y is determined by the output_shapes of an op that
   // defines the first operand of `op`.
 
-  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
-  // enumeration.
-  if (op.getOperand(0).getDefiningOp() == nullptr ||
-      !isa<RepeatDatasetOp, MapDatasetOp, BatchDatasetV2Op, TakeDatasetOp>(
-          op.getOperand(0).getDefiningOp())) {
-    return false;
-  }
-
   // TODO(jpienaar): Avoid this lookup.
   auto module = op->getParentOfType<ModuleOp>();
   auto f = module.lookupSymbol<FuncOp>(op.f());
@@ -1021,32 +1042,15 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   // Skip if function is not found or it has more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
-  auto input_elements_op = op.getOperand(0).getDefiningOp();
-  ArrayAttr input_elements_shapes;
-  ArrayAttr input_elements_types;
-
-  // TODO(haoliang): add a parent op for DatasetOp to avoid the following
-  // enumeration.
-  if (auto repeatdataset_op = dyn_cast<RepeatDatasetOp>(input_elements_op)) {
-    input_elements_shapes = repeatdataset_op.output_shapes();
-    input_elements_types = repeatdataset_op.output_types();
-  } else if (auto mapdataset_op = dyn_cast<MapDatasetOp>(input_elements_op)) {
-    input_elements_shapes = mapdataset_op.output_shapes();
-    input_elements_types = mapdataset_op.output_types();
-  } else if (auto batchdataset_op =
-                 dyn_cast<BatchDatasetV2Op>(input_elements_op)) {
-    input_elements_shapes = batchdataset_op.output_shapes();
-    input_elements_types = batchdataset_op.output_types();
-  } else if (auto takedataset_op = dyn_cast<TakeDatasetOp>(input_elements_op)) {
-    input_elements_shapes = takedataset_op.output_shapes();
-    input_elements_types = takedataset_op.output_types();
-  } else {
-    op->emitOpError("unexpected DatasetOp");
+  DatasetInput input_elements =
+      GetDatasetInput(op.input_dataset().getDefiningOp());
+  if (!input_elements) {
+    op.emitWarning("unexpected dataset input; skipping function refinement");
     return false;
   }
 
   const int num_states = op.output_shapes().size();
-  const int num_input_elements = input_elements_shapes.size();
+  const int num_input_elements = input_elements.shapes.size();
   const int num_captured_arguments = op.getNumOperands() - 1 - num_states;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
@@ -1078,7 +1082,7 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   // Second set the following num_input_elements arguments from
   // repeat_dataset_op.
   for (int i = 0; i < num_input_elements; ++i) {
-    Type t = GetType(input_elements_shapes[i], input_elements_types[i]);
+    Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
     t = TypeMeet(*it, t);
     changed = changed || (t != *it);
     *it++ = t;
