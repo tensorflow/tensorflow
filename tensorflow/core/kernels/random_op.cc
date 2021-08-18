@@ -341,7 +341,7 @@ class RandomGammaOp : public OpKernel {
           .HostMemory("shape")                                                 \
           .TypeConstraint<TYPE>("dtype"),                                      \
       PhiloxRandomOp<CPUDevice, random::UniformDistribution<                   \
-                                    random::PhiloxRandom, TYPE>>);             \
+                                    random::PhiloxRandom, TYPE, true>>);       \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("RandomStandardNormal")                                             \
           .Device(DEVICE_CPU)                                                  \
@@ -453,6 +453,5 @@ TF_CALL_uint64(REGISTER_FULL_INT);
 #undef REGISTER_FULL_INT
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow

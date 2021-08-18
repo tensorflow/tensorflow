@@ -85,7 +85,14 @@ struct FillPhiloxRandomTask<Distribution, false> {
                   int64_t start_group, int64_t limit_group, Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
-    gen.Skip(start_group);
+    // Decide skip strides according to different kResultElementCount:
+    // * `1 = (4 + 3) / 4` for normal Distribution.
+    // * `1 = (2 + 3) / 4` for double/int64 Distribution.
+    // * `4 = (16 + 3) / 4` for vectorized float/bfloat16 Distribution.
+    const int skip_strides =
+        (kGroupSize + gen.kResultElementCount - 1) / gen.kResultElementCount;
+    gen.Skip(start_group * skip_strides);
+
     int64_t offset = start_group * kGroupSize;
 
     // First fill all the full-size groups
@@ -166,9 +173,8 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
   int64_t total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-  const int kGroupCost =
-      random::PhiloxRandom::kResultElementCount *
-      (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+  const int kGroupCost = kGroupSize * (random::PhiloxRandom::kElementCost +
+                                       Distribution::kElementCost);
 
   if (key != nullptr && counter != nullptr) {
     gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
@@ -186,7 +192,6 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 }
 
 }  // namespace functor
-
 
 }  // end namespace tensorflow
 
