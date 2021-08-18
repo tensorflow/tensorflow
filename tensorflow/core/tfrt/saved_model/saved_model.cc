@@ -749,7 +749,7 @@ void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
   // Use sorted indices to generate sorted names.
   sorted_names.reserve(names.size());
   for (int original_index : original_indices) {
-    DCHECK_LE(original_index, names.size());
+    DCHECK_LT(original_index, names.size());
     sorted_names.push_back(names[original_index]);
   }
 }
