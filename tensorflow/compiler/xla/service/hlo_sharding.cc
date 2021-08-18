@@ -119,6 +119,21 @@ HloSharding HloSharding::Subgroup(
     return HloSharding(tile_assignment, /*replicate_on_last_tile_dim=*/false,
                        metadata);
   }
+  // If there is only one type of subgrouping and there is no tiling on data
+  // dimensions, it can be canonicalized to a simple manual/replicated sharding.
+  if (absl::c_all_of(
+          subgroup_types,
+          [&](const OpSharding::Type t) { return t == subgroup_types[0]; }) &&
+      Product(absl::Span<const int64_t>(tile_assignment.dimensions())
+                  .subspan(0, tile_assignment.num_dimensions() -
+                                  subgroup_types.size())) == 1) {
+    if (subgroup_types[0] == OpSharding::MANUAL) {
+      return Manual(metadata);
+    }
+    if (subgroup_types[0] == OpSharding::REPLICATED) {
+      return Replicate(metadata);
+    }
+  }
   return HloSharding(tile_assignment, subgroup_types, metadata);
 }
 
@@ -579,7 +594,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
             proto.tile_assignment_devices().end(), tile_assignment.begin());
   if (!subgroup_types.empty()) {
     TF_RET_CHECK(!proto.replicate_on_last_tile_dim());
-    return HloSharding(tile_assignment, subgroup_types, metadata);
+    return Subgroup(tile_assignment, subgroup_types, metadata);
   }
   return proto.replicate_on_last_tile_dim()
              ? PartialTile(tile_assignment, metadata)
