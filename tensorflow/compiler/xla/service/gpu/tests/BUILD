@@ -724,3 +724,18 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
     ],
 )
+
+tf_cc_test(
+    name = "kernel_thunk_test",
+    srcs = ["kernel_thunk_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)

@@ -580,18 +580,18 @@ class IrEmitterUnnested : public IrEmitter {
                                             llvm::Value* partial_result_address,
                                             int threads_per_block);
 
-  std::unique_ptr<KernelThunk> BuildKernelThunkImpl(
+  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const BufferSlice> slices,
       std::vector<llvm_ir::IrArray>* ir_arrays,
       const LaunchDimensions& launch_dimensions);
 
-  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
+  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
       Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays,
       const LaunchDimensions& launch_dimensions);
 
-  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
+  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunk(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
       std::vector<llvm_ir::IrArray>* ir_arrays,
       const LaunchDimensions& launch_dimensions);

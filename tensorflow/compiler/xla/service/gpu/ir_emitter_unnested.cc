@@ -1730,7 +1730,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   std::vector<llvm_ir::IrArray> ir_arrays;
   Thunk* kernel_thunk;
   {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk_ptr,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk_ptr,
                         BuildKernelThunk(fusion, GetThunkInfo(op), &ir_arrays,
                                          launch_dimensions));
     kernel_thunk = kernel_thunk_ptr.get();
@@ -3097,7 +3097,7 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   return Status::OK();
 }
 
-std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkImpl(
+StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
     absl::Span<const BufferSlice> slices,
     std::vector<llvm_ir::IrArray>* ir_arrays,
@@ -3206,12 +3206,20 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkImpl(
   AnnotateThunkLaunchDimensions(launch_dimensions,
                                 std::string(kernel->getName()),
                                 ir_emitter_context_->llvm_module());
-  return absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
-                                        std::string(kernel->getName()),
-                                        launch_dimensions);
+
+  if (IsBefThunkEnabled()) {
+    return CreateBefKernelThunk(thunk_info, non_constant_buffers,
+                                std::string(kernel->getName()),
+                                launch_dimensions);
+  } else {
+    std::unique_ptr<Thunk> kernel_thunk = absl::make_unique<KernelThunk>(
+        thunk_info, non_constant_buffers, std::string(kernel->getName()),
+        launch_dimensions);
+    return kernel_thunk;
+  }
 }
 
-StatusOr<std::unique_ptr<KernelThunk>> IrEmitterUnnested::BuildKernelThunk(
+StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     mlir::Operation* op, mlir::ValueRange operands, Thunk::ThunkInfo thunk_info,
     std::vector<llvm_ir::IrArray>* ir_arrays,
     const LaunchDimensions& launch_dimensions) {
@@ -3231,7 +3239,7 @@ StatusOr<std::unique_ptr<KernelThunk>> IrEmitterUnnested::BuildKernelThunk(
                               launch_dimensions);
 }
 
-StatusOr<std::unique_ptr<KernelThunk>> IrEmitterUnnested::BuildKernelThunk(
+StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     mlir::Operation* op, Thunk::ThunkInfo thunk_info,
     std::vector<llvm_ir::IrArray>* ir_arrays,
     const LaunchDimensions& launch_dimensions) {
@@ -3362,7 +3370,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<KernelThunk> kernel_thunk,
+      std::unique_ptr<Thunk> kernel_thunk,
       BuildKernelThunk(op, {init_value, dest}, Thunk::ThunkInfo(), &ir_arrays,
                        launch_dimensions));
 
@@ -3377,8 +3385,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                          dest_array, launch_dimensions, &b_)
                          .EmitLoop(mlir::GetNameFromLoc(op->getLoc())));
 
-  // Convert unique_ptr<KernelThunk> to StatusOr<unique_ptr<Thunk>>.
-  return {std::move(kernel_thunk)};
+  return std::move(kernel_thunk);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
@@ -3404,7 +3411,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
                       CalculateLaunchDimensions(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
                       BuildKernelThunk(fusion, Thunk::ThunkInfo(), &ir_arrays,
                                        launch_dimensions));
 
@@ -4708,7 +4715,7 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
                                      mapping_scheme.GetThreadsPerBlock());
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<KernelThunk> kernel_thunk,
+      std::unique_ptr<Thunk> kernel_thunk,
       BuildKernelThunk(op, GetThunkInfo(op), &ir_arrays, launch_dimensions));
 
   EmitHlo021Tile(
@@ -5126,7 +5133,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
           << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
 
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
                       BuildKernelThunk(unnested_hlo, Thunk::ThunkInfo(),
                                        &ir_arrays, launch_dimensions));
 
