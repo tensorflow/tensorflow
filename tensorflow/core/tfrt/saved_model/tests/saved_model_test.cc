@@ -409,6 +409,29 @@ TEST_F(SavedModelRunByTensorNamesTest, NoOutputNodes) {
   ASSERT_EQ(outputs.size(), 0);
 }
 
+TEST_F(SavedModelRunByTensorNamesTest, ShuffleInputsAndOutputs) {
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs = {
+      {"input2", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{4, 4, 4})},
+      {"input1", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1})},
+      {"input3", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{3, 3, 3})},
+  };
+  std::vector<std::string> output_tensor_names{"result22", "result1",
+                                               "result31"};
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model_->RunByTensorNames(
+      /*run_options=*/{}, inputs, output_tensor_names, {}, &outputs));
+
+  ASSERT_EQ(outputs.size(), 3);
+
+  // Check output "r22".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(30));
+  // Check output "r1".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), testing::ElementsAre(6));
+  // Check output "r31".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), testing::ElementsAre(18));
+}
+
 TEST(SavedModelTest, CustomWorkQueue) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");

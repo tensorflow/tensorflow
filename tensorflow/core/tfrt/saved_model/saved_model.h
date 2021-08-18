@@ -315,7 +315,8 @@ class SavedModelImpl final : public SavedModel {
   // target_node_names.
   StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(
-      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_node_names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
