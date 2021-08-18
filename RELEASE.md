@@ -130,6 +130,8 @@
       ```
   * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in
     distributed computations.
+  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
+    to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
 
 ## Bug Fixes and Other Changes
 
