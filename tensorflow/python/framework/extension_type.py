@@ -38,6 +38,11 @@ from tensorflow.python.util import tf_inspect
 # (in which case the fields of `self` may be modified).
 _IN_CONSTRUCTOR = '_tf_extension_type_in_constructor'
 
+_MUTABLE_KERAS_PROPERTIES = [
+    # Keras uses _keras_mask property to pass the mask around
+    '_keras_mask',
+]
+
 
 # ==============================================================================
 # Utility functions
@@ -214,22 +219,26 @@ class ExtensionType(
     return f'{type(self).__name__}({fields})'
 
   def __setattr__(self, name, value):
-    if hasattr(self,
-               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
+    if (name in _MUTABLE_KERAS_PROPERTIES or
+        (hasattr(self, _IN_CONSTRUCTOR) and
+         self._tf_extension_type_has_field(name))):
       self.__dict__[name] = value
     else:
       raise AttributeError(f'Cannot mutate attribute `{name}` '
                            f'outside the custom constructor of ExtensionType.')
 
   def __delattr__(self, name):
-    if hasattr(self,
-               _IN_CONSTRUCTOR) and self._tf_extension_type_has_field(name):
+    if (name in _MUTABLE_KERAS_PROPERTIES or
+        (hasattr(self, _IN_CONSTRUCTOR) and
+         self._tf_extension_type_has_field(name))):
       del self.__dict__[name]
     else:
       raise AttributeError(f'Cannot mutate attribute `{name}` '
                            f'outside the custom constructor of ExtensionType.')
 
   def __getattr__(self, name):
+    if name in _MUTABLE_KERAS_PROPERTIES:
+      return object.__getattribute__(self, name)
     if '_tf_extension_type_packed_variant' in self.__dict__:
       # Note: it's *not* ok to cache the results of unpack() here.  In
       # particular, it would be nice if we could do something like
@@ -358,7 +367,8 @@ def is_packed(value):
 # TODO(b/184565242) Support custom TypeSpec validation.
 # TODO(b/184565242) Support custom TypeSpec repr.
 # TODO(b/184565242) Support customizing type relaxation for tracing.
-# TODO(b/184565242) Support conversion to/from FullType
+# TODO(b/184565242) Support conversion to/from FullType.
+# TODO(b/195884675) Support batch and unbatch.
 
 
 class ExtensionTypeSpec(type_spec.TypeSpec):
@@ -376,6 +386,15 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
   def _deserialize(cls, state):  # TypeSpec API.
     state = _change_nested_mappings_to(state, immutable_dict.ImmutableDict)
     return _create_object_from_type_and_dict(cls, state)
+
+  def __reduce__(self):
+    # Use value_type instead of spec_type, as spec_type is a nested class.
+    # Pickle support of nested class requries Pickle protocol version 4, which
+    # is not enabled by default until py 3.8.
+    #
+    # https://www.python.org/dev/peps/pep-3154/#serializing-more-lookupable-objects
+    # https://docs.python.org/3/library/pickle.html#pickle.DEFAULT_PROTOCOL
+    return _deserialize_for_reduce, (self.value_type, self._serialize())
 
   def _to_components(self, value):  # TypeSpec API.
     if self._tf_extension_type_is_packed:
@@ -491,6 +510,11 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     copy = _create_object_from_type_and_dict(type(self), self.__dict__)
     copy.__dict__['_tf_extension_type_is_packed'] = value
     return copy
+
+
+# For Pickle __reduce__ protocol:
+def _deserialize_for_reduce(value_type, serialization):
+  return value_type.Spec._deserialize(serialization)  # pylint: disable=protected-access
 
 
 def _replace_tensor_with_spec(value):
@@ -642,8 +666,11 @@ def _add_type_spec(cls):
   # Build the TypeSpec class for this ExtensionType, and add it as a
   # nested class.
   spec_name = cls.__name__ + '.Spec'
-  spec_dict = {'value_type': cls}
+  # Set __module__ explicitly as a dynamic created class has module='abc'
+  # by default.
+  spec_dict = {'value_type': cls, '__module__': cls.__module__}
   spec = type(spec_name, (ExtensionTypeSpec,), spec_dict)
+  spec.__qualname__ = cls.__qualname__ + '.Spec'
   setattr(cls, 'Spec', spec)
 
   # Build a constructor for the TypeSpec class.
