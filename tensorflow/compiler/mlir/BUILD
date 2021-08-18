@@ -11,8 +11,8 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla:__subpackages__",
-        "@llvm-project//mlir:friends",
     ],
     licenses = ["notice"],
 )
