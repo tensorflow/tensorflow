@@ -56,6 +56,11 @@ struct TfrtCompileOptions {
   // compiler passes and runtime initialization.
   TfrtTpuInfraTarget tpu_target = TfrtTpuInfraTarget::kNoTpu;
 
+  // If true, use the fused TPU compile_and_execute kernel, which performs all
+  // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
+  // compile and execute.
+  bool tpu_fuse_ops = false;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.

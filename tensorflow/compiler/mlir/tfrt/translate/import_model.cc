@@ -106,6 +106,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
       (options.tpu_target == TfrtTpuInfraTarget::kTpurt);
+  pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;

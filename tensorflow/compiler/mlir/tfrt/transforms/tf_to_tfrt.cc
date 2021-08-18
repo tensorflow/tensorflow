@@ -202,7 +202,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     return !llvm::isa<
         mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
         mlir::TF::_TPUCompileMlirOp, mlir::TF::TPUCompileSucceededAssertOp,
-        mlir::TF::TPUExecuteOp,
+        mlir::TF::TPUExecuteOp, mlir::TF::TPUCompileMlirAndExecuteOp,
         // Specifically handle control flow ops.
         mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
         mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp>(op);
@@ -2205,6 +2205,14 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 
   if (parsed_name.has_type && parsed_name.type == DEVICE_CPU)
     pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+
+  if (options.tpu_fuse_ops) {
+    pm.addNestedPass<mlir::FuncOp>(
+        tfrt_compiler::CreateFuseTpuCompileAndExecutePass());
+    // Remove ops for the input to _TPUCompileMlirOp, which are no longer needed
+    // after CreateFuseTpuCompileAndExecutePass
+    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  }
 
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }

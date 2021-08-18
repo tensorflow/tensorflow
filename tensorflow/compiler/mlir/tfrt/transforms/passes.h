@@ -66,6 +66,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
+// Create a pass to fuse the TPU Ops for TFRT.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseTpuCompileAndExecutePass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;
@@ -145,6 +149,10 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
                      "to be executed by tfrt_fallback.execute."),
       llvm::cl::init(true)};
+  Option<bool> tpu_fuse_ops{
+      *this, "tpu-fuse-ops",
+      llvm::cl::desc("If true, use the TPU fused compile_and_execute kernel"),
+      llvm::cl::init(false)};
   // TODO(b/194081364): remove this option once we unify servo TPU serving
   // result transfer behavior.
   Option<bool> tpu_transfer_result_to_host{
