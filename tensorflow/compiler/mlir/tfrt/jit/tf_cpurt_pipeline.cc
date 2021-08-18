@@ -35,22 +35,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
-struct RemoveUnusedBufferCastOperations
-    : public mlir::PassWrapper<RemoveUnusedBufferCastOperations,
-                               mlir::FunctionPass> {
-  void runOnFunction() override {
-    getFunction().walk([](mlir::memref::BufferCastOp op) {
-      // Drop all buffer_cast that have no more users. Currently this will
-      // not happen, as tensor_to_memref has a side-effect. See
-      // https://reviews.llvm.org/D91967 for a discussion.
-      if (op.memref().getUsers().empty()) {
-        op.erase();
-      }
-    });
-  }
-};
-
 // Adds a Tensorflow producer version to the module to enable shape inference.
 struct AddTensorflowProducerVersion
     : public mlir::PassWrapper<AddTensorflowProducerVersion,
@@ -125,9 +109,6 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createTensorConstantBufferizePass());
   // Run canonicalizer for dead code removal.
   pm.addPass(mlir::createCanonicalizerPass());
-  // tensor_to_memref is not considered dead currently, fix that directly.
-  pm.addNestedPass<mlir::FuncOp>(
-      std::make_unique<RemoveUnusedBufferCastOperations>());
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
