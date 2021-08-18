@@ -392,19 +392,26 @@ static void ConvertTensorOperandsToMemrefDesc(
 }
 
 struct DebugListener : public JitExecutable::Listener {
-  void notifyModuleSpecialized(ArrayRef<mlir::Type> inputs) const override {
+  void notifyModuleSpecialized(
+      ArrayRef<mlir::Type> operands,
+      ArrayRef<mlir::DictionaryAttr> attrs) const override {
     std::string message;
-    llvm::raw_string_ostream(message)
-        << "Specialized module: " << inputs << "\n";
+    llvm::raw_string_ostream os(message);
+    os << "Specialized operands:\n";
+    for (auto tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+      mlir::Type type = std::get<0>(tuple.value());
+      mlir::Attribute attr = std::get<1>(tuple.value());
+      os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
+    }
     printf("%s", message.c_str());
     fflush(stdout);
   }
 
   void notifyValueSpecialized(unsigned index, mlir::Type type,
-                              mlir::Attribute attr) const override {
+                              mlir::Attribute value) const override {
     std::string message;
-    llvm::raw_string_ostream(message) << "Arg[" << index << "] "
-                                      << "value specialized: " << attr << "\n";
+    llvm::raw_string_ostream(message) << "%arg" << index << " "
+                                      << "value specialized: " << value << "\n";
     printf("%s", message.c_str());
     fflush(stdout);
   }
