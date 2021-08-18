@@ -157,7 +157,7 @@ def _variable_handle_from_shape_and_dtype(shape,
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
           "Using an explicit shared_name is not supported executing eagerly.")
-    shared_name = context.shared_name()
+    shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
       shape=shape,

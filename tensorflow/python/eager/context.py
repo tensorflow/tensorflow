@@ -2136,24 +2136,19 @@ def in_eager_mode():
   return executing_eagerly()
 
 
-def shared_name(name=None):
-  """Returns the anonymous shared name GUID if no shared name is specified.
+def anonymous_name():
+  """Returns the anonymous shared name.
 
-  In eager mode we need to use a unique shared name to avoid spurious sharing
-  issues. The runtime generates a unique name on our behalf when the reserved
-  GUID is used as a shared name.
-
-  Args:
-    name: Optional shared name
+  In eager mode we create anonymous resources to avoid spurious sharing issues.
+  The runtime generates a unique name on our behalf when the reserved
+  anonymous shared name is used as a shared name.
 
   Returns:
-    Eager compatible shared name.
+    The anonymous shared name.
   """
-  if name or not executing_eagerly():
-    return name
 
-  # Ensure a unique name when eager execution is enabled to avoid spurious
-  # sharing issues.
+  # The magic value is defined as
+  # `tensorflow::ResourceHandle::ANONYMOUS_NAME` in C++.
   return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
 
 
