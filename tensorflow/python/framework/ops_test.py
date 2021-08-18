@@ -3703,5 +3703,37 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     self.assertProtoEquals(pre_added_input_shapes, post_added_input_shapes)
 
 
+class TensorTest(test_util.TensorFlowTestCase):
+
+  def testToArrayEagerMode(self):
+
+    with context.eager_mode():
+      a = np.array(constant_op.constant(32), dtype=np.float32)
+      b = np.array(constant_op.constant(32, dtype=dtypes.int64))
+
+      self.assertEqual(a.dtype, np.dtype(np.float32))
+      self.assertEqual(b.dtype, np.dtype(np.int64))
+
+  def testToArrayFunctionMode(self):
+
+    @def_function.function
+    def f():
+      # Raises during trace compilation.
+      return np.array(constant_op.constant(32), dtype=np.int32)
+
+    @def_function.function
+    def g():
+      # Raises during trace compilation.
+      return np.array(constant_op.constant(32))
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                "Cannot convert a symbolic Tensor"):
+      f()
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                "Cannot convert a symbolic Tensor"):
+      g()
+
+
 if __name__ == "__main__":
   googletest.main()

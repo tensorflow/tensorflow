@@ -2988,9 +2988,9 @@ TEST_F(HloParserTest, ParseShardingSubGroup) {
   EXPECT_EQ(sharding.ToString(), original);
   Array<int64_t> tile_assignment({2, 2, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> sharding_types = {OpSharding::REPLICATED,
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::REPLICATED,
                                                   OpSharding::MANUAL};
-  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, sharding_types).ToString(),
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
             original);
 }
 

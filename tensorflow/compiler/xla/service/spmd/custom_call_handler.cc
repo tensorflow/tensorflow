@@ -381,8 +381,9 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
           CreateR0WithType(hlo->shape().element_type(), 0, &b_));
     }
     auto input = input_partitioned.hlo();
-    CHECK(hlo->sharding().IsManual());
-    CHECK(ShapeUtil::Compatible(input->shape(), hlo->shape()));
+    CHECK(hlo->sharding().IsManual() || hlo->sharding().IsManualSubgroup());
+    CHECK(ShapeUtil::Compatible(
+        input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     SetPartitionedHlo(hlo, [&] { return copy; });
@@ -391,7 +392,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
     auto input = GetPartitionedHlo(hlo->operand(0)).hlo();
-    CHECK(input->sharding().IsManual());
+    CHECK(input->sharding().IsManual() || input->sharding().IsManualSubgroup());
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     CHECK(ShapeUtil::Compatible(

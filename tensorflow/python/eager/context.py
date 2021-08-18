@@ -506,6 +506,10 @@ class Context(object):
     device_list = pywrap_tfe.TFE_ContextListDevices(self._context_handle)
     try:
       self._num_gpus = 0
+      current_job, current_task = None, None
+      server_def = self._server_def or self._collective_ops_server_def
+      if server_def is not None:
+        current_job, current_task = server_def.job_name, server_def.task_index
       for i in range(pywrap_tfe.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
@@ -517,7 +521,8 @@ class Context(object):
         logical_devices.append(
             LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tfe.TF_DeviceListType(device_list, i)
-        if dev_type == "GPU":
+        if (dev_type == "GPU" and spec.job == current_job and
+            spec.task == current_task):
           self._num_gpus += 1
 
     finally:

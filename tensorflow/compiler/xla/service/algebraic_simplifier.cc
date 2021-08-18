@@ -5456,6 +5456,151 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     return Status::OK();
   }
 
+  // Replace reshape of a transpose of a reshape with concatenated slicing if
+  // the reshape/transpose combination can be interpreted as a space-to-depth
+  // transformation.
+  if (operand->opcode() == HloOpcode::kReshape &&
+      transpose->user_count() == 1 &&
+      HloOpcode::kReshape == transpose->users()[0]->opcode()) {
+    VLOG(2) << "trying depth-to-space transform";
+    HloInstruction* reshape_operand = operand->mutable_operand(0);
+    HloInstruction* outer_reshape = transpose->users()[0];
+    TF_ASSIGN_OR_RETURN(
+        bool did_transform, ([&]() -> StatusOr<bool> {
+          if (operand->shape().dimensions_size() !=
+              reshape_operand->shape().dimensions_size() + 1) {
+            return false;
+          }
+
+          // Check that the reshape is splitting a single dimension into two.
+          int64_t split_dim = 0;
+          bool found_split_dims = false;
+          for (int64_t dim = 0; dim < reshape_operand->shape().rank(); dim++) {
+            if (operand->shape().dimensions(dim) !=
+                reshape_operand->shape().dimensions(dim)) {
+              const int64_t expected_size =
+                  operand->shape().dimensions(dim) *
+                  operand->shape().dimensions(dim + 1);
+              if (reshape_operand->shape().dimensions(dim) == expected_size) {
+                split_dim = dim;
+                found_split_dims = true;
+                break;
+              }
+              return false;
+            }
+          }
+          if (!found_split_dims) {
+            return false;
+          }
+          for (int64_t dim = split_dim + 1;
+               dim < reshape_operand->shape().rank(); dim++) {
+            if (operand->shape().dimensions(dim + 1) !=
+                reshape_operand->shape().dimensions(dim)) {
+              return false;
+            }
+          }
+
+          const int64_t num_chunks = operand->shape().dimensions(split_dim);
+          const int64_t chunk_size = operand->shape().dimensions(split_dim + 1);
+
+          // This optimization is only beneficial for a small number of chunks.
+          // TODO(b/196832483): Determine the appropriate upper bound here.
+          const int64_t kMaxChunksForTransformation = 5;
+          if (num_chunks > kMaxChunksForTransformation) {
+            return false;
+          }
+
+          // Determine where the smaller split dimension is being placed in the
+          // transpose
+          int64_t transpose_dim = 0;
+          bool found_transpose_dim = false;
+          for (int64_t dim = 0; dim < operand->shape().rank(); dim++) {
+            if (transpose->dimensions(dim) == split_dim) {
+              transpose_dim = dim;
+              found_transpose_dim = true;
+              break;
+            }
+          }
+
+          // Check that only the small split dimension is reordered in the
+          // transpose
+          if (!found_transpose_dim || transpose_dim == split_dim ||
+              transpose_dim == split_dim + 1) {
+            return false;
+          }
+          for (int64_t dim = 0; dim < operand->shape().rank(); dim++) {
+            int64_t offset = 0;
+            if (dim > transpose_dim) {
+              offset--;
+            }
+            if (dim > split_dim) {
+              offset++;
+            }
+
+            if (dim != transpose_dim &&
+                transpose->dimensions(dim) != dim + offset) {
+              return false;
+            }
+          }
+
+          // Check that the outer reshape has the same shape as the input,
+          // with the transformed dimensions appropriately scaled by num_chunks.
+          for (int64_t dim = 0; dim < reshape_operand->shape().rank(); dim++) {
+            if (dim == transpose_dim - 1) {
+              if (outer_reshape->shape().dimensions(dim) !=
+                  reshape_operand->shape().dimensions(dim) * num_chunks) {
+                return false;
+              }
+            } else if (dim == split_dim) {
+              if (outer_reshape->shape().dimensions(dim) !=
+                  reshape_operand->shape().dimensions(dim) / num_chunks) {
+                return false;
+              }
+            } else if (outer_reshape->shape().dimensions(dim) !=
+                       reshape_operand->shape().dimensions(dim)) {
+              return false;
+            }
+          }
+
+          // Create a concat-of-slices, slicing to create chunks of the expected
+          // size on the smaller split dimension.
+          std::vector<HloInstruction*> slices;
+          for (int64_t i = 0; i < num_chunks; i++) {
+            std::vector<int64_t> start_indices;
+            std::vector<int64_t> end_indices;
+            std::vector<int64_t> strides;
+            for (int64_t dim = 0; dim < reshape_operand->shape().rank();
+                 dim++) {
+              if (dim == split_dim) {
+                start_indices.push_back(i * chunk_size);
+                end_indices.push_back(i * chunk_size + chunk_size);
+              } else {
+                start_indices.push_back(0);
+                end_indices.push_back(reshape_operand->shape().dimensions(dim));
+              }
+              strides.push_back(1);
+            }
+            TF_ASSIGN_OR_RETURN(HloInstruction* const slice,
+                                MakeSliceHlo(reshape_operand, start_indices,
+                                             end_indices, strides));
+            slices.push_back(slice);
+            VLOG(2) << "slice " << i << " " << slice->ToString();
+          }
+
+          TF_ASSIGN_OR_RETURN(HloInstruction* const concat,
+                              MakeConcatHlo(slices, transpose_dim));
+          VLOG(2) << "concat " << concat->ToString();
+          TF_RETURN_IF_ERROR(
+              outer_reshape->ReplaceOperandWithDifferentShape(0, concat));
+
+          return true;
+        }()));
+    if (did_transform) {
+      changed_ = true;
+      return Status::OK();
+    }
+  }
+
   return Status::OK();
 }
 

@@ -2665,16 +2665,13 @@ func @sign_dynamic(%arg0: tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32> {
 
 // CHECK-LABEL: slice_constant_start
 func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i64>
   // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
   // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
   // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START:.*]]) :
   // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]])
+  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[START]])
   // CHECK-DAG-SAME: {slice_sizes = dense<2> : tensor<1xi64>} :
   // CHECK-DAG-SAME: (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
   // CHECK: return %[[RESULT]] : tensor<2xi32>
@@ -2686,14 +2683,8 @@ func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: slice_i32_consts
 func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi32>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi32>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: "mhlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<i32>) -> tensor<2xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %sizes = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
@@ -2702,14 +2693,8 @@ func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: slice_constant_start_negative_one_size
 func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[RESULT:.*]] =  "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<3xi32>
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i64>
+  // CHECK: %[[RESULT:.*]] =  "mhlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<3xi32>
   // CHECK: return %[[RESULT]] : tensor<3xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
   %sizes = "tf.Const"() {value = dense<[-1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
@@ -2719,24 +2704,10 @@ func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi
 
 // CHECK-LABEL: slice_constant_start_dynamic_shape
 func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<[1, 0]> : tensor<2xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
-  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START1:.*]] = "mhlo.reshape"(%[[SLICED_START1]]) :
-  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
-  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START2:.*]] = "mhlo.reshape"(%[[SLICED_START2]]) :
-  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[START1:.*]] = mhlo.constant dense<1> : tensor<i64>
+  // CHECK: %[[START2:.*]] = mhlo.constant dense<0> : tensor<i64>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"
-  // CHECK-DAG-SAME: (%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]])
+  // CHECK-DAG-SAME: (%arg0, %[[START1]], %[[START2]])
   // CHECK-DAG-SAME: {slice_sizes = dense<[1, 4]> : tensor<2xi64>} :
   // CHECK-DAG-SAME: (tensor<?x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>
@@ -2748,13 +2719,15 @@ func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2
 
 // CHECK-LABEL: slice_variable_start
 func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%arg1) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%[[START_I64]])
+  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%arg1)
   // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
   // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
   // CHECK: %[[RESHAPED_START1:.*]] = "mhlo.reshape"(%[[SLICED_START1]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%[[START_I64]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%arg1)
+  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
   // CHECK: %[[RESHAPED_START2:.*]] = "mhlo.reshape"(%[[SLICED_START2]]) : (tensor<1xi64>) -> tensor<i64>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>

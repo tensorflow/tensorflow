@@ -113,22 +113,6 @@ bool IsSmallAlloc(Value alloc) {
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
-// TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
-struct RemoveUnusedBufferCastOperations
-    : public mlir::PassWrapper<RemoveUnusedBufferCastOperations,
-                               mlir::FunctionPass> {
-  void runOnFunction() override {
-    getFunction().walk([](mlir::memref::BufferCastOp op) {
-      // Drop all buffercast that have no more users. Currently this will
-      // not happen, as buffercast has a side-effect. See
-      // https://reviews.llvm.org/D91967 for a dicsussion.
-      if (op.memref().getUsers().empty()) {
-        op.erase();
-      }
-    });
-  }
-};
-
 struct CollapseParallelLoopsTo1D
     : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
   void runOnFunction() override {
@@ -236,8 +220,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
+      /*allow_partial_conversion=*/false));
   pm.addNestedPass<mlir::FuncOp>(
       mlir::mhlo::createRankSpecializationClusterPass());
   pm.addNestedPass<mlir::FuncOp>(
@@ -351,10 +335,6 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Before bufferizing further, remove unused tensor_to_memref, so that we do
   // not create allocations for tensor computations that are not actually
   // needed.
-  pm.addPass(mlir::createCanonicalizerPass());
-  // TODO(herhut) Remove once handled in mlir core.
-  pm.addNestedPass<mlir::FuncOp>(
-      std::make_unique<RemoveUnusedBufferCastOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // Before inserting more allocs, map the ones we already have to the

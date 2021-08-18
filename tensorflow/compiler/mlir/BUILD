@@ -11,8 +11,8 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla:__subpackages__",
-        "@llvm-project//mlir:friends",
     ],
     licenses = ["notice"],
 )
@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -192,6 +193,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_reduce_patterns_inc_gen",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",

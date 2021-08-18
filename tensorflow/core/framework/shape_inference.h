@@ -38,6 +38,82 @@ namespace shape_inference {
 struct DimensionOrConstant;
 class InferenceContext;
 
+// This header contains the InferenceContext that is used to infer the shape of
+// the results of an operation or flag an operation with invalid inputs (e.g.,
+// mismatched shapes for elementwise operation) by ShapeRefiner. The shape of an
+// operation is computed using the OpShapeInferenceFn set via SetShapeFn in op
+// registration. The OpShapeInferenceFn uses a per op InferenceContext populated
+// with input shapes to compute resultant shape (including resource shapes).
+//
+// The shapes created in the InferenceContext are bound to the lifetime of the
+// InferenceContext in which it was created. E.g., in
+//
+// ```c++
+//  InferenceContext c;
+//  // Below a ShapeHandle is returned by MakeShape, while UnknownDim returns a
+//  // DimensionHandle.
+//  ShapeHandle in0 = c.MakeShape({10, c.UnknownDim()});
+// ```
+//
+// the ShapeHandle `in0` (and the nested unknown dim inside) is only valid while
+// `c` is in scope, as ShapeHandle and DimensionHandle are effectively
+// wrappers around pointers stored inside the context with the lifetime of the
+// value pointed to managed by the context. The result from one operation's
+// inference context will be passed as input to the inference of consumer
+// operations. Hence it is possible for ShapeHandles produced by inference on a
+// node to consist of ShapeHandles owned by different InferenceContexts. While
+// inferring the shapes of a Graph, the InferenceContext of all nodes/operations
+// in the Graph remain resident for the lifetime of the Graph (e.g, there is a
+// map from each node to its InferenceContext, technically its
+// ExtendedInferencContext which additionally stores the element types of inputs
+// & outputs, which remains resident).
+//
+// For functions, the body of the function is instantiated as a Graph while
+// inferring the result shapes of a function call node. The rules above apply
+// while the function's shape is being inferred, but the contexts associated
+// with nodes in the function body are released once the function call's
+// resultant shapes are inferred. The shapes of results returned by a function
+// are propagated to the InferenceContext of the function call's op (which is
+// associated with a Graph of nodes whose shape is being inferred) as the return
+// values of a function call node are the inputs of its consumer, but the return
+// values are produced by nodes inside the function whose InferenceContexts
+// (which owns the values pointed to by ShapeHandle and DimensionHandle) are
+// reclaimed after inferring function result shapes. Recursive user-defined
+// function are not supported hence inference of functions are fully nested with
+// the InferenceContext's of function calls forming a stack.
+//
+// For example, consider the following call and function:
+//
+// ```python
+// @tf.function
+// def g(st):
+//   d = tf.add(st, st)
+//   return d
+//
+// @tf.function
+// def f():
+//   st = tf.A()
+//   result = g(st)
+//   return h(result)
+// ```
+//
+// During inference of f, the shape of `A` will be inferred and the results from
+// its InferenceContext used as inputs to function call `g(st)`. The call node
+// will have an InferenceContext created (call it outer context) and the graph
+// corresponding to function `g` will be instantiated. The result shape of the
+// Arg nodes of the function will be associated with input from outer context.
+// During inference of `g` (for the callsite `g(st)` in `f`), the
+// InferenceContext of all nodes inside `g` will remain alive. Thus, when shape
+// of `tf.add` is computed it may rely on all inputs. Once the RetVal nodes of a
+// function is reached, we know the shape of its input may correspond to a shape
+// queried in the outer context and it is explicitly copied to outer context. In
+// this case that means that the shape of `d` is copied to the InferenceContext
+// of `g(st)` and so when `h(result)` is executed this shape may be queried.
+// Furthermore, no shapes computed due to call `g(st)` can be queried post this
+// point and, as the RetVal shapes have been coppied into outer context, all
+// InferenceContexts associated with nodes in function `g` instantiated for
+// `g(st)` may be and are released.
+
 // Dimension values are accessed through InferenceContext.
 class Dimension {
  private:

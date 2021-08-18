@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
@@ -37,7 +39,13 @@ namespace serving {
 namespace {
 
 const char* GetCostMeasurementType() {
-  return std::getenv("TF_COST_MEASUREMENT_TYPE");
+  static const char* type = std::getenv("TF_COST_MEASUREMENT_TYPE");
+  return type;
+}
+
+const char* GetRequestCostAccessorType() {
+  static const char* accessor = std::getenv("TF_REQUEST_COST_ACCESSOR_TYPE");
+  return accessor;
 }
 
 // TODO(b/181883417): Replace with RecordPaddingSizeV2.
@@ -284,6 +292,16 @@ Status BatchResourceBase::RegisterInput(
   batch_components->split_index = 0;
   batch_components->output = std::make_shared<TensorMatrix>();
   batch_components->status = std::make_shared<ThreadSafeStatus>();
+
+  const char* request_cost_accessor_type = GetRequestCostAccessorType();
+  std::unique_ptr<RequestCostAccessor> request_cost_accessor =
+      request_cost_accessor_type
+          ? RequestCostAccessorRegistry::CreateByNameOrNull(
+                request_cost_accessor_type)
+          : nullptr;
+  if (request_cost_accessor) {
+    batch_components->request_cost = request_cost_accessor->GetRequestCost();
+  }
 
   BatcherQueueT* batcher_queue;
   TF_RETURN_IF_ERROR(

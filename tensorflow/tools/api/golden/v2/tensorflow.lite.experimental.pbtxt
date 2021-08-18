@@ -1,12 +1,12 @@
 path: "tensorflow.lite.experimental"
 tf_module {
   member {
-    name: "Analyzer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "OpResolverType"
     mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "authoring"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "load_delegate"

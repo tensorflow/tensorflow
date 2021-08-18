@@ -450,13 +450,6 @@ tensorflow::Status InitSavedModel(
       initializers_and_signatures, options.model_metadata, bef_file,
       options.runtime, resource_context, fallback_state));
 
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in
-  if (options.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(resource_context);
-  }
-
   return tensorflow::Status::OK();
 }
 
@@ -499,7 +492,8 @@ namespace {
 // Gets the signatures from `signature_defs` and inserts them into `signatures`.
 void GetSignaturesFromSignatureDef(
     SignatureMap& signatures,
-    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs) {
+    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs,
+    const SavedModel::Options& options) {
   for (const auto& p : signature_defs) {
     const std::string& signature_name = p.first;
     const tensorflow::SignatureDef& signature_def = p.second;
@@ -516,9 +510,8 @@ void GetSignaturesFromSignatureDef(
           TensorSpec(tensor_info.dtype(), tensor_info.tensor_shape()));
     }
 
-    signature.input_devices =
-        std::vector<std::string>(signature_def.inputs().size(),
-                                 absl::GetFlag(FLAGS_tfrt_default_device));
+    signature.input_devices = std::vector<std::string>(
+        signature_def.inputs().size(), options.compile_options.default_device);
 
     signature.output_names.reserve(signature_def.outputs().size());
     signature.output_specs.reserve(signature_def.outputs().size());
@@ -539,9 +532,6 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   metrics::AddTFRTVersionMetric();
-
-  options.compile_options.default_device =
-      absl::GetFlag(FLAGS_tfrt_default_device);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -587,7 +577,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // TODO(b/187228559): Unify the code paths for populating the signature map.
     if (options.enable_lazy_loading) {
       GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
-                                    meta_graph_def.signature_def());
+                                    meta_graph_def.signature_def(), options);
     }
     tfrt::BefBuffer bef;
     TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(options.compile_options,
@@ -603,7 +593,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     auto init_start_time = absl::Now();
     TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
 
-    auto resource_context = std::make_unique<tfrt::ResourceContext>();
+    auto resource_context = CreateResourceContext(
+        options.runtime, options.compile_options.tpu_target);
     TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
                                       bef_file.get(), options,
                                       resource_context.get(), *fallback_state));
@@ -738,30 +729,28 @@ tensorflow::Status SavedModelImpl::Run(
 
 namespace {
 
-void CreateSortedSignatureNamesAndOriginalIndices(
-    absl::Span<const std::string> names,
-    std::vector<std::string>* output_sorted_names,
-    std::vector<size_t>* output_original_indices) {
-  DCHECK(output_sorted_names);
-  DCHECK(output_sorted_names->empty());
-  DCHECK(output_original_indices);
-  DCHECK(output_original_indices->empty());
+// Sort the strings in `names` and store the results in `sorted_names`. In
+// addition, the original index in `names` for the item `sorted_names[i]` is
+// stored in `original_indices[i]`.
+void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
+                                         std::vector<std::string>& sorted_names,
+                                         std::vector<int>& original_indices) {
+  DCHECK(sorted_names.empty());
+  DCHECK(original_indices.empty());
 
   // Generate indices.
-  output_original_indices->resize(names.size());
-  std::iota(output_original_indices->begin(), output_original_indices->end(),
-            0);
+  original_indices.resize(names.size());
+  std::iota(original_indices.begin(), original_indices.end(), 0);
 
   // Sort indices by comparing the corresponding names.
-  std::sort(output_original_indices->begin(), output_original_indices->end(),
-            [&](size_t x, size_t y) { return names[x] < names[y]; });
+  std::sort(original_indices.begin(), original_indices.end(),
+            [&](int x, int y) { return names[x] < names[y]; });
 
   // Use sorted indices to generate sorted names.
-  output_sorted_names->reserve(names.size());
-  for (size_t i = 0; i < names.size(); ++i) {
-    const size_t original_index = output_original_indices->at(i);
+  sorted_names.reserve(names.size());
+  for (int original_index : original_indices) {
     DCHECK_LE(original_index, names.size());
-    output_sorted_names->push_back(names[original_index]);
+    sorted_names.push_back(names[original_index]);
   }
 }
 
@@ -792,9 +781,9 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   // Sort `names` into determinisitic order to share loading result disregarding
   // the order in `names`.
   std::vector<std::string> sorted_signature_names;
-  std::vector<size_t> original_indices;
-  CreateSortedSignatureNamesAndOriginalIndices(names, &sorted_signature_names,
-                                               &original_indices);
+  std::vector<int> original_indices;
+  CreateSortedNamesAndOriginalIndices(names, sorted_signature_names,
+                                      original_indices);
 
   // Due to possible overlapping of feed nodes among user-specified inputs,
   // `JoinSignatures()` will deduplicate against fetch tensor names and produce
@@ -892,6 +881,21 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   return tensorflow::Status::OK();
 }
 
+std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
+    tensorflow::tfrt_stub::Runtime* runtime,
+    tensorflow::TfrtTpuInfraTarget tpu_target) {
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  runtime->CreateRuntimeResources(resource_context.get());
+
+  // TODO(b/178227859): We should make TPU resource init code pluggable, as
+  // opposed to linking it in. We can do this by adding a callback with
+  // `Runtime::AddCreateRuntimeResourceFn`.
+  if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
+    AddTpuResources(resource_context.get());
+  }
+  return resource_context;
+}
+
 tensorflow::StatusOr<mlir::OwningModuleRef> SavedModelImpl::ImportSubgraph(
     mlir::MLIRContext* context,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
@@ -923,24 +927,66 @@ tensorflow::Status SavedModelImpl::RunByTensorNames(
     std::vector<tensorflow::Tensor>* outputs) {
   // TODO(b/192498110): Validate input type.
 
+  // Sort the input/output names to have a stable order, so that the
+  // `joined_name`, which is used as the cache key, will be the same as long as
+  // the same set of inputs/outputs are specified.
+  std::vector<std::string> input_names;
+  for (const auto& p : inputs) input_names.push_back(p.first);
+  std::vector<std::string> sorted_input_names;
+  std::vector<int> input_original_indices;
+  CreateSortedNamesAndOriginalIndices(input_names, sorted_input_names,
+                                      input_original_indices);
+  // We also need to create sorted input dtypes as they are needed for the
+  // compilation.
+  std::vector<tensorflow::DataType> sorted_input_dtypes;
+  sorted_input_dtypes.reserve(inputs.size());
+  for (int original_index : input_original_indices) {
+    sorted_input_dtypes.push_back(inputs.at(original_index).second.dtype());
+  }
+
+  std::vector<std::string> sorted_output_names;
+  std::vector<int> output_original_indices;
+  CreateSortedNamesAndOriginalIndices(output_tensor_names, sorted_output_names,
+                                      output_original_indices);
+
+  // For target node names, we only need to sort them. The original indices are
+  // not needed.
+  std::vector<std::string> sorted_target_node_names(target_node_names.begin(),
+                                                    target_node_names.end());
+  std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
+
   TF_ASSIGN_OR_RETURN(
       const LoadingResult& loading_result,
-      GetOrCreateLoadingResult(inputs, output_tensor_names, target_node_names));
+      GetOrCreateLoadingResult(sorted_input_names, sorted_input_dtypes,
+                               sorted_output_names, sorted_target_node_names));
 
   const auto* func = loading_result.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
   DCHECK(func);
 
+  // Create the actual arguments to the compiled function, which are sorted
+  // according to the input tensor names.
   std::vector<tensorflow::Tensor> flat_inputs;
   flat_inputs.reserve(inputs.size());
-  for (auto& input : inputs) {
-    flat_inputs.push_back(input.second);
+  for (int original_index : input_original_indices) {
+    flat_inputs.push_back(inputs.at(original_index).second);
   }
 
-  outputs->clear();
-  return RunInternal(run_options, loading_result.name, *func, flat_inputs,
-                     /*captures=*/{}, outputs,
-                     loading_result.resource_context.get());
+  std::vector<tensorflow::Tensor> flat_outputs;
+  TF_RETURN_IF_ERROR(RunInternal(
+      run_options, loading_result.name, *func, flat_inputs,
+      /*captures=*/{}, &flat_outputs, loading_result.resource_context.get()));
+
+  // Create the outputs from the actual function results, which are sorted
+  // according to the output tensor names.
+  auto flat_output_iter = flat_outputs.begin();
+  outputs->resize(flat_outputs.size());
+  for (int original_index : output_original_indices) {
+    (*outputs)[original_index] = std::move(*flat_output_iter);
+    ++flat_output_iter;
+  }
+
+  return tensorflow::Status::OK();
 }
 
 namespace {
@@ -1038,7 +1084,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
   loading_result->name = joined_signature.name;
-  loading_result->resource_context = std::make_unique<tfrt::ResourceContext>();
+  loading_result->resource_context =
+      CreateResourceContext(runtime(), options_.compile_options.tpu_target);
+
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
       options_.compile_options, module.get(), &loading_result->bef));
 
@@ -1049,12 +1097,6 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       /*initializers_and_signatures=*/{}, options_.model_metadata,
       loading_result->bef_file.get(), options_.runtime,
       loading_result->resource_context.get(), *fallback_state_));
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in
-  if (options_.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(loading_result->resource_context.get());
-  }
 
   // Store loading_result in cache.
   const auto* loading_result_ptr = loading_result.get();
@@ -1078,19 +1120,14 @@ SavedModelImpl::GetOrCreateLoadingResult(absl::Span<const std::string> names) {
 
 StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::GetOrCreateLoadingResult(
-    absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_node_names) {
   // The format of the joined name is illustrated as in the following example:
   // input1-input2^output1-output2^target1-target2
   const auto joined_name = absl::StrCat(
-      absl::StrJoin(
-          inputs, kTensorNameJoiningDelimiter,
-          [](std::string* out,
-             const std::pair<std::string, tensorflow::Tensor>& input) {
-            // Output only the name of the input tensor.
-            out->append(input.first);
-          }),
+      absl::StrJoin(input_tensor_names, kTensorNameJoiningDelimiter),
       kArgumentTypeJoiningDelimiter,
       absl::StrJoin(output_tensor_names, kTensorNameJoiningDelimiter),
       kArgumentTypeJoiningDelimiter,
@@ -1104,11 +1141,15 @@ SavedModelImpl::GetOrCreateLoadingResult(
   joined_signature.name = joined_name;
 
   // Populate input_nodes in joined_signature.
-  for (const auto& input : inputs) {
+  DCHECK_EQ(input_tensor_names.size(), input_tensor_dtypes.size());
+  for (int i = 0; i < input_tensor_names.size(); ++i) {
+    const auto& input_name = input_tensor_names[i];
+    auto input_dtype = input_tensor_dtypes[i];
+
     tensorflow::ArrayInfo array_info;
-    array_info.imported_dtype = input.second.dtype();
+    array_info.imported_dtype = input_dtype;
     array_info.shape.set_unknown_rank(true);
-    joined_signature.input_nodes[input.first] = array_info;
+    joined_signature.input_nodes[input_name] = array_info;
   }
 
   joined_signature.output_nodes = {output_tensor_names.begin(),

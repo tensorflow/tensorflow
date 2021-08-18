@@ -130,6 +130,8 @@
       ```
   * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in
     distributed computations.
+  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
+    to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
 
 ## Bug Fixes and Other Changes
 
@@ -275,10 +277,12 @@ This release contains contributions from many people at Google, as well as:
             coming soon.
         *   Old Converter (TOCO) is getting removed from next release. It's been
             deprecated for few releases already.
-    *   lite.experimental.Analyzer API:
-        *   An experimental tool to analyze TFLite flatbuffer models. This API
-            can be used to investigate TFLite model structure and check
-            compatibility with GPU delegate.
+    *   lite.experimental.authoring.compatible API:
+        *   A Python decorator to provide a way to check TFLite compatibility
+            issue of `tf.function`. This returns a callable object which
+            validates TFLite compatibility. If an incompatible operation is
+            encountered during execution, an exception will be raised with
+            information about the incompatible ops.
 
 *   `tf.saved_model`:
 

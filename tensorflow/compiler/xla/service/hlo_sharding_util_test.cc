@@ -219,9 +219,9 @@ TEST(HloShardingUtilTest, ReshapeToTileDimension2D_Dim2_Batch1) {
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
   Array<int64_t> tile_assignment({1, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> sharding_types = {OpSharding::MANUAL};
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL};
   // Subgroup sharding {devices=[1,2,2]0,1,2,3 last_tile_dims={manual}}
-  HloSharding sharding = HloSharding::Subgroup(tile_assignment, sharding_types);
+  HloSharding sharding = HloSharding::Subgroup(tile_assignment, subgroup_types);
 
   GroupedSharding group_sharding = GetManualSubgroupSharding(sharding);
 
@@ -239,11 +239,11 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualAndReplicted) {
   Array<int64_t> tile_assignment({1, 2, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> sharding_types = {OpSharding::REPLICATED,
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::REPLICATED,
                                                   OpSharding::MANUAL};
   // Subgroup sharding
   //  {devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dims={replicated, manual}}
-  HloSharding sharding = HloSharding::Subgroup(tile_assignment, sharding_types);
+  HloSharding sharding = HloSharding::Subgroup(tile_assignment, subgroup_types);
 
   GroupedSharding group_sharding = GetManualSubgroupSharding(sharding);
 
@@ -260,11 +260,11 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualAndReplicted) {
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ReplicatedAndManual) {
   Array<int64_t> tile_assignment({1, 2, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> sharding_types = {OpSharding::MANUAL,
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
                                                   OpSharding::REPLICATED};
   // Subgroup sharding
   //  {devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dims={manual, replicated}}
-  HloSharding sharding = HloSharding::Subgroup(tile_assignment, sharding_types);
+  HloSharding sharding = HloSharding::Subgroup(tile_assignment, subgroup_types);
 
   GroupedSharding group_sharding = GetManualSubgroupSharding(sharding);
 
@@ -360,7 +360,7 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated) {
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
 
   EXPECT_EQ(ungroup_sharding.ToString(),
-            "{devices=[1,1,2,2]0,1,2,3 last_tile_dims={replicated, manual}}");
+            "{devices=[1,1,2,2]0,2,1,3 last_tile_dims={replicated, manual}}");
 }
 
 TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {
@@ -380,7 +380,7 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
 
   EXPECT_EQ(ungroup_sharding.ToString(),
-            "{devices=[1,1,2,2]0,1,2,3 last_tile_dims={manual, replicated}}");
+            "{devices=[1,1,2,2]0,2,1,3 last_tile_dims={manual, replicated}}");
 }
 
 TEST(HloShardingUtilTest, DeviceGroupsDoesNotMatch) {

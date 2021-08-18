@@ -26,6 +26,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//tensorflow/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 
 package(
     default_visibility = [":friends"],
@@ -1161,12 +1162,12 @@ cc_library(
 cc_library(
     name = "gpu_plugin_impl",
     compatible_with = [],
-    deps = [
+    deps = if_gpu_is_configured([
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-    ] + if_cuda_is_configured([
+    ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
     ]) + if_rocm_is_configured([

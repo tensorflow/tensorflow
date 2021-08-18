@@ -109,6 +109,7 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
+  // TODO(fmuham): Replace tensorflow::StringPiece with absl::Cord.
   // The Payload-related APIs are cloned from absl::Status.
   //
   // Returns the payload of a status given its unique `type_url` key, if

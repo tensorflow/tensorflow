@@ -324,8 +324,6 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  if (prefer_tf2xla)
-    pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFEnsureStaticShapesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));

@@ -2895,7 +2895,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   bool last_tile_dims = false;
   std::vector<int64_t> devices;
   std::vector<int64_t> tile_assignment_dimensions;
-  std::vector<OpSharding::Type> sharding_types;
+  std::vector<OpSharding::Type> subgroup_types;
   while (lexer_.GetKind() != TokKind::kRbrace) {
     switch (lexer_.GetKind()) {
       case TokKind::kw_maximal:
@@ -2951,7 +2951,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         } else if (lexer_.GetStrVal() == "last_tile_dims") {
           last_tile_dims = true;
           lexer_.Lex();
-          if (!ParseListShardingType(&sharding_types)) {
+          if (!ParseListShardingType(&subgroup_types)) {
             return false;
           }
         } else {
@@ -3011,7 +3011,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     }
 
     if (last_tile_dims) {
-      for (OpSharding::Type type : sharding_types) {
+      for (OpSharding::Type type : subgroup_types) {
         sharding->add_last_tile_dims(type);
       }
     } else {

@@ -14,6 +14,7 @@
 # ==============================================================================
 """This tool analyzes a TensorFlow Lite graph."""
 
+import http.server
 import os
 
 # pylint: disable=g-import-not-at-top
@@ -21,63 +22,46 @@ if not os.path.splitext(__file__)[0].endswith(
     os.path.join("tflite_runtime", "analyzer")):
   # This file is part of tensorflow package.
   from tensorflow.lite.python.analyzer_wrapper import _pywrap_analyzer_wrapper as _analyzer_wrapper
-  from tensorflow.python.util.tf_export import tf_export as _tf_export
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_analyzer_wrapper as _analyzer_wrapper
 
-  def _tf_export(*x, **kwargs):
-    del x, kwargs
-    return lambda x: x
+
+def _handle_webserver(host_name, server_port, html_body):
+  """Start a HTTP server for the given html_body."""
+
+  class MyServer(http.server.BaseHTTPRequestHandler):
+
+    def do_GET(self):  # pylint: disable=invalid-name
+      self.send_response(200)
+      self.send_header("Content-type", "text/html")
+      self.end_headers()
+      self.wfile.write(bytes(html_body, "utf-8"))
+
+  web_server = http.server.HTTPServer((host_name, server_port), MyServer)
+  print("Server started http://%s:%s" % (host_name, server_port))
+  try:
+    web_server.serve_forever()
+  except KeyboardInterrupt:
+    pass
+  web_server.server_close()
 
 
-@_tf_export("lite.experimental.Analyzer")
-class ModelAnalyzer():
-  """Provides a collection of TFLite model analyzer tools.
-
-  Example:
-
-  ```python
-  model = tf.keras.applications.MobileNetV3Large()
-  fb_model = tf.lite.TFLiteConverterV2.from_keras_model(model).convert()
-  tf.lite.experimental.Analyzer.analyze(model_content=fb_model)
-  # === TFLite ModelAnalyzer ===
-  #
-  # Your TFLite model has ‘1’ subgraph(s). In the subgraph description below,
-  # T# represents the Tensor numbers. For example, in Subgraph#0, the MUL op
-  # takes tensor #0 and tensor #19 as input and produces tensor #136 as output.
-  #
-  # Subgraph#0 main(T#0) -> [T#263]
-  #   Op#0 MUL(T#0, T#19) -> [T#136]
-  #   Op#1 ADD(T#136, T#18) -> [T#137]
-  #   Op#2 CONV_2D(T#137, T#44, T#93) -> [T#138]
-  #   Op#3 HARD_SWISH(T#138) -> [T#139]
-  #   Op#4 DEPTHWISE_CONV_2D(T#139, T#94, T#24) -> [T#140]
-  #   ...
-  ```
-
-  WARNING: Experimental interface, subject to change.
-  """
+class ModelAnalyzer:
+  """Provides a collection of TFLite model analyzer tools."""
 
   @staticmethod
   def analyze(model_path=None,
               model_content=None,
-              gpu_compatibility=False,
-              **kwargs):
-    """Analyzes the given tflite_model with dumping model structure.
+              experimental_use_mlir=False,
+              gpu_compatibility=False):
+    """Analyzes the given tflite_model.
 
-    This tool provides a way to understand users' TFLite flatbuffer model by
-    dumping internal graph structure. It also provides additional features
-    like checking GPU delegate compatibility.
-
-    WARNING: Experimental interface, subject to change.
-    WARNING: The output format is not guaranteed to stay stable, so don't
-             write scripts to this.
     Args:
       model_path: TFLite flatbuffer model path.
       model_content: TFLite flatbuffer model object.
+      experimental_use_mlir: Use MLIR format for model dump.
       gpu_compatibility: Whether to check GPU delegate compatibility.
-      **kwargs: Experimental keyword arguments to analyze API.
 
     Returns:
       Print analyzed report via console output.
@@ -93,7 +77,7 @@ class ModelAnalyzer():
       tflite_model = model_content
       input_is_filepath = False
 
-    if kwargs.get("experimental_use_mlir", False):
+    if experimental_use_mlir:
       print(_analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath))
     else:
       print(

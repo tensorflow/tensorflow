@@ -144,6 +144,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   void EndStep() override;
 
   tensorflow::Status AsyncWait() override {
+    TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
     return tensorflow::Status::OK();
   }
@@ -211,6 +212,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::EagerContext* GetEagerContext();
   const tensorflow::EagerContext* GetEagerContext() const;
+  TfrtContext* GetTfrtContext();
 
   // Selects the op handler to execute the op based on the arguments. This
   // op handler selection is cheap. But it can be nullptr even it return OK
@@ -230,7 +232,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   AsyncValueRef<Chain>* GetChain();
 
   // Indicates sync or async execution.
-  bool is_async() { return GetEagerContext()->Executor().Async(); }
+  bool IsAsync() const { return context_.IsAsync(); }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* op) {
@@ -335,14 +337,15 @@ class TensorInterface : public tensorflow::AbstractTensorInterface {
 class TensorHandleInterface
     : public tensorflow::ImmediateExecutionTensorHandle {
  public:
-  explicit TensorHandleInterface(Value&& v, CoreRuntime* corert);
+  explicit TensorHandleInterface(Value&& v, TfrtContext* context);
 
   explicit TensorHandleInterface(tensorflow::DataType dtype, Value&& v,
-                                 CoreRuntime* corert);
+                                 TfrtContext* context);
 
   void Release() override { Unref(); }
 
   tensorflow::DataType DataType() const override;
+  tensorflow::Status TensorHandleStatus() const override;
   tensorflow::Status Shape(
       tensorflow::PartialTensorShape* shape) const override;
   tensorflow::Status NumDims(int* num_dims) const override;
@@ -387,13 +390,16 @@ class TensorHandleInterface
  private:
   llvm::Optional<const TensorMetadata*> Metadata() const;
 
+  tensorflow::StatusOr<tensorflow::DataType> ObtainDataTypeFromMetaData(
+      const TensorMetadata*) const;
+
   // If the tensor handle is generated as the result of a function, the datatype
   // is known from the function output signature.
   // Therefore, we can obtain the datatype earlier, before the function
   // execution completes.
   llvm::Optional<tensorflow::DataType> dtype_;
 
-  CoreRuntime& corert_;
+  TfrtContext& context_;
 
   // Value of tfrt::TensorHandle.
   Value value_;

@@ -151,6 +151,7 @@ tfrt_cc_library(
         "@llvm-project//mlir:Async",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_async_runtime_api",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",

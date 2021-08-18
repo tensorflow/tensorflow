@@ -38,16 +38,31 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 	return list, start + size, nil
 }
 
+// XlaSpmdShardToFullShapeAttr is an optional argument to XlaSpmdShardToFullShape.
+type XlaSpmdShardToFullShapeAttr func(optionalAttr)
+
+// XlaSpmdShardToFullShapeDim sets the optional dim attribute to value.
+// If not specified, defaults to -1
+func XlaSpmdShardToFullShapeDim(value int64) XlaSpmdShardToFullShapeAttr {
+	return func(m optionalAttr) {
+		m["dim"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from manual partitioning to
 //
 // automatic partitioning. It converts the shard-shaped, manually partitioned input
 // into full-shaped tensor to be partitioned automatically with the same sharding
-// used by manual partitioning.
-func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape) (output tf.Output) {
+// used by manual partitioning. The conversion can happen partially in subgroups,
+// by specifying the dim attribute, where only that dim will be converted.
+func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape, optional ...XlaSpmdShardToFullShapeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"manual_sharding": manual_sharding, "full_shape": full_shape}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaSpmdShardToFullShape",
 		Input: []tf.Input{
@@ -27399,17 +27414,33 @@ func FusedBatchNormGrad(scope *Scope, y_backprop tf.Output, x tf.Output, scale t
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
+// XlaSpmdFullToShardShapeAttr is an optional argument to XlaSpmdFullToShardShape.
+type XlaSpmdFullToShardShapeAttr func(optionalAttr)
+
+// XlaSpmdFullToShardShapeDim sets the optional dim attribute to value.
+// If not specified, defaults to -1
+func XlaSpmdFullToShardShapeDim(value int64) XlaSpmdFullToShardShapeAttr {
+	return func(m optionalAttr) {
+		m["dim"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from automatic partitioning to
 //
 // manual partitioning. It annotates the input (full-shape, to be automatically
 // partitioned) with the same sharding used by manual partitioning, and outputs a
 // shard-shaped tensor to be consumed by later manually-partitioned ops. If the
 // shape is not evenly partitionable, the padding region will be masked with 0s.
-func XlaSpmdFullToShardShape(scope *Scope, input tf.Output, manual_sharding string) (output tf.Output) {
+// The conversion can happen partially in subgroups, by specifying the dim
+// attribute, where only that dim will be converted.
+func XlaSpmdFullToShardShape(scope *Scope, input tf.Output, manual_sharding string, optional ...XlaSpmdFullToShardShapeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"manual_sharding": manual_sharding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaSpmdFullToShardShape",
 		Input: []tf.Input{
