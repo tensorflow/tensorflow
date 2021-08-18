@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -345,6 +347,8 @@ class ExecutorState {
 
   int64_t step_id_;
   int64_t start_time_usecs_ = 0;
+  // The deadline for the session to complete by. Empty if unspecified.
+  absl::optional<absl::Time> deadline_;
 
   // Not owned.
   RendezvousInterface* rendezvous_;
@@ -398,6 +402,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       start_time_usecs_(args.start_time_usecs),
+      deadline_(args.deadline),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
@@ -700,6 +705,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
     params.device = device;
   }
   params.start_time_usecs = start_time_usecs_;
+  params.deadline = deadline_;
   params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;

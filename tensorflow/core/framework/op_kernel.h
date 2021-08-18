@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -558,6 +560,9 @@ class OpKernelContext {
     // Timestamp for the start of graph execution. Used for latency metrics.
     int64_t start_time_usecs = 0;
 
+    // The deadline for the session to complete by. Empty if unspecified.
+    absl::optional<absl::Time> deadline;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -682,6 +687,10 @@ class OpKernelContext {
   int64_t step_id() const { return params_->step_id; }
 
   int64_t start_time_usecs() const { return params_->start_time_usecs; }
+
+  // The deadline for the session to complete by. Empty if unspecified in
+  // RunOptions.
+  absl::optional<absl::Time> deadline() const { return params_->deadline; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 

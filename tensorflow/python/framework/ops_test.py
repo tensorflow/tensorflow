@@ -3454,6 +3454,25 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     wrap_function.function_from_graph_def(graph_def, [], ["output"])
 
 
+class DeadlineTest(test_util.TensorFlowTestCase):
+
+  def testNoDeadlineSet(self):
+    with ops.Graph().as_default() as g:
+      get_deadline = test_ops.get_deadline()
+      with self.session(graph=g) as sess:
+        run_options = config_pb2.RunOptions()
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(get_deadline, options=run_options)
+
+  def testDeadlineSetTimesOut(self):
+    with ops.Graph().as_default() as g:
+      sleep_op = test_ops.sleep_op(10)
+      with self.session(graph=g) as sess:
+        run_options = config_pb2.RunOptions(timeout_in_ms=3_000)
+        with self.assertRaises(errors.DeadlineExceededError):
+          sess.run(sleep_op, options=run_options)
+
+
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):

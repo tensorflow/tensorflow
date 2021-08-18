@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -592,6 +594,10 @@ Status DirectSession::RunInternal(
   const int64_t call_timeout = run_options.timeout_in_ms() > 0
                                    ? run_options.timeout_in_ms()
                                    : operation_timeout_in_ms_;
+  absl::optional<absl::Time> deadline;
+  if (call_timeout > 0) {
+    deadline = absl::Now() + absl::Milliseconds(call_timeout);
+  }
 
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
@@ -647,6 +653,7 @@ Status DirectSession::RunInternal(
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
+  args.deadline = deadline;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 

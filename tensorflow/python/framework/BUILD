@@ -1608,6 +1608,7 @@ cc_library(
     srcs = ["test_ops.cc"],
     linkstatic = 1,
     deps = [
+        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
