@@ -228,7 +228,26 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   uint32 total_file_size;
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &total_file_size, &offset));
   TF_RETURN_IF_ERROR(ExpectText(wav_string, kRiffType, &offset));
-  TF_RETURN_IF_ERROR(ExpectText(wav_string, kFormatChunkId, &offset));
+  std::string found_text;
+  TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &found_text, &offset));
+  while (found_text != kFormatChunkId) {
+    // Padding chunk may occur between "WAVE" and "fmt ".
+    // Skip JUNK/bext/etc field to support for WAV file with either JUNK Chunk,
+    // or broadcast WAV where additional tags might appear.
+    // Reference: the implementation of tfio in audio_video_wav_kernels.cc,
+    //            https://www.daubnet.com/en/file-format-riff,
+    //            https://en.wikipedia.org/wiki/Broadcast_Wave_Format
+    if (found_text != "JUNK" && found_text != "bext" && found_text != "iXML" &&
+        found_text != "qlty" && found_text != "mext" && found_text != "levl" &&
+        found_text != "link" && found_text != "axml") {
+      return errors::InvalidArgument("Unexpected field ", found_text);
+    }
+    uint32 size_of_chunk;
+    TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &size_of_chunk, &offset));
+    TF_RETURN_IF_ERROR(
+        IncrementOffset(offset, size_of_chunk, wav_string.size(), &offset));
+    TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &found_text, &offset));
+  }
   uint32 format_chunk_size;
   TF_RETURN_IF_ERROR(
       ReadValue<uint32>(wav_string, &format_chunk_size, &offset));
