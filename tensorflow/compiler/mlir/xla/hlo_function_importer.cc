@@ -624,13 +624,27 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // Operands in the first half are reduction inputs and the remaining
       // operands are corresponding initial values.
       size_t num_inputs = operands.size() / 2;
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+        return_types = llvm::to_vector<6>(tuple_ty.getTypes());
+      }
+
       auto reduce = func_builder->create<mlir::mhlo::ReduceOp>(
-          loc, result_type, llvm::makeArrayRef(operands).take_front(num_inputs),
+          loc, return_types,
+          llvm::makeArrayRef(operands).take_front(num_inputs),
           llvm::makeArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*instruction->to_apply(), &reduce.body()));
-      return reduce.getOperation();
+
+      // Check if the output needs to be tupled.
+      if (return_types.size() == 1 && return_types.front() == result_type) {
+        return reduce.getOperation();
+      }
+
+      return func_builder
+          ->create<mlir::mhlo::TupleOp>(loc, result_type, reduce.getResults())
+          .getOperation();
     }
     case HloOpcode::kReverse: {
       return func_builder
