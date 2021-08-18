@@ -3503,9 +3503,11 @@ py_test(
         ":gradients",
         ":math_ops",
         ":random_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
     ],
 )

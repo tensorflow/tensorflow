@@ -27,10 +27,185 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
-
-using shape_inference::InferenceContext;
-
 namespace {
+
+using ::tensorflow::shape_inference::InferenceContext;
+using ::tensorflow::shape_inference::ShapeHandle;
+
+// Returns a Tensor containing the underlyiing constant value of a Node if the
+// node contains a constant value.
+Status EvaluateConstantNode(const Node& node, Tensor* output, bool* success) {
+  *success = false;
+  if (node.IsConstant()) {
+    if (output->FromProto(node.def().attr().at("value").tensor())) {
+      *success = true;
+    }
+  }
+  return Status::OK();
+}
+
+// Returns the int value corresponding to the input src at the i'th edge if the
+// input src contains a scalar tensor.
+Status EvaluateConstantIntFromScalarEdge(const Node& node, int input_idx,
+                                         int64* output, bool* success) {
+  *success = false;
+  Tensor scalar;
+  const Edge* edge;
+  TF_RETURN_IF_ERROR(node.input_edge(input_idx, &edge));
+  TF_RETURN_IF_ERROR(EvaluateConstantNode(*edge->src(), &scalar, success));
+  if (success && scalar.NumElements() == 1) {
+    if (scalar.dtype() == DT_INT32) {
+      *output = scalar.scalar<int32>()();
+    } else if (scalar.dtype() == DT_INT64) {
+      *output = scalar.scalar<int64>()();
+    } else {
+      *success = false;
+    }
+  }
+  return Status::OK();
+}
+
+// Tries to infer the tensor output based on the input dims of a
+// Shape node.
+// [allow_partial = false]
+//   Can infer the Shape op's output tensor only when the
+//   input shapes to the Shape op are fully defined.
+// [allow_partial = true]
+//   Can infer the Shape op's output tensor as long as the rank of the input
+//   shapes to the Shape op are known. Uses kUnknownDim for unknown dims.
+Status TryToInferTensorOutputFromShapeNode(const Node& shape_node,
+                                           InferenceContext* shape_c,
+                                           Tensor* output, bool* success,
+                                           bool allow_partial = false) {
+  *success = false;
+  if (shape_node.type_string() != "Shape") return Status::OK();
+  if (shape_c == nullptr) return Status::OK();
+  if (!shape_c->FullyDefined(shape_c->input(0)) && !allow_partial)
+    return Status::OK();
+  if (!shape_c->RankKnown(shape_c->input(0))) return Status::OK();
+
+  int src_rank = shape_c->Rank(shape_c->input(0));
+  Tensor t(shape_node.output_type(0), TensorShape({src_rank}));
+  if (shape_node.output_type(0) == DT_INT32) {
+    auto flat = t.flat<int>();
+    for (int i = 0; i < src_rank; i++) {
+      int64_t dimension;
+      if (shape_c->ValueKnown(shape_c->Dim(shape_c->input(0), i))) {
+        dimension = shape_c->Value(shape_c->Dim(shape_c->input(0), i));
+        if (!FastBoundsCheck(dimension, std::numeric_limits<int32>::max())) {
+          return errors::InvalidArgument(
+              "Shape has output type int32, but dimension exceeds maximum "
+              "int32 value");
+        }
+      } else {
+        dimension = shape_c->kUnknownDim;
+      }
+      flat(i) = static_cast<int32>(dimension);
+    }
+  } else if (shape_node.output_type(0) == DT_INT64) {
+    auto flat = t.flat<int64_t>();
+    for (int i = 0; i < src_rank; i++) {
+      if (shape_c->ValueKnown(shape_c->Dim(shape_c->input(0), i))) {
+        flat(i) = shape_c->Value(shape_c->Dim(shape_c->input(0), i));
+      } else {
+        flat(i) = shape_c->kUnknownDim;
+      }
+    }
+  } else {
+    return errors::FailedPrecondition(
+        "Shape has output type that is not int32 or int64");
+  }
+  *output = t;
+  *success = true;
+  return Status::OK();
+}
+
+// Tries to infer the tensor output of a StridedSlice node. This can be done
+// when taking a slice of a fully defined Shape node or when taking a slice
+// of partial Shape node along a known dimension.
+// Examples:
+//  tf.shape(x)[0]; x.shape = (5, 10) - slicing fully defined shape
+//  tf.shape(x)[0]; x.shape = (5, ?) - slicing partial shape along known dim
+Status TryToInferTensorOutputFromStridedSliceNode(const Node& node,
+                                                  const ShapeRefiner& refiner,
+                                                  Tensor* output,
+                                                  bool* success) {
+  *success = false;
+  const Edge* edge;
+  TF_RETURN_IF_ERROR(node.input_edge(0, &edge));
+  const Node* shape_node = edge->src();
+  const Node* stride_node = edge->dst();
+  InferenceContext* shape_c = refiner.GetContext(shape_node);
+  InferenceContext* stride_c = refiner.GetContext(stride_node);
+
+  if (stride_c == nullptr || shape_c == nullptr) return Status::OK();
+  if (stride_node == nullptr || shape_node == nullptr) return Status::OK();
+  if (stride_node->type_string() != "StridedSlice") return Status::OK();
+  if (shape_node->type_string() != "Shape") return Status::OK();
+
+  // Only attempt to evaluate if the rank of the inputs to the Shape node are
+  // known.
+  if (!shape_c->RankKnown(shape_c->input(0))) return Status::OK();
+
+  // Only attempt to evaluate if begin/end/strides values of the StridedSlice
+  // node are all scalars.
+  for (int i = 1; i <= 3; ++i) {
+    ShapeHandle input_shape = stride_c->input(i);
+    if (stride_c->Value(stride_c->Dim(input_shape, 0)) != 1) {
+      return Status::OK();
+    }
+  }
+
+  // Only attempt to evaluate cases with non-complex masks.
+  int32 begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  TF_RETURN_IF_ERROR(stride_c->GetAttr("begin_mask", &begin_mask));
+  TF_RETURN_IF_ERROR(stride_c->GetAttr("end_mask", &end_mask));
+  TF_RETURN_IF_ERROR(stride_c->GetAttr("ellipsis_mask", &ellipsis_mask));
+  TF_RETURN_IF_ERROR(stride_c->GetAttr("new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(stride_c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+
+  // Case where user has sliced a single element of a collection. E.g.
+  // collection[i].
+  bool accesses_single_element = begin_mask == 0 && end_mask == 0 &&
+                                 ellipsis_mask == 0 && new_axis_mask == 0 &&
+                                 shrink_axis_mask == 1;
+
+  if (!accesses_single_element) return Status::OK();
+
+  // Calculate the output tensor from the Shape node.
+  Tensor shape_output;
+  TF_RETURN_IF_ERROR(TryToInferTensorOutputFromShapeNode(
+      *shape_node, shape_c, &shape_output, success, /*allow_partial=*/true));
+  if (!success) return Status::OK();
+
+  // Discard the output tensor computed above if the StridedSlice points to an
+  // unknown dimension.
+  int64 begin_value = 0;
+  bool evaluated = false;
+  *success = false;
+  TF_RETURN_IF_ERROR(EvaluateConstantIntFromScalarEdge(
+      *stride_node, 1, &begin_value, &evaluated));
+
+  if (evaluated && node.output_type(0) == shape_output.dtype()) {
+    begin_value = begin_value < 0
+                      ? begin_value + shape_c->Rank(shape_c->input(0))
+                      : begin_value;
+    Tensor t(node.output_type(0), TensorShape({}));
+    if (shape_output.dtype() == DT_INT32 &&
+        shape_output.flat<int>()(begin_value) != -1) {
+      t.flat<int32>()(0) = shape_output.flat<int>()(begin_value);
+      *output = t;
+      *success = true;
+    } else if (shape_output.dtype() == DT_INT64 &&
+               shape_output.flat<int64_t>()(begin_value) != -1) {
+      t.flat<int64_t>()(0) = shape_output.flat<int64_t>()(begin_value);
+      *output = t;
+      *success = true;
+    }
+  }
+
+  return Status::OK();
+}
 
 // Tries to infer tensor output based on the input shapes of the node. In some
 // cases, the shapes of the inputs are sufficient for inferring the contents of
@@ -49,40 +224,18 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
     return Status::OK();
   }
 
-  if (node->type_string() == "Shape") {
+  if (node->type_string() == "StridedSlice") {
+    TF_RETURN_IF_ERROR(TryToInferTensorOutputFromStridedSliceNode(
+        *node, refiner, output, success));
+  } else if (node->type_string() == "Shape") {
     // If input shapes to the shape op are fully defined,
     // we can infer the shape op's output tensor.
-    bool fully_defined_inputs = c->FullyDefined(c->input(0));
-    if (fully_defined_inputs) {
-      int input_rank = c->Rank(c->input(0));
-      Tensor t(node->output_type(0), TensorShape({input_rank}));
-      if (node->output_type(0) == DT_INT32) {
-        auto flat = t.flat<int>();
-        for (int i = 0; i < input_rank; i++) {
-          int64_t dimension = c->Value(c->Dim(c->input(0), i));
-          if (!FastBoundsCheck(dimension, std::numeric_limits<int32>::max())) {
-            return errors::InvalidArgument(
-                "Shape has output type int32, but dimension exceeds maximum "
-                "int32 value");
-          }
-          flat(i) = static_cast<int32>(dimension);
-        }
-      } else if (node->output_type(0) == DT_INT64) {
-        auto flat = t.flat<int64_t>();
-        for (int i = 0; i < input_rank; i++) {
-          flat(i) = c->Value(c->Dim(c->input(0), i));
-        }
-      } else {
-        return errors::FailedPrecondition(
-            "Shape has output type that is not int32 or int64");
-      }
-      *output = t;
-      *success = true;
-    }
+    TF_RETURN_IF_ERROR(
+        TryToInferTensorOutputFromShapeNode(*node, c, output, success));
   } else if (node->type_string() == "Rank") {
     bool rank_known = c->RankKnown(c->input(0));
     if (rank_known) {
-      int32_t input_rank = c->Rank(c->input(0));
+      int32 input_rank = c->Rank(c->input(0));
       Tensor t(node->output_type(0), TensorShape({}));
       t.flat<int32>()(0) = input_rank;
       *output = t;
@@ -91,9 +244,9 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   } else if (node->type_string() == "Size") {
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
     if (fully_defined_inputs) {
-      int32_t rank = c->Rank(c->input(0));
+      int32 rank = c->Rank(c->input(0));
       Tensor t(node->output_type(0), TensorShape({}));
-      int64_t size = 1;
+      int64 size = 1;
       for (int i = 0; i < rank; i++) {
         size *= c->Value(c->Dim(c->input(0), i));
       }
@@ -146,7 +299,6 @@ Status ExtractConstantSubgraph(
     InferenceContext* outer_context) {
   *is_constant_graph = false;
   std::unordered_set<string> const_inputs_added;
-
   if (target_node.op_def().is_stateful()) {
     return Status::OK();
   }
@@ -339,7 +491,6 @@ Status ExtractConstantSubgraph(
       }
     }
   }
-
   return Status::OK();
 }
 
@@ -347,19 +498,31 @@ Status ExtractConstantSubgraph(
 
 Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
                               const OpRegistryInterface& ops,
-                              int32_t graph_def_version, bool* evaluated,
+                              int32 graph_def_version, bool* evaluated,
                               Tensor* result, GraphRunner* graph_runner,
                               std::unordered_map<string, Tensor>* cached_values,
-                              int64_t max_cached_value_size,
+                              int64 max_cached_value_size,
                               bool disable_constant_propagation,
                               InferenceContext* outer_context) {
   *evaluated = false;
   const Node* src = tensor.node;
 
   // Simple case: the source node is a constant
-  if (src->IsConstant()) {
-    if (result->FromProto(src->def().attr().at("value").tensor())) {
-      *evaluated = true;
+  TF_RETURN_IF_ERROR(EvaluateConstantNode(*src, result, evaluated));
+  if (*evaluated) return Status::OK();
+
+  // Shape Slice: the source node is slicing a single value of a shape
+  // This is needed to handle the case where the StridedSlice is the only
+  // SubGraph and there are no other subgraphs as in a simple expression such as
+  // tf.shape([-1, 10])[-1] (the ExtractConstantSubgraph call below
+  // only looks at all the input srcs of the various edges; there is never a
+  // chance to evaluate the StridedSlice node as it is never an input src).
+  if (src->type_string() == "StridedSlice") {
+    Tensor slice_output;
+    TF_RETURN_IF_ERROR(TryToInferTensorOutputFromStridedSliceNode(
+        *src, refiner, &slice_output, evaluated));
+    if (*evaluated) {
+      *result = slice_output;
       return Status::OK();
     }
   }
