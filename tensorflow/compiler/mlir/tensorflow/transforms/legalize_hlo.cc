@@ -1181,17 +1181,15 @@ class ConvertReduceOpToTfArgMinMax
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    auto result_type = reduce_op.getType(0).cast<TupleType>();
     auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), result_type.getType(0), input, reduction_indices,
+        reduce_op.getLoc(), reduce_op->getResult(0).getType(), input,
+        reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), result_type.getType(1), input, reduction_indices);
+        reduce_op.getLoc(), reduce_op->getResult(1).getType(), input,
+        reduction_indices);
 
-    // Pack the result into a TupleOp to match return type. The Tuple will be
-    // optimised out by a subsequent pass.
-    SmallVector<Value, 2> result{tf_reduce_op, tf_argreduce_op};
-    rewriter.replaceOpWithNewOp<mhlo::TupleOp>(reduce_op, result);
+    rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
     return success();
   }
 
