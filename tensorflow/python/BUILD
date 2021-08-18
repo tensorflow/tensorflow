@@ -178,6 +178,7 @@ py_library(
         ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/client:pywrap_tf_session",

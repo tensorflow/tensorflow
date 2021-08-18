@@ -45,6 +45,7 @@ def gen_api_init_files(
         packages = [
             "tensorflow.python",
             "tensorflow.lite.python.lite",
+            "tensorflow.lite.python.authoring.authoring",
             "tensorflow.python.modules_with_exports",
         ],
         package_deps = [
