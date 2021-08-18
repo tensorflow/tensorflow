@@ -205,7 +205,7 @@ class ShapeConstraintAnalysis {
         }
       };
       for (Operation* op : op_list) {
-        auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
+        auto op_fusibility = dyn_cast<InferShapeEqualityOpInterface>(op);
         if (!op_fusibility) continue;
         int numInput = op->getNumOperands();
         int numOutput = op->getNumResults();
@@ -516,8 +516,8 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
     bool is_target_func = false;
     // We only process the function having enough candidates
     func.walk([&](Operation* op) {
-      num_fusible_ops +=
-          static_cast<int>(dyn_cast<InferFusibilityOpInterface>(op) != nullptr);
+      num_fusible_ops += static_cast<int>(
+          dyn_cast<InferShapeEqualityOpInterface>(op) != nullptr);
       is_target_func = (num_fusible_ops > 1);
       // early stop
       if (is_target_func) return WalkResult::interrupt();

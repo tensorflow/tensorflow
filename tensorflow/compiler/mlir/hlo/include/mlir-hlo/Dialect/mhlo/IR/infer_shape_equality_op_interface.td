@@ -13,17 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file contains inferFusiblityOpInterface, which is used to guide
-// fusion decision.
-
-#ifndef MLIR_INFER_FUSIBILITY_OP_INTERFACE
-#define MLIR_INFER_FUSIBILITY_OP_INTERFACE
+#ifndef MLIR_INFER_SHAPE_EQUALITY_OP_INTERFACE
+#define MLIR_INFER_SHAPE_EQUALITY_OP_INTERFACE
 
 include "mlir/IR/OpBase.td"
 
 // OpInterface to query the shape equality constraint among the inputs and
 // outputs of an op.
-def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
+def InferShapeEqualityOpInterface : OpInterface<"InferShapeEqualityOpInterface"> {
   let description = [{
     Interface to query if an op is fusible and to query the shape equality
     constraint among the inputs and outputs of an op.
@@ -42,7 +39,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         Operation *op = this->getOperation();
         assert(lhs >= 0 && rhs >= 0);
         if (lhs == rhs) return true;
-        return InferFusibilityOpInterface::inferShapeEquality(op->getOperand(lhs), op->getOperand(rhs));
+        return InferShapeEqualityOpInterface::inferShapeEquality(op->getOperand(lhs), op->getOperand(rhs));
       }]
     >,
     InterfaceMethod<
@@ -57,7 +54,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         Operation *op = this->getOperation();
         assert(lhs >= 0 && rhs >= 0);
         if (lhs == rhs) return true;
-        return InferFusibilityOpInterface::inferShapeEquality(op->getResult(lhs), op->getResult(rhs));
+        return InferShapeEqualityOpInterface::inferShapeEquality(op->getResult(lhs), op->getResult(rhs));
       }]
     >,
     InterfaceMethod<
@@ -71,7 +68,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         /// Return whether the input and the output have the same shape.
         Operation *op = this->getOperation();
         assert(input >= 0 && output >= 0);
-        return InferFusibilityOpInterface::inferShapeEquality(op->getOperand(input), op->getResult(output));
+        return InferShapeEqualityOpInterface::inferShapeEquality(op->getOperand(input), op->getResult(output));
       }]
     >,
   ];
