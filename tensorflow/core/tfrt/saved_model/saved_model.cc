@@ -450,13 +450,6 @@ tensorflow::Status InitSavedModel(
       initializers_and_signatures, options.model_metadata, bef_file,
       options.runtime, resource_context, fallback_state));
 
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in
-  if (options.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(resource_context);
-  }
-
   return tensorflow::Status::OK();
 }
 
@@ -600,7 +593,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     auto init_start_time = absl::Now();
     TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
 
-    auto resource_context = std::make_unique<tfrt::ResourceContext>();
+    auto resource_context = CreateResourceContext(
+        options.runtime, options.compile_options.tpu_target);
     TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
                                       bef_file.get(), options,
                                       resource_context.get(), *fallback_state));
@@ -889,6 +883,21 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   return tensorflow::Status::OK();
 }
 
+std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
+    tensorflow::tfrt_stub::Runtime* runtime,
+    tensorflow::TfrtTpuInfraTarget tpu_target) {
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  runtime->CreateRuntimeResources(resource_context.get());
+
+  // TODO(b/178227859): We should make TPU resource init code pluggable, as
+  // opposed to linking it in. We can do this by adding a callback with
+  // `Runtime::AddCreateRuntimeResourceFn`.
+  if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
+    AddTpuResources(resource_context.get());
+  }
+  return resource_context;
+}
+
 tensorflow::StatusOr<mlir::OwningModuleRef> SavedModelImpl::ImportSubgraph(
     mlir::MLIRContext* context,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
@@ -1035,7 +1044,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
   loading_result->name = joined_signature.name;
-  loading_result->resource_context = std::make_unique<tfrt::ResourceContext>();
+  loading_result->resource_context =
+      CreateResourceContext(runtime(), options_.compile_options.tpu_target);
+
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
       options_.compile_options, module.get(), &loading_result->bef));
 
@@ -1046,12 +1057,6 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       /*initializers_and_signatures=*/{}, options_.model_metadata,
       loading_result->bef_file.get(), options_.runtime,
       loading_result->resource_context.get(), *fallback_state_));
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in
-  if (options_.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(loading_result->resource_context.get());
-  }
 
   // Store loading_result in cache.
   const auto* loading_result_ptr = loading_result.get();
