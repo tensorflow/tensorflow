@@ -781,8 +781,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access

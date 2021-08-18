@@ -297,11 +297,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(foo.trace_count, 2)
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
-    msg = ('tf.function-decorated function tried to ' +
-           'create variables on non-first call.')
+    msg = 'singleton tf.Variable.*on the first call'
     with self.assertRaisesRegex(ValueError, msg):
-      self.assertAllEqual(foo(False), 2.0)
-      self.assertEqual(foo.trace_count, 3)
+      foo(False)
+    self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(
