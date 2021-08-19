@@ -11,12 +11,10 @@ jobs:
     steps:
       - uses: tgymnich/fork-sync@v1.4
         with:
-          owner: tensorflow
           base: master
           head: master
       - uses: tgymnich/fork-sync@v1.4
         with:
-          owner: tensorflow
           base: plaidmlir
           head: master
           merge-method: rebase
