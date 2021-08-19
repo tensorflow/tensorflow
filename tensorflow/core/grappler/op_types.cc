@@ -807,7 +807,7 @@ bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
       CHECK_NOTNULL((new const gtl::FlatSet<string>{
           "CheckNumerics",
           "DebugGradientIdentity",
-          "DeepCopy"
+          "DeepCopy",
           "Enter",
           "Exit",
           "PreventGradient",
@@ -868,7 +868,7 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Cos",
           "Cosh",
           "Digamma",
-          "Elu"
+          "Elu",
           "Erf",
           "Erfc",
           "Exp",
@@ -899,7 +899,7 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Softsign",
           "Sqrt",
           "Square",
-          "Tan"
+          "Tan",
           "Tanh",
       }));
   return kElementWiseOps->count(node.op()) > 0 ||
