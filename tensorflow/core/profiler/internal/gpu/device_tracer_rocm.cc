@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/rocm_tracer.h"
+#include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/utils/parse_annotation.h"
@@ -524,11 +525,10 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   struct PerDeviceCollector {
     void GetDeviceCapabilities(int32_t device_ordinal,
                                XPlaneBuilder* device_plane) {
-      std::string device_manfacturer = "AMD";
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kDevManufacturer)),
-          device_manfacturer);
+          tensorflow::tfprof::kDeviceManufacturerAMD);
 
       if (hipGetDeviceProperties(&device_properties_, device_ordinal) !=
           hipSuccess)

@@ -54,6 +54,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:tfprof_constants",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "@com_google_absl//absl/strings",
     ],

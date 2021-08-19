@@ -27,5 +27,5 @@ message DeviceCapabilities {
   uint64 memory_size_in_bytes = 3;
   uint64 memory_bandwidth = 4;  // Bytes/s.
   GPUComputeCapability compute_capability = 5;
-  string dev_manufacturer = 6;
+  string device_manufacturer = 6;
 }

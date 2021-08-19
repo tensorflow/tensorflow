@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
+#include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
@@ -52,9 +53,10 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
 
   XPlaneBuilder device_plane(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
-  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kDevManufacturer)),
-                            std::string("Nvidia"));
+  device_plane.AddStatValue(
+      *device_plane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kDevManufacturer)),
+      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
                             kClockRateKHz);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
@@ -82,15 +84,17 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
 TEST(ConvertXPlaneToOpStats, RunEnvironment) {
   XSpace space;
   XPlaneBuilder device_plane1(
-      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));    
-  device_plane1.AddStatValue(*device_plane1.GetOrCreateStatMetadata(
-                                 GetStatTypeStr(StatType::kDevManufacturer)),
-                             std::string("Nvidia"));
+      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+  device_plane1.AddStatValue(
+      *device_plane1.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kDevManufacturer)),
+      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
   XPlaneBuilder device_plane2(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
-  device_plane2.AddStatValue(*device_plane2.GetOrCreateStatMetadata(
-                                 GetStatTypeStr(StatType::kDevManufacturer)),
-                             std::string("Nvidia"));
+  device_plane2.AddStatValue(
+      *device_plane2.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kDevManufacturer)),
+      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());

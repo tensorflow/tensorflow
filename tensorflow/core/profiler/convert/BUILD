@@ -366,6 +366,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/profiler/internal:tfprof_constants",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
