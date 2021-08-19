@@ -438,6 +438,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  Shape subshape =
+      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
   PostorderDFSNode result;
   // By default, the dependencies of current node are its operands.
   for (auto operand_id : root->operand_ids()) {
@@ -452,7 +454,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kReduceScatter:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kCall:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
@@ -467,12 +469,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
         return result.AddDependency(caller_operand, type, context)
             .AddVisit([](Literal literal) { return literal; });
       }
-      return PostorderDFSNode().AddVisit([root, context](absl::Span<Literal>) {
-        // The value is dynamic. We return a garbage literal here, which
-        // will be masked out later.
-        return CreateGarbageLiteral(
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
-      });
+      return CreateAllDynamicResult(subshape, type);
     }
     // Subtract and Divide use lower-bound as second operand.
     case HloOpcode::kSubtract:
@@ -485,6 +482,25 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
       return InvalidArgument(
           "AnalyzeConstantValueFallback can't handle opcode: %s",
           root->opcode());
+    }
+    case HloOpcode::kCall: {
+      auto node = PostorderDFSNode();
+      auto* call_proto = root;
+      if (call_proto->operand_ids_size() != 1) {
+        // Only support single operand forwarding.
+        return CreateAllDynamicResult(subshape, type);
+      }
+      int64_t called_root =
+          handle_to_computation(call_proto->called_computation_ids(0))
+              ->root_id();
+      InferenceContext call_context = context;
+      call_context.caller_operand_handles.push_back(call_proto->operand_ids(0));
+      node.AddDependency(called_root, PostorderDFSNodeType::kConstantValue,
+                         call_context, "callee's root instruction");
+      return node.AddVisit([](Literal operand) -> StatusOr<Literal> {
+        // Forward result of callee's root to caller.
+        return std::move(operand);
+      });
     }
 
     case HloOpcode::kConditional: {
@@ -1105,6 +1121,27 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             .Evaluate();
       });
     }
+    case HloOpcode::kCall: {
+      auto node = PostorderDFSNode();
+      auto* call_proto = root;
+
+      if (call_proto->operand_ids_size() != 1) {
+        // Only support single operand forwarding.
+        return CreateAllDynamicResult(subshape, type);
+      }
+      int64_t call_root =
+          handle_to_computation(call_proto->called_computation_ids(0))
+              ->root_id();
+      InferenceContext branch_context = context;
+      branch_context.caller_operand_handles.push_back(
+          call_proto->operand_ids(0));
+      node.AddDependency(call_root, PostorderDFSNodeType::kValueIsDynamic,
+                         branch_context, "callee's root instruction");
+      return node.AddVisit([context](Literal operand) -> StatusOr<Literal> {
+        // Forward result of callee's root to caller.
+        return operand;
+      });
+    }
     case HloOpcode::kConditional: {
       auto node = PostorderDFSNode();
       auto* conditional_proto = root;
@@ -1363,7 +1400,6 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       break;
     }
 
-    case HloOpcode::kCall:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1671,12 +1707,12 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
 StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     XlaOp op, ValueInferenceMode mode) {
   TF_RETURN_IF_ERROR(builder_->LookUpInstructionByHandle(op.handle()).status());
-
   PostorderDFSVisitor visitor(
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle);
       },
       [&](int64_t handle) { return &(builder_->embedded_[handle]); });
+  TF_ASSIGN_OR_RETURN(Shape op_shape, builder_->GetShape(op));
   int64_t handle = op.handle();
   if (ShapeUtil::IsScalar(builder_->GetShape(op).ValueOrDie())) {
     TF_ASSIGN_OR_RETURN(auto result, SimplifyOp(handle));
@@ -1687,33 +1723,47 @@ StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
   }
   switch (mode) {
     case ValueInferenceMode::kLowerBound: {
+      TF_ASSIGN_OR_RETURN(Literal mask,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kBoundIsDynamic));
+      if (mask.IsAll(1)) {
+        // Everything is dynamic, no need to do constant inference.
+        return OptionalLiteral(CreateGarbageLiteral(op_shape), std::move(mask));
+      }
       TF_ASSIGN_OR_RETURN(
           Literal value,
           visitor.PostOrderDFSVisit(handle,
                                     PostorderDFSNodeType::kConstantLowerBound));
-      TF_ASSIGN_OR_RETURN(Literal mask,
-                          visitor.PostOrderDFSVisit(
-                              handle, PostorderDFSNodeType::kBoundIsDynamic));
+
       return OptionalLiteral(std::move(value), std::move(mask));
     }
     case ValueInferenceMode::kUpperBound: {
+      TF_ASSIGN_OR_RETURN(Literal mask,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kBoundIsDynamic));
+      if (mask.IsAll(1)) {
+        // Everything is dynamic, no need to do constant inference.
+        return OptionalLiteral(CreateGarbageLiteral(op_shape), std::move(mask));
+      }
       TF_ASSIGN_OR_RETURN(
           Literal value,
           visitor.PostOrderDFSVisit(handle,
                                     PostorderDFSNodeType::kConstantUpperBound));
-      TF_ASSIGN_OR_RETURN(Literal mask,
-                          visitor.PostOrderDFSVisit(
-                              handle, PostorderDFSNodeType::kBoundIsDynamic));
 
       return OptionalLiteral(std::move(value), std::move(mask));
     }
     case ValueInferenceMode::kValue: {
-      TF_ASSIGN_OR_RETURN(Literal value,
-                          visitor.PostOrderDFSVisit(
-                              handle, PostorderDFSNodeType::kConstantValue));
       TF_ASSIGN_OR_RETURN(Literal mask,
                           visitor.PostOrderDFSVisit(
                               handle, PostorderDFSNodeType::kValueIsDynamic));
+      if (mask.IsAll(1)) {
+        // Everything is dynamic, no need to do constant inference.
+        return OptionalLiteral(CreateGarbageLiteral(op_shape), std::move(mask));
+      }
+      TF_ASSIGN_OR_RETURN(Literal value,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kConstantValue));
+
       return OptionalLiteral(std::move(value), std::move(mask));
     }
   }
