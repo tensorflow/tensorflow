@@ -51,6 +51,17 @@ static bool AreInstructionSupported(HloComputation* comp) {
       VLOG(2) << "NOT SUPPORTED: " << instr->ToString();
       return false;
     }
+
+    // If there is an instruction that change the layout, we do not do
+    // anything.
+    if(HloInstruction::IsOpElementwise(instr->opcode()) &&
+       !absl::c_all_of(instr->operands(),
+                      [&](HloInstruction* input) {
+                        return ShapeUtil::EqualIgnoringElementType(input->shape(), instr->shape());
+                      })) {
+      VLOG(2) << "NOT SUPPORTED (instruction change the layout): " << instr->ToString();
+      return false;
+    }
   }
   return true;
 }
