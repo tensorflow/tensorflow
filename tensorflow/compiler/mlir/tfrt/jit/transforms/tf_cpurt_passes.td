@@ -86,6 +86,20 @@ def Fission : FunctionPass<"tf-cpurt-fission"> {
   ];
 }
 
+def SymbolicShapeOptimization : FunctionPass<"tf-cpurt-symbolic-shape-optimization"> {
+  let summary = "Optimizes broadcasts based on the symbolic shapes";
+  let constructor = "tensorflow::CreateSymbolicShapeOptimizationPass()";
+  let description = [{
+    A simple pass that rewrites mhlo.broadcast_in_dim operations with
+    linalg.generic broadcasts using the symbolic shape attributes defined
+    on the entrypoint function arguments.
+  }];
+  let dependentDialects = [
+    "mlir::mhlo::MhloDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
+}
+
 def Clustering : FunctionPass<"tf-cpurt-clustering"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
                 "CPURT clustering policy";

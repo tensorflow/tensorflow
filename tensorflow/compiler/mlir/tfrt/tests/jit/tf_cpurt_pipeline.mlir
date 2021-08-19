@@ -52,6 +52,63 @@ func @add_scalar_with_vec(%arg0: tensor<f32>,
 
 // -----
 
+// CHECK: #map = affine_map<(d0) -> (d0)>
+
+// CHECK-LABEL: @add_vec_vec
+func @add_vec_vec(
+  %arg0: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>}
+) -> tensor<?xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK: #map = affine_map<(d0) -> (d0)>
+
+// CHECK-LABEL: @add_vec_vec_vec
+func @add_vec_vec_vec(
+  %arg0: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>}
+) -> tensor<?xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.AddV2"(%0, %arg2): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %1 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK: add_vec_vec_vec_vec
+func @add_vec_vec_vec_vec(
+  %arg0: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg3: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>}
+) -> tensor<?xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.AddV2"(%0, %arg2): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %2 = "tf.AddV2"(%1, %arg3): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @tf_binary_with_bcast
 func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
                            %arg1: tensor<?x4xf32>) -> tensor<?x4xf32> {
@@ -88,6 +145,35 @@ func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
   %2 = "tf.Mul"(%1, %arg2)
        : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
   return %2 : tensor<?x4xf32>
+}
+
+// -----
+
+// CHECK: #[[MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK: tf_binary_with_bcast_symbolic_shapes
+func @tf_binary_with_bcast_symbolic_shapes(
+  %arg0: tensor<?xf32>   {cpurt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
+  %arg1: tensor<?x?xf32> {cpurt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg2: tensor<?x?xf32> {cpurt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg3: tensor<?x?xf32> {cpurt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>}
+) -> tensor<?x?xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK:   log1p
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.Log1p"(%arg0)
+       : (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.AddV2"(%0, %arg1)
+       : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "tf.AddV2"(%1, %arg2)
+       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %3 = "tf.AddV2"(%2, %arg3)
+       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %3 : tensor<?x?xf32>
 }
 
 // -----

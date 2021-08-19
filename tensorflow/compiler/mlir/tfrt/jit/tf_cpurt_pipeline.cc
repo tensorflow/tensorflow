@@ -71,10 +71,19 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   // Transform TF operation to HLO.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
+  // Resolve all shape constraints (e.g. broadcast constraints that can be
+  // proved statically and changed to const witness) early to allow more
+  // efficient broadcast operations moving.
+  pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
+
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  // After all shape constraints removed and broadcasts moved to the top, try
+  // to resolve broadcasts that can be converted to linalg generic operations.
+  pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
 
   // Transform HLO operations to LinAlg and fuse them.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
