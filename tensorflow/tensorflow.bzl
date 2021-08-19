@@ -1183,7 +1183,8 @@ def tf_gpu_cc_test(
         linkstatic = 0,
         args = [],
         kernels = [],
-        linkopts = []):
+        linkopts = [],
+        **kwargs):
     tf_cc_test(
         name = name,
         size = size,
@@ -1196,6 +1197,7 @@ def tf_gpu_cc_test(
         linkstatic = linkstatic,
         tags = tags,
         deps = deps,
+        **kwargs
     )
     tf_cc_test(
         name = name,
@@ -1218,6 +1220,7 @@ def tf_gpu_cc_test(
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
+        **kwargs
     )
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
         cleaned_tags = tags + two_gpu_tags
@@ -1244,6 +1247,7 @@ def tf_gpu_cc_test(
             deps = deps + if_cuda_or_rocm([
                 clean_dep("//tensorflow/core:gpu_runtime"),
             ]),
+            **kwargs
         )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
