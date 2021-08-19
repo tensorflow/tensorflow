@@ -19,15 +19,27 @@ cc_library(
 )
 
 cc_library(
+    name = "input_split_metadata",
+    srcs = ["input_split_metadata.cc"],
+    hdrs = ["input_split_metadata.h"],
+    deps = [
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "batch_input_task",
     hdrs = ["batch_input_task.h"],
     deps = [
         ":batch_scheduler_hdrs",
         ":concat_split_util",
+        ":input_split_metadata",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -38,6 +50,7 @@ tf_cc_test(
     deps = [
         ":batch_input_task",
         ":batch_resource_base",
+        ":input_split_metadata",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
@@ -155,6 +168,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
     ],
@@ -319,5 +333,16 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
         "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "input_split_metadata_test",
+    srcs = ["input_split_metadata_test.cc"],
+    deps = [
+        ":input_split_metadata",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

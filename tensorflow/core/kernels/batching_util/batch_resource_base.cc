@@ -473,7 +473,7 @@ Status BatchResourceBase::ConcatInputTensors(
   BatchTask& input_task = *(*input_task_ptr);
   const int64_t input_task_size = input_task.size();
 
-  DCHECK_GT(input_task_size, open_batch_remaining_slot);
+  DCHECK_GT(input_task_size, 0);
 
   std::shared_ptr<ThreadSafeStatus> shared_status = input_task.status;
 
@@ -508,27 +508,24 @@ Status BatchResourceBase::ConcatInputTensors(
       };
   IncrementalBarrier barrier(split_task_done_callback);
 
+  const internal::InputSplitMetadata input_split_metadata(
+      input_task_size, open_batch_remaining_slot, max_batch_size);
+
+  const absl::FixedArray<int>& task_sizes = input_split_metadata.task_sizes();
+  const int num_batches = task_sizes.size();
   std::vector<int64_t> output_task_sizes;
-
-  if (open_batch_remaining_slot > 0) {
-    output_task_sizes.push_back(open_batch_remaining_slot);
+  output_task_sizes.resize(num_batches);
+  for (int i = 0; i < num_batches; i++) {
+    output_task_sizes[i] = task_sizes[i];
   }
 
-  for (int left_task_size = input_task_size - open_batch_remaining_slot;
-       left_task_size > 0; left_task_size -= max_batch_size) {
-    int next_task_size = std::min(left_task_size, max_batch_size);
-    output_task_sizes.push_back(next_task_size);
-  }
-
-  const int output_task_num = output_task_sizes.size();
-  input_task.output->resize(output_task_num);
-
-  for (int i = 0; i < output_task_num; ++i) {
+  input_task.output->resize(num_batches);
+  for (int i = 0; i < num_batches; ++i) {
     (*input_task.output)[i].resize(input_task.context->num_outputs());
   }
 
-  output_tasks->reserve(output_task_num);
-  for (int i = 0; i < output_task_num; i++) {
+  output_tasks->reserve(num_batches);
+  for (int i = 0; i < num_batches; i++) {
     output_tasks->push_back(input_task.CreateSplitTask(i, barrier.Inc()));
   }
 
