@@ -137,19 +137,6 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
-// Note: Reusing the BatchMatMulV2Shape inference function
-REGISTER_OP("BatchGemm")
-    .Input("a: T")
-    .Input("b: T")
-    .Input("c: T")
-    .Output("output: T")
-    .Attr("T: {half, float, double}")
-    .Attr("adj_x: bool = false")
-    .Attr("adj_y: bool = false")
-    .Attr("alpha: float = 1.0")
-    .Attr("beta: float = 0.0")
-    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
-
 REGISTER_OP("BatchMatMulV3")
     .Input("x: Ta")
     .Input("y: Tb")
