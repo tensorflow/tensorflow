@@ -379,7 +379,7 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
   return true;
 }
 
-void GpuCudaMallocAsyncAllocator::SetStream(void* stream) {
+void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   if (cuda_stream_ != nullptr) {
     LOG(FATAL) <<  // Crash OK.

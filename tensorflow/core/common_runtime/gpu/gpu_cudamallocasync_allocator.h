@@ -83,7 +83,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   bool ClearStats() override;
 
-  void SetStream(void* stream) override;
+  void SetStreamAndPreallocateMemory(void* stream) override;
 
   // With the right VLOG set, it prints:
   // - the number of ptr currently allocated per size (histogram).

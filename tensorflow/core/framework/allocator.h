@@ -294,7 +294,7 @@ class Allocator {
 
   // For allocator that are stream aware, allow to specify the compute
   // stream this allocator is used for.
-  virtual void SetStream(void* stream) {}
+  virtual void SetStreamAndPreallocateMemory(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.
