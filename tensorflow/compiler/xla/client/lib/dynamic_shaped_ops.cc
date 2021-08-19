@@ -115,16 +115,44 @@ StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
                                             int64_t dimension) {
   auto inferred_bound_status_or = value_inference->AnalyzeConstant(
       dimension_size, xla::ValueInferenceMode::kUpperBound);
+
+  auto dynamism_status_or = value_inference->AnalyzeIsDynamic(dimension_size);
   TF_RETURN_IF_ERROR(inferred_bound_status_or.status());
+  TF_RETURN_IF_ERROR(dynamism_status_or.status());
   if (inferred_bound_status_or->AllValid()) {
     int64_t inferred_bound = inferred_bound_status_or->Get<int32>({}).value();
     TF_ASSIGN_OR_RETURN(auto* shape_ptr,
                         operand.builder()->GetShapePtr(operand));
     // Found a tighter bound, do a slice.
-    if (shape_ptr->dimensions(dimension) > inferred_bound)
+    if (shape_ptr->dimensions(dimension) > inferred_bound) {
       operand = xla::SliceInDim(operand, 0, inferred_bound, 1, dimension);
+    }
   }
-  operand = xla::SetDimensionSize(operand, dimension_size, dimension);
+  if (dynamism_status_or->Get<bool>({})) {
+    // dimension size is dynamic, make output dynamic by calling set dimension
+    // size.
+    operand = xla::SetDimensionSize(operand, dimension_size, dimension);
+  }
+  return operand;
+}
+
+StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
+                                     XlaOp operand, XlaOp size_vector) {
+  auto builder = value_inference->builder();
+  TF_RETURN_IF_ERROR(builder->GetCurrentStatus());
+  TF_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));
+
+  for (int64_t i = 0; i < shape_ptr->rank(); ++i) {
+    // If a dimension is dynamic, call set-dimension-size on the output.
+    auto dim_size = xla::Slice(size_vector, {i}, {i + 1}, {1});
+    dim_size = xla::Reshape(dim_size, {});
+    dim_size = xla::ConvertElementType(dim_size, xla::S32);
+    TF_ASSIGN_OR_RETURN(auto dynamism,
+                        value_inference->AnalyzeIsDynamic(dim_size));
+    if (dynamism.Get<bool>({})) {
+      operand = xla::SetDimensionSize(operand, dim_size, i);
+    }
+  }
   return operand;
 }
 }  // namespace xla

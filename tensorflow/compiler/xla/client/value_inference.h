@@ -88,6 +88,9 @@ class ValueInference {
   // the concrete constant value if it can be inferred, otherwise a nullopt.
   StatusOr<OptionalLiteral> AnalyzeConstant(XlaOp op, ValueInferenceMode mode);
 
+  // Returns underlying xla builder.
+  XlaBuilder* builder() { return builder_; }
+
  private:
   // Given an op handle, returns a simplified version of the handle inside a
   // int64_t Literal. If the a -1 value for the handle means invalid
@@ -96,7 +99,7 @@ class ValueInference {
 
   // Perform CSE on a given handle, and return an equivalent handle if seen
   // before. Otherwise, returns nullopt.
-  absl::optional<int64_t> CseOpHandle(int64_t handle);
+  StatusOr<absl::optional<int64_t>> CseOpHandle(int64_t handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
   // A map from instruction_hash to handle that helps perform CSE.

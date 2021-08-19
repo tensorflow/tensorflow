@@ -39,6 +39,12 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
 StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
                                             XlaOp operand, XlaOp dimension_size,
                                             int64_t dimension);
+
+// Take a `operand` tensor and a R1 tensor `size_vector` representing the sizes
+// of `operand`, Call SetDimensionSize if for each dimension whose size is
+// dynamic.
+StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
+                                     XlaOp operand, XlaOp size_vector);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_DYNAMIC_SHAPED_OPS_H_

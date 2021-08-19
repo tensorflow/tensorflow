@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -60,18 +61,10 @@ class RandomUniformOp : public XlaOpKernel {
         << name();
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
-    std::vector<bool> dynamic_dims;
-    OP_REQUIRES_OK(ctx,
-                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_dims));
-    for (int64_t i = 0; i < xla_shape.rank(); ++i) {
-      // If a dimension is dynamic, call set-dimension-size on the output.
-      if (dynamic_dims[i]) {
-        auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
-        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
-        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
-        result = xla::SetDimensionSize(result, dynamic_dim_size, i);
-      }
-    }
+    auto result_status_or =
+        SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_status_or.status());
+    result = result_status_or.ValueOrDie();
     ctx->SetOutput(0, result);
   }
 
@@ -130,7 +123,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
     const DataType dtype = output_type(0);
 
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
@@ -139,7 +133,10 @@ class RandomStandardNormalOp : public XlaOpKernel {
     // Normal distribution with a mean of 0 and a standard deviation of 1:
     xla::XlaOp result = xla::RngNormal(XlaHelpers::Zero(b, dtype),
                                        XlaHelpers::One(b, dtype), xla_shape);
-
+    auto result_status_or =
+        SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_status_or.status());
+    result = result_status_or.ValueOrDie();
     ctx->SetOutput(0, result);
   }
 

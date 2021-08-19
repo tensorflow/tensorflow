@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -460,7 +461,9 @@ class AvgPoolGradOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape gradients_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &gradients_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(0, &gradients_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
 
     const TensorShape out_backprop_shape = ctx->InputShape(1);
 

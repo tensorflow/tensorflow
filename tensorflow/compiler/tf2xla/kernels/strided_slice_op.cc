@@ -215,10 +215,10 @@ class StridedSliceOp : public XlaOpKernel {
       int64 processing_shape_dim = shape_spec.output_to_processing_mapping[i];
       // If processing_shape_dim is -1, it means the output dimension was newly
       // added by new_axis_mask_, which doesn't show up in input.
-      if (processing_shape_dim != -1 &&
-          result_dims_are_dynamic[processing_shape_dim]) {
-        // We gave a generous bound (same as input) to the output, try reset
-        // the bound if a tighter one can be found.
+      if (processing_shape_dim != -1) {
+        // We gave a generous bounds (same as input) to the output for both
+        // static and dynamic dimensions, try reset the bound if a tighter one
+        // can be found.
         auto status = xla::SetDimensionSizeWithRebound(
             &ctx->value_inference(), slice,
             slice_sizes_dynamic[processing_shape_dim], i);
@@ -243,7 +243,6 @@ class StridedSliceOp : public XlaOpKernel {
     xla::Literal begin_literal, end_literal, strides_literal;
     bool begin_is_constant = ctx->ConstantInput(1, &begin_literal).ok();
     bool end_is_constant = ctx->ConstantInput(2, &end_literal).ok();
-
     // Strides have to be static.
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(3, &strides_literal));
 
