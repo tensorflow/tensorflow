@@ -50,11 +50,6 @@ cc_library(
     ),
 )
 
-alias(
-    name = "runtime_fallback_only",
-    actual = ":runtime",
-)
-
 cc_library(
     name = "work_queue_interface",
     srcs = ["work_queue_interface.cc"],

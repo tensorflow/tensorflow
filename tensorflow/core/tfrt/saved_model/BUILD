@@ -54,7 +54,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/tfrt/fallback:fallback_state",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/tpu:tpu_resources",
         "//tensorflow/core/tfrt/utils",
@@ -75,12 +75,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "saved_model_fallback_only",
-    actual = ":saved_model",
-    tags = ["no_oss"],
-)
-
 cc_library(
     name = "saved_model_testutil",
     testonly = 1,
@@ -92,16 +86,10 @@ cc_library(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/tfrt/runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
-)
-
-alias(
-    name = "saved_model_testutil_fallback_only",
-    actual = ":saved_model_testutil",
-    tags = ["no_oss"],
 )
 
 cc_library(
