@@ -48,8 +48,8 @@ void SetDeviceCaps(const DeviceCapabilities& caps, XPlane* plane) {
                         caps.compute_capability().minor());
   }
   xplane.AddStatValue(*xplane.GetOrCreateStatMetadata(
-                          GetStatTypeStr(StatType::kDevManufacturer)),
-                      caps.device_manufacturer());
+                          GetStatTypeStr(StatType::kDevVendor)),
+                      caps.device_vendor());
 }
 
 DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
@@ -76,8 +76,8 @@ DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
       case StatType::kDevCapComputeCapMinor:
         caps.mutable_compute_capability()->set_minor(stat.IntOrUintValue());
         break;
-      case StatType::kDevManufacturer:
-        caps.set_device_manufacturer(stat.StrOrRefValue());
+      case StatType::kDevVendor:
+        caps.set_device_vendor(stat.StrOrRefValue());
         break;
     }
   });

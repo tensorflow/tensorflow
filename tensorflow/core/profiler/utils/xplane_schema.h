@@ -219,7 +219,7 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
-  kDevManufacturer,
+  kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,

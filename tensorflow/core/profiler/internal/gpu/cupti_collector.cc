@@ -348,8 +348,8 @@ class PerDeviceCollector {
   void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
     device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(StatType::kDevManufacturer)),
-                               tensorflow::tfprof::kDeviceManufacturerNvidia);
+                                   GetStatTypeStr(StatType::kDevVendor)),
+                               tensorflow::tfprof::kDeviceVendorNvidia);
 
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;

@@ -527,8 +527,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                                XPlaneBuilder* device_plane) {
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kDevManufacturer)),
-          tensorflow::tfprof::kDeviceManufacturerAMD);
+              GetStatTypeStr(StatType::kDevVendor)),
+          tensorflow::tfprof::kDeviceVendorAMD);
 
       if (hipGetDeviceProperties(&device_properties_, device_ordinal) !=
           hipSuccess)

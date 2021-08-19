@@ -55,8 +55,8 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata(
-          GetStatTypeStr(StatType::kDevManufacturer)),
-      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
+          GetStatTypeStr(StatType::kDevVendor)),
+      std::string(tensorflow::tfprof::kDeviceVendorNvidia));
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
                             kClockRateKHz);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
@@ -87,14 +87,14 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
   device_plane1.AddStatValue(
       *device_plane1.GetOrCreateStatMetadata(
-          GetStatTypeStr(StatType::kDevManufacturer)),
-      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
+          GetStatTypeStr(StatType::kDevVendor)),
+      std::string(tensorflow::tfprof::kDeviceVendorNvidia));
   XPlaneBuilder device_plane2(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
   device_plane2.AddStatValue(
       *device_plane2.GetOrCreateStatMetadata(
-          GetStatTypeStr(StatType::kDevManufacturer)),
-      std::string(tensorflow::tfprof::kDeviceManufacturerNvidia));
+          GetStatTypeStr(StatType::kDevVendor)),
+      std::string(tensorflow::tfprof::kDeviceVendorNvidia));
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
