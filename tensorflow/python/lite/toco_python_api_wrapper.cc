@@ -107,4 +107,12 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       R"pbdoc(
       Returns and clears the list of collected errors in ErrorCollector.
     )pbdoc");
+  m.def(
+      "FlatBufferToMlir",
+      [](const std::string& model, bool input_is_filepath) {
+        return toco::FlatBufferFileToMlir(model, input_is_filepath);
+      },
+      R"pbdoc(
+      Returns MLIR dump of the given TFLite model.
+    )pbdoc");
 }

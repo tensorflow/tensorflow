@@ -63,3 +63,8 @@ def wrapped_register_custom_opdefs(custom_opdefs_list):
 def wrapped_retrieve_collected_errors():
   """Wraps RetrieveCollectedErrors with lazy loader."""
   return _pywrap_toco_api.RetrieveCollectedErrors()
+
+
+def wrapped_flat_buffer_file_to_mlir(model, input_is_filepath):
+  """Wraps FlatBufferFileToMlir with lazy loader."""
+  return _pywrap_toco_api.FlatBufferToMlir(model, input_is_filepath)

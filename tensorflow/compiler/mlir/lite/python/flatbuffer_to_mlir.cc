@@ -34,11 +34,10 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 
-namespace mlir {
-namespace TFL {
+namespace tensorflow {
 namespace {
-static OwningModuleRef FlatBufferFileToMlirTranslation(
-    llvm::SourceMgr* source_mgr, MLIRContext* context) {
+static mlir::OwningModuleRef FlatBufferFileToMlirTranslation(
+    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   const llvm::MemoryBuffer* input =
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
@@ -85,7 +84,7 @@ std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
   llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(input), llvm::SMLoc());
 
-  OwningModuleRef module =
+  mlir::OwningModuleRef module =
       FlatBufferFileToMlirTranslation(&sourceMgr, &context);
   if (!module || failed(verify(*module))) return "";
 
@@ -98,5 +97,4 @@ std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
   return mlir_output;
 }
 
-}  // namespace TFL
-}  // namespace mlir
+}  // namespace tensorflow

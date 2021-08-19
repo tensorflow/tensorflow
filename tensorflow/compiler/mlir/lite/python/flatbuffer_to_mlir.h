@@ -13,20 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_FLATBUFFER_TO_MLIR_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_FLATBUFFER_TO_MLIR_H_
 
 #include <string>
 
-namespace mlir {
-namespace TFL {
+namespace tensorflow {
 
 // Translates the given FlatBuffer filename or buffer into MLIR and returns
 // translated MLIR as string.
 std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
                                  bool input_is_filepath);
 
-}  // namespace TFL
-}  // namespace mlir
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_FLATBUFFER_TO_MLIR_H_

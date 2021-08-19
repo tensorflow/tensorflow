@@ -585,6 +585,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
     ],
 )

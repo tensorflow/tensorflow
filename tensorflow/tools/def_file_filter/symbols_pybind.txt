@@ -118,6 +118,7 @@ toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
 toco::RetrieveCollectedErrors
+toco::FlatBufferFileToMlir
 
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph

@@ -1160,23 +1160,3 @@ cc_library(
         "@llvm-project//llvm:Support",
     ],
 )
-
-# Smaller version of flatbuffer_translate which only converts flatbuffer to MLIR.
-cc_library(
-    name = "flatbuffer_to_mlir",
-    srcs = [
-        "flatbuffer_to_mlir.cc",
-    ],
-    hdrs = [
-        "flatbuffer_to_mlir.h",
-    ],
-    deps = [
-        ":flatbuffer_import",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
-    ],
-)
