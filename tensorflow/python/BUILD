@@ -2800,6 +2800,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":config",
         ":control_flow_ops",
         ":image_ops",
         ":io_ops",
