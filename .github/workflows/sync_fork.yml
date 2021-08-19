@@ -1,0 +1,22 @@
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # every 30 minutes
+  workflow_dispatch: # on button click
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: tgymnich/fork-sync@v1.4
+        with:
+          owner: tensorflow
+          base: master
+          head: master
+      - uses: tgymnich/fork-sync@v1.4
+        with:
+          owner: tensorflow
+          base: plaidmlir
+          head: master
+          merge-method: rebase
