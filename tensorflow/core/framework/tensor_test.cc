@@ -132,74 +132,74 @@ void ExpectEqual<Variant>(const Tensor& x, const Tensor& y) {
 template <typename T>
 void TestCopies(const Tensor& t) {
   {
+    LOG(INFO) << "CopyFrom()";
     Tensor t2(t.dtype());
-    EXPECT_TRUE(t2.CopyFrom(t, t.shape())) << "CopyFrom";
+    EXPECT_TRUE(t2.CopyFrom(t, t.shape()));
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "CopyFrom";
   }
   {
+    LOG(INFO) << "operator=()";
     Tensor t2(t.dtype());
     t2 = t;
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "operator=()";
   }
   {
+    LOG(INFO) << "deep copy";
     Tensor t2(t.dtype(), t.shape());
     t2.flat<T>() = t.flat<T>();
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "deep copy";
   }
   {
+    LOG(INFO) << "AsProtoField()";
     TensorProto proto;
     t.AsProtoField(&proto);
     Tensor t2(t.dtype());
-    EXPECT_TRUE(t2.FromProto(proto)) << "AsProtoField()";
+    EXPECT_TRUE(t2.FromProto(proto));
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "AsProtoField()";
   }
   {
+    LOG(INFO) << "AsProtoTensorContent()";
     TensorProto proto;
     t.AsProtoTensorContent(&proto);
     Tensor t2(t.dtype());
-    EXPECT_TRUE(t2.FromProto(proto)) << "AsProtoTensorContent()";
+    EXPECT_TRUE(t2.FromProto(proto));
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "AsProtoTensorContent()";
-
     // Make another copy via tensor_content field.
     *proto.mutable_tensor_content() = proto.tensor_content();
     Tensor t3(t.dtype());
-    EXPECT_TRUE(t3.FromProto(proto)) << "AsProtoTensorContent() from copy";
-    ExpectEqual<T>(t, t3);
-    EXPECT_EQ(t.type(), t2.type()) << "AsProtoTensorContent() from copy";
+    EXPECT_TRUE(t3.FromProto(proto));
+    ExpectEqual<T>(t, t2);
   }
   {
+    LOG(INFO) << "AsTensor";
     gtl::ArraySlice<T> values(t.flat<T>().data(), t.NumElements());
     Tensor t2 = test::AsTensor(values, t.shape());
     ExpectEqual<T>(t, t2);
-    EXPECT_EQ(t.type(), t2.type()) << "AsTensor";
   }
   {
+    LOG(INFO) << "Move constructor";
     Tensor t2 = t;
     Tensor t3 = std::move(t2);
     ExpectEqual<T>(t, t3);
-    EXPECT_TRUE(t3.IsInitialized()) << "Move constructor";
-    EXPECT_EQ(t.type(), t3.type()) << "Move constructor";
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
   }
   {
+    LOG(INFO) << "Move assignment";
     Tensor t2 = t;
     Tensor t3;
     t3 = std::move(t2);
     ExpectEqual<T>(t, t3);
-    EXPECT_TRUE(t3.IsInitialized()) << "Move assignment";
-    EXPECT_EQ(t.type(), t3.type()) << "Move assignment";
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
   }
   {
+    LOG(INFO) << "Move self-assignment";
     Tensor t2 = t;
     Tensor* t3 = &t2;
     *t3 = std::move(t2);
     ExpectEqual<Variant>(t, *t3);
-    EXPECT_TRUE(t3->IsInitialized()) << "Move self-assignment";
-    EXPECT_EQ(t.type(), t3->type()) << "Move self-assignment";
+    EXPECT_TRUE(t3->IsInitialized());
   }
 }
 

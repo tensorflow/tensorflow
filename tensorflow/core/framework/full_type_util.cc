@@ -98,11 +98,11 @@ StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
           const auto& attr_list = attr->list();
           arg->set_type_id(TFT_PRODUCT);
           for (int i = 0; i < attr_list.type_size(); i++) {
-            DataTypeToFullType(attr_list.type(i), *(arg->add_args()));
+            map_dtype_to_tensor(attr_list.type(i), arg->add_args());
           }
 
         } else if (attr->value_case() == AttrValue::kType) {
-          DataTypeToFullType(attr->type(), *arg);
+          map_dtype_to_tensor(attr->type(), arg);
 
         } else {
           return Status(error::UNIMPLEMENTED,

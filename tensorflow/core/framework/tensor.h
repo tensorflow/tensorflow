@@ -17,12 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
-#include <iostream>
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -257,10 +255,6 @@ class Tensor {
   explicit Tensor(T* t) = delete;
 
   ~Tensor();
-
-  /// Returns the full type of the tensor. This subsumes dtype, and
-  /// in the future, shape.
-  const FullTypeDef& type() const { return type_; }
 
   /// Returns the data type.
   DataType dtype() const { return shape_.data_type(); }
@@ -664,7 +658,7 @@ class Tensor {
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
-  void set_dtype(DataType t);
+  void set_dtype(DataType t) { shape_.set_data_type(t); }
 
   // TensorShape's InlineVector.
   static gtl::InlinedVector<int64_t, 4> ComputeFlatInnerDims(
@@ -673,8 +667,6 @@ class Tensor {
       gtl::ArraySlice<int64_t> orig, int64_t num_out_dims);
 
   TensorShape shape_;
-  // FullType information. This field is to eventually replace the shape_field.
-  FullTypeDef type_;
   TensorBuffer* buf_;
 
   friend class DMAHelper;             // For access to buf_.
@@ -954,14 +946,12 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_inner_outer_dims(
 }
 
 inline Tensor::Tensor(const Tensor& other)
-    : shape_(other.shape()), type_(other.type_), buf_(other.buf_) {
+    : shape_(other.shape()), buf_(other.buf_) {
   if (buf_) buf_->Ref();
 }
 
 inline Tensor::Tensor(Tensor&& other)
-    : shape_(std::move(other.shape_)),
-      type_(std::move(other.type_)),
-      buf_(other.buf_) {
+    : shape_(std::move(other.shape_)), buf_(other.buf_) {
   other.buf_ = nullptr;
 }
 
@@ -1045,7 +1035,6 @@ inline Tensor& Tensor::operator=(Tensor&& other) {
   // Avoid self-assignment, since we might destroy our underlying buffer.
   if (&other != this) {
     shape_ = std::move(other.shape_);
-    type_ = std::move(other.type_);
     if (buf_) buf_->Unref();
     buf_ = other.buf_;
     other.buf_ = nullptr;

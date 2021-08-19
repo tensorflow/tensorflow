@@ -648,10 +648,7 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {
-  set_dtype(type);
-  DataTypeToFullType(type, type_);
-}
+Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {}
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
@@ -686,11 +683,6 @@ void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
 void Tensor::CheckIsAlignedAndSingleElement() const {
   CHECK(IsAligned()) << "Aligned and single element";
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
-}
-
-void Tensor::set_dtype(DataType t) {
-  shape_.set_data_type(t);
-  DataTypeToFullType(t, type_);
 }
 
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }

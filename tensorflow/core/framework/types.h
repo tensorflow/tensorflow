@@ -105,12 +105,6 @@ typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
 typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
     PrioritizedDeviceTypeVector;
 
-// Conversion from DataType to FullType.
-// This function should be used for backward compatibility only, as FullType is
-// more expressive than DataType. For example, DataType would represent a
-// TensorList as a generic DT_VARIANT.
-void DataTypeToFullType(const DataType& dtype, FullTypeDef& t);
-
 // Convert the enums to strings for errors:
 std::string DataTypeString(DataType dtype);
 std::string DeviceTypeString(const DeviceType& device_type);
