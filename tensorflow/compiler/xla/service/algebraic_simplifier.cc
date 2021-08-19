@@ -1509,6 +1509,16 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
                                           negative_const));
   }
 
+  // A - A => 0 for integer A.
+  VLOG(10) << "trying transform [A - A => 0] for integer A.";
+  if (lhs == rhs && ShapeUtil::ElementIsIntegral(sub->shape())) {
+    auto zero = computation_->AddInstruction(
+        simplifier_->CreateConstantWithLayoutUpdated(
+            LiteralUtil::Zero(sub->shape().element_type())));
+    return ReplaceWithNewInstruction(
+        sub, HloInstruction::CreateBroadcast(sub->shape(), zero, {}));
+  }
+
   return Status::OK();
 }
 namespace {

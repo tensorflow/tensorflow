@@ -902,6 +902,21 @@ TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
                         m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
+// Test that A - A is simplified to 0.
+TEST_F(AlgebraicSimplifierTest, SubSame) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[2] parameter(0)
+      ROOT sub = s32[2] subtract(p0, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(0))));
+}
+
 // Test that Broadcast(x) where x has degenerate dimensions first removes the
 // degenerate dimensions.
 TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
