@@ -184,11 +184,12 @@ def _convert_tf1_model(flags):
     input_arrays = converter.get_input_arrays()
     std_dev_values = _parse_array(flags.std_dev_values, type_fn=float)
 
-    mean_values = _parse_array(flags.mean_values, type_fn=float)
-    if converter.inference_type != dtypes.float32:
-      # In quantized inference, mean_value has to be fixed so that the real
-      # value 0.0 is exactly representable.
-      mean_values = [round(value, 2) for value in mean_values]
+    # In quantized inference, mean_value has to be integer so that the real
+    # value 0.0 is exactly representable.
+    if converter.inference_type == dtypes.float32:
+      mean_values = _parse_array(flags.mean_values, type_fn=float)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=int)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
