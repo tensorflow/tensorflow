@@ -74,8 +74,6 @@ class TextVectorizationDistributionTest(
     # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
     if backend.is_tpu_strategy(strategy):
       self.skipTest("This test needs MLIR bridge on TPU.")
-    if test.is_built_with_rocm():
-      self.skipTest("MultiworkerMirroredGPU2x fails with ROCm")
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"
