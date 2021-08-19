@@ -153,6 +153,7 @@ struct EinsumHelper {
     input_has_ellipsis->resize(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       input_label_counts->at(i).resize(num_labels);
+      input_has_ellipsis->at(i) = false;
       for (const int label : input_labels->at(i)) {
         if (label != kEllipsisLabel)
           input_label_counts->at(i)[label] += 1;
@@ -161,6 +162,7 @@ struct EinsumHelper {
       }
     }
     output_label_counts->resize(num_labels);
+    *output_has_ellipsis = false;
     for (const int label : *output_labels) {
       if (label != kEllipsisLabel)
         output_label_counts->at(label) += 1;
