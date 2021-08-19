@@ -1698,8 +1698,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Dataset: A `Dataset`.
 
     Raises:
-      ValueError: If a component has an unknown rank, and  the `padded_shapes`
+      ValueError: If a component has an unknown rank, and the `padded_shapes`
         argument is not set.
+      TypeError: If a component is of an unsupported type. The list of supported
+        types is documented in
+        https://www.tensorflow.org/guide/data#dataset_structure.
     """
     if padded_shapes is None:
       padded_shapes = get_legacy_output_shapes(self)
