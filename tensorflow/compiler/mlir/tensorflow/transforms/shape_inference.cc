@@ -842,7 +842,7 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
 // called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  FuncOp func = dyn_cast<FuncOp>(call_op.resolveCallable());
+  FuncOp func = dyn_cast_or_null<FuncOp>(call_op.resolveCallable());
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
