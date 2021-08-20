@@ -273,6 +273,7 @@ filegroup(
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
         "mkl_tfconversion_pass.h",
+        "node_file_writer.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
@@ -1207,6 +1208,21 @@ cc_library(
 )
 
 cc_library(
+    name = "node_file_writer",
+    srcs = ["node_file_writer.cc"],
+    hdrs = ["node_file_writer.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "optimization_registry",
     srcs = ["optimization_registry.cc"],
     hdrs = ["optimization_registry.h"],
@@ -1672,6 +1688,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        ":node_file_writer",
         "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",

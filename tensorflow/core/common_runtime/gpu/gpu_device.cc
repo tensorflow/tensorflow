@@ -532,6 +532,13 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     }
   }
 
+  TF_ASSIGN_OR_RETURN(
+      node_file_writer_,
+      NodeFileWriter::GetNodeFileWriterIfEnabled(name(), env()));
+  if (node_file_writer_) {
+    LOG(INFO) << "Writing NodeDefs to file: " << node_file_writer_->filename();
+  }
+
   return Status::OK();
 }
 
@@ -690,6 +697,13 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
         em_->ThenExecute(stream, [tracker, queued_count]() {
           tracker->RecordTerminated(queued_count);
         });
+      }
+    }
+    if (node_file_writer_) {
+      Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+      if (!s.ok()) {
+        LOG(ERROR) << s;
+        context->SetStatus(s);
       }
     }
   } else {

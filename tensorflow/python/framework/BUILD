@@ -1582,6 +1582,19 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "node_file_writer_test",
+    size = "small",
+    srcs = ["node_file_writer_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":test_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 tf_py_test(
     name = "traceable_stack_test",
     size = "small",
