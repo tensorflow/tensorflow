@@ -78,7 +78,7 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{/*has_side_input=*/false,
+      ConvParameters::FusionInfo{1.0, 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},
@@ -96,7 +96,7 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{/*has_side_input=*/true,
+      ConvParameters::FusionInfo{1.0, 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kRelu,
                                  /*is_contrib=*/true}};

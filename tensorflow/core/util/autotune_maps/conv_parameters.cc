@@ -54,7 +54,8 @@ ConvParameters::ConvParameters(
   proto_.set_group_count(group_count);
   if (fusion_info.has_value()) {
     ConvParametersProto::Fusion fusion_proto;
-    fusion_proto.set_has_side_input(fusion_info.value().has_side_input);
+    fusion_proto.set_conv_scale(fusion_info.value().conv_scale);
+    fusion_proto.set_side_input_scale(fusion_info.value().side_input_scale);
     fusion_proto.set_activation_mode(fusion_info.value().activation_mode);
     fusion_proto.set_is_contrib(fusion_info.value().is_contrib);
     *proto_.mutable_fusion() = fusion_proto;

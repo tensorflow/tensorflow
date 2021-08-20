@@ -39,7 +39,11 @@ namespace tensorflow {
 class ConvParameters {
  public:
   struct FusionInfo {
-    bool has_side_input = false;
+    // For some implementations (e.g. cuDNN new backend) these scales are part
+    // of the algorithm, not part of the parameters an algorithm take. They need
+    // to be used to distinguish different algorithms.
+    double conv_scale;
+    double side_input_scale;
     stream_executor::dnn::ActivationMode activation_mode;
     bool is_contrib;
   };
