@@ -1493,6 +1493,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":Analysis",
         ":DialectUtils",
         ":IR",
         ":MemRefDialect",
@@ -1649,6 +1650,7 @@ cc_library(
     hdrs = ["include/mlir/Dialect/SparseTensor/Transforms/Passes.h"],
     includes = ["include"],
     deps = [
+        ":Affine",
         ":IR",
         ":LLVMDialect",
         ":LinalgOps",
@@ -6111,12 +6113,10 @@ cc_library(
         "lib/Dialect/Linalg/Transforms/*.cpp",
         "lib/Dialect/Linalg/Transforms/*.h",
     ]) + [
-        "lib/Dialect/Linalg/Analysis/ConstraintsSet.cpp",
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],
     hdrs = [
-        "include/mlir/Dialect/Linalg/Analysis/ConstraintsSet.h",
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/CodegenStrategy.h",

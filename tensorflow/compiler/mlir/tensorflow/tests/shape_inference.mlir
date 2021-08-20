@@ -1163,23 +1163,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
-  // CHECK-LABEL: call_partitioned_call_const_index() -> (tensor<index>, tensor<?xindex>)
-  func @call_partitioned_call_const_index() -> (tensor<*xindex>, tensor<?xindex>) {
-    %0 = call @partitioned_called_const_index() : () -> tensor<*xindex>
-    // CHECK: tensor.cast{{.*}} : tensor<index> to tensor<*xindex>
-    %1 = shape.shape_of %0 : tensor<*xindex> -> tensor<?xindex>
-    return %0, %1 : tensor<*xindex>, tensor<?xindex>
-  }
-
-  // CHECK-LABEL: func @partitioned_called_const_index
-  // CHECK-SAME: -> tensor<index>
-  func @partitioned_called_const_index() -> (tensor<*xindex>) {
-    %0 = constant dense<5> : tensor<index>
-    // CHECK-NOT: tensor.cast
-    %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
-    return %1 : tensor<*xindex>
-  }
-
   func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
     return
   }
