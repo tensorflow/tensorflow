@@ -3343,7 +3343,6 @@ cc_library(
     deps = [
         ":aggregate_ops",
         ":argmax_op",
-        ":batch_gemm_op",
         ":betainc_op",
         ":bincount_op",
         ":bucketize_op",
@@ -3400,14 +3399,6 @@ tf_kernel_library(
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([":gpu_utils"]),
-)
-
-tf_kernel_library(
-    name = "batch_gemm_op",
-    prefix = "batch_gemm_op",
-    deps = MATH_DEPS + [
-        ":batch_matmul_op"
-    ],
 )
 
 tf_kernel_library(

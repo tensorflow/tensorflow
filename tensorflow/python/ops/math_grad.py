@@ -1899,13 +1899,6 @@ def _BatchMatMulV2(op, grad):
   grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
   return grad_x, grad_y
 
-@ops.RegisterGradient("BatchGemm")
-def _BatchGemm(op, grad):
-  """Returns the gradient of x and y given the gradient of alpha * x * y."""
-  alpha = op.get_attr("alpha")
-  return [math_ops.multiply(
-      grad, alpha) for grad in _BatchMatMulV2(op, grad)] + [None]
-
 
 ops.NotDifferentiable("Range")
 ops.NotDifferentiable("LinSpace")

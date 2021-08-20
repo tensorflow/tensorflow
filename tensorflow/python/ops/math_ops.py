@@ -3677,33 +3677,6 @@ def matmul(a,
             a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
-@tf_export("linalg.batch_gemm", "batch_gemm")
-@dispatch.add_dispatch_support
-def batch_gemm(a,
-               b,
-               c,
-               transpose_a=False,
-               transpose_b=False,
-               alpha=1.0,
-               beta=0.0,
-               name=None):
-  with ops.name_scope(name, "BatchGemm", [a, b]) as name:
-    if context.executing_eagerly():
-      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
-        a = ops.convert_to_tensor(a, name="a")
-      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
-        b = ops.convert_to_tensor(b, name="b")
-      if not isinstance(c, (ops.EagerTensor, _resource_variable_type)):
-        c = ops.convert_to_tensor(c, name="c")
-    else:
-      a = ops.convert_to_tensor(a, name="a")
-      b = ops.convert_to_tensor(b, name="b")
-      c = ops.convert_to_tensor(c, name="c")
-
-    return gen_math_ops.batch_gemm(
-        a, b, c, adj_x=transpose_a, adj_y=transpose_b, alpha=alpha,
-        beta=beta, name=name)
-
 @tf_export("linalg.matvec")
 @dispatch.add_dispatch_support
 def matvec(a,
