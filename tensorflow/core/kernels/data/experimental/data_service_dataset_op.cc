@@ -432,23 +432,36 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status ValidateDataset() const {
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           LocalWorkers::Empty()) {
+        if (IsStaticShard(dataset()->processing_mode_)) {
+          return errors::InvalidArgument(
+              "Static sharding policy <",
+              ProcessingModeDef::ShardingPolicy_Name(
+                  dataset()->processing_mode_.sharding_policy()),
+              "> requires local tf.data workers, but no local worker is found. "
+              "You need to run local tf.data service workers in your training "
+              "workers. Static sharding also requires a fixed worker pool and "
+              "a list of worker addresses in the DispatcherConfig. See the "
+              "\"Processing Modes\" section in the module doc for details.");
+        }
         return errors::InvalidArgument(
-            "Local reads or static sharding require local tf.data workers, "
-            "but no local worker is found. You need to run tf.data service "
-            "workers in your training workers.");
+            "Local reads require local tf.data workers, but no local worker "
+            "is found. You need to run local tf.data service workers in your "
+            "training workers.");
       }
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
           StrictRoundRobin()) {
         return errors::InvalidArgument(
             "Coordinated reads require non-local workers, but `target_workers` "
-            "is `local`.");
+            "is \"LOCAL\".");
       }
       if (IsStaticShard(dataset()->processing_mode_) &&
           dataset()->target_workers_ != TARGET_WORKERS_LOCAL) {
         return errors::InvalidArgument(
-            "Static sharding requires reading from local workers, but "
-            "`target_workers` is ",
-            TargetWorkersToString(dataset()->target_workers_));
+            "Static sharding policy <",
+            ProcessingModeDef::ShardingPolicy_Name(
+                dataset()->processing_mode_.sharding_policy()),
+            "> requires reading from local workers, but `target_workers` is ",
+            TargetWorkersToString(dataset()->target_workers_), ".");
       }
       return Status::OK();
     }

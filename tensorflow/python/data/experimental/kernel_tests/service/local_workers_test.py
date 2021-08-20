@@ -167,8 +167,10 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, target_workers="LOCAL")
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "no local worker is found"):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Local reads require local tf.data workers, but no local worker is "
+        "found."):
       self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.default_test_combinations())
