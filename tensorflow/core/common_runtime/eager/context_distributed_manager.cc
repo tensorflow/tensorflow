@@ -72,21 +72,6 @@ int GetClusterSize(const ServerDef& server_def) {
   return cluster_size;
 }
 
-Status IsLocalDevice(const std::string& device_name,
-                     const ServerDef& server_def, bool* is_local) {
-  DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &parsed_name)) {
-    return errors::InvalidArgument(
-        "Invalid device name ", device_name,
-        " while parsing local devices in TFE_EnableCollectiveOps.");
-  }
-
-  *is_local = (parsed_name.job == server_def.job_name() ||
-               parsed_name.job == "localhost") &&
-              parsed_name.task == server_def.task_index();
-  return Status::OK();
-}
-
 Status ExecuteCollectiveForIncarnationIds(EagerContext* context,
                                           const ServerDef& server_def,
                                           tensorflow::Tensor input_tensor,
