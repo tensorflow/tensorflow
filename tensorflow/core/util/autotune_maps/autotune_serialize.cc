@@ -84,6 +84,16 @@ void PopulateConvMap(const ConvMapProto &m) {
   std::unordered_map<string, std::vector<int>> device_identifiers_map;
   for (const ConvMapProto::Entry &kv : m.kv_pairs()) {
     const ConvParametersProto &params_proto = kv.key();
+    // Skip entries whose version number doesn't match runtime version because
+    // the autotune results may be incorrect.
+    if (params_proto.version() != ConvParameters::kVersion) {
+      LOG(WARNING) << "Skipped conv operation. Expected version: "
+                   << ConvParameters::kVersion
+                   << ". Actual version: " << params_proto.version()
+                   << ". Proto: " << params_proto.DebugString();
+      continue;
+    }
+
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
     auto iter = device_identifiers_map.find(params_proto.device_identifier());
     std::vector<int> device_ids;

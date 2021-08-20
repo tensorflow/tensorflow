@@ -51,7 +51,6 @@ TEST(AutotuneSerializeTest, Empty) {
 TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
-  std::string serialized_string;
   ConvParameters conv_params_example_a = {
       /*batch_size=*/1,
       /*in_depths=*/1,
@@ -111,6 +110,7 @@ TEST(AutotuneSerializeTest, Consistency) {
                                       algorithm_config_example_a);
   AutotuneConv::GetInstance()->Insert(contrib_fused_params_example_a,
                                       algorithm_config_example_a);
+  std::string serialized_string;
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
   ResetAutotuneMaps();
   TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
@@ -126,6 +126,47 @@ TEST(AutotuneSerializeTest, Consistency) {
   EXPECT_TRUE(AutotuneConv::GetInstance()->Find(contrib_fused_params_example_a,
                                                 &algorithm_config));
   EXPECT_EQ(algorithm_config, algorithm_config_example_a);
+}
+
+// Test that LoadSerializedAutotuneMaps will reject entries with incompatible
+// version.
+TEST(AutotuneSerializeTest, VersionControl) {
+  TF_CHECK_OK(GpuDriver::Init());
+  ResetAutotuneMaps();
+
+  ConvParameters fused_params_example_a = {
+      /*batch_size=*/1,
+      /*in_depths=*/1,
+      /*in=*/{{1, 1}},
+      /*data_format=*/TensorFormat::FORMAT_NCHW,
+      /*out_depth=*/1,
+      /*filter=*/{{1, 1}},
+      /*dilation=*/{{1, 1}},
+      /*stride=*/{{1, 1}},
+      /*padding=*/{{1, 1}},
+      /*dtype=*/DataType::DT_INT8,
+      /*device_id=*/0,
+      /*group_count=*/1,
+      ConvParameters::FusionInfo{1.0, 0.,
+                                 /*activation_mode=*/
+                                 se::dnn::ActivationMode::kNone,
+                                 /*is_contrib=*/false},
+      /*version=*/ConvParameters::kVersion - 1};
+
+  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
+  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
+  AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
+                                             algorithm_no_scratch);
+
+  AutotuneConv::GetInstance()->Insert(fused_params_example_a,
+                                      algorithm_config_example_a);
+
+  std::string serialized_string;
+  TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
+
+  ResetAutotuneMaps();
+  TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
+  EXPECT_EQ(AutotuneConv::GetInstance()->GetMap().size(), 0);
 }
 }  // namespace
 }  // namespace tensorflow

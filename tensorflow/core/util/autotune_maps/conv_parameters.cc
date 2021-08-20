@@ -39,7 +39,8 @@ ConvParameters::ConvParameters(
     const absl::Span<const int64_t> dilation,
     const absl::Span<const int64_t> stride,
     const absl::Span<const int64_t> padding, DataType dtype, int device_id,
-    int group_count, absl::optional<ConvParameters::FusionInfo> fusion_info)
+    int group_count, absl::optional<ConvParameters::FusionInfo> fusion_info,
+    int version)
     : device_id_(device_id) {
   proto_.set_batch(batch);
   proto_.set_in_depths(in_depths);
@@ -62,6 +63,7 @@ ConvParameters::ConvParameters(
   }
   proto_.set_device_identifier(
       autotune_maps_utils::DeviceIdToIdentifier(device_id));
+  proto_.set_version((version == -1) ? kVersion : version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }
 
