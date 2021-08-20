@@ -117,17 +117,19 @@ void AddAttr(const string& name, const T& val, NodeDef* ndef) {
 }
 
 Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
-  // attr_values should specify all attrs defined in fdef.
-  for (const auto& a : sig.attr()) {
-    const AttrValue* v = attr_values.Find(a.name());
-    if (!v) {
-      return errors::NotFound("Attr ", a.name(), " is not found from ",
+  // attr_values should specify all attrs defined in fdef, except for those
+  // which have a default value
+  for (const auto& attr : sig.attr()) {
+    const AttrValue* attr_value = attr_values.Find(attr.name());
+    if (attr_value) {
+      Status status = AttrValueHasType(*attr_value, attr.type());
+      if (!status.ok()) {
+        errors::AppendToMessage(&status, "for attr '", attr.name(), "'");
+        return status;
+      }
+    } else if (!attr.has_default_value()) {
+      return errors::NotFound("Attr ", attr.name(), " is not found from ",
                               SummarizeOpDef(sig));
-    }
-    Status status = AttrValueHasType(*v, a.type());
-    if (!status.ok()) {
-      errors::AppendToMessage(&status, "for attr '", a.name(), "'");
-      return status;
     }
   }
 
@@ -750,11 +752,20 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     }
   }
 
-  auto substitute = [attr_values](StringPiece name, AttrValue* val) {
+  auto substitute = [attr_values, &sig](StringPiece name, AttrValue* val) {
+    // Look for a specified value...
     if (const AttrValue* v = attr_values.Find(name)) {
       *val = *v;
       return true;
     }
+    // .. and if not, then check for a default value.
+    if (const OpDef::AttrDef* attr = FindAttr(name, sig)) {
+      if (attr->has_default_value()) {
+        *val = attr->default_value();
+        return true;
+      }
+    }
+    // No luck finding a substitution.
     return false;
   };
 

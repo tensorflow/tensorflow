@@ -25,6 +25,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_map_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import tf_inspect
 
 
@@ -110,6 +113,12 @@ class RunEagerOpAsFunctionTest(test.TestCase):
   def setUp(self):
     super().setUp()
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
+
+  def testDefaultAttrValues(self):
+    ragged_map_ops.map_fn(
+        fn=lambda x: x,
+        elems=ragged_factory_ops.constant([[7]]),
+        dtype=ragged_tensor.RaggedTensorType(dtype=dtypes.int32, ragged_rank=1))
 
   def testArrayFill(self):
     array_ops.fill(
