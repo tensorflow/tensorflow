@@ -220,6 +220,8 @@ void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
   for (auto d : all_devices->ListDevices()) {
     device_set_->AddDevice(d);
   }
+
+  // Update flr_map_ by adding new devices
   for (Device* d : device_mgr_->ListDevices()) {
     if ((*flr_map_)[d] == nullptr) {
       (*flr_map_)[d] = NewFunctionLibraryRuntime(

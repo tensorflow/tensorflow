@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -332,6 +334,19 @@ void EagerContext::ResetClusterFLR(
   cluster_flr_.Reset(cluster_flr, /*owned=*/true);
 }
 
+void EagerContext::UpdateClusterFLRAndInitDevices(
+    DistributedFunctionLibraryRuntime* cluster_flr) {
+  ResetClusterFLR(cluster_flr);
+
+  const ConfigProto* config = pflr_ ? pflr_->config() : nullptr;
+  ResetPFLR(
+      local_device_manager_.Get(), env_, /*config=*/config,
+      TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      /*optimizer_options=*/
+      config ? config->graph_options().optimizer_options() : OptimizerOptions(),
+      thread_pool_.get(), cluster_flr_.Get());
+}
+
 EagerExecutor& EagerContext::Executor() {
   tf_shared_lock l(executor_map_mu_);
   return *gtl::FindWithDefault(thread_local_executor_,
@@ -601,9 +616,22 @@ bool EagerContext::RunEagerOpAsFunction() const {
 
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {
-  local_device_mgr()->ListDeviceAttributes(devices);
+  // Since remote_device_mgr may contain local devices, ListDevices() needs to
+  // make sure no duplicated device is returned.
+  std::unordered_set<string> dev_names;
+  for (auto& dev : local_device_mgr()->ListDevices()) {
+    devices->emplace_back(dev->attributes());
+    dev_names.emplace(dev->attributes().name());
+  }
+  // TODO (b/197281777): Include local devices in remote_device_mgr on the
+  // client-side in single-client deployment.
   if (remote_device_mgr()) {
-    remote_device_mgr()->ListDeviceAttributes(devices);
+    for (auto& dev : remote_device_mgr()->ListDevices()) {
+      if (dev_names.find(dev->attributes().name()) == dev_names.end()) {
+        devices->emplace_back(dev->attributes());
+        dev_names.emplace(dev->attributes().name());
+      }
+    }
   }
 }
 

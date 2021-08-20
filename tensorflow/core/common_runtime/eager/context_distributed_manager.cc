@@ -157,7 +157,7 @@ Status FetchAllDeviceAttributes(
   // Execute an AllGather collective on the cluster to exchange device
   // incarnations and learn about all the remote devices in the cluster.
   // An AllGather collective op is started on the host device of each worker,
-  // and the incarnation IDs of each of the devices is shares with all the
+  // and the incarnation IDs of each of the devices is shared with all the
   // workers.
   // This method assumes that all workers will have the same distribution of
   // devices and the order of the incarnation IDs in each of the input tensors
@@ -209,14 +209,11 @@ Status UpdateDeviceManager(EagerContext* context, const ServerDef& server_def,
                                               local_devices, &device_attrs));
 
   std::vector<std::unique_ptr<Device>> remote_devices;
+  remote_devices.reserve(device_attrs.size());
   for (const auto& device_attr : device_attrs) {
-    bool is_local;
-    auto status = IsLocalDevice(device_attr.name(), server_def, &is_local);
-    if (!status.ok()) return status;
-    if (!is_local) {
-      remote_devices.emplace_back(
-          NewRemoteDevice(context->TFEnv(), device_attr));
-    }
+    // Treat all devices as remote so that cluster-FLR can pick them up and
+    // process-FLR can include all of them in its device_set_.
+    remote_devices.emplace_back(NewRemoteDevice(context->TFEnv(), device_attr));
   }
 
   return context->AddDevices(std::move(remote_devices));
@@ -911,11 +908,9 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       std::vector<std::unique_ptr<Device>> remote_devices;
       for (const auto& d :
            coordination_service_agent_->GetClusterDeviceAttributes()) {
-        bool is_local;
-        LOG_AND_RETURN_IF_ERROR(IsLocalDevice(d.name(), server_def, &is_local));
-        if (!is_local) {
-          remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
-        }
+        // Treat all devices as remote so that EagerContext::remote_device_mgr
+        // maintains all the devices, including both local and remote.
+        remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
     }
@@ -928,6 +923,13 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       context_->ListDevices(&local_devices);
       LOG_AND_RETURN_IF_ERROR(
           UpdateDeviceManager(context_, server_def, local_devices));
+
+      // Update cluster_flr and remote device list
+      eager::EagerClusterFunctionLibraryRuntime* cluster_flr =
+          new eager::EagerClusterFunctionLibraryRuntime(
+              context_->GetContextId(), context_,
+              context_->GetOwnedRemoteDeviceMgr());
+      context_->UpdateClusterFLRAndInitDevices(cluster_flr);
     }
   } else {
     LOG_AND_RETURN_IF_ERROR(server->UpdateServerDef(server_def));
