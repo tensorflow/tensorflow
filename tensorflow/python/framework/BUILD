@@ -1587,6 +1587,10 @@ cuda_py_test(
     size = "small",
     srcs = ["node_file_writer_test.py"],
     python_version = "PY3",
+    # On Windows, fails in tempfile.TemporaryDirectory.cleanup() with error: "The directory is not
+    # empty", so test is disabled on Windows.
+    # TODO(reedwm): Debug this.
+    tags = ["no_windows"],
     deps = [
         ":test_ops",
         "//tensorflow/python:array_ops",
