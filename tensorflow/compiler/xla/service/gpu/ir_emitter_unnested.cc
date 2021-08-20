@@ -164,35 +164,25 @@ void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
       llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
   llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
   llvm::LLVMContext& llvm_context = llvm_module->getContext();
-  llvm::ConstantInt* threads_per_block_ir_value = llvm::ConstantInt::get(
-      llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-      launch_dims.thread_counts_per_block().x);
-  // Our launch bounds are exact, so we can specify them as reqntidx rather than
-  // maxntidx.
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      llvm_context,
-      {llvm::ConstantAsMetadata::get(ir_kernel),
-       llvm::MDString::get(llvm_context, "reqntidx"),
-       llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
-  if (launch_dims.thread_counts_per_block().y > 1) {
-    threads_per_block_ir_value = llvm::ConstantInt::get(
-        llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-        launch_dims.thread_counts_per_block().y);
+
+  // Our launch bounds are exact, so we can specify them as
+  // reqntid[xyz] rather than maxntid[xyz].
+  auto annotate = [&](string name, int64_t value){
     nvvm_annotations_node->addOperand(llvm::MDNode::get(
         llvm_context,
         {llvm::ConstantAsMetadata::get(ir_kernel),
-         llvm::MDString::get(llvm_context, "reqntidy"),
-         llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+         llvm::MDString::get(llvm_context, name),
+         llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+             llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
+             value))}));
+  };
+
+  annotate("reqntidx", launch_dims.thread_counts_per_block().x);
+  if (launch_dims.thread_counts_per_block().y > 1) {
+    annotate("reqntidy", launch_dims.thread_counts_per_block().y);
   }
   if (launch_dims.thread_counts_per_block().z > 1) {
-    threads_per_block_ir_value = llvm::ConstantInt::get(
-        llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-        launch_dims.thread_counts_per_block().z);
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        llvm_context,
-        {llvm::ConstantAsMetadata::get(ir_kernel),
-         llvm::MDString::get(llvm_context, "reqntidz"),
-         llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+    annotate("reqntidz", launch_dims.thread_counts_per_block().z);
   }
 }
 
