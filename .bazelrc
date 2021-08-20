@@ -586,6 +586,12 @@ build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local
 build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt7/usr/bin/gcc"
 build:release_gpu_linux --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
+build:release_gpu_linux_cuda_11_4 --config=release_gpu_linux
+build:release_gpu_linux_cuda_11_4 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.4"
+build:release_gpu_linux_cuda_11_4 --action_env=TF_CUDA_VERSION="11.4"
+build:release_gpu_linux_cuda_11_4 --action_env=TF_CUDNN_VERSION="8.2"
+build:release_gpu_linux_cuda_11_4 --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.4-cudnn8.2-tensorrt7.2_config_cuda//crosstool:toolchain
+
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
