@@ -780,7 +780,7 @@ int64_t TRT_ShapedWeights::count(nvinfer1::Dims dims) {
 }
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
-  return nvinfer1::Weights{type_, GetValues(), count()};
+  return nvinfer1::Weights{type_, GetPointer<int8>(), count()};
 }
 
 template <typename T>
@@ -841,7 +841,7 @@ string TRT_ShapedWeights::DebugString() const {
   return StrCat(
       "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
       ", type=", tensorflow::tensorrt::DebugString(type_),
-      ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
+      ", values=", reinterpret_cast<uintptr_t>(GetPointer<int8>()), ")");
 }
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor)
@@ -990,14 +990,13 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
   const nvinfer1::DimsHW ostrides = {c, 1};
   switch (iweights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
-      Reorder2({k, c}, static_cast<float const*>(iweights.GetValues()),
-               istrides, static_cast<float*>(oweights->GetValues()), ostrides);
+      Reorder2({k, c}, iweights.GetPointer<float>(), istrides,
+               oweights->GetPointer<float>(), ostrides);
       break;
     }
     case nvinfer1::DataType::kHALF: {
-      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-               istrides, static_cast<Eigen::half*>(oweights->GetValues()),
-               ostrides);
+      Reorder2({k, c}, iweights.GetPointer<Eigen::half>(), istrides,
+               oweights->GetPointer<Eigen::half>(), ostrides);
       break;
     }
     default:
@@ -1029,14 +1028,13 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   const nvinfer1::Dims4 ostrides = {c * r * s, r * s, s, 1};
   switch (iweights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
-      Reorder4({k, c, r, s}, static_cast<float const*>(iweights.GetValues()),
-               istrides, static_cast<float*>(oweights->GetValues()), ostrides);
+      Reorder4({k, c, r, s}, iweights.GetPointer<float>(), istrides,
+               oweights->GetPointer<float>(), ostrides);
       break;
     }
     case nvinfer1::DataType::kHALF: {
-      Reorder4({k, c, r, s},
-               static_cast<Eigen::half const*>(iweights.GetValues()), istrides,
-               static_cast<Eigen::half*>(oweights->GetValues()), ostrides);
+      Reorder4({k, c, r, s}, iweights.GetPointer<Eigen::half>(), istrides,
+               oweights->GetPointer<Eigen::half>(), ostrides);
       break;
     }
 
@@ -1091,14 +1089,13 @@ void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
 
   switch (iweights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
-      Reorder5(shape, static_cast<float const*>(iweights.GetValues()), istrides,
-               static_cast<float*>(oweights->GetValues()), ostrides);
+      Reorder5(shape, iweights.GetPointer<float>(), istrides,
+               oweights->GetPointer<float>(), ostrides);
       break;
     }
     case nvinfer1::DataType::kHALF: {
-      Reorder5(shape, static_cast<Eigen::half const*>(iweights.GetValues()),
-               istrides, static_cast<Eigen::half*>(oweights->GetValues()),
-               ostrides);
+      Reorder5(shape, iweights.GetPointer<Eigen::half>(), istrides,
+               oweights->GetPointer<Eigen::half>(), ostrides);
       break;
     }
     default:
@@ -1657,21 +1654,21 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
                                  float* out_min, float* out_max) const {
   switch (weights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
-      auto inp = static_cast<float const*>(weights.GetValues());
+      auto inp = weights.GetPointer<float>();
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = *result.first;
       *out_max = *result.second;
       break;
     }
     case nvinfer1::DataType::kHALF: {
-      auto inp = static_cast<Eigen::half const*>(weights.GetValues());
+      auto inp = weights.GetPointer<Eigen::half>();
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = static_cast<float>(*result.first);
       *out_max = static_cast<float>(*result.second);
       break;
     }
     case nvinfer1::DataType::kINT32: {
-      auto inp = static_cast<int const*>(weights.GetValues());
+      auto inp = weights.GetPointer<int>();
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = static_cast<float>(*result.first);
       *out_max = static_cast<float>(*result.second);
@@ -2040,14 +2037,14 @@ Status UnaryCompute(const TRT_ShapedWeights& iweights,
   CHECK(iweights.TrtDType() == oweights->TrtDType());
   switch (iweights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
-      auto inp = static_cast<float const*>(iweights.GetValues());
-      auto oup = static_cast<float*>(oweights->GetValues());
+      auto inp = iweights.GetPointer<float>();
+      auto oup = oweights->GetPointer<float>();
       std::transform(inp, inp + iweights.count(), oup, unary_op.unary<float>());
       break;
     }
     case nvinfer1::DataType::kHALF: {
-      auto inp = static_cast<Eigen::half const*>(iweights.GetValues());
-      auto oup = static_cast<Eigen::half*>(oweights->GetValues());
+      auto inp = iweights.GetPointer<Eigen::half>();
+      auto oup = oweights->GetPointer<Eigen::half>();
       std::transform(inp, inp + iweights.count(), oup,
                      unary_op.unary<Eigen::half>());
       break;
@@ -2101,7 +2098,7 @@ std::vector<int64_t> GetSpatialDimsFromOutputSizes(
   // transposed output_sizes along with the input.
   const TRT_ShapedWeights& weights = output_sizes.weights();
   const int output_sizes_length = weights.count();
-  auto output_sizes_values = static_cast<int*>(weights.GetValues());
+  auto output_sizes_values = weights.GetPointer<int>();
   // The length of output_sizes can be 2 or 4. When the length is 4,
   // output_sizes represents <height,width>.
   return {output_sizes_values[output_sizes_length == 4 ? h_index : 0],
@@ -2319,7 +2316,7 @@ Status ConvertTranspose(OpConverterParams* params) {
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
   // Get the permutation from weights.
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  const int* weights_ptr = static_cast<int*>(weights.GetValues());
+  const int* weights_ptr = weights.GetPointer<int>();
   std::vector<int> perm(weights_ptr, weights_ptr + weights.count());
 
   // Verify the permutation.
@@ -2370,7 +2367,7 @@ Status ConvertShape(OpConverterParams* params) {
     // Create a const node with the values of output_dims
     TRT_ShapedWeights weight = params->weight_store->GetTempWeights(
         nvinfer1::DataType::kINT32, output_dims);
-    int32* values_ptr = static_cast<int32*>(weight.GetValues());
+    int32* values_ptr = weight.GetPointer<int32>();
     std::copy(input_dims.d, input_dims.d + input_dims.nbDims, values_ptr);
     auto output = params->converter->CreateConstantLayer(weight, output_dims);
     params->outputs->push_back(TRT_TensorOrWeights(output));
@@ -2514,7 +2511,7 @@ Status ConvertReshape(OpConverterParams* params) {
                                  params->node_def.name());
   }
 
-  const int* output_shape_dims = static_cast<int*>(weights.GetValues());
+  const int* output_shape_dims = weights.GetPointer<int>();
   size_t output_shape_dims_count = weights.count();
   ITensorProxyPtr output_tensor = nullptr;
 
@@ -3126,7 +3123,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     );
 
     const auto output_size_weights =
-        static_cast<int*>(backprop_output_size.weights().GetValues());
+        backprop_output_size.weights().GetPointer<int>();
     const std::vector<int64_t> input_dims = {output_size_weights[d_index],
                                              output_size_weights[h_index],
                                              output_size_weights[w_index]};
@@ -3599,13 +3596,13 @@ const std::unordered_map<string, nvinfer1::ActivationType>*
 ActivationTypeMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::ActivationType>({
-        {"Relu", nvinfer1::ActivationType::kRELU},
-            {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
-            {"Tanh", nvinfer1::ActivationType::kTANH},
-            {"Elu", nvinfer1::ActivationType::kELU},
-            {"Selu", nvinfer1::ActivationType::kSELU},
-            {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
-            {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
+          {"Relu", nvinfer1::ActivationType::kRELU},
+          {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
+          {"Tanh", nvinfer1::ActivationType::kTANH},
+          {"Elu", nvinfer1::ActivationType::kELU},
+          {"Selu", nvinfer1::ActivationType::kSELU},
+          {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
+          {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
       });
   return m;
 }
@@ -3677,8 +3674,7 @@ Status ConvertQuantize(OpConverterParams* params) {
              node_def.op() == "QuantizeAndDequantizeV3") {
     // Get ranges via inputs.
     auto get_weights_value = [&inputs](int index) {
-      auto raw_weights =
-          static_cast<float*>(inputs.at(index).weights().GetValues());
+      auto raw_weights = inputs.at(index).weights().GetPointer<float>();
       return raw_weights[0];
     };
     min_range = get_weights_value(1);
@@ -3986,14 +3982,14 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   // Copy the tensor directly if the tensor does not require cast to the
   // supported type.
   if (converted_dtype == dtype) {
-    char* dst = static_cast<char*>(weights->GetValues());
-    memcpy(dst, tensor.tensor_data().data(), tensor.TotalBytes());
+    memcpy(weights->GetPointer<int8>(), tensor.tensor_data().data(),
+           tensor.TotalBytes());
     return Status::OK();
   }
 
   Status status = Status::OK();
   // Copy tensor elements after casting them to the converted DataType.
-  int32* dst = static_cast<int32*>(weights->GetValues());
+  int32* dst = weights->GetPointer<int32>();
   switch (dtype) {
     case DT_INT8:
       status = CopyToTrtInt32Array<DT_INT8>(tensor, dst);
@@ -4074,18 +4070,18 @@ Status ConvertIdentity(OpConverterParams* params) {
 const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
 BinaryOperationMap() {
   static auto* const m =
-      new std::unordered_map<string, nvinfer1::ElementWiseOperation> {
-    {"Add", nvinfer1::ElementWiseOperation::kSUM},
-        {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-        {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-        {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-        {"Div", nvinfer1::ElementWiseOperation::kDIV},
-        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
-        {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-        {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-        {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-        {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-  };
+      new std::unordered_map<string, nvinfer1::ElementWiseOperation>{
+          {"Add", nvinfer1::ElementWiseOperation::kSUM},
+          {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
+          {"Mul", nvinfer1::ElementWiseOperation::kPROD},
+          {"Sub", nvinfer1::ElementWiseOperation::kSUB},
+          {"Div", nvinfer1::ElementWiseOperation::kDIV},
+          {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
+          {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
+          {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
+          {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
+          {"Pow", nvinfer1::ElementWiseOperation::kPOW},
+      };
   return m;
 }
 
@@ -4171,26 +4167,26 @@ const std::unordered_map<string, nvinfer1::UnaryOperation>*
 UnaryOperationMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::UnaryOperation>({
-        {"Neg", nvinfer1::UnaryOperation::kNEG},
-            {"Exp", nvinfer1::UnaryOperation::kEXP},
-            {"Log", nvinfer1::UnaryOperation::kLOG},
-            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-            {"Abs", nvinfer1::UnaryOperation::kABS},
-            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-            {"Sin", nvinfer1::UnaryOperation::kSIN},
-            {"Cos", nvinfer1::UnaryOperation::kCOS},
-            {"Tan", nvinfer1::UnaryOperation::kTAN},
-            {"Sinh", nvinfer1::UnaryOperation::kSINH},
-            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
-            {"Asin", nvinfer1::UnaryOperation::kASIN},
-            {"Acos", nvinfer1::UnaryOperation::kACOS},
-            {"Atan", nvinfer1::UnaryOperation::kATAN},
-            {"Asinh", nvinfer1::UnaryOperation::kASINH},
-            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
-            {"Atanh", nvinfer1::UnaryOperation::kATANH},
-            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
-            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
-            {"Erf", nvinfer1::UnaryOperation::kERF},
+          {"Neg", nvinfer1::UnaryOperation::kNEG},
+          {"Exp", nvinfer1::UnaryOperation::kEXP},
+          {"Log", nvinfer1::UnaryOperation::kLOG},
+          {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+          {"Abs", nvinfer1::UnaryOperation::kABS},
+          {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+          {"Sin", nvinfer1::UnaryOperation::kSIN},
+          {"Cos", nvinfer1::UnaryOperation::kCOS},
+          {"Tan", nvinfer1::UnaryOperation::kTAN},
+          {"Sinh", nvinfer1::UnaryOperation::kSINH},
+          {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+          {"Asin", nvinfer1::UnaryOperation::kASIN},
+          {"Acos", nvinfer1::UnaryOperation::kACOS},
+          {"Atan", nvinfer1::UnaryOperation::kATAN},
+          {"Asinh", nvinfer1::UnaryOperation::kASINH},
+          {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+          {"Atanh", nvinfer1::UnaryOperation::kATANH},
+          {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+          {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+          {"Erf", nvinfer1::UnaryOperation::kERF},
       });
   return m;
 }
@@ -4454,7 +4450,7 @@ Status ConvertPad(OpConverterParams* params) {
   if (padding_type != DataType::DT_INT32) {
     return errors::Unimplemented("Tpaddings supports only DT_INT32");
   }
-  auto pad_data = static_cast<int*>(pads.GetValues());
+  auto pad_data = pads.GetPointer<int>();
 
   std::vector<int32_t> tf_pad_index;
   for (int i = 0; i < nb_dims; i++) {
@@ -4873,19 +4869,15 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
   const Eigen::half* cast_vals_array[4];
   const float* vals_array[4];
   for (int j = 0; j < 4; j++) {
-    cast_vals_array[j] =
-        static_cast<Eigen::half const*>(inputs.at(j + 1).weights().GetValues());
-    vals_array[j] =
-        static_cast<float const*>(inputs.at(j + 1).weights().GetValues());
+    cast_vals_array[j] = inputs.at(j + 1).weights().GetPointer<Eigen::half>();
+    vals_array[j] = inputs.at(j + 1).weights().GetPointer<float>();
   }
   Eigen::half* cast_combined_scale_vals =
-      static_cast<Eigen::half*>(combined_scale_weights.GetValues());
+      combined_scale_weights.GetPointer<Eigen::half>();
   Eigen::half* cast_combined_offset_vals =
-      static_cast<Eigen::half*>(combined_offset_weights.GetValues());
-  float* combined_scale_vals =
-      static_cast<float*>(combined_scale_weights.GetValues());
-  float* combined_offset_vals =
-      static_cast<float*>(combined_offset_weights.GetValues());
+      combined_offset_weights.GetPointer<Eigen::half>();
+  float* combined_scale_vals = combined_scale_weights.GetPointer<float>();
+  float* combined_offset_vals = combined_offset_weights.GetPointer<float>();
 
   for (size_t i = 0; i < nweight; ++i) {
     float batchnorm_data[4];
@@ -6018,7 +6010,7 @@ Status ConvertTopK(OpConverterParams* params) {
   if (params->validation_only) return Status::OK();
 
   const nvinfer1::TopKOperation op = nvinfer1::TopKOperation::kMAX;
-  const int k = *(static_cast<int*>(k_w.GetValues()));
+  const int k = *(k_w.GetPointer<int>());
   const uint32_t reduce_axes = 1 << (num_dims - 1);
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
       *tensor->trt_tensor(), op, k, reduce_axes);
@@ -6419,8 +6411,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin max_output_size_per_class must be scalar ",
         node_def.name());
   }
-  int max_size_per_class =
-      *(static_cast<int*>(output_size_per_class.GetValues()));
+  int max_size_per_class = *(output_size_per_class.GetPointer<int>());
   if (max_size_per_class <= 0) {
     return errors::InvalidArgument(
         "TensorRT BatchedNMS Plugin max_output_size_per_class should be > 0",
@@ -6431,7 +6422,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin max_total_size must be scalar ",
         node_def.name());
   }
-  int max_total_size = *(static_cast<int*>(total_size.GetValues()));
+  int max_total_size = *(total_size.GetPointer<int>());
   if (max_total_size <= 0) {
     return errors::InvalidArgument(
         "TensorRT BatchedNMS Plugin max_total_size should be > 0",
@@ -6442,7 +6433,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin iou_threshold must be scalar ",
         node_def.name());
   }
-  float iou_thresh = *(static_cast<float*>(iou_threshold.GetValues()));
+  float iou_thresh = *(iou_threshold.GetPointer<float>());
   if (iou_thresh < 0.0 || iou_thresh > 1.0) {
     return errors::InvalidArgument(
         "TensorRT BatchedNMS Plugin iou_threshold must be in [0, 1]",
@@ -6497,7 +6488,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   }
 
   if (params->validation_only) return Status::OK();
-  float score_thresh = *(static_cast<float*>(score_threshold.GetValues()));
+  float score_thresh = *(score_threshold.GetPointer<float>());
   const int background_id = -1;
   nvinfer1::PluginField fields[9] = {
       nvinfer1::PluginField{"shareLocation", &share_location,
@@ -6578,7 +6569,7 @@ Status ConvertResize(OpConverterParams* params) {
     return errors::Unimplemented("Resize to shape=[] is not supported, at ",
                                  node_def.name());
   }
-  const int* weights_ptr = static_cast<int*>(weights.GetValues());
+  const int* weights_ptr = weights.GetPointer<int>();
 
   // Verify and consume node attributes.
   TFAttrs attrs(node_def);
