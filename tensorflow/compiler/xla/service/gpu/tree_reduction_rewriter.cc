@@ -155,6 +155,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     Shape reshaped_shape =
         ShapeUtil::MakeShape(input_shape.element_type(), reshaped_dimensions);
+
     HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
         HloInstruction::CreateBitcast(reshaped_shape, padded));
     VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
@@ -192,11 +193,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Remove reduced dimension.
     outer_reduce_dimensions.erase(outer_reduce_dimensions.begin() +
                                   outer_reduced_dimension);
-    Shape outer_reduce_shape = ShapeUtil::MakeShape(input_shape.element_type(),
-                                                    outer_reduce_dimensions);
     std::unique_ptr<HloInstruction> outer_reduce = HloInstruction::CreateReduce(
-        outer_reduce_shape, inner_reduce, initial_value,
-        {outer_reduced_dimension}, hlo->to_apply());
+        hlo->shape(), inner_reduce, initial_value, {outer_reduced_dimension},
+        hlo->to_apply());
 
     VLOG(1) << "Generated outer reduction: " << outer_reduce->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(outer_reduce));

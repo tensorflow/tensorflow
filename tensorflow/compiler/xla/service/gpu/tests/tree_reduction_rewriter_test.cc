@@ -91,6 +91,33 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(TreeReductionRewriterTest, RowReductionWeirdOutputLayout) {
+  const char* hlo_text = R"(
+HloModule ReduceWithPadding
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[2,4,17000]{2,1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[2,4]{0,1} reduce(input, zero), dimensions={2}, to_apply=add
+}
+)";
+
+  // Check that we preserve the layout.
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: reduce.1 = f32[2,4]{0,1}
+      )");
+
+  EnsureDeterminism(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(TreeReductionRewriterTest,
        RowReductionSingleDimensionNoBatchedDivisible) {
   const char* hlo_text = R"(
