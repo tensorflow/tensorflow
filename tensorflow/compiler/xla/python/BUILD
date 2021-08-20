@@ -145,7 +145,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":absl_casters",
         ":status_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -161,6 +160,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -377,7 +377,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
-        ":absl_casters",
         ":jax_jit",
         ":py_client",
         ":types",
@@ -392,6 +391,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -451,7 +451,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":absl_casters",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -461,6 +460,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 

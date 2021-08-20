@@ -32,7 +32,7 @@ limitations under the License.
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
