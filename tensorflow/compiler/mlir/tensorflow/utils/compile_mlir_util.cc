@@ -330,6 +330,7 @@ void CreateConvertMlirToXlaHloPipeline(
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
