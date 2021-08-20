@@ -116,7 +116,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     int64_t num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
+    bool no_padding_necessary = reduced_dim_size % num_fit == 0;
     HloInstruction *padded = [&] {
+      if (no_padding_necessary) {
+        return input;
+      }
+
       int64_t padded_num_elements = num_fit * num_fit;
       PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
       padding_config.mutable_dimensions(reduced_input_dimension)
@@ -136,7 +141,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
-        reshaped_dimensions.push_back(num_fit);
+        if (no_padding_necessary) {
+          reshaped_dimensions.push_back(reduced_dim_size / num_fit);
+        } else {
+          reshaped_dimensions.push_back(num_fit);
+        }
+
         reshaped_dimensions.push_back(num_fit);
       } else {
         reshaped_dimensions.push_back(padded->shape().dimensions(dim_idx));
