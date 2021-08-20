@@ -889,6 +889,18 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
+tf_gen_op_wrapper_private_py(
+    name = "tpu_xla_ops_gen",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/python/tpu:__pkg__",
+        "//tensorflow/python/tpu/ops:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/ops",
+    ],
+)
+
 py_library(
     name = "array_grad",
     srcs = ["ops/array_grad.py"],
