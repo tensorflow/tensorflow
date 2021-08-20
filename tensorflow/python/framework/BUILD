@@ -1981,7 +1981,6 @@ tf_python_pybind_extension(
     srcs = ["errors_test_helper.cc"],
     module_name = "_errors_test_helper",
     deps = [
-        "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
