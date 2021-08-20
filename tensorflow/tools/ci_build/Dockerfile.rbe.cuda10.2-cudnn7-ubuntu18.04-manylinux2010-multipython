@@ -8,7 +8,21 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda10.2-cudnn7-ubuntu18.04-manylinux2010-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda10.2-cudnn7-ubuntu18.04-manylinux2010-multipython
 
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as devtoolset
+FROM gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu16.04-manylinux2010
+
+RUN apt-get update
+RUN apt-get remove -y --allow-change-held-packages cuda-license-10-0 libcudnn7 libcudnn8 libnccl2 libnccl-dev
+RUN apt-get install -y --no-install-recommends --allow-downgrades --allow-change-held-packages \
+  libcublas10 \
+  libcublas-dev \
+  cuda-nvml-dev-10.2 \
+  cuda-command-line-tools-10.2 \
+  cuda-libraries-dev-10.2 \
+  cuda-minimal-build-10.2 \
+  libcudnn7=7.6.5.32-1+cuda10.2 \
+  libcudnn7-dev=7.6.5.32-1+cuda10.2
+RUN rm -f /usr/local/cuda
+RUN ln -s /usr/local/cuda-10.2 /usr/local/cuda
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -20,29 +34,6 @@ RUN apt-get update && apt-get install -y \
       rpm2cpio \
       unar \
       wget \
-      && \
-    rm -rf /var/lib/apt/lists/*
-
-ADD devtoolset/fixlinks.sh fixlinks.sh
-ADD devtoolset/build_devtoolset.sh build_devtoolset.sh
-ADD devtoolset/rpm-patch.sh rpm-patch.sh
-
-# Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-7 in /dt7.
-RUN /build_devtoolset.sh devtoolset-7 /dt7
-# Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-8 in /dt8.
-RUN /build_devtoolset.sh devtoolset-8 /dt8
-
-# TODO(klimek): Split up into two different docker images.
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04
-COPY --from=devtoolset /dt7 /dt7
-COPY --from=devtoolset /dt8 /dt8
-
-# Install TensorRT.
-RUN apt-get update && apt-get install -y \
-    libnvinfer-dev=6.0.1-1+cuda10.2 \
-    libnvinfer6=6.0.1-1+cuda10.2 \
-    libnvinfer-plugin-dev=6.0.1-1+cuda10.2 \
-    libnvinfer-plugin6=6.0.1-1+cuda10.2 \
       && \
     rm -rf /var/lib/apt/lists/*
 
