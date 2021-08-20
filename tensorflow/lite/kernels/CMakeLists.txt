@@ -25,7 +25,26 @@ set(SCHEMA_GENERATED_FILE ${SCHEMA_GENERATED_PATH}/schema_generated.h)
 
 # Use the util function in flatbuffer to generate the schema header.
 include(BuildFlatBuffers)
-set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
+
+# For cross-compilation purposes a natively compiled 'flatc' compiler is required
+if(${CMAKE_CROSSCOMPILING})
+  set(FLATC_PATHS
+      ${TFLITE_HOST_TOOLS_DIR}
+      ${TFLITE_HOST_TOOLS_DIR}/bin
+      ${TFLITE_HOST_TOOLS_DIR}/flatbuffers-flatc/bin
+      )
+  find_program(FLATC_BIN flatc PATHS ${FLATC_PATHS})
+  if(${FLATC_BIN} STREQUAL "FLATC_BIN-NOTFOUND")
+    message(FATAL_ERROR "Natively compiled 'flatc' compiler has not been found in the following\
+    locations: ${FLATC_PATHS}")
+  else()
+    message(STATUS "Pre-built 'flatc' compiler for cross-compilation purposes found: ${FLATC_BIN}")
+    set(FLATBUFFERS_FLATC_EXECUTABLE ${FLATC_BIN})
+  endif()
+else()
+  set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
+endif()
+
 set(FLATBUFFERS_FLATC_SCHEMA_EXTRA_ARGS
   -c
   --gen-object-api
