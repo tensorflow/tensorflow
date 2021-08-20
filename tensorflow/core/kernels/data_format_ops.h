@@ -77,7 +77,8 @@ struct DataFormatDimMap {
 
 template <typename T>
 struct VecPermute {
-  VecPermute(const Eigen::DSizes<Eigen::DenseIndex, 10>& dst) : dst_(dst) {}
+  explicit VecPermute(const Eigen::DSizes<Eigen::DenseIndex, 10>& dst)
+      : dst(dst) {}
   Eigen::DSizes<Eigen::DenseIndex, 1> dimensions(
       typename TTypes<T>::ConstFlat input) const {
     Eigen::DSizes<Eigen::DenseIndex, 1> result;
@@ -88,12 +89,12 @@ struct VecPermute {
   void eval(typename TTypes<T>::ConstFlat input, Output& output,
             const Device& d) const {
     for (int i = 0; i < input.size(); ++i) {
-      output.template chip<0>(dst_[i]).device(d) = input.template chip<0>(i);
+      output.template chip<0>(dst[i]).device(d) = input.template chip<0>(i);
     }
   }
 
  private:
-  Eigen::DSizes<Eigen::DenseIndex, 10> dst_;
+  Eigen::DSizes<Eigen::DenseIndex, 10> dst;
 };
 
 // Functor used by DataFormatVecPermuteOp to do the computations.
