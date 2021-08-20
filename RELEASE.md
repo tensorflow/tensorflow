@@ -26,6 +26,11 @@
     and their `experimental` endpoints
     (`tf.keras.experimental.models.LinearModel` and
     `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
+  * RNG behavior change for all `tf.keras.initializers` classes. For any class
+    constructed with a fixed seed, it will no longer generate same value
+    when invoked multiple times. Instead, it will return different value, but a
+    determinisitic sequence. This change will make the initialize behavior align
+    between v1 and v2.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with

@@ -421,11 +421,6 @@ class RandomUniform(Initializer):
   pass the dtype when calling the initializer. Keep in mind that
   the default minval, maxval and the behavior of fixed seeds have changed.
 
-  Random seed behavior:
-  Also be aware that if you pass a seed to the TF2 initializer
-  API it will reuse that same seed for every single initialization
-  (unlike the TF1 intializer)
-
   #### Structural Mapping to Native TF2
 
   Before:
@@ -447,10 +442,7 @@ class RandomUniform(Initializer):
   initializer = tf.initializers.RandomUniform(
     minval=minval,
     maxval=maxval,
-    # seed=seed,  # Setting a seed in the native TF2 API
-                  # causes it to produce the same initializations
-                  # across multiple calls of the same initializer.
-    )
+    seed=seed)
 
   weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
   weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
@@ -462,43 +454,10 @@ class RandomUniform(Initializer):
   | :-------------------- | :-------------- | :------------------------- |
   | `minval`               | `minval`    | Default changes from 0 to -0.05 |
   | `maxval`         | `maxval`        | Default changes from 1.0 to 0.05 |
-  | `seed`             | `seed` | Different random number generation |
-  :                    :        : semantics (to change in a  :
-  :                    :        : future version). If set, the TF2 version :
-  :                    :        : will use stateless random number :
-  :                    :        : generation which will produce the exact :
-  :                    :        : same initialization even across multiple :
-  :                    :        : calls of the initializer instance. the :
-  :                    :        : `compat.v1` version will generate new :
-  :                    :        : initializations each time. Do not set :
-  :                    :        : a seed if you need different          :
-  :                    :        : initializations each time. Instead    :
-  :                    :        : either set a global tf seed with      :
-  :                    :        : `tf.random.set_seed` if you need :
-  :                    :        : determinism, or initialize each weight :
-  :                    :        : with a separate initializer instance  :
-  :                    :        : and a different seed.                 :
+  | `seed`             | `seed` |  |
   | `dtype` | `dtype`   | The TF2 native api only takes it  |
   :                     :      : as a `__call__` arg, not a constructor arg. :
   | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
-
-  #### Example of fixed-seed behavior differences
-
-  `compat.v1` Fixed seed behavior:
-
-  >>> initializer = tf.compat.v1.random_uniform_initializer(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=False>
-
-  After:
-
-  >>> initializer = tf.initializers.RandomUniform(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=True>
 
   @end_compatibility
   """
@@ -552,11 +511,6 @@ class RandomNormal(Initializer):
   pass the dtype when calling the initializer. Keep in mind that
   the default stddev and the behavior of fixed seeds have changed.
 
-  Random seed behavior:
-  Also be aware that if you pass a seed to the TF2 initializer
-  API it will reuse that same seed for every single initialization
-  (unlike the TF1 intializer)
-
   #### Structural Mapping to Native TF2
 
   Before:
@@ -577,9 +531,7 @@ class RandomNormal(Initializer):
   ```python
   initializer = tf.initializers.RandomNormal(
     mean=mean,
-    # seed=seed,  # Setting a seed in the native TF2 API
-                  # causes it to produce the same initializations
-                  # across multiple calls of the same initializer.
+    seed=seed,
     stddev=stddev)
 
   weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
@@ -592,43 +544,10 @@ class RandomNormal(Initializer):
   | :----------------- | :-------------- | :------------------------- |
   | `mean`             | `mean`          | No change to defaults |
   | `stddev`           | `stddev`        | Default changes from 1.0 to 0.05 |
-  | `seed`             | `seed` | Different random number generation |
-  :                    :        : semantics (to change in a  :
-  :                    :        : future version). If set, the TF2 version :
-  :                    :        : will use stateless random number :
-  :                    :        : generation which will produce the exact :
-  :                    :        : same initialization even across multiple :
-  :                    :        : calls of the initializer instance. the :
-  :                    :        : `compat.v1` version will generate new :
-  :                    :        : initializations each time. Do not set :
-  :                    :        : a seed if you need different          :
-  :                    :        : initializations each time. Instead    :
-  :                    :        : either set a global tf seed with      :
-  :                    :        : `tf.random.set_seed` if you need :
-  :                    :        : determinism, or initialize each weight :
-  :                    :        : with a separate initializer instance  :
-  :                    :        : and a different seed.                 :
+  | `seed`             | `seed`          |                                  |
   | `dtype`            | `dtype`  | The TF2 native api only takes it as a |
   :                    :          : `__call__` arg, not a constructor arg. :
   | `partition_info`   | -     |  (`__call__` arg in TF1) Not supported.  |
-
-  #### Example of fixed-seed behavior differences
-
-  `compat.v1` Fixed seed behavior:
-
-  >>> initializer = tf.compat.v1.random_normal_initializer(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=False>
-
-  After:
-
-  >>> initializer = tf.initializers.RandomNormal(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=True>
 
   @end_compatibility
   """
@@ -688,11 +607,6 @@ class TruncatedNormal(Initializer):
   pass the dtype when calling the initializer. Keep in mind that
   the default stddev and the behavior of fixed seeds have changed.
 
-  Random seed behavior:
-  Also be aware that if you pass a seed to the TF2 initializer
-  API it will reuse that same seed for every single initialization
-  (unlike the TF1 intializer)
-
   #### Structural Mapping to Native TF2
 
   Before:
@@ -713,9 +627,7 @@ class TruncatedNormal(Initializer):
   ```python
   initializer = tf.initializers.truncated_normal(
     mean=mean,
-    # seed=seed,  # Setting a seed in the native TF2 API
-                  # causes it to produce the same initializations
-                  # across multiple calls of the same initializer.
+    seed=seed,
     stddev=stddev)
 
   weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
@@ -728,43 +640,10 @@ class TruncatedNormal(Initializer):
   | :-------------------- | :-------------- | :------------------------- |
   | `mean`               | `mean`        | No change to defaults |
   | `stddev`         | `stddev`        | Default changes from 1.0 to 0.05 |
-  | `seed`             | `seed` | Different random number generation |
-  :                    :        : semantics (to change in a  :
-  :                    :        : future version). If set, the TF2 version :
-  :                    :        : will use stateless random number :
-  :                    :        : generation which will produce the exact :
-  :                    :        : same initialization even across multiple :
-  :                    :        : calls of the initializer instance. the :
-  :                    :        : `compat.v1` version will generate new :
-  :                    :        : initializations each time. Do not set :
-  :                    :        : a seed if you need different          :
-  :                    :        : initializations each time. Instead    :
-  :                    :        : either set a global tf seed with      :
-  :                    :        : `tf.random.set_seed` if you need :
-  :                    :        : determinism, or initialize each weight :
-  :                    :        : with a separate initializer instance  :
-  :                    :        : and a different seed.                 :
+  | `seed`             | `seed` | |
   | `dtype` | `dtype`   | The TF2 native api only takes it  |
   :                     :      : as a `__call__` arg, not a constructor arg. :
   | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
-
-  #### Example of fixed-seed behavior differences
-
-  `compat.v1` Fixed seed behavior:
-
-  >>> initializer = tf.compat.v1.truncated_normal_initializer(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=False>
-
-  After:
-
-  >>> initializer = tf.initializers.truncated_normal(seed=10)
-  >>> a = initializer(shape=(2, 2))
-  >>> b = initializer(shape=(2, 2))
-  >>> tf.reduce_sum(a - b) == 0
-  <tf.Tensor: shape=(), dtype=bool, numpy=True>
 
   @end_compatibility
   """
