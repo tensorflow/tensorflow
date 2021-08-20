@@ -482,6 +482,14 @@ class Interpreter {
   /// to disable multithreading, which is equivalent to setting num_threads
   /// to 1. If set to the value -1, the number of threads used will be
   /// implementation-defined and platform-dependent.
+  ///
+  /// As TfLite interpreter could internally apply a TfLite delegate by default
+  /// (i.e. XNNPACK), the number of threads that are available to the default
+  /// delegate *should be* set via InterpreterBuilder APIs as follows:
+  /// std::unique_ptr<tflite::Interpreter> interpreter;
+  /// tflite::InterpreterBuilder builder(tflite model, op resolver);
+  /// builder.SetNumThreads(...)
+  /// ASSERT_EQ(builder(&interpreter), kTfLiteOk);
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
