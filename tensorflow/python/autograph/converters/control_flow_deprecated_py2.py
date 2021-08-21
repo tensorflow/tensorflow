@@ -44,7 +44,8 @@ from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
 
-  def _create_cond_branch(self, body_name, aliased_orig_names,
+  @staticmethod
+  def _create_cond_branch(body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
     if len(returns) == 1:
       template = """
@@ -95,7 +96,8 @@ class ControlFlowTransformer(converter.Base):
       return templates.replace(
           template, body_name=body_name, body=body, return_stmt=return_stmt)
 
-  def _create_cond_expr(self, results, test, body_name, orelse_name,
+  @staticmethod
+  def _create_cond_expr(results, test, body_name, orelse_name,
                         state_getter_name, state_setter_name,
                         basic_symbol_names, composite_symbol_names):
     if results is not None:
@@ -130,17 +132,20 @@ class ControlFlowTransformer(converter.Base):
           basic_symbol_names=basic_symbol_names,
           composite_symbol_names=composite_symbol_names)
 
-  def _fmt_symbols(self, symbol_set):
+  @staticmethod
+  def _fmt_symbols(symbol_set):
     if not symbol_set:
       return 'no variables'
     return ', '.join(map(str, symbol_set))
 
-  def _determine_aliased_symbols(self, scope, node_defined_in):
+  @staticmethod
+  def _determine_aliased_symbols(scope, node_defined_in):
     modified_live = scope.modified & node_defined_in
     # Composite symbols are handled elsewhere see _create_state_functions
     return {s for s in modified_live if not s.is_composite()}
 
-  def _create_state_functions(self, composites, state_getter_name,
+  @staticmethod
+  def _create_state_functions(composites, state_getter_name,
                               state_setter_name):
 
     if composites:
@@ -171,7 +176,8 @@ class ControlFlowTransformer(converter.Base):
 
     return node
 
-  def _create_loop_options(self, node):
+  @staticmethod
+  def _create_loop_options(node):
     if not anno.hasanno(node, anno.Basic.DIRECTIVES):
       return gast.Dict([], [])
 
@@ -185,7 +191,8 @@ class ControlFlowTransformer(converter.Base):
     values = list(values)  # ast and gast don't play well with tuples.
     return gast.Dict(keys, values)
 
-  def _create_undefined_assigns(self, undefined_symbols):
+  @staticmethod
+  def _create_undefined_assigns(undefined_symbols):
     assignments = []
     for s in undefined_symbols:
       template = '''
@@ -329,7 +336,8 @@ class ControlFlowTransformer(converter.Base):
         cond_assign + cond_expr)
     return if_ast
 
-  def _get_basic_loop_vars(self, modified_symbols, live_in, live_out):
+  @staticmethod
+  def _get_basic_loop_vars(modified_symbols, live_in, live_out):
     # The loop variables corresponding to simple symbols (e.g. `x`).
     basic_loop_vars = []
     for s in modified_symbols:
@@ -343,7 +351,8 @@ class ControlFlowTransformer(converter.Base):
       basic_loop_vars.append(s)
     return frozenset(basic_loop_vars)
 
-  def _get_composite_loop_vars(self, modified_symbols, live_in):
+  @staticmethod
+  def _get_composite_loop_vars(modified_symbols, live_in):
     # The loop variables corresponding to composite symbols (e.g. `self.x`).
     composite_loop_vars = []
     for s in modified_symbols:
@@ -388,7 +397,8 @@ class ControlFlowTransformer(converter.Base):
     return (basic_loop_vars, composite_loop_vars, reserved_symbols,
             undefined_lives)
 
-  def _loop_var_constructs(self, basic_loop_vars):
+  @staticmethod
+  def _loop_var_constructs(basic_loop_vars):
     loop_vars = tuple(basic_loop_vars)
     loop_vars_ast_tuple = gast.Tuple([n.ast() for n in loop_vars], None)
 
