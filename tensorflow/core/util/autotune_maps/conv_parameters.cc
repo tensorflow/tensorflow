@@ -63,7 +63,7 @@ ConvParameters::ConvParameters(
   }
   proto_.set_device_identifier(
       autotune_maps_utils::DeviceIdToIdentifier(device_id));
-  proto_.set_version((version == -1) ? kVersion : version);
+  proto_.set_version(version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }
 

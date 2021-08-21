@@ -144,6 +144,7 @@ tf_cuda_only_cc_test(
         ":conv_parameters_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -30,6 +31,8 @@ namespace {
 using stream_executor::dnn::AlgorithmConfig;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::gpu::GpuDriver;
+using ::tensorflow::testing::StatusIs;
+using ::testing::HasSubstr;
 
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
@@ -165,7 +168,10 @@ TEST(AutotuneSerializeTest, VersionControl) {
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
 
   ResetAutotuneMaps();
-  TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
+  EXPECT_THAT(
+      LoadSerializedAutotuneMaps(serialized_string),
+      StatusIs(error::ABORTED,
+               HasSubstr("Aborted because the loaded autotune results")));
   EXPECT_EQ(AutotuneConv::GetInstance()->GetMap().size(), 0);
 }
 }  // namespace
