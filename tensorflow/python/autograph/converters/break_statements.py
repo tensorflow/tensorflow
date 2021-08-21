@@ -78,7 +78,7 @@ class BreakTransformer(converter.Base):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
-    node.test = self.visit(node.test)
+    node.test = self.visit(node.test)   # TODO: Expected type is 'AST', but got 'expr' instead
     node.body, break_used = self._process_body(node.body, break_var)
     # A break in the else clause applies to the containing scope.
     node.orelse = self.visit_block(node.orelse)
@@ -124,8 +124,8 @@ class BreakTransformer(converter.Base):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
-    node.target = self.visit(node.target)
-    node.iter = self.visit(node.iter)
+    node.target = self.visit(node.target)   # TODO: Expected type is 'AST', but got 'expr' instead
+    node.iter = self.visit(node.iter)       # TODO: Expected type is 'AST', but got 'expr' instead
     node.body, break_used = self._process_body(node.body, break_var)
     # A break in the else clause applies to the containing scope.
     node.orelse = self.visit_block(node.orelse)
