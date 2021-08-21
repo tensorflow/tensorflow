@@ -203,8 +203,8 @@ class CallTreeTransformer(converter.Base):
     new_call = templates.replace_as_expression(
         template,
         func=node.func,
-        args=self._args_to_tuple(node),
-        kwargs=self._kwargs_to_dict(node),
+        args=self._args_to_tuple(node),   # TODO: type 'AST' does not have expected attribute 'args'
+        kwargs=self._kwargs_to_dict(node),  # TODO: type 'AST' does not have expected attribute 'keywords'
         function_ctx=function_context_name)
 
     return new_call
