@@ -204,9 +204,9 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
   def test_multiple_guarded_continues_with_side_effects(self):
 
     def f(x):
-      def track(u, x):
-        u.append(x)
-        return x
+      def track(y, z):
+        y.append(z)
+        return z
 
       u = []
       v = []
