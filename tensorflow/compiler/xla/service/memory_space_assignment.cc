@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <iterator>
+#include <limits>
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -412,8 +414,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
   // instructions. The elapsed times are multiplied by
   // pow(while_execution_count, nest_level) to account for executing the HLOs
   // multiple times in while loops.
-  std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
-                                               0.0);
+  std::vector<float> instructions_elapsed_time(
+      instruction_schedule_->size() + 1, 0.0);
+  int max_while_nest_level = 0;
   for (const auto& instruction_and_logical_time : *instruction_schedule_) {
     // To avoid double counting, don't include the elapsed time of while and
     // conditional HLOs.
@@ -426,6 +429,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     int while_nest_level = cost_analysis_.CalculateComputationNestLevel(
         instruction_and_logical_time.first, /*while_only=*/true);
     while_nest_level_[logical_time] = while_nest_level;
+    max_while_nest_level = std::max(max_while_nest_level, while_nest_level);
     int computation_nest_level = cost_analysis_.CalculateComputationNestLevel(
         instruction_and_logical_time.first, /*while_only=*/false);
     computation_nest_level_[logical_time] = computation_nest_level;
@@ -451,17 +455,35 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
   }
   // To be able to accurately determine the minimum nest level between a start
   // time and an end time efficiently, populate a data structure that stores the
-  // closest nest level change index.
+  // closest 'smaller' nest level change index.
+  const int64_t size = instructions_elapsed_time.size();
+  CHECK_EQ(size, while_nest_level_.size());
+  std::vector<int> most_recent_by_level(while_nest_level_.size(), -1);
   int prev_nest_level = 0;
   int change_idx = -1;
-  while_nest_level_change_.reserve(instructions_elapsed_time.size());
-  for (int i = 0; i < while_nest_level_.size(); ++i) {
+  while_nest_level_change_.reserve(size);
+  for (int i = 0; i < size; ++i) {
     int nest_level = while_nest_level_[i];
     if (nest_level != prev_nest_level) {
       prev_nest_level = nest_level;
-      change_idx = i - 1;
+      // Compute last change index by choosing the most recent instruction index
+      // with smaller nesting level. Note that it may happen that even though
+      // there were few different regions with other nest levels before, all of
+      // then are same or bigger than this one, in which case we'll end up with
+      // -1, e.g. if you got nest level 0 no need checking anything else.
+      change_idx = -1;
+      for (int smaller_level = 0; smaller_level < nest_level; smaller_level++) {
+        change_idx = std::max(change_idx, most_recent_by_level[smaller_level]);
+      }
     }
+    most_recent_by_level[nest_level] = i;
     while_nest_level_change_.push_back(change_idx);
+  }
+  for (int i = 0; i <= max_while_nest_level; ++i) {
+    while_execution_counts_.push_back(tensorflow::MathUtil::IPow<float>(
+        cost_analysis_.options()
+            .xla_tpu_memory_space_assignment_while_execution_count,
+        i));
   }
 }
 
@@ -716,10 +738,7 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
   int interval_while_nest_level = GetMinWhileNestLevel(start_time, end_time);
   return (elapsed_time_cumsum_[end_time - 1] -
           elapsed_time_cumsum_[start_time]) /
-         tensorflow::MathUtil::IPow<float>(
-             cost_analysis_.options()
-                 .xla_tpu_memory_space_assignment_while_execution_count,
-             interval_while_nest_level);
+         while_execution_counts_[interval_while_nest_level];
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
@@ -1261,7 +1280,10 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    AppendBufferInfoDebugString(interval, &buffer_info_str_);
+    if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+      // Only fill buffer_info_str_ if needed.
+      AppendBufferInfoDebugString(interval, &buffer_info_str_);
+    }
 
     std::vector<AllocationValue> allocation_values;
     CreateAllocationValuesFromColocatedIntervals(colocated_intervals,
@@ -2162,8 +2184,11 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
-      AppendAllocationInfoDebugString(allocation_value, *allocation,
-                                      allocation_info_str_);
+      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+        // Only fill buffer_info_str_ if needed.
+        AppendAllocationInfoDebugString(allocation_value, *allocation,
+                                        allocation_info_str_);
+      }
       allocations_->push_back(std::move(allocation));
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();

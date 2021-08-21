@@ -427,6 +427,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   bool using_increasing_prefetch_time_iterator_ = true;
   int64_t increasing_prefetch_time_iterator_;
   int64_t decreasing_prefetch_time_iterator_;
+
+  std::vector<float> while_execution_counts_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
