@@ -123,15 +123,15 @@ class ContinueCanonicalizationTransformer(converter.Base):
     return nodes
 
   def visit_While(self, node):
-    node.test = self.visit(node.test)
+    node.test = self.visit(node.test)   # TODO: Expected type is 'AST', but got 'expr' instead
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
     node.orelse = self._visit_non_loop_body(node.orelse)
     return node
 
   def visit_For(self, node):
-    node.target = self.generic_visit(node.target)
-    node.iter = self.generic_visit(node.iter)
+    node.target = self.generic_visit(node.target)   # TODO: Expected type is 'AST', but got 'expr' instead
+    node.iter = self.generic_visit(node.iter)       # TODO: Expected type is 'AST', but got 'expr' instead
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
     node.orelse = self._visit_non_loop_body(node.orelse)
