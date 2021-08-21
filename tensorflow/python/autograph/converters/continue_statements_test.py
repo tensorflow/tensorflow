@@ -76,7 +76,7 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
           raise ValueError('intentional')
         except ValueError:
           continue
-        v.append(x)
+        v.append(x)   # TODO: This line is unreachable
       return v
 
     self.assertTransformedEquivalent(f, [])
