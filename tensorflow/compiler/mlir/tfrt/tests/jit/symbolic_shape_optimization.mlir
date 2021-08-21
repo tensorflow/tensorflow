@@ -15,7 +15,6 @@ func @optimize_1dx1d_constraint(
   return %2: !shape.witness
 }
 
-
 // -----
 
 // CHECK-LABEL: @optimize_1dx1d_constraint_with_static_shape
@@ -28,6 +27,21 @@ func @optimize_1dx1d_constraint_with_static_shape(
   %1 = shape.shape_of %arg1 : tensor<10xf32> -> tensor<1xindex>
   // CHECK: shape.const_witness true
   %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<1xindex>
+  return %2: !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1d_constraint_with_const_shape
+func @optimize_1dx1d_constraint_with_const_shape(
+  %arg0: tensor<512xf32>,
+  %arg1: tensor<?x512xf32>
+    {cpurt.symbolic_shape = dense<[-2,512]> : tensor<2xi64>}
+) -> !shape.witness {
+  %0 = shape.const_shape [512] : tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
+  // CHECK: shape.const_witness true
+  %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<2xindex>
   return %2: !shape.witness
 }
 
@@ -62,6 +76,39 @@ func @optimize_1dx1d_bcast(
        : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
 
   return %3: tensor<?xf32>
+}
+
+// -----
+
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:       @optimize_1dx2d_bcast_const_shape(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<512xf32>
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?x512xf32>
+func @optimize_1dx2d_bcast_const_shape(
+  %arg0: tensor<512xf32>,
+  %arg1: tensor<?x512xf32>
+    {cpurt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
+) -> tensor<?x512xf32> {
+  %0 = shape.const_shape [512] : tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
+  %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<2xindex>
+                             -> tensor<2xindex>
+
+  // CHECK:      %[[C0:.*]] = constant 0 : index
+  // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]], 512]
+  // CHECK:      %[[RET:.*]] = linalg.generic
+  // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+  // CHECK-SAME: iterator_types = ["parallel", "parallel"]
+  // CHECK-SAME: ins(%[[ARG0]] : tensor<512xf32>)
+  // CHECK-SAME: outs(%[[OUT]] : tensor<?x512xf32>)
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+         {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+       : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
+
+  return %3: tensor<?x512xf32>
 }
 
 // -----

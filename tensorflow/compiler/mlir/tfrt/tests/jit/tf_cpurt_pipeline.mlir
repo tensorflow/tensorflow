@@ -109,6 +109,28 @@ func @add_vec_vec_vec_vec(
 
 // -----
 
+// CHECK: add_vec_tensor_tensor
+func @add_vec_tensor_tensor(
+  %arg0: tensor<512xf32>,
+  %arg1: tensor<1x?x512xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+  %arg2: tensor<1x?x512xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
+) -> tensor<1x?x512xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.AddV2"(%arg0, %arg1)
+        : (tensor<512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
+  %1 = "tf.AddV2"(%arg2, %0)
+        : (tensor<1x?x512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
+  return %1 : tensor<1x?x512xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @tf_binary_with_bcast
 func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
                            %arg1: tensor<?x4xf32>) -> tensor<?x4xf32> {

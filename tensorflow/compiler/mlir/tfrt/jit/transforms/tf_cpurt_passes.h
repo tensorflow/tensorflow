@@ -45,7 +45,8 @@ std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 std::unique_ptr<mlir::FunctionPass> CreateFissionPass();
 
 // Pass to optimize broadcasts based on the symbolic shape constraints.
-std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass();
+std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
+    bool constraints_only = false);
 
 // Creates `tf_device.cluster` operations according to the TF CPURT clustering
 // policy.

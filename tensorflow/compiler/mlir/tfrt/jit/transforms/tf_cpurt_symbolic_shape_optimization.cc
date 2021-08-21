@@ -47,6 +47,7 @@ using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::ConstantIndexOp;
+using mlir::ConstantOp;
 using mlir::DenseIntElementsAttr;
 using mlir::dyn_cast;
 using mlir::dyn_cast_or_null;
@@ -104,6 +105,12 @@ LogicalResult GetSymbolicShapes(ValueRange shapes,
   for (Value operand : shapes) {
     Operation* defined_by_op = operand.getDefiningOp();
     if (!defined_by_op) return failure();
+
+    // Check if the shape is a constant.
+    if (auto const_shape = dyn_cast<shape::ConstShapeOp>(defined_by_op)) {
+      bcasted_shapes.emplace_back(const_shape.shape().getValues<int64_t>());
+      continue;
+    }
 
     // Check if the shape is a result of shape.shape_of operation.
     if (auto shape_of = dyn_cast<shape::ShapeOfOp>(defined_by_op)) {
@@ -217,6 +224,17 @@ LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
   if (failed(GetSymbolicShapes(op, symbolic_shapes_, bcasted_shapes)))
     return failure();
 
+  // Find the maximum rank of the operands.
+  size_t rank = 0;
+  for (const SymbolicShape& bcasted_shape : bcasted_shapes)
+    rank = std::max(rank, bcasted_shape.size());
+
+  // Prepend `1` to all shapes to match the maximum rank.
+  for (size_t i = 0; i < bcasted_shapes.size(); ++i) {
+    bcasted_shapes[i].insert(bcasted_shapes[i].begin(),
+                             rank - bcasted_shapes[i].size(), 1);
+  }
+
   // Pick the first shape as the initialization value for the output shape, and
   // check if the broadcast can be statically proven to be successful.
   SymbolicShape output_shape = bcasted_shapes[0];
@@ -327,6 +345,12 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
         if (bcasted_shapes[i][d] == dim) {
           Operation* operand_src = bcast.getOperand(i).getDefiningOp();
 
+          // Shape defined by the shape.const_shape operation.
+          if (auto shape = dyn_cast_or_null<shape::ConstShapeOp>(operand_src)) {
+            return rewriter.create<ConstantOp>(
+                loc, shape.shape().getValue({static_cast<unsigned>(dim)}));
+          }
+
           // Shape defined by the shape.shape_of operation.
           if (auto shape_of = dyn_cast_or_null<shape::ShapeOfOp>(operand_src)) {
             return rewriter.create<tensor::DimOp>(loc, shape_of.arg(),
@@ -434,6 +458,12 @@ SymbolicShapes GetOperandsSymbolicShapes(FuncOp func) {
 
 struct SymbolicShapeOptimizationPass
     : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+  SymbolicShapeOptimizationPass() = default;
+
+  explicit SymbolicShapeOptimizationPass(bool constraints_only) {
+    this->optimize_only_constraints = constraints_only;
+  }
+
   void runOnFunction() override {
     FuncOp func = getFunction();
 
@@ -444,10 +474,12 @@ struct SymbolicShapeOptimizationPass
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
-    // Rewrite broadcasts and constraints based on the symbolic shapes.
-    patterns
-        .insert<CstrBroadcastableOpLowering, DynamicBroadcastInDimOpLowering>(
-            ctx, symbolic_shapes);
+    // Rewrite constraints based on the symbolic shapes.
+    patterns.insert<CstrBroadcastableOpLowering>(ctx, symbolic_shapes);
+
+    // Rewrite broadcasts based on the symbolic shapes if enabled.
+    if (!optimize_only_constraints)
+      patterns.insert<DynamicBroadcastInDimOpLowering>(ctx, symbolic_shapes);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
@@ -463,8 +495,9 @@ struct SymbolicShapeOptimizationPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateSymbolicShapeOptimizationPass() {
-  return std::make_unique<SymbolicShapeOptimizationPass>();
+std::unique_ptr<FunctionPass> CreateSymbolicShapeOptimizationPass(
+    bool constraints_only) {
+  return std::make_unique<SymbolicShapeOptimizationPass>(constraints_only);
 }
 
 }  // namespace tensorflow
