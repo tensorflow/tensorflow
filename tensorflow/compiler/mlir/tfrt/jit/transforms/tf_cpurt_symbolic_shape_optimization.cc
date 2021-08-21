@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
 namespace tensorflow {
@@ -138,12 +139,12 @@ LogicalResult GetSymbolicShapes(shape::CstrBroadcastableOp op,
 // chains of broadcast operations (broadcast the result of the broadcast).
 LogicalResult GetSymbolicShapes(shape::BroadcastOp op,
                                 const SymbolicShapes& symbolic_shapes,
+                                SmallVector<Value>& bcasted_values,
                                 SmallVector<SymbolicShape>& bcasted_shapes) {
-  // Shape values for which we need to get the symbolic shapes.
-  SmallVector<Value> shapes;
-  shapes.reserve(op.getNumOperands());
-
   SmallVector<shape::BroadcastOp> worklist = {op};
+  bcasted_values.reserve(op.getNumOperands());
+  bcasted_shapes.reserve(op.getNumOperands());
+
   while (!worklist.empty()) {
     shape::BroadcastOp bcast = worklist.pop_back_val();
 
@@ -152,11 +153,11 @@ LogicalResult GetSymbolicShapes(shape::BroadcastOp op,
         worklist.push_back(bcast_arg);
         continue;
       }
-      shapes.push_back(shape);
+      bcasted_values.push_back(shape);
     }
   }
 
-  return GetSymbolicShapes(shapes, symbolic_shapes, bcasted_shapes);
+  return GetSymbolicShapes(bcasted_values, symbolic_shapes, bcasted_shapes);
 }
 
 // Joins broadcasted symbolic shapes with the `shape` to get the output shape
@@ -290,9 +291,12 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
   auto bcast = dyn_cast_or_null<shape::BroadcastOp>(output_dimensions_op);
   if (!bcast) return failure();
 
-  // Collect symbolic shapes from the broadcast operation operands.
+  // Collect symbolic shapes (and the values that define these shapes) from the
+  // broadcast operation operands.
+  SmallVector<Value> bcasted_values;
   SmallVector<SymbolicShape> bcasted_shapes;
-  if (failed(GetSymbolicShapes(bcast, symbolic_shapes_, bcasted_shapes)))
+  if (failed(GetSymbolicShapes(bcast, symbolic_shapes_, bcasted_values,
+                               bcasted_shapes)))
     return failure();
 
   // Get the symbolic shape of the broadcasted operand.
@@ -343,7 +347,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     for (unsigned i = 0; i < bcasted_shapes.size(); ++i) {
       for (unsigned d = 0; d < rank; ++d) {
         if (bcasted_shapes[i][d] == dim) {
-          Operation* operand_src = bcast.getOperand(i).getDefiningOp();
+          Operation* operand_src = bcasted_values[i].getDefiningOp();
 
           // Shape defined by the shape.const_shape operation.
           if (auto shape = dyn_cast_or_null<shape::ConstShapeOp>(operand_src)) {
@@ -476,6 +480,12 @@ struct SymbolicShapeOptimizationPass
 
     // Rewrite constraints based on the symbolic shapes.
     patterns.insert<CstrBroadcastableOpLowering>(ctx, symbolic_shapes);
+
+    // Move broadcasts up across mhlo operations to enable more opportunities
+    // for constraints and broadcasts optimizations. These patterns are only
+    // applicable if we do not lower mhlo broadcasts to linalg.generic.
+    if (optimize_only_constraints)
+      mlir::mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)
