@@ -49,7 +49,8 @@ class BreakTransformer(converter.Base):
     """
     return templates.replace(template, var_name=var_name)
 
-  def _guard_if_present(self, block, var_name):
+  @staticmethod
+  def _guard_if_present(block, var_name):
     """Prevents the block from executing if var_name is set."""
     if not block:
       return block
