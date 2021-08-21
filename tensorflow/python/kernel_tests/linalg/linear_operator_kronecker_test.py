@@ -53,6 +53,7 @@ def _kronecker_dense(factors):
   return product
 
 
+@test_util.run_without_tensor_float_32("This test fails in TF32")
 class KroneckerDenseTest(test.TestCase):
   """Test of `_kronecker_dense` function."""
 

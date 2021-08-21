@@ -175,7 +175,7 @@ class LSTMTest(test.TestCase):
       # Initialize variables and run the unrolled LSTM layer.
       self.evaluate(variables.global_variables_initializer())
       return self.evaluate(out_seq)
-
+  @test_util.run_without_tensor_float_32("This test fails in TF32")
   def testLSTMLayer(self):
     # Run with all-0 weights, no padding.
     o = self._RunLSTMLayer('zeros', init_ops.zeros_initializer(), 0., 0., 0.)

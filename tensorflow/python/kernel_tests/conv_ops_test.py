@@ -836,6 +836,7 @@ class Conv2DTest(test.TestCase):
           results[0], results[1], atol=tol_to_use, rtol=tol_to_use)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_without_tensor_float_32("This test fails in TF32")
   def testConv2DGroupConvFwd(self):
     if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       data_formats = ["NHWC", "NCHW"]
@@ -2179,6 +2180,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
+  @test_util.run_without_tensor_float_32("This test fails in TF32")
   def testInputGradientKernelSizeMatchesInputSize(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -2197,6 +2199,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.deprecated_graph_mode_only
+  @test_util.run_without_tensor_float_32("This test fails in TF32")
   def testFilterGradientKernelSizeMatchesInputSize(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(

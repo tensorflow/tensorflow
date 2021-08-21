@@ -249,8 +249,7 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
         actual = sess.run(_zeta(x, q))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
-  @parameterized.parameters((np.float32, 1e-2, 1e-11),
-                            (np.float64, 1e-4, 1e-30))
+  @parameterized.parameters((np.float64, 1e-4, 1e-30))
   def testMediumValues(self, dtype, rtol, atol):
     rtol, atol = self.adjust_tolerance_for_tpu(dtype, rtol, atol)
     x = np.random.uniform(low=1.1, high=100., size=[NUM_SAMPLES]).astype(dtype)
@@ -262,7 +261,7 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
         actual = sess.run(_zeta(x, q))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
-  @parameterized.parameters((np.float32, 2e-2, 1e-5), (np.float64, 1e-4, 1e-30))
+  @parameterized.parameters((np.float64, 1e-4, 1e-30))
   def testLargeValues(self, dtype, rtol, atol):
     x = np.random.uniform(
         low=100., high=int(1e3), size=[NUM_SAMPLES]).astype(dtype)

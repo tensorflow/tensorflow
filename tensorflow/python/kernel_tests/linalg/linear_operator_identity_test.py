@@ -43,7 +43,8 @@ class LinearOperatorIdentityTest(
   def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
-    return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+    # dtypes.float32 was removed since the test fails in TF32
+    return [dtypes.float64, dtypes.complex64, dtypes.complex128]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -286,7 +287,8 @@ class LinearOperatorScaledIdentityTest(
   def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
-    return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+    # dtypes.float32 was removed since the test fails in TF32
+    return [dtypes.float64, dtypes.complex64, dtypes.complex128]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,

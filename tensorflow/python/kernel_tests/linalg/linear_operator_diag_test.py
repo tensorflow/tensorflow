@@ -31,6 +31,7 @@ linalg = linalg_lib
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_without_tensor_float_32("This test fails in TF32")
 class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""

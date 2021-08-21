@@ -483,6 +483,7 @@ class LinearOperatorCirculant2DBaseTest(object):
     return math_ops.cast(matrix, dtype)
 
 
+@test_util.run_without_tensor_float_32("This test fails in TF32")
 class LinearOperatorCirculant2DTestHermitianSpectrum(
     LinearOperatorCirculant2DBaseTest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):

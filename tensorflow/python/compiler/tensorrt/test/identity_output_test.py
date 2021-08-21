@@ -33,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_without_tensor_float_32("This test fails in TF32")
 class IdentityTest(trt_test.TfTrtIntegrationTestBase):
   """Testing engine with the same tensor repeated as output via identity."""
 
