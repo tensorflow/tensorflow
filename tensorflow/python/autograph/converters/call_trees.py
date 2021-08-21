@@ -128,7 +128,8 @@ class CallTreeTransformer(converter.Base):
     node.body = self.visit_block(node.body)
     return node
 
-  def _args_to_tuple(self, node):
+  @staticmethod
+  def _args_to_tuple(node):
     """Ties together all positional and *arg arguments in a single tuple."""
     # TODO(mdan): We could rewrite this to just a call to tuple(). Maybe better?
     # For example for
@@ -146,7 +147,8 @@ class CallTreeTransformer(converter.Base):
     builder.finalize()
     return builder.to_ast()
 
-  def _kwargs_to_dict(self, node):
+  @staticmethod
+  def _kwargs_to_dict(node):
     """Ties together all keyword and **kwarg arguments in a single dict."""
     if node.keywords:
       return gast.Call(
