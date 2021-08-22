@@ -103,7 +103,7 @@ class DirectivesTest(converter_testing.TestCase):
     tc = TestClass()
 
     def f():
-      return tc.b + 1
+      return tc.b + 1   # TODO: Expected type is 'int', but got 'None' instead
 
     _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
