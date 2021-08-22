@@ -101,7 +101,8 @@ class FunctionTransformer(converter_testing.TestCase):
 
     class TestClass(object):
 
-      def f(self, l):
+      @staticmethod
+      def f(l):
 
         def inner_fn(i):
           return i + 1
