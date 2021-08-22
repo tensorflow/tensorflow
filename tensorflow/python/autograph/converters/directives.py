@@ -89,8 +89,8 @@ def _map_args(call_node, function):
 
 class DirectivesTransformer(converter.Base):
   """Parses compiler directives and converts them into AST annotations."""
-
-  def _process_symbol_directive(self, call_node, directive):
+  @staticmethod
+  def _process_symbol_directive(call_node, directive):
     if len(call_node.args) < 1:
       raise ValueError('"%s" requires a positional first argument'
                        ' as the target' % directive.__name__)
