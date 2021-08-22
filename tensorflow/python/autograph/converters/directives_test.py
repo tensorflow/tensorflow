@@ -83,7 +83,6 @@ class DirectivesTest(converter_testing.TestCase):
   def test_loop_target_not_first(self):
 
     def f():
-      a = 1
       while True:
         a = 2
         directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
