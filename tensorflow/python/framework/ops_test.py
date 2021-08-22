@@ -3540,7 +3540,8 @@ class NameScopeTest(test_util.TensorFlowTestCase):
           with ops.name_scope("_"):
             pass
 
-    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
+    self.assertRaisesRegex(ValueError,
+                           "'_' is not a valid (?:root )?scope name", f)
 
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
