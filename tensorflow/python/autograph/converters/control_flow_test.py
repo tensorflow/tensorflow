@@ -109,14 +109,14 @@ class NestedControlFlowTest(ControlFlowTestBase):
       def __init__(self, y):
         self.y = y
 
-    def f(n):
-      tc = TestClassX(TestClassY({'z': TestClassX(n)}))
-      if n > 0:
-        while n > 0:
-          if n < 2:
-            tc.x.y['z'].x += 1
-          n -= 1
-      return n, tc
+    def f(n_):
+      tc_ = TestClassX(TestClassY({'z': TestClassX(n_)}))
+      if n_ > 0:
+        while n_ > 0:
+          if n_ < 2:
+            tc_.x.y['z'].x += 1
+          n_ -= 1
+      return n_, tc_
 
     tr = self.transform(f, control_flow)
 
@@ -308,7 +308,7 @@ class WhileStatementTest(ControlFlowTestBase):
   def test_non_tensor_state(self):
 
     # This class is ok to be in a tf.while's state.
-    class TestClass(collections.namedtuple('TestClass', ('x'))):
+    class TestClass(collections.namedtuple('TestClass', 'x')):
       pass
 
     def f(n):
