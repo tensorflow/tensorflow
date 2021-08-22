@@ -31,9 +31,6 @@ static const char* const kTrainableVarType = "_trainable_variables";
 // Op type for tensors in the checkpoint file.
 static const char* const kCkptVarType = "_checkpoint_variables";
 
-static const char* const kDeviceVendorNvidia = "Nvidia";
-static const char* const kDeviceVendorAMD = "AMD";
-
 }  // namespace tfprof
 }  // namespace tensorflow
 

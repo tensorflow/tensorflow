@@ -1,3 +1,5 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -54,8 +56,8 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal:tfprof_constants",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/utils:device_caps_utils_hdrs_only",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -567,6 +569,14 @@ cc_library(
         ":xplane_visitor",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_header_only_library(
+    name = "device_caps_utils_hdrs_only",
+    deps = [
+        ":device_caps_utils",
     ],
 )
 

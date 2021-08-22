@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAP_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
+
+constexpr absl::string_view kDeviceVendorNvidia = "Nvidia";
+constexpr absl::string_view kDeviceVendorAMD = "AMD";
 
 void SetDeviceCaps(const DeviceCapabilities& caps, XPlane* plane);
 DeviceCapabilities GetDeviceCaps(const XPlane& plane);

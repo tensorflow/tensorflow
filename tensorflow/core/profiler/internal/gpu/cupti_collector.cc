@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/profiler/internal/tfprof_constants.h"
+#include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/parse_annotation.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -349,7 +349,7 @@ class PerDeviceCollector {
                              XPlaneBuilder* device_plane) {
     device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
                                    GetStatTypeStr(StatType::kDevVendor)),
-                               tensorflow::tfprof::kDeviceVendorNvidia);
+                               tensorflow::profiler::kDeviceVendorNvidia);
 
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
