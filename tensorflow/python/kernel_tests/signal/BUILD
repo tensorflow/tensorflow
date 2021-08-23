@@ -40,7 +40,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_cuda",  # TODO(b/197522782): reenable test after fixing.
+        "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",
     ],
     # TODO(timshen): re-enable after resolving flakiness (b/149426657).
