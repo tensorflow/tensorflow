@@ -497,31 +497,13 @@ class IrEmitterUnnested : public IrEmitter {
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
-  // Emits code to process a tensor element in a tile for the given input hlo
-  // that is either a unnested kReduce or a kInput fusion.
-  //
-  // Calculates and stores the temporary reduction value in the corresponding
-  // alloca.
-  //
-  // `instr_index_group` indicates a set of reductions this call needs to emit,
-  // each i points to the ith output of unnested_hlo. Notice that if
-  // unnested_hlo is not a multi-output fusion, instr_index_group is always {0}.
-  void EmitTileElementForReduction(
-      mlir::lmhlo::FusionOp fusion, const Shape& reduction_operand_shape,
-      absl::Span<const int> instr_index_group,
-      HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-      absl::Span<HloComputation* const> reducers,
-      const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenState& reduction_info, int64_t x_iter_num,
-      const FusionLayoutAnalysis& layout_analysis);
-
   // Prepares for the code generation for a tile block of a reduction kernel.
   //
   // Create accumulator alloca's, populate them with initial values, and store
   // inside reduction_info.
   void EmitPrologueForReduction(
-      mlir::lmhlo::FusionOp fusion, absl::Span<const int> instr_index_group,
+      mlir::lmhlo::FusionOp fusion,
+      absl::Span<const int> reduce_instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       ReductionCodegenState* reduction_info,
@@ -531,7 +513,7 @@ class IrEmitterUnnested : public IrEmitter {
   // write the calculated output into the output tensor.
   void EmitEpilogueForReduction(
       llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
-      absl::Span<const int> instr_index_group,
+      absl::Span<const int> reduce_instr_index_group,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
       const ReductionCodegenState& reduction_info,

@@ -65,10 +65,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
-    std::array<int64_t, 3> reduction_tiling = GetReductionTiling(
-        reduction_dimensions,
-        primitive_util::BitWidth(hlo->shape().element_type()),
-        cuda_compute_capability_);
+    std::array<int64_t, 3> reduction_tiling =
+        GetReductionTiling(reduction_dimensions, cuda_compute_capability_);
     VLOG(5) << "Input: " << hlo->ToString();
 
     HloInstruction *input = hlo->mutable_operand(0);
