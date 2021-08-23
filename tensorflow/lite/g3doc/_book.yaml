@@ -243,6 +243,9 @@ upper_tabs:
       - title: "Audio classification"
         path: /lite/examples/audio_classification/overview
       - heading: "Others"
+      - title: "On-device training"
+        path: /lite/examples/on_device_training/overview
+        status: nightly
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
       - title: "Reinforcement learning"
