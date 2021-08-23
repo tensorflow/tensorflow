@@ -1383,7 +1383,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     # When async eager is enabled, sometimes the iterator may not finish
     # initialization before passing to a multi device function, add a sync point
     # here to make sure all underlying iterators are initialized.
-    if context.executing_eagerly() and context.is_async():
+    if context.executing_eagerly():
       context.async_wait()
 
     return iterator
@@ -1482,7 +1482,7 @@ class DistributedDatasetV1(DistributedDataset):
     # When async eager is enabled, sometimes the iterator may not finish
     # initialization before passing to a multi device function, add a sync point
     # here to make sure all underlying iterators are initialized.
-    if context.executing_eagerly() and context.is_async():
+    if context.executing_eagerly():
       context.async_wait()
 
     return iterator
@@ -1687,7 +1687,7 @@ class DistributedDatasetsFromFunction(_IterableInput,
     # When async eager is enabled, sometimes the iterator may not finish
     # initialization before passing to a multi device function, add a sync
     # point here to make sure all underlying iterators are initialized.
-    if context.executing_eagerly() and context.is_async():
+    if context.executing_eagerly():
       context.async_wait()
 
     return iterator
@@ -1747,7 +1747,7 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     # When async eager is enabled, sometimes the iterator may not finish
     # initialization before passing to a multi device function, add a sync point
     # here to make sure all underlying iterators are initialized.
-    if context.executing_eagerly() and context.is_async():
+    if context.executing_eagerly():
       context.async_wait()
 
     return iterator
