@@ -53,6 +53,8 @@ namespace quant {
 // losing accuracy.
 constexpr char kVolatileOpAttrName[] = "volatile";
 
+constexpr double kNearZeroTolerance = 1.0e-6;
+
 enum QuantizationTrait { FullyQuantizable, NotQuantizable };
 extern const char kQuantTraitAttr[];
 extern const absl::string_view QuantTraitValues[];
@@ -190,14 +192,22 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
   // Emits an op warning message if the calibrated range is larger than 10.0 and
   // the storage type is less than or equal to 8 bits.
-  void TensorRangeSanityCheck(quant::StatisticsOp op, double min,
-                              double max) const {
+  void TensorRangeSanityCheck(quant::StatisticsOp op, double& min,
+                              double& max) const {
     double range = std::fabs(max - min);
     if (num_bits <= 8 && range >= 10.0) {
-      op.emitWarning(
-          "Tensor range is too wide to be quantized. Use tf.clip_by_value or "
-          "tf.relu6 to narrow the tensor range. Range: " +
-          std::to_string(range) + ", bit width: " + std::to_string(num_bits));
+      op.emitWarning()
+          << "Tensor range is too wide to be quantized. Use tf.clip_by_value "
+             "or tf.relu6 to narrow the tensor range. Range: "
+          << range << ", bit width: " << num_bits;
+    }
+    if (std::abs(max - min) < kNearZeroTolerance) {
+      op.emitWarning() << "Tensor range (" << min << ", " << max
+                       << ") is too narrow and it might cause overflow. "
+                          "Expanding range symmetrically by "
+                       << kNearZeroTolerance;
+      min -= kNearZeroTolerance;
+      max += kNearZeroTolerance;
     }
   }
 };

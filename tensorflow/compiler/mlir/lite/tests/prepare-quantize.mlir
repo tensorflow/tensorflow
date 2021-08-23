@@ -55,6 +55,18 @@ func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 // CHECK: return %[[dq2]]
 }
 
+// CHECK-LABEL: prepareNarrowStatistics
+func @prepareNarrowStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.0e-9, 1.0e-9]> : tensor<2xf32>
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+
+// CHECK: %[[q:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<8x4x3x!quant.uniform<u8:f32, 7.8509803919350426E-9:128>>, volatile}
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK: return %[[dq]]
+}
+
 // CHECK-LABEL: QuantizeConv2DPerChannel
 func @QuantizeConv2DPerChannel(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 1.5>>,
                                %arg1: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<1x112x112x32xf32> {

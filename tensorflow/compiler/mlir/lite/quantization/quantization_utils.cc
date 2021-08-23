@@ -48,7 +48,6 @@ namespace mlir {
 
 namespace quant {
 
-constexpr double kNearZeroTolerance = 1.0e-6;
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
