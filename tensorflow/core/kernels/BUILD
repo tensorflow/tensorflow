@@ -2802,6 +2802,12 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "tensor_list_hdrs",
+    hdrs = ["tensor_list.h"],
+    visibility = ["//tensorflow:internal"],
+)
+
 tf_kernel_library(
     name = "resource_variable_ops",
     srcs = ["resource_variable_ops.cc"],

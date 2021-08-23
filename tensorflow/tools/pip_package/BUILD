@@ -38,6 +38,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
+        "//tensorflow/c/experimental/tensor_list:tensor_list_c_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
