@@ -361,7 +361,7 @@ class IrEmitterUnnested : public IrEmitter {
   // complicating the index calculation in the code generation of the reduce
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
-  Status EmitUnnestedReduction(mlir::Operation* unnested_hlo,
+  Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion,
                                const FusionLayoutAnalysis& layout_analysis);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
@@ -370,7 +370,7 @@ class IrEmitterUnnested : public IrEmitter {
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
   ReductionCodegenInfo ComputeReductionCodegenInfo(
-      mlir::Operation* unnested_hlo, mlir::Operation* first_reduce,
+      mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Generates code for input-fusible slices.
@@ -507,7 +507,7 @@ class IrEmitterUnnested : public IrEmitter {
   // each i points to the ith output of unnested_hlo. Notice that if
   // unnested_hlo is not a multi-output fusion, instr_index_group is always {0}.
   void EmitTileElementForReduction(
-      mlir::Operation* unnested_hlo, const Shape& reduction_operand_shape,
+      mlir::lmhlo::FusionOp fusion, const Shape& reduction_operand_shape,
       absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
@@ -521,7 +521,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Create accumulator alloca's, populate them with initial values, and store
   // inside reduction_info.
   void EmitPrologueForReduction(
-      mlir::Operation* unnested_hlo, absl::Span<const int> instr_index_group,
+      mlir::lmhlo::FusionOp fusion, absl::Span<const int> instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       ReductionCodegenState* reduction_info,
@@ -530,7 +530,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
   void EmitEpilogueForReduction(
-      llvm::Type* index_ty, mlir::Operation* unnested_hlo,
+      llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
       absl::Span<const int> instr_index_group,
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
@@ -557,7 +557,7 @@ class IrEmitterUnnested : public IrEmitter {
       const TilingKernelInfo& tiling_kernel_info);
 
   // Emits code for reductions in the output_instructions.
-  void EmitIRForReduction(mlir::Operation* unnested_hlo,
+  void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
                           absl::Span<const int> instr_index_group,
                           HloComputation* fused_computation,
                           FusedIrEmitter* fused_emitter,
