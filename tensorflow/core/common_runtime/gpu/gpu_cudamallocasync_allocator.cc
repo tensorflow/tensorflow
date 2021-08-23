@@ -129,10 +129,17 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   if (auto status =
           cuDeviceGetAttribute(&cuda_malloc_async_supported,
                                CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
-                               platform_device_id.value()))
+                               platform_device_id.value())) {
+    int driverVersion;
+    if (auto status2 = cuDriverGetVersion(&driverVersion)) {
+      LOG(ERROR) << "Error while fetching driver version: "
+             << GetCudaErrorMessage(status2);
+    }
     LOG(FATAL)  // Crash OK.
         << "On device: " << platform_device_id.value()
+        << " Current driver: " << driverVersion
         << ". Failed to get device attribute : " << GetCudaErrorMessage(status);
+  }
   if (!cuda_malloc_async_supported)
     LOG(FATAL)  // Crash OK.
         << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
