@@ -29,7 +29,6 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.platform import test
 
 
 @ds_combinations.generate(
