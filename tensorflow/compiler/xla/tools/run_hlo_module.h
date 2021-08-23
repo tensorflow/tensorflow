@@ -40,10 +40,8 @@ struct RunHloModuleOptions {
         // Using small float range by default, as otherwise all reductions
         // miscompare vs. the interpreter with inf/nan.
         use_large_float_range(false),
-        // TODO(b/68721786): These tolerances are set to match the values in the
-        // isolation test. The goal is to lower these to 0.001.
-        abs_error_bound(0.1),
-        rel_error_bound(0.1),
+        abs_error_bound(1e-3),
+        rel_error_bound(1e-3),
         input_format("hlo"),
         input_module(""),
         iterations(1),
