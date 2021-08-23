@@ -275,7 +275,8 @@ class PerWorkerValues(composite_tensor.CompositeTensor):
       if isinstance(v, RemoteValue):
         return v
       else:
-        raise AssertionError("`PerWorkerValues` should only take `RemoteValue`s.")
+        raise AssertionError(
+          "`PerWorkerValues` should only take `RemoteValue`s.")
 
     if isinstance(values, list):
       self._values = {i: filter_by_type(values[i]) for i in range(len(values))}

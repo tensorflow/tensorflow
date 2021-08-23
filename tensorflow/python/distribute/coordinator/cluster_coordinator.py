@@ -977,7 +977,7 @@ class ClusterCoordinator(object):
       self._strategy = strategy
       self.strategy.extended._used_with_coordinator = True
       self._cluster = Cluster(strategy)
-      self._cluster_spec = self._strategy._cluster_coordinator.cluster_spec()
+      self._cluster_spec = self._strategy._cluster_resolver.cluster_spec()
       self._stopped_workers = {}
       self._has_initialized = True
 
@@ -1280,7 +1280,8 @@ class ClusterCoordinator(object):
         if task_address == address:
           if job_name == "worker":
             logging.warning(
-                "Worker address %r already active in current cluster." % address)
+                "Worker address %r already active in current cluster." %
+                address)
             return
           else:
             raise ValueError(
