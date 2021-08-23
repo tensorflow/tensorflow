@@ -98,7 +98,8 @@ using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 
 // -------------------------------------------------------------------------- //
-// JIT compiled kernels use Eigen CPU device as async runtime worker threads.
+// JIT compiled kernels use Eigen ThreadPool managed by the kernel fallback as
+// an async runtime worker threads.
 // -------------------------------------------------------------------------- //
 
 static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
@@ -108,6 +109,10 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback) return MakeStringError("fallback request state was not found");
 
+  // Return user provided intra op thread pool if it is available.
+  if (fallback->intra_op_threadpool()) return fallback->intra_op_threadpool();
+
+  // Otherwise find the default CPU device in the device manager.
   Device* host_cpu = fallback->device_manager().HostCPU();
   assert(host_cpu && "fallback state must have a valid host cpu device");
 
