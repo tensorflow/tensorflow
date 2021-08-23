@@ -228,7 +228,7 @@ namespace {
 REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU).Priority(2),
                         GeneratorDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("GeneratorDataset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("handle")
                             .Priority(1),
                         GeneratorDatasetOp);

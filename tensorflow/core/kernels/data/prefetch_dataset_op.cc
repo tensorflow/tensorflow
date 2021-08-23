@@ -636,12 +636,13 @@ namespace {
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU).Priority(2),
                         PrefetchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("buffer_size")
                             .HostMemory("input_dataset")
                             .HostMemory("handle")
                             .Priority(1),
                         PrefetchDatasetOp);
+
 }  // namespace
 
 }  // namespace data

@@ -239,10 +239,11 @@ namespace {
 
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalMapDataset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         MapDatasetOp);
+
 REGISTER_INPUT_COLOCATION_EXEMPTION("MapDataset");
 
 }  // namespace
