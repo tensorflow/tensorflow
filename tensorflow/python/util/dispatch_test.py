@@ -745,12 +745,43 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError, ".* does not support dispatch"):
       dispatch.unregister_dispatch_target(fn, fn)
 
+  def testUnregisterDispatchTargetBadDispatchTargetError(self):
+    fn = lambda x: x + 1
+    with self.assertRaisesRegex(ValueError, ".* was not registered for .*"):
+      dispatch.unregister_dispatch_target(math_ops.add, fn)
+
   def testAddDuplicateApiDisptacherError(self):
     some_op = lambda x: x
     some_op = dispatch.add_type_based_api_dispatcher(some_op)
     with self.assertRaisesRegex(
         ValueError, ".* already has a type-based API dispatcher."):
       some_op = dispatch.add_type_based_api_dispatcher(some_op)
+
+  def testGetApisWithTypeBasedDispatch(self):
+    dispatch_apis = dispatch.apis_with_type_based_dispatch()
+    self.assertIn(math_ops.add, dispatch_apis)
+    self.assertIn(array_ops.concat, dispatch_apis)
+
+  def testTypeBasedDispatchTargetsFor(self):
+    MaskedTensorList = typing.List[typing.Union[MaskedTensor, ops.Tensor]]
+    try:
+      @dispatch.dispatch_for(math_ops.add)
+      def masked_add(x: MaskedTensor, y: MaskedTensor):
+        del x, y
+
+      @dispatch.dispatch_for(array_ops.concat)
+      def masked_concat(values: MaskedTensorList, axis):
+        del values, axis
+
+      targets = dispatch.type_based_dispatch_signatures_for(MaskedTensor)
+      expected = {math_ops.add: [{"x": MaskedTensor, "y": MaskedTensor}],
+                  array_ops.concat: [{"values": MaskedTensorList}]}
+      self.assertEqual(targets, expected)
+
+    finally:
+      # Clean up dispatch table.
+      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
 
 
 if __name__ == "__main__":

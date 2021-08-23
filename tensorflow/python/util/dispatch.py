@@ -63,6 +63,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import itertools
 import typing  # pylint: disable=unused-import (used in doctests)
 
@@ -355,14 +356,68 @@ def dispatch_for(api, *signatures):
 
     for signature_checker in signature_checkers:
       dispatcher.Register(signature_checker, dispatch_target)
+    _TYPE_BASED_DISPATCH_SIGNATURES[api][dispatch_target].extend(signatures)
+
     if not signature_checkers:
-      dispatcher.Register(
-          _signature_checker_from_annotations(api_signature, dispatch_target),
-          dispatch_target)
+      signature = _signature_from_annotations(dispatch_target)
+      checker = _make_signature_checker(api_signature, signature)
+      dispatcher.Register(checker, dispatch_target)
+      _TYPE_BASED_DISPATCH_SIGNATURES[api][dispatch_target].append(signature)
 
     return dispatch_target
 
   return decorator
+
+
+# Nested dict mapping `api_func` -> `dispatch_target` -> `List[signature]`,
+# which can be used for documentation generation and for improved error messages
+# when APIs are called with unsupported types.
+_TYPE_BASED_DISPATCH_SIGNATURES = {}
+
+
+def apis_with_type_based_dispatch():
+  """Returns a list of TensorFlow APIs that support type-based dispatch."""
+  return sorted(
+      _TYPE_BASED_DISPATCH_SIGNATURES,
+      key=lambda api: f"{api.__module__}.{api.__name__}")
+
+
+def type_based_dispatch_signatures_for(cls):
+  """Returns dispatch signatures that have been registered for a given class.
+
+  This function is intended for documentation-generation purposes.
+
+  Args:
+    cls: The class to search for.  Type signatures are searched recursively, so
+      e.g., if `cls=RaggedTensor`, then information will be returned for all
+      dispatch targets that have `RaggedTensor` anywhere in their type
+      annotations (including nested in `typing.Union` or `typing.List`.)
+
+  Returns:
+    A `dict` mapping `api` -> `signatures`, where `api` is a TensorFlow API
+    function; and `signatures` is a list of dispatch signatures for `api`
+    that include `cls`.  (Each signature is a dict mapping argument names to
+    type annotations; see `dispatch_for` for more info.)
+  """
+
+  def contains_cls(x):
+    """Returns true if `x` contains `cls`."""
+    if isinstance(x, dict):
+      return any(contains_cls(v) for v in x.values())
+    elif x is cls:
+      return True
+    elif (type_annotations.is_generic_list(x) or
+          type_annotations.is_generic_union(x)):
+      type_args = type_annotations.get_generic_type_args(x)
+      return any(contains_cls(arg) for arg in type_args)
+    else:
+      return False
+
+  result = {}
+  for api, api_signatures in _TYPE_BASED_DISPATCH_SIGNATURES.items():
+    for _, signatures in api_signatures.items():
+      result.setdefault(api, []).extend(filter(contains_cls, signatures))
+  return result
 
 
 # TODO(edloper): Consider using a mechanism like this to automatically add
@@ -418,6 +473,9 @@ def unregister_dispatch_target(api, dispatch_target):
   dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR, None)
   if dispatcher is None:
     raise ValueError(f"{api} does not support dispatch.")
+  if dispatch_target not in _TYPE_BASED_DISPATCH_SIGNATURES[api]:
+    raise ValueError(f"{dispatch_target} was not registered for {api}")
+  del _TYPE_BASED_DISPATCH_SIGNATURES[api][dispatch_target]
   dispatcher.Unregister(dispatch_target)
 
 
@@ -458,6 +516,7 @@ def add_type_based_api_dispatcher(target):
       _api_dispatcher.PythonAPIDispatcher(unwrapped.__name__,
                                           target_argspec.args,
                                           target_argspec.defaults))
+  _TYPE_BASED_DISPATCH_SIGNATURES[target] = collections.defaultdict(list)
   return target
 
 
@@ -569,8 +628,8 @@ def make_type_checker(annotation):
                      " List[...], and Union[...]")
 
 
-def _signature_checker_from_annotations(api_signature, func):
-  """Build SignatureChecker from type annotations."""
+def _signature_from_annotations(func):
+  """Builds a dict mapping from parameter names to type annotations."""
   func_signature = tf_inspect.signature(func)
 
   signature = dict([(name, param.annotation)
@@ -580,7 +639,7 @@ def _signature_checker_from_annotations(api_signature, func):
     raise ValueError("The dispatch_for decorator must be called with at "
                      "least one signature, or applied to a function that "
                      "has type annotations on its parameters.")
-  return _make_signature_checker(api_signature, signature)
+  return signature
 
 
 ################################################################################
