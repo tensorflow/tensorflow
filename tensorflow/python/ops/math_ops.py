@@ -367,6 +367,7 @@ def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.abs", "abs")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
@@ -447,6 +448,7 @@ class DivideDelegateWithName(object):
 
 
 @tf_export("math.divide", "divide")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`.
@@ -481,6 +483,7 @@ def divide(x, y, name=None):
 
 
 @tf_export("math.multiply", "multiply")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply(x, y, name=None):
   """Returns an element-wise x * y.
@@ -544,6 +547,7 @@ _mul.__doc__ = (
 
 
 @tf_export("math.subtract", "subtract")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
@@ -630,6 +634,7 @@ def scalar_mul(scalar, x, name=None):
 
 
 @tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def softplus(features, name=None):
   """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
@@ -663,6 +668,7 @@ def scalar_mul_v2(scalar, x, name=None):
 
 
 @tf_export("math.pow", "pow")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
@@ -692,6 +698,7 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("dtypes.complex", "complex")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
@@ -739,6 +746,7 @@ def complex(real, imag, name=None):
 
 
 @tf_export("math.sign", "sign")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sign(x, name=None):
   r"""Returns an element-wise indication of the sign of a number.
@@ -785,6 +793,7 @@ def sign(x, name=None):
 
 
 @tf_export("math.real", v1=["math.real", "real"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
 def real(input, name=None):
@@ -819,6 +828,7 @@ def real(input, name=None):
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
 def imag(input, name=None):
@@ -852,6 +862,7 @@ def imag(input, name=None):
 
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
 def angle(input, name=None):
@@ -896,6 +907,7 @@ def angle(input, name=None):
 
 
 @tf_export("math.round", "round")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
@@ -924,6 +936,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
 
 
 @tf_export("cast", "dtypes.cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -995,6 +1008,7 @@ def cast(x, dtype, name=None):
 
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
@@ -1519,6 +1533,7 @@ def _div_python2(x, y, name=None):
 
 
 @tf_export("math.truediv", "truediv")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
@@ -1583,6 +1598,7 @@ def div(x, y, name=None):
 
 
 @tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
 def div_no_nan(x, y, name=None):
@@ -1642,6 +1658,7 @@ mod = gen_math_ops.floor_mod
 # TODO(aselle): Deprecate this once all internal functionality uses
 # tf.truncatediv
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("floordiv")
 def floordiv(x, y, name=None):
@@ -1742,6 +1759,7 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
@@ -1840,6 +1858,7 @@ ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
 
 
 @tf_export("math.equal", "equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def equal(x, y, name=None):
   """Returns the truth value of (x == y) element-wise.
@@ -1876,6 +1895,7 @@ def equal(x, y, name=None):
 
 
 @tf_export("math.not_equal", "not_equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def not_equal(x, y, name=None):
   """Returns the truth value of (x != y) element-wise.
@@ -3881,6 +3901,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
 
 
 @tf_export("math.add", "add")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def add(x, y, name=None):
   """Returns x + y element-wise.
@@ -4099,6 +4120,7 @@ def _accumulate_n_grad(op, grad):
 
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
@@ -4151,6 +4173,7 @@ def sigmoid(x, name=None):
 
 
 @tf_export("math.log_sigmoid", v1=["math.log_sigmoid", "log_sigmoid"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("log_sigmoid")
 def log_sigmoid(x, name=None):
@@ -4377,6 +4400,7 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
 def conj(x, name=None):
@@ -5148,6 +5172,7 @@ def polyval(coeffs, x, name=None):
 
 
 @tf_export("math.reciprocal_no_nan")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
@@ -5218,6 +5243,7 @@ def xlog1py(x, y, name=None):
 
 
 @tf_export("math.erfinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfinv(x, name=None):
   """Compute inverse error function.
@@ -5236,6 +5262,7 @@ def erfinv(x, name=None):
 
 
 @tf_export("math.ndtri")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ndtri(x, name=None):
   """Compute quantile of Standard Normal.
@@ -5251,6 +5278,7 @@ def ndtri(x, name=None):
 
 
 @tf_export("math.erfcinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfcinv(x, name=None):
   """Computes the inverse of complementary error function.
@@ -5280,6 +5308,7 @@ def erfcinv(x, name=None):
 
 
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
 def ceil(x, name=None):
@@ -5307,6 +5336,7 @@ def ceil(x, name=None):
 
 
 @tf_export("math.sqrt", "sqrt")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes element-wise square root of the input tensor.
@@ -5345,6 +5375,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.exp", "exp")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def exp(x, name=None):
   r"""Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -5422,6 +5453,7 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 
 
 @tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
 def rsqrt(x, name=None):
@@ -5446,6 +5478,7 @@ def rsqrt(x, name=None):
 
 
 @tf_export("math.acos", "acos")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def acos(x, name=None):
   """Computes acos of x element-wise.
@@ -5477,6 +5510,7 @@ def acos(x, name=None):
 
 
 @tf_export("math.floor", "floor")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def floor(x, name=None):
   """Returns element-wise largest integer not greater than x.
@@ -5499,3 +5533,54 @@ def floor(x, name=None):
     A `Tensor`. Has the same type as x.
   """
   return gen_math_ops.floor(x, name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_or)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_xor)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.left_shift)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.right_shift)
+dispatch.register_unary_elementwise_api(gen_bitwise_ops.invert)
+dispatch.register_binary_elementwise_api(gen_math_ops.atan2)
+dispatch.register_binary_elementwise_api(gen_math_ops.floor_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.less)
+dispatch.register_binary_elementwise_api(gen_math_ops.less_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_and)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_or)
+dispatch.register_binary_elementwise_api(gen_math_ops.maximum)
+dispatch.register_binary_elementwise_api(gen_math_ops.minimum)
+dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
+dispatch.register_unary_elementwise_api(gen_math_ops.acosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.asin)
+dispatch.register_unary_elementwise_api(gen_math_ops.asinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.atan)
+dispatch.register_unary_elementwise_api(gen_math_ops.atanh)
+dispatch.register_unary_elementwise_api(gen_math_ops.cos)
+dispatch.register_unary_elementwise_api(gen_math_ops.cosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.digamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.erf)
+dispatch.register_unary_elementwise_api(gen_math_ops.erfc)
+dispatch.register_unary_elementwise_api(gen_math_ops.expm1)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_finite)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_inf)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_nan)
+dispatch.register_unary_elementwise_api(gen_math_ops.lgamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.log)
+dispatch.register_unary_elementwise_api(gen_math_ops.log1p)
+dispatch.register_unary_elementwise_api(gen_math_ops.logical_not)
+dispatch.register_unary_elementwise_api(gen_math_ops.neg)
+dispatch.register_unary_elementwise_api(gen_math_ops.next_after)
+dispatch.register_unary_elementwise_api(gen_math_ops.reciprocal)
+dispatch.register_unary_elementwise_api(gen_math_ops.rint)
+dispatch.register_unary_elementwise_api(gen_math_ops.sin)
+dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.square)
+dispatch.register_unary_elementwise_api(gen_math_ops.tan)
+dispatch.register_unary_elementwise_api(gen_math_ops.tanh)
+

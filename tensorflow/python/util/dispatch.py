@@ -642,6 +642,280 @@ def _signature_from_annotations(func):
   return signature
 
 
+# Registries for elementwise APIs and API handlers.
+#
+# _*_ELEMENTWISE_APIS: A list of TensorFlow APIs that have been registered
+# as elementwise operations using the `register_*_elementwise_api`
+# decorators.
+#
+# _ELEMENTWISE_API_HANDLERS: Dicts mapping from argument type(s) to API
+# handlers that have been registered with the `dispatch_for_*_elementwise_apis`
+# decorators.
+#
+# _ELEMENTWISE_API_TARGETS: Dict mapping from argument type(s) to lists of
+# `(api, dispatch_target)` pairs.  Used to impelement
+# `unregister_elementwise_api_handler`.
+_UNARY_ELEMENTWISE_APIS = []
+_BINARY_ELEMENTWISE_APIS = []
+_ELEMENTWISE_API_HANDLERS = {}
+_ELEMENTWISE_API_TARGETS = {}
+
+
+def dispatch_for_unary_elementwise_apis(x_type):
+  """Decorator to override default implementation for unary elementwise APIs.
+
+  The decorated function (known as the "elementwise api handler") overrides
+  the default implementation for any unary elementwise API whenever the value
+  for the first argument (typically named `x`) matches the type annotation
+  `x_type`. The elementwise api handler is called with two arguments:
+
+    `elementwise_api_handler(api_func, x)`
+
+  Where `api_func` is a function that takes a single parameter and performs the
+  elementwise operation (e.g., `tf.abs`), and `x` is the first argument to the
+  elementwise api.
+
+  The following example shows how this decorator can be used to update all
+  unary elementwise operations to handle a `MaskedTensor` type:
+
+  >>> from tensorflow.python.framework import extension_type
+  >>> class MaskedTensor(extension_type.ExtensionType):
+  ...   values: tf.Tensor
+  ...   mask: tf.Tensor
+  >>> @dispatch_for_unary_elementwise_apis(MaskedTensor)
+  ... def unary_elementwise_api_handler(api_func, x):
+  ...   return MaskedTensor(api_func(x.values), x.mask)
+  >>> mt = MaskedTensor([1, -2, -3], [True, False, True])
+  >>> abs_mt = tf.abs(mt)
+  >>> print(f"values={abs_mt.values.numpy()}, mask={abs_mt.mask.numpy()}")
+  values=[1 2 3], mask=[ True False True]
+
+  For unary elementwise operations that take extra arguments beyond `x`, those
+  arguments are *not* passed to the elementwise api handler, but are
+  automatically added when `api_func` is called.  E.g., in the following
+  example, the `dtype` parameter is not passed to
+  `unary_elementwise_api_handler`, but is added by `api_func`.
+
+  >>> ones_mt = tf.ones_like(mt, dtype=tf.float32)
+  >>> print(f"values={ones_mt.values.numpy()}, mask={ones_mt.mask.numpy()}")
+  values=[1.0 1.0 1.0], mask=[ True False True]
+
+  Args:
+    x_type: A type annotation indicating when the api handler should be called.
+      See `dispatch_for` for a list of supported annotation types.
+
+  Returns:
+    A decorator.
+  """
+
+  def decorator(handler):
+    if (x_type,) in _ELEMENTWISE_API_HANDLERS:
+      raise ValueError("A unary elementwise dispatch handler "
+                       f"({_ELEMENTWISE_API_HANDLERS[(x_type,)]}) "
+                       f"has already been registered for {x_type}.")
+    _ELEMENTWISE_API_HANDLERS[(x_type,)] = handler
+    for api in _UNARY_ELEMENTWISE_APIS:
+      _add_dispatch_for_unary_elementwise_api(api, x_type, handler)
+
+    return handler
+
+  return decorator
+
+
+def dispatch_for_binary_elementwise_apis(x_type, y_type):
+  """Decorator to override default implementation for binary elementwise APIs.
+
+  The decorated function (known as the "elementwise api handler") overrides
+  the default implementation for any binary elementwise API whenever the value
+  for the first two arguments (typically named `x` and `y`) match the specified
+  type annotations.  The elementwise api handler is called with two arguments:
+
+    `elementwise_api_handler(api_func, x, y)`
+
+  Where `x` and `y` are the first two arguments to the elementwise api, and
+  `api_func` is a TensorFlow function that takes two parameters and performs the
+  elementwise operation (e.g., `tf.add`).
+
+  The following example shows how this decorator can be used to update all
+  binary elementwise operations to handle a `MaskedTensor` type:
+
+  >>> from tensorflow.python.framework import extension_type
+  >>> class MaskedTensor(extension_type.ExtensionType):
+  ...   values: tf.Tensor
+  ...   mask: tf.Tensor
+  >>> @dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
+  ... def binary_elementwise_api_handler(api_func, x, y):
+  ...   return MaskedTensor(api_func(x.values, y.values), x.mask & y.mask)
+  >>> a = MaskedTensor([1, 2, 3, 4, 5], [True, True, True, True, False])
+  >>> b = MaskedTensor([2, 4, 6, 8, 0], [True, True, True, False, True])
+  >>> c = tf.add(a, b)
+  >>> print(f"values={c.values.numpy()}, mask={c.mask.numpy()}")
+  values=[ 3 6 9 12 5], mask=[ True True True False False]
+
+  Args:
+    x_type: A type annotation indicating when the api handler should be called.
+    y_type: A type annotation indicating when the api handler should be called.
+
+  Returns:
+    A decorator.
+  """
+
+  def decorator(handler):
+    if (x_type, y_type) in _ELEMENTWISE_API_HANDLERS:
+      raise ValueError("A binary elementwise dispatch handler "
+                       f"({_ELEMENTWISE_API_HANDLERS[x_type, y_type]}) "
+                       f"has already been registered for ({x_type}, {y_type}).")
+    _ELEMENTWISE_API_HANDLERS[x_type, y_type] = handler
+    for api in _BINARY_ELEMENTWISE_APIS:
+      _add_dispatch_for_binary_elementwise_api(api, x_type, y_type, handler)
+
+    return handler
+
+  return decorator
+
+
+def register_unary_elementwise_api(func):
+  """Decorator that registers a TensorFlow op as a unary elementwise API."""
+  _UNARY_ELEMENTWISE_APIS.append(func)
+  for args, handler in _ELEMENTWISE_API_HANDLERS.items():
+    if len(args) == 1:
+      _add_dispatch_for_unary_elementwise_api(func, args[0], handler)
+  return func
+
+
+def register_binary_elementwise_api(func):
+  """Decorator that registers a TensorFlow op as a binary elementwise API."""
+  _BINARY_ELEMENTWISE_APIS.append(func)
+  for args, handler in _ELEMENTWISE_API_HANDLERS.items():
+    if len(args) == 2:
+      _add_dispatch_for_binary_elementwise_api(func, args[0], args[1], handler)
+  return func
+
+
+def unary_elementwise_apis():
+  """Returns a list of APIs that have been registered as unary elementwise."""
+  return tuple(_UNARY_ELEMENTWISE_APIS)
+
+
+def binary_elementwise_apis():
+  """Returns a list of APIs that have been registered as binary elementwise."""
+  return tuple(_BINARY_ELEMENTWISE_APIS)
+
+
+def _add_dispatch_for_unary_elementwise_api(api, x_type,
+                                            elementwise_api_handler):
+  """Registers a unary elementwise handler as a dispatcher for a given API."""
+  api_signature = tf_inspect.signature(api)
+  x_name = list(api_signature.parameters)[0]
+  name_index = _find_name_index(api_signature)
+
+  need_to_bind_api_args = (
+      len(api_signature.parameters) > 2 or
+      "name" not in api_signature.parameters)
+
+  @dispatch_for(api, {x_name: x_type})
+  def dispatch_target(*args, **kwargs):
+    args, kwargs, name = _extract_name_arg(args, kwargs, name_index)
+    if args:
+      x, args = args[0], args[1:]
+    else:
+      x = kwargs.pop(x_name)
+
+    if need_to_bind_api_args:
+      tensor_api = lambda v: api(v, *args, **kwargs)
+    else:
+      tensor_api = api
+
+    if name is None:
+      return elementwise_api_handler(tensor_api, x)
+    else:
+      with ops.name_scope(name, None, [x]):
+        return elementwise_api_handler(tensor_api, x)
+
+  dispatch_target.__name__ = "elementwise_dispatch_target_for_" + api.__name__
+  dispatch_target.__qualname__ = dispatch_target.__name__
+  # Keep track of what targets we've registered (so we can unregister them).
+  target_list = _ELEMENTWISE_API_TARGETS.setdefault((x_type,), [])
+  target_list.append((api, dispatch_target))
+
+
+def _add_dispatch_for_binary_elementwise_api(api, x_type, y_type,
+                                             elementwise_api_handler):
+  """Registers a binary elementwise handler as a dispatcher for a given API."""
+  api_signature = tf_inspect.signature(api)
+  x_name, y_name = list(api_signature.parameters)[:2]
+  name_index = _find_name_index(api_signature)
+
+  need_to_bind_api_args = (len(api_signature.parameters) > 3 or
+                           "name" not in api_signature.parameters)
+
+  @dispatch_for(api, {x_name: x_type, y_name: y_type})
+  def dispatch_target(*args, **kwargs):
+    args, kwargs, name = _extract_name_arg(args, kwargs, name_index)
+    if len(args) > 1:
+      x, y, args = args[0], args[1], args[2:]
+    elif args:
+      x, args = args[0], args[1:]
+      y = kwargs.pop(y_name, None)
+    else:
+      x = kwargs.pop(x_name, None)
+      y = kwargs.pop(y_name, None)
+
+    if need_to_bind_api_args:
+      tensor_api = lambda v1, v2: api(v1, v2, *args, **kwargs)
+    else:
+      tensor_api = api
+
+    if name is None:
+      return elementwise_api_handler(tensor_api, x, y)
+    else:
+      with ops.name_scope(name, None, [x, y]):
+        return elementwise_api_handler(tensor_api, x, y)
+
+  dispatch_target.__name__ = "elementwise_dispatch_target_for_" + api.__name__
+  dispatch_target.__qualname__ = dispatch_target.__name__
+  # Keep track of what targets we've registered (so we can unregister them).
+  target_list = _ELEMENTWISE_API_TARGETS.setdefault((x_type, y_type), [])
+  target_list.append((api, dispatch_target))
+
+
+def _find_name_index(signature):
+  """Returns the index of the `name` parameter, or -1 if it's not present."""
+  try:
+    return list(signature.parameters).index("name")
+  except ValueError:
+    return -1
+
+
+def _extract_name_arg(args, kwargs, name_index):
+  """Extracts the parameter `name` and returns `(args, kwargs, name_value)`."""
+  if name_index < 0:
+    name_value = None
+  elif name_index < len(args):
+    name_value = args[name_index]
+    args = args[:name_index] + args[name_index + 1:]
+  else:
+    name_value = kwargs.pop("name", None)
+  return args, kwargs, name_value
+
+
+def unregister_elementwise_api_handler(api_handler):
+  """Unregisters api handlers registered with `dispatch_for_*_elementwise_apis`.
+
+  Args:
+    api_handler: The handler to unregister.
+  """
+  keys_to_delete = [
+      key for (key, handler) in _ELEMENTWISE_API_HANDLERS.items()
+      if handler is api_handler
+  ]
+  for key in set(keys_to_delete):
+    for api, target in _ELEMENTWISE_API_TARGETS[key]:
+      unregister_dispatch_target(api, target)
+    del _ELEMENTWISE_API_HANDLERS[key]
+    del _ELEMENTWISE_API_TARGETS[key]
+
+
 ################################################################################
 # Dispatch Support
 ################################################################################

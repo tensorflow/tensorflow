@@ -783,6 +783,176 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       dispatch.unregister_dispatch_target(math_ops.add, masked_add)
       dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
 
+  def testDispatchForUnaryElementwiseAPIs(self):
+
+    @dispatch.dispatch_for_unary_elementwise_apis(MaskedTensor)
+    def unary_elementwise_api_handler(api_func, x):
+      return MaskedTensor(api_func(x.values), x.mask)
+
+    try:
+      x = MaskedTensor([1, -2, -3], [True, True, False])
+      # Test calls with positional & keyword argument (& combinations)
+      abs_x = math_ops.abs(x)
+      sign_x = math_ops.sign(x=x)
+      neg_x = math_ops.negative(x, "neg_x")
+      identity_x = array_ops.identity(x, name="identity_x")
+      ones_like_x = array_ops.ones_like(x, name="ones_like_x")
+      ones_like_x_float = array_ops.ones_like(
+          x, dtypes.float32, name="ones_like_x_float")
+      self.assertAllEqual(abs_x.values, [1, 2, 3])
+      self.assertAllEqual(sign_x.values, [1, -1, -1])
+      self.assertAllEqual(neg_x.values, [-1, 2, 3])
+      self.assertAllEqual(identity_x.values, [1, -2, -3])
+      self.assertAllEqual(ones_like_x.values, [1, 1, 1])
+      self.assertAllEqual(ones_like_x_float.values, [1., 1., 1.])
+      for result in [
+          abs_x, sign_x, neg_x, identity_x, ones_like_x, ones_like_x_float
+      ]:
+        self.assertAllEqual(result.mask, [True, True, False])
+      if not context.executing_eagerly():  # names not defined in eager mode.
+        self.assertRegex(neg_x.values.name, r"^neg_x/Neg:.*")
+        self.assertRegex(identity_x.values.name, r"^identity_x/.*")
+        self.assertRegex(ones_like_x.values.name, r"^ones_like_x/.*")
+        self.assertRegex(ones_like_x_float.values.name,
+                         r"^ones_like_x_float/.*")
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(unary_elementwise_api_handler)
+
+  def testDispatchForBinaryElementwiseAPIs(self):
+
+    @dispatch.dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
+    def binary_elementwise_api_handler(api_func, x, y):
+      return MaskedTensor(api_func(x.values, y.values), x.mask & y.mask)
+
+    try:
+      x = MaskedTensor([1, -2, -3], [True, True, False])
+      y = MaskedTensor([10, 20, 30], [True, False, True])
+      # Test calls with positional & keyword arguments (& combinations)
+      x_times_y = math_ops.multiply(x, y)
+      x_plus_y = math_ops.add(x, y=y)
+      x_minus_y = math_ops.subtract(x=x, y=y)
+      min_x_y = math_ops.minimum(x, y, "min_x_y")
+      y_times_x = math_ops.multiply(y, x, name="y_times_x")
+      y_plus_x = math_ops.add(y, y=x, name="y_plus_x")
+      y_minus_x = math_ops.subtract(x=y, y=x, name="y_minus_x")
+      self.assertAllEqual(x_times_y.values, [10, -40, -90])
+      self.assertAllEqual(x_plus_y.values, [11, 18, 27])
+      self.assertAllEqual(x_minus_y.values, [-9, -22, -33])
+      self.assertAllEqual(min_x_y.values, [1, -2, -3])
+      self.assertAllEqual(y_times_x.values, [10, -40, -90])
+      self.assertAllEqual(y_plus_x.values, [11, 18, 27])
+      self.assertAllEqual(y_minus_x.values, [9, 22, 33])
+      for result in [
+          x_times_y, x_plus_y, x_minus_y, min_x_y, y_times_x, y_plus_x,
+          y_minus_x
+      ]:
+        self.assertAllEqual(result.mask, [True, False, False])
+      if not context.executing_eagerly():  # names not defined in eager mode.
+        self.assertRegex(min_x_y.values.name, r"^min_x_y/Minimum:.*")
+        self.assertRegex(min_x_y.mask.name, r"^min_x_y/and:.*")
+        self.assertRegex(y_times_x.values.name, r"^y_times_x/.*")
+        self.assertRegex(y_plus_x.values.name, r"^y_plus_x/.*")
+        self.assertRegex(y_minus_x.values.name, r"^y_minus_x/.*")
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(
+          binary_elementwise_api_handler)
+
+  def testDuplicateDispatchForUnaryElementwiseAPIsError(self):
+
+    @dispatch.dispatch_for_unary_elementwise_apis(MaskedTensor)
+    def handler(api_func, x):
+      return MaskedTensor(api_func(x.values), x.mask)
+
+    try:
+      with self.assertRaisesRegex(
+          ValueError, r"A unary elementwise dispatch handler \(.*\) has "
+          "already been registered for .*"):
+
+        @dispatch.dispatch_for_unary_elementwise_apis(MaskedTensor)
+        def another_handler(api_func, x):
+          return MaskedTensor(api_func(x.values), ~x.mask)
+
+        del another_handler
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(handler)
+
+  def testDuplicateDispatchForBinaryElementwiseAPIsError(self):
+
+    @dispatch.dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
+    def handler(api_func, x, y):
+      return MaskedTensor(api_func(x.values, y.values), x.mask & y.mask)
+
+    try:
+      with self.assertRaisesRegex(
+          ValueError, r"A binary elementwise dispatch handler \(.*\) has "
+          "already been registered for .*"):
+
+        @dispatch.dispatch_for_binary_elementwise_apis(MaskedTensor,
+                                                       MaskedTensor)
+        def another_handler(api_func, x, y):
+          return MaskedTensor(api_func(x.values, y.values), x.mask)
+
+        del another_handler
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(handler)
+
+  def testRegisterUnaryElementwiseApiAfterHandler(self):
+    # Test that it's ok to call register_unary_elementwise_api after
+    # dispatch_for_unary_elementwise_apis.
+
+    @dispatch.dispatch_for_unary_elementwise_apis(MaskedTensor)
+    def handler(api_func, x):
+      return MaskedTensor(api_func(x.values), x.mask)
+
+    try:
+
+      @dispatch.register_unary_elementwise_api
+      @dispatch.add_dispatch_support
+      def some_op(x):
+        return x * 2
+
+      x = MaskedTensor([1, 2, 3], [True, False, True])
+      y = some_op(x)
+      self.assertAllEqual(y.values, [2, 4, 6])
+      self.assertAllEqual(y.mask, [True, False, True])
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(handler)
+
+  def testRegisterBinaryElementwiseApiAfterHandler(self):
+    # Test that it's ok to call register_binary_elementwise_api after
+    # dispatch_for_binary_elementwise_apis.
+
+    @dispatch.dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
+    def handler(api_func, x, y):
+      return MaskedTensor(api_func(x.values, y.values), x.mask & y.mask)
+
+    try:
+
+      @dispatch.register_binary_elementwise_api
+      @dispatch.add_dispatch_support
+      def some_op(x, y):
+        return x * 2 + y
+
+      x = MaskedTensor([1, 2, 3], [True, False, True])
+      y = MaskedTensor([10, 20, 30], [True, True, False])
+      z = some_op(x, y)
+      self.assertAllEqual(z.values, [12, 24, 36])
+      self.assertAllEqual(z.mask, [True, False, False])
+
+    finally:
+      dispatch.unregister_elementwise_api_handler(handler)
+
+  def testElementwiseApiLists(self):
+    self.assertIn(math_ops.abs, dispatch.unary_elementwise_apis())
+    self.assertIn(math_ops.cos, dispatch.unary_elementwise_apis())
+    self.assertIn(math_ops.add, dispatch.binary_elementwise_apis())
+    self.assertIn(math_ops.multiply, dispatch.binary_elementwise_apis())
+
 
 if __name__ == "__main__":
   googletest.main()
