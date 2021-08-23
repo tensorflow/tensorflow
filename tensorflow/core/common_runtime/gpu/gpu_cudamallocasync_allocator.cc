@@ -125,16 +125,26 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   }
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+
+  // Check the the CUDA runtime is recent enough.
+  if (auto status2 = cuDriverGetVersion(&driverVersion)) {
+    LOG(FATAL)  // Crash OK.
+      << "Error while fetching driver version: "
+      << GetCudaErrorMessage(status2);
+  }
+  if (driverVersion < 11020) {
+    LOG(FATAL)  // Crash OK.
+      << "Disable cuda_malloc_async or update your CUDA driver to a version"
+      << " compitible with CUDA 11.2 or higher."
+      << " We detected a version compatible with: " << driverVersion;
+  }
+
+  // Check that cudaMallocAsync is supported.
   int cuda_malloc_async_supported;
   if (auto status =
           cuDeviceGetAttribute(&cuda_malloc_async_supported,
                                CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
                                platform_device_id.value())) {
-    int driverVersion;
-    if (auto status2 = cuDriverGetVersion(&driverVersion)) {
-      LOG(ERROR) << "Error while fetching driver version: "
-             << GetCudaErrorMessage(status2);
-    }
     LOG(FATAL)  // Crash OK.
         << "On device: " << platform_device_id.value()
         << " Current driver: " << driverVersion
