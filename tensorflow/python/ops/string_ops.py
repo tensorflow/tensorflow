@@ -75,7 +75,6 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
     "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("regex_replace")
-@dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
@@ -543,7 +542,6 @@ string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
 @tf_export("strings.join", v1=["strings.join", "string_join"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("string_join")
-@dispatch.add_dispatch_support
 def string_join(inputs, separator="", name=None):
   """Perform element-wise concatenation of a list of string tensors.
 
