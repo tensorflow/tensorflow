@@ -10,11 +10,19 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow/compiler/tf2xla:__subpackages__",
-    ],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//tensorflow/compiler/jit/...",
+        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/compiler/xla/...",
+        "//tensorflow/tools/...",
+    ],
 )
 
 package_group(
@@ -258,6 +266,7 @@ tf_cc_test(
 filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 exports_files(["run_lit.sh"])

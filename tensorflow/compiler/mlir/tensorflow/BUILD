@@ -24,6 +24,7 @@ package_group(
         "//tensorflow/cc/...",
         "//tensorflow/python/...",
         "//tensorflow/tools/pip_package/...",
+        "//tensorflow/tools/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/dtensor/...",
