@@ -5272,6 +5272,8 @@ raising an error.
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_GatherNdOp : TF_Op<"GatherNd", [NoSideEffect]> {

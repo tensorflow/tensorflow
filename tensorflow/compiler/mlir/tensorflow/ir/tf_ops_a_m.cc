@@ -2674,6 +2674,11 @@ static LogicalResult Verify(GatherV2Op op) {
   return success();
 }
 
+void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<GatherToV2>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
