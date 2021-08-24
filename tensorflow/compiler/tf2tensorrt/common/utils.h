@@ -32,8 +32,26 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion();
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "third_party/tensorrt/NvInfer.h"
+
+#define TRT_EXPECT(x)                                  \
+  if (!(x)) {                                          \
+    return errors::Internal(__FILE__, ":", __LINE__,   \
+                            " pre condition failure"); \
+  }
+
+#define TRT_ENSURE(x)                                   \
+  if (!(x)) {                                           \
+    return errors::Internal(__FILE__, ":", __LINE__,    \
+                            " post condition failure"); \
+  }
+
+#define TRT_ENSURE_OK(x)                                 \
+  if (!x.ok()) {                                         \
+    return errors::Internal(x.status().error_message()); \
+  }
 
 namespace tensorflow {
 namespace tensorrt {

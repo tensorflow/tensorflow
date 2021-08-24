@@ -105,6 +105,11 @@ string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
 string DebugString(const std::vector<TensorShape>& shapes);
 string DebugString(const std::vector<PartialTensorShape>& shapes);
 
+template <size_t N>
+string DebugString(const absl::InlinedVector<int64, N>& data) {
+  return absl::StrCat("[", absl::StrJoin(data, ","), "]");
+}
+
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
   for (int d = 0; d < dims.nbDims; ++d) {
