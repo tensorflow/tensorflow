@@ -131,11 +131,6 @@ class BefThunk : public Thunk {
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
   absl::optional<NcclCollectiveConfig> xccl_config_;
 
-  tensorflow::mutex gpu_stream_mutex_;
-  absl::flat_hash_map<se::Stream*,
-                      std::unique_ptr<tfrt::gpu::BorrowedGpuStream>>
-      gpu_stream_cache_ TF_GUARDED_BY(gpu_stream_mutex_);
-
   // The module data will be set in the execution context for kernel thunk to
   // use during execution.
   tensorflow::mutex mutex_;
@@ -399,16 +394,14 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
                    std::move(bef_result.first), std::move(bef_result.second)));
 }
 
-// Wrap the GPU `stream` (initialized by the StreamExecutor) to be passed to BEF
-// functions as AsyncValueRef<GpuStream>.
-static std::unique_ptr<tfrt::gpu::BorrowedGpuStream> CreateGpuStream(
-    se::Stream* stream) {
+// Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
+// to be passed to BEF functions as AsyncValueRef<GpuStream>.
+static auto CreateGpuStream(const Thunk::ExecuteParams& params) {
   auto se_gpu_executor = static_cast<stream_executor::gpu::GpuExecutor*>(
-      stream->parent()->implementation());
-  auto se_gpu_stream =
-      static_cast<stream_executor::gpu::GpuStream*>(stream->implementation());
-
-  return std::make_unique<tfrt::gpu::BorrowedGpuStream>(
+      params.stream->parent()->implementation());
+  auto se_gpu_stream = static_cast<stream_executor::gpu::GpuStream*>(
+      params.stream->implementation());
+  return tfrt::gpu::BorrowedGpuStream(
       tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context()),
       tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream()));
 }
@@ -570,19 +563,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   tfrt::AsyncValueRef<tfrt::Chain> chain =
       tfrt::GetReadyChain(exec_ctx->host());
   args.push_back(chain.GetAsyncValue());
-
-  {
-    tensorflow::mutex_lock lock(gpu_stream_mutex_);
-    auto it = gpu_stream_cache_.find(params.stream);
-    if (it == gpu_stream_cache_.end()) {
-      it = gpu_stream_cache_.try_emplace(it, params.stream,
-                                         CreateGpuStream(params.stream));
-    }
-    args.push_back(
-        static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*it->second)
-            .GetAsyncValue());
-  }
-
+  tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
+  args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
+                     .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto& buffer : buffers_) {
     buffers.push_back(CreateGpuBuffer(params, buffer));
