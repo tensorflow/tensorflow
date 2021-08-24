@@ -254,5 +254,6 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(f, [2])
     self.assertTransformedEquivalent(f, [1, 2, 3])
 
+
 if __name__ == '__main__':
   test.main()
