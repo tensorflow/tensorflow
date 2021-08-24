@@ -124,7 +124,7 @@ class VariablesTest(converter_testing.TestCase):
 
   def test_del_item_multiple_mixed_used_after(self):
 
-    def f(a, b, c):
+    def f(a, b, c):   # TODO: Unused parameters 'a', 'b'
       del a, b, c[0]
       a = 1
       return a, b, c
@@ -136,9 +136,9 @@ class VariablesTest(converter_testing.TestCase):
 
   def test_del_item_multiple_mixed_unused_after(self):
 
-    def f(a, b, c):
+    def f(a, b, c):   # TODO: Unused parameters 'a', 'b'
       del a, b, c[0]
-      a = 1
+      a = 1     # TODO: Unused local variables 'a', 'b'
       b = 2
       return c
 
