@@ -24,7 +24,7 @@ jobs:
         with:
           path: "~/.cache/bazel"
           key: bazel
-      - run: sudo apt install python3-dev python3-pip
+      - run: sudo apt install --yes python3-dev python3-pip
       - run: pip install -U --user pip numpy wheel
       - run: pip install -U --user keras_preprocessing --no-deps
       - run: bazel build //tensorflow/core
