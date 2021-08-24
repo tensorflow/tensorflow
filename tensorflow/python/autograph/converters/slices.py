@@ -33,7 +33,8 @@ class SliceTransformer(converter.Base):
   and write functions.
   """
 
-  def _process_single_assignment(self, target, value):
+  @staticmethod
+  def _process_single_assignment(target, value):
     if not isinstance(target, gast.Subscript):
       return None
     s = target.slice
