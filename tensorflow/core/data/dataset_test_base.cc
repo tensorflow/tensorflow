@@ -1079,11 +1079,10 @@ std::vector<FunctionDef> MapDatasetParams::func_lib() const {
 }
 
 TensorSliceDatasetParams::TensorSliceDatasetParams(
-    std::vector<Tensor> components, string node_name, bool is_files)
+    std::vector<Tensor> components, string node_name)
     : DatasetParams(TensorSliceDtypes(components),
                     TensorSliceShapes(components), std::move(node_name)),
-      components_(std::move(components)),
-      is_files_(is_files) {}
+      components_(std::move(components)) {}
 
 std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
   return components_;
@@ -1101,8 +1100,7 @@ Status TensorSliceDatasetParams::GetInputNames(
 Status TensorSliceDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
   *attr_vector = {{"Toutput_types", output_dtypes_},
-                  {"output_shapes", output_shapes_},
-                  {"is_files", is_files_}};
+                  {"output_shapes", output_shapes_}};
   return Status::OK();
 }
 
