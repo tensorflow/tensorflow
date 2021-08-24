@@ -58,7 +58,8 @@ class ListTransformer(converter.Base):
     """
     return templates.replace_as_expression(template, elements=node)
 
-  def _replace_append_call(self, node):
+  @staticmethod
+  def _replace_append_call(node):
     assert len(node.args) == 1
     assert isinstance(node.func, gast.Attribute)
     template = """
