@@ -90,7 +90,7 @@ class ConditionalReturnRewriter(converter.Base):
 
     return node, None
 
-  def _visit_statement_block(self, node, nodes):
+  def _visit_statement_block(self, node, nodes):  # TODO: Unused parameter 'node'
     self.state[_RewriteBlock].enter()
     new_nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
     block_definitely_returns = self.state[_RewriteBlock].definitely_returns
@@ -274,7 +274,7 @@ class ReturnStatementsTransformer(converter.Base):
 
     return node, block
 
-  def _visit_statement_block(self, node, nodes):
+  def _visit_statement_block(self, node, nodes):  # TODO: Unused parameter 'node'
     self.state[_Block].enter()
     nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
     self.state[_Block].exit()
