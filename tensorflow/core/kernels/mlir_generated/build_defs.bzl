@@ -164,6 +164,7 @@ def _gen_kernel_bin_impl(ctx):
             "--jit=%s" % ctx.attr.jit,
         ],
         mnemonic = "compile",
+        progress_message = "Generating kernel '%{label}'",
     )
     compilation_outputs = cc_common.create_compilation_outputs(
         # We always produce PIC object files, so use the same object files for both.
