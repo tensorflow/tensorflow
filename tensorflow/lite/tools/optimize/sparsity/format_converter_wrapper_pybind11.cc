@@ -18,18 +18,13 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
-
-namespace tflite {
-namespace optimize {
-namespace sparsity {
-namespace {
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 namespace py = pybind11;
 
-using FormatConverterFp32 = FormatConverter<float>;
+using FormatConverterFp32 = tflite::internal::sparsity::FormatConverter<float>;
 
-PYBIND11_MODULE(format_converter_extension, m) {
+PYBIND11_MODULE(format_converter_wrapper_pybind11, m) {
   m.doc() = "Python wrapper for the tflite sparse tensor converter.";
 
   py::enum_<TfLiteStatus>(m, "TfLiteStatus")
@@ -63,9 +58,3 @@ PYBIND11_MODULE(format_converter_extension, m) {
         return converter.SparseToDense(static_cast<float*>(buffer_info.ptr));
       });
 }
-
-}  // namespace
-
-}  // namespace sparsity
-}  // namespace optimize
-}  // namespace tflite

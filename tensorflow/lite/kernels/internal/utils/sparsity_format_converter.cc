@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 #include <cstdint>
 #include <utility>
 #include <vector>
 
 namespace tflite {
-namespace optimize {
+namespace internal {
 namespace sparsity {
 
 namespace {
@@ -388,5 +388,5 @@ template class FormatConverter<float>;
 template class FormatConverter<Eigen::half>;
 
 }  // namespace sparsity
-}  // namespace optimize
+}  // namespace internal
 }  // namespace tflite

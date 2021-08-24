@@ -57,11 +57,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/util.h"
 #ifdef NNAPI_VERBOSE_VALIDATION
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -4582,7 +4582,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
     case kTfLiteFloat32: {
       dense_size = output_tensor.bytes / sizeof(float);
       std::vector<float> output_data(dense_size);
-      tflite::optimize::sparsity::FormatConverter<float> converter(
+      tflite::internal::sparsity::FormatConverter<float> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(static_cast<const float*>(input_tensor.data.data),
                               dense_size, output_data.data(), context);
@@ -4596,7 +4596,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
       std::vector<uint16_t> output_data(dense_size);
       Eigen::half* unpacked_fp16_data =
           reinterpret_cast<Eigen::half*>(output_data.data());
-      tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+      tflite::internal::sparsity::FormatConverter<Eigen::half> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(
           static_cast<const Eigen::half*>(input_tensor.data.data), dense_size,
@@ -4621,7 +4621,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
     case kTfLiteInt8: {
       dense_size = output_tensor.bytes / sizeof(int8_t);
       std::vector<int8_t> output_data(dense_size);
-      tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+      tflite::internal::sparsity::FormatConverter<int8_t> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(
           static_cast<const int8_t*>(input_tensor.data.data), dense_size,

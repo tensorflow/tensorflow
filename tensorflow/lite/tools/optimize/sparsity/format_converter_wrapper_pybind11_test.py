@@ -22,7 +22,7 @@ from __future__ import print_function
 from absl.testing import absltest
 import numpy as np
 
-from tensorflow.lite.tools.optimize.sparsity.python import format_converter_extension as format_converter
+from tensorflow.lite.tools.optimize.sparsity import format_converter_wrapper_pybind11 as format_converter
 
 
 class FormatConverterTest(absltest.TestCase):

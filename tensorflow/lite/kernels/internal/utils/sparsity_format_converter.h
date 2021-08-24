@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_UTILS_SPARSITY_FORMAT_CONVERTER_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_UTILS_SPARSITY_FORMAT_CONVERTER_H_
 
 #include <vector>
 
@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
-namespace optimize {
+namespace internal {
 namespace sparsity {
 
 // A converter that keeps an internal representation of sparse tensor parameters
@@ -144,7 +144,7 @@ extern template class FormatConverter<int8_t>;
 extern template class FormatConverter<float>;
 extern template class FormatConverter<Eigen::half>;
 }  // namespace sparsity
-}  // namespace optimize
+}  // namespace internal
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_UTILS_SPARSITY_FORMAT_CONVERTER_H_

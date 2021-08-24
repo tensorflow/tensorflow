@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
-namespace optimize {
+namespace internal {
 namespace sparsity {
 namespace {
 TEST(FormatConverterTest, SimpleTestD0D1) {
@@ -643,5 +643,5 @@ TEST(FormatConverterTest, BlockTestD0S1ColMajorBlock) {
 }
 }  // namespace
 }  // namespace sparsity
-}  // namespace optimize
+}  // namespace internal
 }  // namespace tflite
