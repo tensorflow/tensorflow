@@ -286,8 +286,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         });
       }
 
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       trace_me.AppendMetadata([&] {
-        return TraceMeEncode({{"src", kernel.serialized_operation()}});
+        return TraceMeEncode({{"src", serialized_operation}});
       });
 
       compile();
@@ -300,11 +303,14 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       return TraceMeEncode("tf_cpurt.CompileDefault",
                            {{"id", request_id},
                             {"kernel_id", kernel.id()},
                             {"executable", name},
-                            {"src", kernel.serialized_operation()}});
+                            {"src", serialized_operation}});
     });
 
     CompilationOptions opts;
