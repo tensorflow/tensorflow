@@ -248,7 +248,9 @@ Status TensorSliceReader::GetTensor(
     slice = tss->Slices().begin()->second.slice;
   }
 
-  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor(type, shape));
+  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
+  Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
+  if (!s.ok()) return s;
   bool success = false;
 
 #define READER_COPY(dt)                                                  \
