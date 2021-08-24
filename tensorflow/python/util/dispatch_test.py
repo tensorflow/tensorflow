@@ -337,6 +337,12 @@ class MaskedTensor(extension_type.ExtensionType):
   mask: ops.Tensor
 
 
+class SillyTensor(extension_type.ExtensionType):
+  """Simple ExtensionType for testing v2 dispatch."""
+  value: ops.Tensor
+  how_silly: float
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class DispatchV2Test(test_util.TensorFlowTestCase):
 
@@ -773,6 +779,15 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       def masked_concat(values: MaskedTensorList, axis):
         del values, axis
 
+      @dispatch.dispatch_for(math_ops.add)
+      def silly_add(x: SillyTensor, y: SillyTensor):
+        del x, y
+
+      @dispatch.dispatch_for(math_ops.abs)
+      def silly_abs(x: SillyTensor):
+        del x
+
+      # Note: `expeced` does not contain keys or values from SillyTensor.
       targets = dispatch.type_based_dispatch_signatures_for(MaskedTensor)
       expected = {math_ops.add: [{"x": MaskedTensor, "y": MaskedTensor}],
                   array_ops.concat: [{"values": MaskedTensorList}]}
@@ -782,6 +797,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       # Clean up dispatch table.
       dispatch.unregister_dispatch_target(math_ops.add, masked_add)
       dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
+      dispatch.unregister_dispatch_target(math_ops.add, silly_add)
+      dispatch.unregister_dispatch_target(math_ops.abs, silly_abs)
 
   def testDispatchForUnaryElementwiseAPIs(self):
 

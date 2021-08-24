@@ -416,7 +416,9 @@ def type_based_dispatch_signatures_for(cls):
   result = {}
   for api, api_signatures in _TYPE_BASED_DISPATCH_SIGNATURES.items():
     for _, signatures in api_signatures.items():
-      result.setdefault(api, []).extend(filter(contains_cls, signatures))
+      filtered = list(filter(contains_cls, signatures))
+      if filtered:
+        result.setdefault(api, []).extend(filtered)
   return result
 
 
