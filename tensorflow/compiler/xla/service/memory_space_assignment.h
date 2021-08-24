@@ -902,13 +902,6 @@ class MemorySpaceAssignment {
   // the HLO graph with the determined memory spaces.
   Status ExportAndColorBuffers();
 
-  // Insert an instruction to the schedule, and make sure its dependencies
-  // (operands) are already in the schedule. If not, insert these operands
-  // before the instruction.
-  void EnsureInstructionAndOperandsInserted(
-      HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-      absl::flat_hash_set<HloInstruction*>* inserted_instructions) const;
-
   // Schedules asynchronous copies and ensures that the CopyStarts and their
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();

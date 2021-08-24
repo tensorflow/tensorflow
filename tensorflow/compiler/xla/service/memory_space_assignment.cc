@@ -147,6 +147,48 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
   return *best_candidate;
 }
 
+Status InsertInstructionAndEnsureOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions);
+
+// Insert an instruction to the schedule, and make sure its dependencies
+// (operands) are already in the schedule. If not, insert these operands
+// before the instruction.
+Status EnsureInstructionAndOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
+  if (inserted_instructions->contains(new_instruction)) {
+    return Status::OK();
+  }
+  return InsertInstructionAndEnsureOperandsInserted(
+      new_instruction, new_sequence, inserted_instructions);
+}
+
+// Same as above, but does not check if instruction is already inserted. This is
+// used when the caller already knows the instruction isn't inserted yet, to
+// speed up compilation.
+Status InsertInstructionAndEnsureOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
+  for (HloInstruction* operand : new_instruction->operands()) {
+    // CopyStart/CopyDone dependencies should always be already inserted; it is
+    // a red flag when they haven't already been inserted.
+    if (operand->opcode() == HloOpcode::kCopyStart ||
+        operand->opcode() == HloOpcode::kCopyDone) {
+      TF_RET_CHECK(inserted_instructions->contains(operand))
+          << "Inserted instruction " << new_instruction->ToString()
+          << " has un-inserted dependency: " << operand->ToString();
+      continue;
+    }
+    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
+        operand, new_sequence, inserted_instructions));
+  }
+  VLOG(4) << "inserting: " << new_instruction->ToShortString();
+  new_sequence->push_back(new_instruction);
+  TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
+  return Status::OK();
+}
+
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
@@ -3620,28 +3662,6 @@ Status MemorySpaceAssignment::SimplifyGraph() {
   return Status::OK();
 }
 
-void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions) const {
-  if (inserted_instructions->contains(new_instruction)) {
-    return;
-  }
-  for (HloInstruction* operand : new_instruction->operands()) {
-    // CopyStart/CopyDone dependencies should always be already inserted; it is
-    // a red flag when they haven't already been inserted.
-    CHECK((operand->opcode() != HloOpcode::kCopyStart &&
-           operand->opcode() != HloOpcode::kCopyDone) ||
-          inserted_instructions->contains(operand))
-        << "Inserted instruction " << new_instruction->ToString()
-        << " has un-inserted dependency: " << operand->ToString();
-    EnsureInstructionAndOperandsInserted(operand, new_sequence,
-                                         inserted_instructions);
-  }
-  VLOG(4) << "inserting: " << new_instruction->ToShortString();
-  new_sequence->push_back(new_instruction);
-  inserted_instructions->insert(new_instruction);
-}
-
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
   VLOG(1) << "Scheduling asynchronous copies...";
   for (MemorySpace memory_space :
@@ -3690,7 +3710,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
 
 Status MemorySpaceAssignment::FixSchedule() {
   VLOG(1) << "Fixing schedule...";
-  CHECK(module_->has_schedule());
+  TF_RET_CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
@@ -3701,7 +3721,7 @@ Status MemorySpaceAssignment::FixSchedule() {
               << " because it's not in the schedule.";
       continue;
     }
-    CHECK(schedule.is_computation_scheduled(computation));
+    TF_RET_CHECK(schedule.is_computation_scheduled(computation));
     HloInstructionSequence new_sequence;
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
@@ -3715,8 +3735,8 @@ Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
                     << new_instruction->name();
-            EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
-                                                 &inserted_instructions);
+            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions));
           }
         }
       }
@@ -3731,14 +3751,13 @@ Status MemorySpaceAssignment::FixSchedule() {
       // it was deleted) and not previously inserted. Also bitcasts and tuples
       // are treated specially and only inserted as a result of operand
       // dependencies.
-      if (instruction != nullptr &&
-          !inserted_instructions.contains(instruction) &&
-          instruction->parent() == computation &&
+      if (instruction != nullptr && instruction->parent() == computation &&
           instruction->opcode() != HloOpcode::kBitcast &&
-          instruction->opcode() != HloOpcode::kTuple) {
+          instruction->opcode() != HloOpcode::kTuple &&
+          !inserted_instructions.contains(instruction)) {
         VLOG(4) << "inst " << instruction_index << ": " << instruction->name();
-        EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
-                                             &inserted_instructions);
+        TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+            instruction, &new_sequence, &inserted_instructions));
       }
       auto insts_after_iter = schedule_after_.find(instruction_index);
       if (insts_after_iter != schedule_after_.end()) {
@@ -3746,16 +3765,17 @@ Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
                     << new_instruction->name();
-            EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
-                                                 &inserted_instructions);
+            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions));
           }
         }
       }
     }
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
-    EnsureInstructionAndOperandsInserted(computation->root_instruction(),
-                                         &new_sequence, &inserted_instructions);
+    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
+        computation->root_instruction(), &new_sequence,
+        &inserted_instructions));
     CHECK_EQ(new_sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
         << new_sequence.size() << " instructions, expects "
