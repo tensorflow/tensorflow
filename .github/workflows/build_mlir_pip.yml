@@ -15,7 +15,7 @@ on:
 jobs:
   build:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, linux, X86]
+    runs-on: [self-hosted, Linux, X86]
     steps:
       - uses: actions/checkout@v2
       - uses: bazelbuild/setup-bazelisk@v1
