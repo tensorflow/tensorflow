@@ -28,6 +28,7 @@ package_group(
         "//tensorflow/lite/python/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
     ],
 )
 

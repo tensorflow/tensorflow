@@ -38,6 +38,7 @@ package_group(
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
         "//waymo/ml/compiler/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
     ]),
 )
 
