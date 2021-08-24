@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "tf_cc_binary",
     "tf_cc_test",
 )
@@ -22,7 +23,18 @@ package_group(
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
         "//tensorflow/tools/...",
-    ],
+    ] + if_google([
+        "//learning/brain/experimental/dtensor/mlir/...",
+        "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/google/xla/mlir/...",
+        "//learning/brain/mlir/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
+        "//platforms/darwinn/...",
+        "//platforms/xla/...",
+        "//smartass/brain/ops/...",
+        "//third_party/iree/...",
+        "//waymo/ml/compiler/mlir/...",
+    ]),
 )
 
 package_group(
