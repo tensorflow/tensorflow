@@ -1092,8 +1092,9 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
     if (!FormatFromString(op.data_format().str(), &data_format))
       return op.emitOpError("invalid data format");
 
-    auto feature_dim = GetFeatureDimension(
-        data_format, op.value().getType().cast<RankedTensorType>());
+    auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!value_type) return failure();
+    auto feature_dim = GetFeatureDimension(data_format, value_type);
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
                                                   feature_dim, rewriter);
     Value add = rewriter.create<AddOp>(loc, op.value(), bias_broadcast);
