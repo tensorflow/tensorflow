@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -1171,6 +1173,109 @@ TEST_F(DatasetHashUtilsTest, HashStringTensor) {
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
 }
+
+// Benchmark that simulates a shallow and wide graph.
+static void BM_ParallelFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Equivalent of a `tf.group()`.
+  NodeDef* target = graph_def.add_node();
+  target->set_name("Target");
+  target->set_op("NoOp");
+
+  // Create 100 parallel PartitionedCalls that all depend on input. Generate a
+  // NodeDef that has close to similar attributes that TensorFlow will generate.
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 100; ++i) {
+    NodeDef* node = graph_def.add_node();
+    node->set_name(absl::StrCat("PartitionedCall_", i));
+    node->set_op("PartitionedCall");
+    *node->add_input() = input->name();
+    AddNodeAttr("Tin", DT_FLOAT, node);
+    AddNodeAttr("Tout", DT_FLOAT, node);
+    AddNodeAttr("config", "", node);
+    AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+    AddNodeAttr("f", func, node);
+    *target->add_input() = absl::StrCat("^", node->name());
+  }
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, *target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ParallelFunctionCallsGraph);
+
+// Benchmark that simulates a narrow and deep graph.
+static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Create 100 chained PartitionedCalls, each depending on the previous.
+  // Generate a NodeDef that has close to similar attributes that TensorFlow
+  // will generate.
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 100; ++i) {
+    NodeDef* node = graph_def.add_node();
+    node->set_name(absl::StrCat("PartitionedCall_", i));
+    node->set_op("PartitionedCall");
+    if (i > 0) {
+      *node->add_input() = absl::StrCat("PartitionedCall_", i - 1);
+    } else {
+      *node->add_input() = input->name();
+    }
+    AddNodeAttr("Tin", DT_FLOAT, node);
+    AddNodeAttr("Tout", DT_FLOAT, node);
+    AddNodeAttr("config", "", node);
+    AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+    AddNodeAttr("f", func, node);
+  }
+
+  const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ChainedFunctionCallsGraph);
 
 }  // namespace
 }  // namespace data
