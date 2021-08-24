@@ -253,7 +253,8 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertEmpty(EmptyType._tf_extension_type_fields())
     x = EmptyType()
-    self.assertEqual(repr(x), 'EmptyType()')
+    self.assertEqual(
+        repr(x), 'ExtensionTypeTest.testEmptyType.<locals>.EmptyType()')
 
   def testCustomConstrutor(self):
 

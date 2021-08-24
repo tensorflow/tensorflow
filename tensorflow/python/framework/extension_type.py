@@ -216,7 +216,7 @@ class ExtensionType(
         f'{field.name}={getattr(self, field.name)!r}'
         for field in self._tf_extension_type_fields()
     ])
-    return f'{type(self).__name__}({fields})'
+    return f'{type(self).__qualname__}({fields})'
 
   def __setattr__(self, name, value):
     if (name in _MUTABLE_KERAS_PROPERTIES or
@@ -494,7 +494,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
 
   def __repr__(self):
     fields = ', '.join([f'{k}={v!r}' for (k, v) in self._serialize()])
-    return f'{type(self).__name__}({fields})'
+    return f'{type(self).__qualname__}({fields})'
 
   _tf_extension_type_is_packed = False
 
