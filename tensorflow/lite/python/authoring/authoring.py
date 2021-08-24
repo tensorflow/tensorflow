@@ -123,10 +123,6 @@ class _Compatible:
       # Set provided converter parameters
       if self._converter_target_spec is not None:
         converter.target_spec = self._converter_target_spec
-        # TODO(b/195611245): Remove the following logic once API is updated.
-        if hasattr(self._converter_target_spec,
-                   "experimental_supported_backends"):
-          converter._experimental_supported_backends = self._converter_target_spec.experimental_supported_backends
       if self._converter_allow_custom_ops is not None:
         converter.allow_custom_ops = self._converter_allow_custom_ops
       try:
