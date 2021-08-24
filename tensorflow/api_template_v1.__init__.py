@@ -145,6 +145,15 @@ if hasattr(_current_module, "keras"):
   except ImportError:
     pass
 
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+if hasattr(_current_module, "keras"):
+  try:
+    keras._load()
+  except ImportError:
+    pass
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin

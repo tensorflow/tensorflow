@@ -176,6 +176,17 @@ if hasattr(_current_module, 'keras'):
     setattr(_current_module, "initializers", initializers)
   except ImportError:
     pass
+
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+# See b/196254385 for more details.
+if hasattr(_current_module, "keras"):
+  try:
+    keras._load()
+  except ImportError:
+    pass
+
 # pylint: enable=undefined-variable
 
 # Delete modules that should be hidden from dir().

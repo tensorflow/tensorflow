@@ -31,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
@@ -387,6 +388,7 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
       self.assertEqual(hist.history['loss'][0], 0)
 
 
+@test_util.enable_output_all_intermediates
 class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
                                                      parameterized.TestCase):
 
