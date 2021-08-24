@@ -58,17 +58,20 @@ class LogicalExpressionTransformer(converter.Base):
         return EQUALITY_OPERATORS[op_type]
     return None
 
-  def _as_lambda(self, expr):
+  @staticmethod
+  def _as_lambda(expr):
     return templates.replace_as_expression('lambda: expr', expr=expr)
 
-  def _as_binary_function(self, func_name, arg1, arg2):
+  @staticmethod
+  def _as_binary_function(func_name, arg1, arg2):
     return templates.replace_as_expression(
         'func_name(arg1, arg2)',
         func_name=parser.parse_expression(func_name),
         arg1=arg1,
         arg2=arg2)
 
-  def _as_binary_operation(self, op, arg1, arg2):
+  @staticmethod
+  def _as_binary_operation(op, arg1, arg2):
     template = templates.replace_as_expression(
         'arg1 is arg2',
         arg1=arg1,
@@ -76,7 +79,8 @@ class LogicalExpressionTransformer(converter.Base):
     template.ops[0] = op
     return template
 
-  def _as_unary_function(self, func_name, arg):
+  @staticmethod
+  def _as_unary_function(func_name, arg):
     return templates.replace_as_expression(
         'func_name(arg)', func_name=parser.parse_expression(func_name), arg=arg)
 
