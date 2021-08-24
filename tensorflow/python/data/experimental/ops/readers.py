@@ -325,6 +325,7 @@ def make_csv_dataset_v2(
     column_names=None,
     column_defaults=None,
     label_name=None,
+    label_names=None,
     select_columns=None,
     field_delim=",",
     use_quote_delim=True,
@@ -417,6 +418,10 @@ def make_csv_dataset_v2(
       the features dictionary, so that the dataset complies with the format
       expected by a `tf.Estimator.train` or `tf.Estimator.evaluate` input
       function.
+    label_names: A optional list of strings that corresponds to the label 
+      columns. If provided, the data for this column is returned as a 
+      `collections.OrderedDict` from the features dictionary , and the 
+      label_name will be ignored.
     select_columns: An optional list of integer indices or string column
       names, that specifies a subset of columns of CSV data to select. If
       column names are provided, these must correspond to names provided in
@@ -463,9 +468,11 @@ def make_csv_dataset_v2(
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
     to a batch of `batch_size` CSV rows. The features dictionary maps feature
-    column names to `Tensor`s containing the corresponding column data, and
-    labels is a `Tensor` containing the column data for the label column
-    specified by `label_name`.
+    column names to `Tensor`s containing the corresponding column data. If 
+    `label_names` is not provided , labels is a `Tensor` containing the column 
+    data for the label column specified by `label_name`. Otherwise labels maps 
+    label column names to `Tensor`s containing the corresponding column 
+    specified by `label_names`.
 
   Raises:
     ValueError: If any of the arguments is malformed.
@@ -535,6 +542,9 @@ def make_csv_dataset_v2(
     # Pick the relevant subset of column names
     column_names = [column_names[i] for i in select_columns]
 
+  if label_names is not None and \
+    (not set(label_names).issubset(set(column_names))):
+    raise ValueError("`label_names` provided must be in the columns.")
   if label_name is not None and label_name not in column_names:
     raise ValueError("`label_name` provided must be one of the columns.")
 
@@ -564,6 +574,11 @@ def make_csv_dataset_v2(
       second element of the tuple.
     """
     features = collections.OrderedDict(zip(column_names, columns))
+    if label_names is not None:
+      label = collections.OrderedDict()
+      for temp_label_name in label_names:
+        label[temp_label_name] = features.pop(temp_label_name)
+      return features, label
     if label_name is not None:
       label = features.pop(label_name)
       return features, label
