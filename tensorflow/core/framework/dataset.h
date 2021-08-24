@@ -993,6 +993,9 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
     Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
                               Node** output);
+    Status AddIdentity(SerializationContext* ctx,
+                       const std::string& name_prefix, Node** input,
+                       Node** output);
 
    private:
     Status AddDatasetOrTensorHelper(SerializationContext* ctx,

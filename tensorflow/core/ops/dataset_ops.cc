@@ -51,6 +51,7 @@ REGISTER_OP("TensorSliceDataset")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("is_files: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetShapeFn(shape_inference::ScalarShape);
 

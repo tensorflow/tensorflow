@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -97,6 +98,12 @@ interleave_ops = lazy_loader.LazyLoader(
     "interleave_ops", globals(),
     "tensorflow.python.data.experimental.ops.interleave_ops"
 )
+# Loaded lazily due to a circular dependency
+# dataset_ops->parsing_ops->dataset_ops
+# TODO(varshaan): Use a regular import.
+parsing_ops = lazy_loader.LazyLoader(
+    "parsing_ops", globals(),
+    "tensorflow.python.ops.parsing_ops")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -290,6 +297,37 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return gen_dataset_ops.dataset_to_graph(
         self._variant_tensor, allow_stateful=allow_stateful)
 
+  def _maybe_track_assets(self, graph_def):
+    """Finds and tracks nodes in `graph_def` that refer to asset files.
+
+    Args:
+      graph_def: Serialized graph representation of this dataset.
+
+    Returns:
+      A dictionary mapping the node name of an asset constant to a tracked
+      `tracking.Asset` object.
+    """
+    asset_tracker = {}
+    for node in graph_def.node:
+      if node.name.startswith("FileIdentity"):
+        asset_tracker[node.input[0]] = None
+
+    if not asset_tracker:
+      return {}
+
+    for node in graph_def.node:
+      if node.name in asset_tracker:
+        tensor_proto = node.attr["value"].tensor
+        with context.eager_mode(), ops.device("CPU"):
+          node_value = parsing_ops.parse_tensor(
+              tensor_proto.SerializeToString(), dtypes.string).numpy()
+        asset_tracker[node.name] = ([
+            self._track_trackable(
+                tracking.Asset(n), name=node.name + "_" + str(i))
+            for i, n in enumerate(node_value)
+        ])
+    return asset_tracker
+
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
 
@@ -319,11 +357,28 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         output_node_name, = node.input
     if output_node_name is None:
       raise AssertionError("Could not find the dataset's output node.")
+
+    file_path_nodes = {}
+    # TODO(b/188455028): Remove this check when
+    # `CapturableResource._map_resources` take an argument to provide the
+    # re-mapped asset tensor object instead of the original eager one.
+    if ops.get_default_graph().building_function:
+      asset_tracker = self._maybe_track_assets(graph_def)
+      for key in asset_tracker:
+        assets_list = [
+            array_ops.expand_dims(asset.asset_path, axis=0)
+            for asset in asset_tracker[key]
+        ]
+        file_path_nodes[key] = array_ops.concat(assets_list, axis=0)
+
     # Add functions used in this Dataset to the function's graph, since they
     # need to follow it around (and for example be added to a SavedModel which
     # references the dataset).
     variant_function = wrap_function.function_from_graph_def(
-        graph_def, inputs=[], outputs=output_node_name + ":0")
+        graph_def,
+        inputs=[],
+        outputs=output_node_name + ":0",
+        captures=file_path_nodes)
     for used_function in self._functions():
       used_function.function.add_to_graph(variant_function.graph)
     return variant_function
@@ -1237,7 +1292,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = Dataset.from_tensor_slices(matching_files)
+      dataset = TensorSliceDataset(matching_files, is_files=True)
       if shuffle:
         # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
         # list of files might be empty.
@@ -3801,7 +3856,7 @@ class TensorDataset(DatasetSource):
 class TensorSliceDataset(DatasetSource):
   """A `Dataset` of slices from a dataset element."""
 
-  def __init__(self, element):
+  def __init__(self, element, is_files=False):
     """See `Dataset.from_tensor_slices()` for details."""
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
@@ -3815,9 +3870,13 @@ class TensorSliceDataset(DatasetSource):
       batch_dim.assert_is_compatible_with(tensor_shape.Dimension(
           tensor_shape.dimension_value(t.get_shape()[0])))
 
+    compat_kwargs = {
+        "output_shapes": structure.get_flat_tensor_shapes(self._structure)
+    }
+    if compat.forward_compatible(2021, 9, 20):
+      compat_kwargs["is_files"] = is_files
     variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure))
+        self._tensors, **compat_kwargs)
     super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
