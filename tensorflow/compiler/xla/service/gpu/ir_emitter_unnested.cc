@@ -4696,11 +4696,6 @@ bool IsUnrollingColumnReductionBeneficial(
     return false;
   }
 
-  if (IsReductionFromOrToContiguousDimensions(unnested_hlo, layout_analysis)) {
-    return true;
-  }
-
-  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(unnested_hlo);
   int64_t can_be_vectorized = 0;
   int64_t cannot_be_vectorized = 0;
   auto fusion_results = ToStdVector(fusion.getFusionResults());
