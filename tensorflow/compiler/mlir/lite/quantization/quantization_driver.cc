@@ -128,6 +128,25 @@ class QuantizationDriver {
   // Propagates the quantization parameters across all the ops.
   bool PropagateParams();
 
+  // Duplicates the constant op if it has multiple uses, and replaces
+  // target_op->operand[operand_index] with the newly created op. This also
+  // replaces corresponsing quantization states.
+  ConstantOp DuplicateConstantOpIfNeeded(ConstantOp op, Operation *target_op,
+                                         int operand_index);
+
+  // Adjusts bias scale that is derived from other scales (fc, conv ops) to
+  // prevent overflow of quantized bias values. This also changes quantization
+  // state of other inputs when needed.
+  bool SetBiasParamsWithAdjustments(Operation *op, int bias_index,
+                                    const std::vector<int> &input_indices,
+                                    QuantParams params);
+
+  // Helper for checking preconditions to adjust bias scale.
+  bool ShouldCheckBiasScale(Operation *op, int bias_index,
+                            const std::vector<int> &input_indices,
+                            QuantParams params, int &input_index,
+                            int &filter_index);
+
   // Inserts the Quantize and Dequantize ops according to the propagation
   // result.
   void Finalize();
@@ -182,8 +201,10 @@ class QuantizationDriver {
 
   // Sets the quantization parameters of the operand to a fixed value. If any
   // quantization parameters have been propagated, a `requantize` will happen on
-  // the output of propagated quantization.
-  bool SetOperandParams(Operation *op, int index, QuantParams params);
+  // the output of propagated quantization. When `override` is set, quantization
+  // state of the value is replaced instead of adding requantization.
+  bool SetOperandParams(Operation *op, int index, QuantParams params,
+                        bool override = false);
 
   // Sets the quantization parameters of the constant result according to its
   // content.
@@ -253,9 +274,8 @@ class QuantizationDriver {
   // Sets the state of an argument. If this value is cached, uses the cached
   // result without creating new entry in the state vector. Otherwise, allocate
   // a new entry in the state vector.
-  void InitializeArgState(BlockArgument arg, Value in,
-                          llvm::DenseMap<Value, int> *cache) {
-    auto cached = cache->insert({in, 0});
+  void InitializeArgState(BlockArgument arg, Value in) {
+    auto cached = value_to_state_.insert({in, 0});
     if (!cached.second) {
       arg_states_[arg] = cached.first->second;
       return;
@@ -272,11 +292,10 @@ class QuantizationDriver {
   // Sets the state of the index-th operand of the op. If this operand is
   // cached, uses the cached result without creating new entry in the state
   // vector. Otherwise, allocate a new entry in the state vector.
-  void InitializeOperandState(Operation *op, int index, Value in,
-                              llvm::DenseMap<Value, int> *cache) {
-    auto cached = cache->insert({in, 0});
+  void InitializeOperandState(Operation *op, int index, Value in) {
+    auto cached = value_to_state_.insert({in, 0});
     if (!cached.second) {
-      operand_states_.insert({{op, index}, cached.first->second});
+      operand_states_[{op, index}] = cached.first->second;
       return;
     }
     cached.first->second = InitializeState(op, index, in, /*as_result=*/false);
@@ -285,11 +304,10 @@ class QuantizationDriver {
   // Sets the state of the index-th result of the op. If this result is cached,
   // uses the cached result without creating new entry in the state vector.
   // Otherwise, allocate a new entry in the state vector.
-  void InitializeResultState(Operation *op, int index, Value res,
-                             llvm::DenseMap<Value, int> *cache) {
-    auto cached = cache->insert({res, 0});
+  void InitializeResultState(Operation *op, int index, Value res) {
+    auto cached = value_to_state_.insert({res, 0});
     if (!cached.second) {
-      result_states_.insert({{op, index}, cached.first->second});
+      result_states_[{op, index}] = cached.first->second;
       return;
     }
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
@@ -384,6 +402,7 @@ class QuantizationDriver {
   llvm::DenseMap<OpValue, int> operand_states_;
   llvm::DenseMap<OpValue, int> result_states_;
   llvm::DenseMap<BlockArgument, int> arg_states_;
+  llvm::DenseMap<Value, int> value_to_state_;
 
   // This vector is to preserve the arguments order, so the newly inserted
   // quantized ops for the arguments are deterministically ordered.
@@ -420,9 +439,9 @@ int QuantizationDriver::InitializeState(Operation *op, int index, Value val,
   int next_state_index = states_.size();
   states_.push_back({params, immutable});
   if (as_result)
-    result_states_.insert({{op, index}, next_state_index});
+    result_states_[{op, index}] = next_state_index;
   else
-    operand_states_.insert({{op, index}, next_state_index});
+    operand_states_[{op, index}] = next_state_index;
 
   return next_state_index;
 }
@@ -499,13 +518,13 @@ QuantParams QuantizationDriver::GetBiasParams(
 }
 
 bool QuantizationDriver::SetOperandParams(Operation *op, int index,
-                                          QuantParams params) {
+                                          QuantParams params, bool override) {
   auto &state = GetOperandQuantState(op, index);
   if (state.params == params) {
     return false;
   }
 
-  if (!state.IsEmpty()) {
+  if (!state.IsEmpty() && !override) {
     auto &rescales = GetOperandRequantizeStates(op, index);
     for (RequantizeState &rescale : rescales) {
       if (rescale.params == params) {
@@ -793,8 +812,6 @@ void QuantizationDriver::PreprocessConstantOps() {
 }
 
 void QuantizationDriver::SetupAllStates() {
-  llvm::DenseMap<Value, int> value_to_state;
-
   for (auto arg : fn_.getArguments()) {
     args_.push_back(arg);
     Value value = arg;
@@ -805,7 +822,7 @@ void QuantizationDriver::SetupAllStates() {
         value = q.getResult();
       }
     }
-    InitializeArgState(arg, value, &value_to_state);
+    InitializeArgState(arg, value);
   }
 
   fn_.walk([&](Operation *op) {
@@ -823,7 +840,7 @@ void QuantizationDriver::SetupAllStates() {
           operand = dq.arg();
         }
       }
-      InitializeOperandState(op, i, operand, &value_to_state);
+      InitializeOperandState(op, i, operand);
     }
 
     for (int res = 0, e = op->getNumResults(); res != e; ++res) {
@@ -837,7 +854,7 @@ void QuantizationDriver::SetupAllStates() {
           result = q.getResult();
         }
       }
-      InitializeResultState(op, res, result, &value_to_state);
+      InitializeResultState(op, res, result);
     }
   });
 }
@@ -934,13 +951,162 @@ bool QuantizationDriver::PropagateParams() {
         quantized_.erase(op);
         continue;
       }
-      changed |= SetOperandParams(op, it.first, params);
+      changed |=
+          SetBiasParamsWithAdjustments(op, it.first, it.second.first, params);
     }
   }
 
   LLVM_DEBUG(llvm::dbgs() << "\n\n\n");
   LLVM_DEBUG(DumpStates(nullptr));
 
+  return changed;
+}
+
+ConstantOp QuantizationDriver::DuplicateConstantOpIfNeeded(ConstantOp op,
+                                                           Operation *target_op,
+                                                           int operand_index) {
+  if (op.getResult().hasOneUse()) {
+    return op;
+  }
+  OpBuilder builder(op->getContext());
+  builder.setInsertionPointAfter(op);
+  ConstantOp new_op = llvm::cast<ConstantOp>(builder.clone(*op));
+  target_op->getOpOperand(operand_index).set(new_op.getResult());
+  InitializeOperandState(target_op, operand_index, new_op.getResult());
+  InitializeResultState(new_op, 0, new_op.getResult());
+  return new_op;
+}
+
+bool QuantizationDriver::ShouldCheckBiasScale(
+    Operation *op, int bias_index, const std::vector<int> &input_indices,
+    QuantParams params, int &input_index, int &filter_index) {
+  // For now, restrict scale adjustment to ops with affine quantized weights,
+  // and having weights and biases as constants. This currently only applies to
+  // FC and Conv* ops. Restriction for the weight can be relaxed if there are
+  // needs for adjusting scale of variable weights.
+  auto affine_op = llvm::dyn_cast<AffineQuantizedOpInterface>(op);
+  auto bias_op = op->getOperand(bias_index).getDefiningOp<ConstantOp>();
+  if (!affine_op || !bias_op || input_indices.size() != 2) return false;
+  if (!bias_op.value().isa<DenseFPElementsAttr>()) return false;
+  filter_index = affine_op.GetAffineOperandIndex();
+  if (!op->getOperand(filter_index).getDefiningOp<ConstantOp>()) {
+    return false;
+  }
+  if (filter_index == input_indices[0]) {
+    input_index = input_indices[1];
+  } else if (filter_index == input_indices[1]) {
+    input_index = input_indices[0];
+  } else {
+    return false;
+  }
+
+  auto input_state = GetOperandQuantState(op, input_index);
+  auto filter_state = GetOperandQuantState(op, filter_index);
+  // If quantization paramater for the filter is fixed, should return it as-is.
+  // Only checks ops with 8-bit input and weights, and 32-bit biases.
+  if (!(input_state.params.getStorageTypeIntegralWidth() == 8 &&
+        filter_state.params.getStorageTypeIntegralWidth() == 8 &&
+        params.getStorageTypeIntegralWidth() == 32)) {
+    return false;
+  }
+  return true;
+}
+
+bool QuantizationDriver::SetBiasParamsWithAdjustments(
+    Operation *op, int bias_index, const std::vector<int> &input_indices,
+    QuantParams params) {
+  bool changed = false;
+  int input_index;
+  int filter_index;
+  if (!ShouldCheckBiasScale(op, bias_index, input_indices, params, input_index,
+                            filter_index)) {
+    return SetOperandParams(op, bias_index, params);
+  }
+
+  quant::QuantState input_state = GetOperandQuantState(op, input_index);
+  quant::QuantState filter_state = GetOperandQuantState(op, filter_index);
+  auto bias_op = op->getOperand(bias_index).getDefiningOp<ConstantOp>();
+  const double input_scale =
+      input_state.params.cast<UniformQuantizedType>().getScale();
+
+  auto bias_values = bias_op.value().cast<DenseFPElementsAttr>();
+  // Restrict maximum absolute value of bias within INT_MAX / 2, to make some
+  // room for accumulator.
+  const int32_t kBiasMax = std::numeric_limits<int32_t>::max() / 2;
+  if (auto bias_params = params.dyn_cast<UniformQuantizedType>()) {
+    double bias_half_range = 0.0f;
+    for (auto bias : bias_values.getFloatValues()) {
+      if (bias_half_range < std::abs(bias.convertToFloat())) {
+        bias_half_range = std::abs(bias.convertToFloat());
+      }
+    }
+    if (bias_half_range / bias_params.getScale() < kBiasMax) {
+      return SetOperandParams(op, bias_index, params);
+    }
+    double new_bias_scale = static_cast<double>(bias_half_range) / kBiasMax;
+
+    changed |= SetOperandParams(
+        op, bias_index,
+        UniformQuantizedType::getChecked(
+            bias_op->getLoc(), params.getFlags(), params.getStorageType(),
+            params.getExpressedType(), new_bias_scale, 0,
+            params.getStorageTypeMin(), params.getStorageTypeMax()));
+    auto filter_op = DuplicateConstantOpIfNeeded(
+        op->getOperand(filter_index).getDefiningOp<ConstantOp>(), op,
+        filter_index);
+    if (!filter_op) {
+      return SetOperandParams(op, bias_index, params);
+    }
+
+    auto filter_param = filter_state.params.cast<UniformQuantizedType>();
+    changed |= SetOperandParams(
+        op, filter_index,
+        UniformQuantizedType::getChecked(
+            filter_op->getLoc(), filter_param.getFlags(),
+            filter_param.getStorageType(), filter_param.getExpressedType(),
+            new_bias_scale / input_scale, 0, filter_param.getStorageTypeMin(),
+            filter_param.getStorageTypeMax()),
+        /*override=*/true);
+  } else if (auto bias_params =
+                 params.dyn_cast<UniformQuantizedPerAxisType>()) {
+    auto filter_params =
+        filter_state.params.cast<UniformQuantizedPerAxisType>();
+    std::vector<double> new_bias_scales = bias_params.getScales().vec();
+    std::vector<double> new_filter_scales = filter_params.getScales().vec();
+    bool needs_adjustment = false;
+    for (int i = 0; i < bias_params.getScales().size(); ++i) {
+      float abs_bias = std::abs(bias_values.getValue<float>(i));
+      if (abs_bias / new_bias_scales[i] > kBiasMax) {
+        new_bias_scales[i] = static_cast<double>(abs_bias) / kBiasMax;
+        new_filter_scales[i] = new_bias_scales[i] / input_scale;
+        needs_adjustment = true;
+      }
+    }
+    if (!needs_adjustment) {
+      return SetOperandParams(op, bias_index, params);
+    }
+    changed |= SetOperandParams(
+        op, bias_index,
+        UniformQuantizedPerAxisType::getChecked(
+            bias_op->getLoc(), params.getFlags(), params.getStorageType(),
+            params.getExpressedType(), new_bias_scales,
+            bias_params.getZeroPoints(), bias_params.getQuantizedDimension(),
+            params.getStorageTypeMin(), params.getStorageTypeMax()));
+
+    auto filter_op = DuplicateConstantOpIfNeeded(
+        op->getOperand(filter_index).getDefiningOp<ConstantOp>(), op,
+        filter_index);
+    changed |= SetOperandParams(
+        op, filter_index,
+        UniformQuantizedPerAxisType::getChecked(
+            filter_op->getLoc(), filter_params.getFlags(),
+            filter_params.getStorageType(), filter_params.getExpressedType(),
+            new_filter_scales, filter_params.getZeroPoints(),
+            filter_params.getQuantizedDimension(),
+            filter_params.getStorageTypeMin(),
+            filter_params.getStorageTypeMax()),
+        /*override=*/true);
+  }
   return changed;
 }
 

@@ -489,11 +489,15 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
   if (width == 8 && q_type.getStorageTypeMax() == 127 &&
       q_type.getStorageTypeMin() == -127) {
     std::vector<int8_t> quantized_values(real_values_attr.getNumElements());
-    if (q_type.isa<UniformQuantizedType>()) {
+    if (auto uniform_type = q_type.dyn_cast<UniformQuantizedType>()) {
       float min, max, scale;
       tflite::tensor_utils::SymmetricQuantizeFloats(
           real_values.data(), real_values.size(), quantized_values.data(), &min,
           &max, &scale);
+      // The scale has been adjusted, so the adjusted scale should be respected.
+      if (std::abs(scale - uniform_type.getScale()) > 1e-3) {
+        return Quantize(real_value, tensor_type);
+      }
     } else if (auto uniform_type =
                    q_type.dyn_cast<UniformQuantizedPerAxisType>()) {
       std::vector<float> scales_inv;
@@ -590,13 +594,7 @@ QuantizedType DownCastScale(QuantizedType type,
   for (int i = 0; i < mins.size(); ++i) {
     scales[i] = (static_cast<float>(maxs[i]) - static_cast<float>(mins[i])) /
                 (type.getStorageTypeMax() - type.getStorageTypeMin());
-    if (scales[i] < kNearZeroTolerance &&
-        type.getStorageTypeIntegralWidth() == 8) {
-      emitWarning(loc) << "The scale " << scales[i] << " is too small, and "
-                       << "might cause overflow for bias. Forcing to use scale "
-                       << kNearZeroTolerance;
-      scales[i] = kNearZeroTolerance;
-    } else if (type.getStorageTypeMax() != -type.getStorageTypeMin()) {
+    if (type.getStorageTypeMax() != -type.getStorageTypeMin()) {
       // Only applies for asymmetric quantized range with original scale.
       float zero_point_from_min =
           type.getStorageTypeMin() - mins[i] / scales[i];

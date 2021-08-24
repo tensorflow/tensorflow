@@ -164,6 +164,25 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     return BasicModelWithSharedWeight()
 
+  def _getMatMulModelWithSmallWeights(self):
+
+    class MatMulModelWithSmallWeights(tracking.AutoTrackable):
+      """MatMul model with small weights and relatively large biases."""
+
+      def __init__(self):
+        self.weight = constant_op.constant([[1e-3, -1e-3], [-2e-4, 2e-4]],
+                                           shape=(2, 2),
+                                           dtype=dtypes.float32)
+        self.bias = constant_op.constant([1.28, 2.55],
+                                         shape=(2,),
+                                         dtype=dtypes.float32)
+
+      @def_function.function
+      def matmul(self, x):
+        return x @ self.weight + self.bias
+
+    return MatMulModelWithSmallWeights()
+
   def _assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""
     file_names = set()
