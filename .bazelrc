@@ -347,6 +347,10 @@ build:windows --host_linkopt=/OPT:ICF
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures
 
+# Work around potential issues with large command lines on windows.
+# See: https://github.com/bazelbuild/bazel/issues/5163
+build:windows --features=compiler_param_file
+
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
 # On linux, don't cross compile by default
