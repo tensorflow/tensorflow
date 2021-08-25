@@ -497,40 +497,35 @@ class IrEmitterUnnested : public IrEmitter {
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
-  // Prepares for the code generation for a tile block of a reduction kernel.
-  //
-  // Create accumulator alloca's, populate them with initial values, and store
-  // inside reduction_info.
-  void EmitPrologueForReduction(
-      mlir::lmhlo::FusionOp fusion,
+  // Creates accumulator alloca's, populates them with initial values, generates
+  // __shared__ caches and returns the populated object.
+  ReductionCodegenState GenerateReductionCodegenState(
+      mlir::lmhlo::FusionOp fusion, const ReductionCodegenInfo& reduction_info,
       absl::Span<const int> reduce_instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-      ReductionCodegenState* reduction_info,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
-  void EmitEpilogueForReduction(
-      llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
-      absl::Span<const int> reduce_instr_index_group,
-      absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-      absl::Span<HloComputation* const> reducers,
-      const ReductionCodegenState& reduction_info,
-      const TilingKernelInfo& tiling_kernel_info,
-      const FusionLayoutAnalysis& layout_analysis);
+  void EmitReductionOutput(llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
+                           absl::Span<const int> reduce_instr_index_group,
+                           absl::Span<const llvm_ir::IrArray> result_ir_arrays,
+                           absl::Span<HloComputation* const> reducers,
+                           const ReductionCodegenState& reduction_codegen_state,
+                           const TilingKernelInfo& tiling_kernel_info,
+                           const FusionLayoutAnalysis& layout_analysis);
 
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
-  void EmitEpilogueForRowReduction(
+  void EmitReductionOutputForRowReduction(
       HloComputation* reducer,
       const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
       const ReductionCodegenState& reduction_info, llvm::Type* element_type,
       llvm::Type* index_ty, llvm::Value* current_output,
       llvm::Value* output_address, int reduction_idx, int partial_result_idx);
 
-  // Same arguments as EmitEpilogueForRowReduction.
-  void EmitEpilogueForColumnReduction(
+  // Same arguments as EmitReductionOutputForRowReduction.
+  void EmitReductionOutputForColumnReduction(
       HloComputation* reducer,
       const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
       const ReductionCodegenState& reduction_info, llvm::Type* element_type,
@@ -544,7 +539,7 @@ class IrEmitterUnnested : public IrEmitter {
                           HloComputation* fused_computation,
                           FusedIrEmitter* fused_emitter,
                           absl::Span<const llvm_ir::IrArray> result_ir_arrays,
-                          ReductionCodegenState* reduction_info,
+                          const ReductionCodegenInfo& reduction_info,
                           const Shape& input_shape,
                           const FusionLayoutAnalysis& layout_analysis);
 
