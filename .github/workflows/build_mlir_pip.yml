@@ -35,4 +35,4 @@ jobs:
         with:
           name: pip
           # A file, directory or wildcard pattern that describes what to upload
-          path: "$RUNNER_TEMP/*whl"
+          path: ${{ runner.temp }}
