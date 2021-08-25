@@ -2527,6 +2527,9 @@ def async_wait():
   are finished, potentially raising exceptions if async execution results in
   an error state. It is a no-op if the context is not initialized.
   """
+  disable_async_executor_env_var = "TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"
+  if os.environ.get(disable_async_executor_env_var) == str(True):
+    return
   if context()._context_handle is not None:  # pylint: disable=protected-access
     context().sync_executors()
 
