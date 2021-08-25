@@ -178,10 +178,23 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     add_signature_runner = interpreter.get_signature_runner('add')
     add_output = add_signature_runner(x=input_data)
     self.assertEqual(add_output['output_0'], 3)
+    input_details = add_signature_runner.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('add_x:0', input_details['x']['name'])
+    self.assertEqual(np.float32, input_details['x']['dtype'])
+    self.assertTrue(([1] == input_details['x']['shape']).all())
+    self.assertEqual((0.0, 0), input_details['x']['quantization'])
 
     sub_signature_runner = interpreter.get_signature_runner('sub')
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
+    output_details = sub_signature_runner.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('StatefulPartitionedCall:0',
+                     output_details['output_0']['name'])
+    self.assertEqual(np.float32, output_details['output_0']['dtype'])
+    self.assertTrue(([1] == output_details['output_0']['shape']).all())
+    self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
 
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
