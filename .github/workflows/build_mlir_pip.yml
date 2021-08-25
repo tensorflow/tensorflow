@@ -29,10 +29,10 @@ jobs:
       - run: pip3 install -U --user keras_preprocessing --no-deps
       - run: bazel build //tensorflow/core
       - run: bazel build //tensorflow/tools/pip_package:build_pip_package
-      - run: ./bazel-bin/tensorflow/tools/pip_package/build_pip_package --nightly_flag "{{$process.env['RUNNER_TEMP']}}"
+      - run: ./bazel-bin/tensorflow/tools/pip_package/build_pip_package --nightly_flag ${{ env.RUNNER_TEMP }}"
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2.2.4
         with:
           name: pip
           # A file, directory or wildcard pattern that describes what to upload
-          path: "{{$process.env['RUNNER_TEMP']}}/*whl"
+          path: "$RUNNER_TEMP/*whl"
