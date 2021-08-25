@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
-#include "tensorflow/c/experimental/profiler/profiler_internal.h"
+#include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -27,8 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
 
 namespace {
 
@@ -73,6 +71,10 @@ Status ValidateDeviceType(StringPiece type) {
   return Status::OK();
 }
 
+struct TFStatusDeleter {
+  void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
+};
+
 Status ValidateTPProfilerRegistrationParams(
     const TF_ProfilerRegistrationParams& params) {
   VALIDATE_STRUCT_SIZE(TF_ProfilerRegistrationParams, params,
@@ -114,30 +116,30 @@ class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
     return absl::WrapUnique(new PluggableProfiler(profiler_fns, profiler));
   }
 
-  Status Start() {
-    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
-    profiler_fns_.start(&profiler_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
+  Status Start() override {
+    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    profiler_fns_.start(&profiler_, status.get());
+    return tensorflow::StatusFromTF_Status(status.get());
   }
 
-  Status Stop() {
-    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
-    profiler_fns_.stop(&profiler_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
+  Status Stop() override {
+    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    profiler_fns_.stop(&profiler_, status.get());
+    return tensorflow::StatusFromTF_Status(status.get());
   }
 
-  Status CollectData(XSpace* space) {
-    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
-    // Get size of buffer required for Plugin to serialize XSpace ito.
+  Status CollectData(XSpace* space) override {
+    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    // Get size of buffer required for Plugin to serialize XSpace into it.
     size_t size_in_bytes;
     profiler_fns_.collect_data_xspace(&profiler_, /*buffer=*/nullptr,
-                                      &size_in_bytes, c_status.get());
+                                      &size_in_bytes, status.get());
 
     // Prepare an appropriately sized buffer.
     if (size_in_bytes > 0) {
       std::vector<uint8_t> buffer(size_in_bytes);
       profiler_fns_.collect_data_xspace(&profiler_, buffer.data(),
-                                        &size_in_bytes, c_status.get());
+                                        &size_in_bytes, status.get());
       // Deserialize XSpace from the buffer and return it.
       XSpace plugin_space;
       plugin_space.ParseFromArray(buffer.data(), buffer.size());
@@ -146,13 +148,9 @@ class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
         plane->Swap(&plugin_plane);
       }
     }
-    return tensorflow::StatusFromTF_Status(c_status.get());
+    return tensorflow::StatusFromTF_Status(status.get());
   }
 
-  Status CollectData(RunMetadata* run_metadata) {
-    // Unsupported
-    return Status::OK();
-  }
  private:
   PluggableProfiler(TP_ProfilerFns profiler_fns, TP_Profiler profiler)
       : profiler_fns_(profiler_fns), profiler_(profiler) {}
@@ -201,9 +199,9 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
   params.patch_version = TP_PATCH;
   params.profiler = &profiler;
   params.profiler_fns = &profiler_fns;
-  std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
-  init_fn(&params, c_status.get());
-  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+  std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+  init_fn(&params, status.get());
+  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(status.get()));
   TF_RETURN_IF_ERROR(ValidateTPProfilerRegistrationParams(params));
   TF_RETURN_IF_ERROR(ValidateTPProfiler(profiler));
   TF_RETURN_IF_ERROR(ValidateTPProfilerFns(profiler_fns));
@@ -217,7 +215,7 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
         return factory.CreatePluggableProfiler(options);
       };
 
-  tensorflow::profiler::RegisterProfilerFactory(create_func);
+  tensorflow::profiler::RegisterProfilerFactory(std::move(create_func));
 
   return Status::OK();
 }

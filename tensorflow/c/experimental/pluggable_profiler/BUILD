@@ -13,14 +13,14 @@ package(
 filegroup(
     name = "headers",
     srcs = [
-        "profiler.h",
+        "pluggable_profiler.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
-    name = "profiler_hdrs",
-    hdrs = ["profiler.h"],
+    name = "pluggable_profiler_hdrs",
+    hdrs = ["pluggable_profiler.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api_macros",
@@ -29,12 +29,12 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler",
-    srcs = ["profiler.cc"],
-    hdrs = ["profiler.h"],
+    name = "pluggable_profiler",
+    srcs = ["pluggable_profiler.cc"],
+    hdrs = ["pluggable_profiler.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_internal",
+        ":pluggable_profiler_internal",
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
@@ -48,10 +48,10 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler_internal",
+    name = "pluggable_profiler_internal",
     hdrs = [
-        "profiler.h",
-        "profiler_internal.h",
+        "pluggable_profiler.h",
+        "pluggable_profiler_internal.h",
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",

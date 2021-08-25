@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_PROFILER_PROFILER_INTERNAL_H_
-#define TENSORFLOW_C_EXPERIMENTAL_PROFILER_PROFILER_INTERNAL_H_
-#include "tensorflow/c/experimental/profiler/profiler.h"
+#ifndef TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_PROFILER_PLUGGABLE_PROFILER_INTERNAL_H_
+#define TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_PROFILER_PLUGGABLE_PROFILER_INTERNAL_H_
+#include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
@@ -22,14 +22,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 namespace tensorflow {
 namespace profiler {
-struct TFStatusDeleter {
-  void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
-};
 
-typedef void (*TFInitProfilerFn)(TF_ProfilerRegistrationParams* const,
-                                 TF_Status* const);
+using TFInitProfilerFn = void (*)(TF_ProfilerRegistrationParams* const,
+                                  TF_Status* const);
 
 Status InitPluginProfiler(TFInitProfilerFn init_fn);
 }  // namespace profiler
 }  // namespace tensorflow
-#endif  // TENSORFLOW_C_EXPERIMENTAL_PROFILER_PROFILER_INTERNAL_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_PROFILER_PLUGGABLE_PROFILER_INTERNAL_H_

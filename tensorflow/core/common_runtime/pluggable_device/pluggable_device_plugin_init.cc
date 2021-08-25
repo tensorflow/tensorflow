@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
-#include "tensorflow/c/experimental/profiler/profiler_internal.h"
+#include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -100,8 +100,14 @@ Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // Step 2 Init Kernel Module
   TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));
 
-  // Step 3 Init Profiler Module(optional module)
-  InitProfilerModule(dso_handle);
+  // Step 3 Init Profiler Module
+  // Profiler is an optional module in plugin, so it will not cause TensorFlow
+  // fatal if loaded failed.
+  Status status = InitProfilerModule(dso_handle);
+  if (!status.ok()) {
+    LOG(INFO) << "Failed to load pluggable profiler module due to "
+              << status.error_message();
+  }
   return Status::OK();
 }
 
