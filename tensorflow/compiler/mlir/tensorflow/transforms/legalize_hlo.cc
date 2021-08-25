@@ -1134,6 +1134,21 @@ class ConvertReduceOpToTfMin
   }
 };
 
+class ConvertReduceOpToTfAll
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+ public:
+  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || !init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
+
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
@@ -2102,15 +2117,15 @@ static PassRegistration<LegalizeHloToTf> pass;
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
-               ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
-               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<
+      ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+      ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+      ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 
