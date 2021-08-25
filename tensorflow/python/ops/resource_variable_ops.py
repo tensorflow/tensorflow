@@ -474,7 +474,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       yield
 
-  def __array__(self):
+  def __array__(self, dtype=None):
     """Allows direct conversion to a numpy array.
 
     >>> np.array(tf.Variable([1.0]))
@@ -489,7 +489,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
     # the same error. The `EagerTensor` class must be doing something behind the
     # scenes to make `np.array(tf.constant(1))` work.
-    return np.asarray(self.numpy())
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __nonzero__(self):
     return self.__bool__()
