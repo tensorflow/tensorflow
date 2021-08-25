@@ -126,6 +126,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
+      {"ScheduleWithEagerSplit", kScheduleWithEagerSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
