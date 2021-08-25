@@ -130,16 +130,23 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    if (random_access_indices_.empty()) {
-      InitializeRandomAccessIndices();
+    {
+      mutex_lock l(mu_);
+      if (shuffled_indices_.empty()) {
+        InitializeRandomAccessIndices();
+      }
     }
     const int64 cardinality = Cardinality();
     if (index < 0 || index >= cardinality) {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
                                 "):", index);
     }
-    TF_RETURN_IF_ERROR(
-        input_->Get(ctx, random_access_indices_[index], out_tensors));
+    int64 shuffled_index;
+    {
+      tf_shared_lock l(mu_);
+      shuffled_index = shuffled_indices_[index];
+    }
+    TF_RETURN_IF_ERROR(input_->Get(ctx, shuffled_index, out_tensors));
     return Status::OK();
   }
 
@@ -157,10 +164,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         seed_generator_.get());
   }
 
-  void InitializeRandomAccessIndices() const {
+  void InitializeRandomAccessIndices() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const int64 cardinality = Cardinality();
-    random_access_indices_ = std::vector<std::int64_t>(cardinality);
-    std::iota(random_access_indices_.begin(), random_access_indices_.end(), 0);
+    shuffled_indices_ = std::vector<std::int64_t>(cardinality);
+    std::iota(shuffled_indices_.begin(), shuffled_indices_.end(), 0);
     int64_t shuffled_index = 0;
     random::PhiloxRandom parent_generator =
         random::PhiloxRandom(seed_generator_->seed(), seed_generator_->seed2());
@@ -169,8 +176,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
     while (shuffled_index < cardinality) {
       int64_t offset = generator() % (cardinality - shuffled_index);
-      std::swap(random_access_indices_[shuffled_index + offset],
-                random_access_indices_[shuffled_index]);
+      std::swap(shuffled_indices_[shuffled_index + offset],
+                shuffled_indices_[shuffled_index]);
       shuffled_index += 1;
     }
   }
@@ -492,7 +499,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   // responsible for repeating as well.
   const int64_t count_;
   const TraceMeMetadata traceme_metadata_;
-  mutable std::vector<std::int64_t> random_access_indices_;
+  mutable mutex mu_;
+  mutable std::vector<std::int64_t> shuffled_indices_ TF_GUARDED_BY(mu_);
 };  // ShuffleDatasetBase
 
 // This version of memory dataset has an exclusive ownership of the seed
