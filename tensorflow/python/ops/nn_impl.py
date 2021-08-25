@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -459,6 +460,14 @@ def compute_average_loss(per_example_loss,
       num_replicas = ds.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
+
+    check_ops.assert_scalar_v2(
+        global_batch_size, message="global_batch_size must be scalar.")
+    check_ops.assert_integer_v2(
+        global_batch_size,
+        message="global_batch_size must be an integer.")
+    check_ops.assert_positive_v2(
+        global_batch_size, message="global_batch_size must be positive.")
 
     global_batch_size = math_ops.cast(global_batch_size, input_dtype)
     return math_ops.reduce_sum(per_example_loss) / global_batch_size
