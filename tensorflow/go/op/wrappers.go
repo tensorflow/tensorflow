@@ -49106,6 +49106,14 @@ func ConfigureDistributedTPUCompilationFailureClosesChips(value bool) ConfigureD
 	}
 }
 
+// ConfigureDistributedTPUTpuCancellationClosesChips sets the optional tpu_cancellation_closes_chips attribute to value.
+// If not specified, defaults to 0
+func ConfigureDistributedTPUTpuCancellationClosesChips(value int64) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["tpu_cancellation_closes_chips"] = value
+	}
+}
+
 // Sets up the centralized structures for a distributed TPU system.
 //
 // Returns A serialized tensorflow.tpu.TopologyProto that describes the TPU
