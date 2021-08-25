@@ -21,7 +21,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -125,11 +124,9 @@ class RunEagerOpAsFunctionTest(test.TestCase):
         constant_op.constant([2], dtype=dtypes.int64), constant_op.constant(1))
 
   def testDatasetMap(self):
-    # On GPU, this test triggers a different error: InternalError:
-    #   {{function_node __wrapped__RangeDataset}} No unary variant device copy
-    #   function found ...... [[{{node RangeDataset/_8}}]] [Op:RangeDataset]
-    with ops.device("CPU"):
-      dataset_ops.Dataset.range(2).map(math_ops.square)
+    # When a GPU is available, this would test that the wrapped call ops are
+    # placed on the CPU (i.e. the device is selected using the unwrapped op).
+    dataset_ops.Dataset.range(2).map(math_ops.square)
 
   def testMatmul(self):
     math_ops.matmul(self._m_2_by_2, self._m_2_by_2)
