@@ -114,8 +114,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
 #define TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
 
+#include <algorithm>
 #include <iterator>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -292,14 +294,49 @@ void AppendFeatureValues(IteratorType first, IteratorType last,
 template <typename ValueType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
                          Feature* feature) {
-  AppendFeatureValues(container.begin(), container.end(), feature);
+  using FeatureType = typename internal::FeatureTrait<ValueType>::Type;
+  auto* values = GetFeatureValues<FeatureType>(feature);
+  values->Reserve(container.size());
+  std::move(container.begin(), container.end(),
+            protobuf::RepeatedFieldBackInserter(values));
 }
+
+namespace internal {
+// HasSize<T>(0) returns true_type if T has a size() member.
+template <typename T>
+constexpr auto HasSize(int)
+    -> decltype((std::declval<T>().size(), std::true_type{})) {
+  return {};
+}
+template <typename>
+constexpr std::false_type HasSize(...) {
+  return {};
+}
+
+// Reserves the container's size, if a container.size() method exists.
+template <typename ContainerType, typename RepeatedFieldType,
+          typename std::enable_if_t<HasSize<ContainerType>(0), int> = 0>
+void ReserveIfSizeAvailable(const ContainerType& container,
+                            RepeatedFieldType& values) {
+  values.Reserve(container.size());
+}
+
+template <typename ContainerType, typename RepeatedFieldType,
+          typename std::enable_if_t<!HasSize<ContainerType>(0), int> = 0>
+void ReserveIfSizeAvailable(const ContainerType& container,
+                            RepeatedFieldType& values) {}
+
+}  // namespace internal
 
 template <typename ContainerType>
 void AppendFeatureValues(const ContainerType& container, Feature* feature) {
   using IteratorType = typename ContainerType::const_iterator;
-  AppendFeatureValues<IteratorType>(container.begin(), container.end(),
-                                    feature);
+  using FeatureType = typename internal::FeatureTrait<
+      typename std::iterator_traits<IteratorType>::value_type>::Type;
+  auto* values = GetFeatureValues<FeatureType>(feature);
+  internal::ReserveIfSizeAvailable(container, *values);
+  std::copy(container.begin(), container.end(),
+            protobuf::RepeatedFieldBackInserter(values));
 }
 
 // Copies elements from the range, defined by [first, last) into the feature
@@ -314,9 +351,8 @@ void AppendFeatureValues(IteratorType first, IteratorType last,
 template <typename ContainerType, typename ProtoType>
 void AppendFeatureValues(const ContainerType& container, const std::string& key,
                          ProtoType* proto) {
-  using IteratorType = typename ContainerType::const_iterator;
-  AppendFeatureValues<IteratorType>(container.begin(), container.end(), key,
-                                    proto);
+  AppendFeatureValues<ContainerType>(container,
+                                     GetFeature(key, GetFeatures(proto)));
 }
 
 // Copies all elements from the initializer list into a Feature contained by
@@ -324,10 +360,8 @@ void AppendFeatureValues(const ContainerType& container, const std::string& key,
 template <typename ValueType, typename ProtoType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
                          const std::string& key, ProtoType* proto) {
-  using IteratorType =
-      typename std::initializer_list<ValueType>::const_iterator;
-  AppendFeatureValues<IteratorType>(container.begin(), container.end(), key,
-                                    proto);
+  AppendFeatureValues<ValueType>(container,
+                                 GetFeature(key, GetFeatures(proto)));
 }
 
 // Clears the feature's repeated field (int64, float, or string).
@@ -350,7 +384,9 @@ void SetFeatureValues(IteratorType first, IteratorType last, Feature* feature) {
 template <typename ValueType>
 void SetFeatureValues(std::initializer_list<ValueType> container,
                       Feature* feature) {
-  SetFeatureValues(container.begin(), container.end(), feature);
+  using FeatureType = typename internal::FeatureTrait<ValueType>::Type;
+  ClearFeatureValues<FeatureType>(feature);
+  AppendFeatureValues(container, feature);
 }
 
 // Clears the feature's repeated field (int64, float, or string). Copies all
@@ -358,7 +394,10 @@ void SetFeatureValues(std::initializer_list<ValueType> container,
 template <typename ContainerType>
 void SetFeatureValues(const ContainerType& container, Feature* feature) {
   using IteratorType = typename ContainerType::const_iterator;
-  SetFeatureValues<IteratorType>(container.begin(), container.end(), feature);
+  using FeatureType = typename internal::FeatureTrait<
+      typename std::iterator_traits<IteratorType>::value_type>::Type;
+  ClearFeatureValues<FeatureType>(feature);
+  AppendFeatureValues(container, feature);
 }
 
 // Clears the feature's repeated field (int64, float, or string). Copies
@@ -375,9 +414,8 @@ void SetFeatureValues(IteratorType first, IteratorType last,
 template <typename ContainerType, typename ProtoType>
 void SetFeatureValues(const ContainerType& container, const std::string& key,
                       ProtoType* proto) {
-  using IteratorType = typename ContainerType::const_iterator;
-  SetFeatureValues<IteratorType>(container.begin(), container.end(), key,
-                                 proto);
+  SetFeatureValues<ContainerType>(container,
+                                  GetFeature(key, GetFeatures(proto)));
 }
 
 // Clears the feature's repeated field (int64, float, or string). Copies all
@@ -385,10 +423,7 @@ void SetFeatureValues(const ContainerType& container, const std::string& key,
 template <typename ValueType, typename ProtoType>
 void SetFeatureValues(std::initializer_list<ValueType> container,
                       const std::string& key, ProtoType* proto) {
-  using IteratorType =
-      typename std::initializer_list<ValueType>::const_iterator;
-  SetFeatureValues<IteratorType>(container.begin(), container.end(), key,
-                                 proto);
+  SetFeatureValues<ValueType>(container, GetFeature(key, GetFeatures(proto)));
 }
 
 // Returns true if a feature with the specified key belongs to the Features.
