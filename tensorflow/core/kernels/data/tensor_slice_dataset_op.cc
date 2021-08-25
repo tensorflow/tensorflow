@@ -86,7 +86,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override { return Status::OK(); }
 
   Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) override {
+             std::vector<Tensor>* out_tensors) const override {
     if (tensors_.empty()) {
       return errors::FailedPrecondition("Cannot index into empty tensor.");
     }

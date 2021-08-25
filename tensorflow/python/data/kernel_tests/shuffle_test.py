@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -490,6 +491,74 @@ class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         actual = [self.evaluate(get_next_ops) for _ in range(num_outputs)]
         self.match(expected, actual)
 
+
+class ShuffleRandomAccessTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInvalidIndex(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3
+                                                     ]).shuffle(buffer_size=100)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, -1))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 4))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDataset(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        []).shuffle(buffer_size=100)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 0))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testBasicWithoutSeedEager(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5])
+    shuffled_dataset = dataset.shuffle(buffer_size=100)
+
+    dataset_array = []
+    shuffled_dataset_array = []
+
+    for i in range(5):
+      shuffled_dataset_array.append(
+          self.evaluate(random_access.at(shuffled_dataset, i)))
+      dataset_array.append(self.evaluate(random_access.at(dataset, i)))
+    self.assertAllEqual(sorted(dataset_array), sorted(shuffled_dataset_array))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSameSeedReturnsSameSequence(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5])
+    shuffled_dataset = dataset.shuffle(buffer_size=100, seed=5)
+    shuffled_dataset_2 = dataset.shuffle(buffer_size=100, seed=5)
+
+    shuffled_dataset_array = []
+    shuffled_dataset_array_2 = []
+
+    for i in range(5):
+      shuffled_dataset_array.append(
+          self.evaluate(random_access.at(shuffled_dataset, i)))
+      shuffled_dataset_array_2.append(
+          self.evaluate(random_access.at(shuffled_dataset_2, i)))
+    self.assertAllEqual(shuffled_dataset_array, shuffled_dataset_array_2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDifferentSeedDifferentSequence(self):
+    components = list(range(1000))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    shuffled_dataset = dataset.shuffle(buffer_size=1000, seed=124)
+    shuffled_dataset_2 = dataset.shuffle(buffer_size=1000, seed=51)
+
+    shuffled_dataset_array = []
+    shuffled_dataset_array_2 = []
+
+    for i in range(1000):
+      shuffled_dataset_array.append(
+          self.evaluate(random_access.at(shuffled_dataset, i)))
+      shuffled_dataset_array_2.append(
+          self.evaluate(random_access.at(shuffled_dataset_2, i)))
+    self.assertNotEqual(shuffled_dataset_array, shuffled_dataset_array_2)
+    self.assertAllEqual(
+        sorted(shuffled_dataset_array), sorted(shuffled_dataset_array_2))
 
 if __name__ == "__main__":
   test.main()
