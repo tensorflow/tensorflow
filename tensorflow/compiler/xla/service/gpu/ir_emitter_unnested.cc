@@ -153,6 +153,23 @@ const auto kStridedLinearIndexingX =
 // efficient.
 const int64_t kMinDimensionToTransposeTiled = 16;
 
+void AnnotateWithInt32Value(string name, int64_t value,
+                            const std::string& kernel_name,
+                            llvm::Module* llvm_module){
+  llvm::NamedMDNode* nvvm_annotations_node =
+      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
+  llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
+  llvm::LLVMContext& llvm_context = llvm_module->getContext();
+
+  nvvm_annotations_node->addOperand(llvm::MDNode::get(
+      llvm_context,
+      {llvm::ConstantAsMetadata::get(ir_kernel),
+            llvm::MDString::get(llvm_context, name),
+            llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+                llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
+                value))}));
+};
+
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
 void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
@@ -160,29 +177,18 @@ void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
                                    llvm::Module* llvm_module) {
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
-  llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
-  llvm::LLVMContext& llvm_context = llvm_module->getContext();
 
   // Our launch bounds are exact, so we can specify them as
   // reqntid[xyz] rather than maxntid[xyz].
-  auto annotate = [&](string name, int64_t value){
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        llvm_context,
-        {llvm::ConstantAsMetadata::get(ir_kernel),
-         llvm::MDString::get(llvm_context, name),
-         llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
-             llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-             value))}));
-  };
-
-  annotate("reqntidx", launch_dims.thread_counts_per_block().x);
+  AnnotateWithInt32Value("reqntidx", launch_dims.thread_counts_per_block().x,
+                         kernel_name, llvm_module);
   if (launch_dims.thread_counts_per_block().y > 1) {
-    annotate("reqntidy", launch_dims.thread_counts_per_block().y);
+    AnnotateWithInt32Value("reqntidy", launch_dims.thread_counts_per_block().y,
+                           kernel_name, llvm_module);
   }
   if (launch_dims.thread_counts_per_block().z > 1) {
-    annotate("reqntidz", launch_dims.thread_counts_per_block().z);
+    AnnotateWithInt32Value("reqntidz", launch_dims.thread_counts_per_block().z,
+                           kernel_name, llvm_module);
   }
 }
 

@@ -52,7 +52,7 @@ class LaunchDimensions {
 
   Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
 
-  // Return the total number of threads in a block.
+  // Returns the total number of threads in a block.
   int64_t total_nb_threads() const {
     return thread_counts_per_block_.x *
         thread_counts_per_block_.y *
