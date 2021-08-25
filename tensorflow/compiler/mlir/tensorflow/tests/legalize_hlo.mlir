@@ -1767,11 +1767,8 @@ func @convert_reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK-LABEL:   func @convert_iota_1d() -> tensor<123xf32> {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<1.230000e+02> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_3:.*]] = "tf.Range"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
-// CHECK:           return %[[VAL_3]] : tensor<123xf32>
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<"[[VALUE:0x[0-9A-F]+]]"> : tensor<123xf32>} : () -> tensor<123xf32>
+// CHECK:           return %[[CST]] : tensor<123xf32>
 // CHECK:         }
 func @convert_iota_1d() -> tensor<123xf32> {
   %0 = "mhlo.iota"() { iota_dimension = 0 : i64 } : () -> tensor<123xf32>
@@ -2113,8 +2110,7 @@ func @convert_floor_div_cst2(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
 }
 
 // CHECK-LABEL: func @convert_floor_div_broadcast_cst
-// CHECK: %[[BCST:.*]] = "tf.BroadcastTo"{{.*}} : (tensor<8xf32>, tensor<2xi64>) -> tensor<10x8xf32>
-// CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %[[BCST]]) : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
+// CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %[[CST:.*]]) : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
 // CHECK: return %[[RESULT]]
 // CHECK: }
 func @convert_floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf32> {
