@@ -4780,12 +4780,17 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 
   int num_partial_results = 1;
 
+  int smallest_input_dtype_bits = std::numeric_limits<int>::max();
+  for (mlir::Value operand : fusion.getInputBuffers()) {
+    smallest_input_dtype_bits =
+        std::min(GetPrimitiveBitwidth(operand), smallest_input_dtype_bits);
+  }
+
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
         // P100, only try to vectorize+coales memory access when the
         // tile size fits exactly and dtypes <= 32 bits
-        ((cc.major == 6 &&
-          GetPrimitiveBitwidth(first_reduce.getOperand(0)) <= 32 &&
+        ((cc.major == 6 && smallest_input_dtype_bits <= 32 &&
           reduction_dimensions.dimensions[kDimX] %
                   (reduction_tiling[2] * num_threads_x) ==
               0) ||
