@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    FARMHASH_COMMIT = "816a4ae622e964763ca0862d9dbd19324a1eaf45"
-    FARMHASH_SHA256 = "6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0"
+    FARMHASH_COMMIT = "0d859a811870d10f53a594927d0d0b97573ad06d"
+    FARMHASH_SHA256 = "18392cf0736e1d62ecbb8d695c31496b6507859e8c75541d7ad0ba092dc52115"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/farmhash.cmake)
 
     tf_http_archive(

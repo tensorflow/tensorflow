@@ -53,7 +53,6 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
     ],
 )
 

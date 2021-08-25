@@ -73,10 +73,13 @@ FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
+# TODO(ckluk): This summary mode is only meaningful in TTv2. We should move
+#              this over to tensor_tracer_v2_flags.py.
 # Flag used in v2 only.
 FLAG_SUMMARY_MODE_TYPE = 'summary_mode'
 UI_MODE = 'ui'
 TEXT_MODE = 'text'
+SAFE_MODE = 'safe'
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -484,7 +487,7 @@ class TTParameters(object):
     if not found:
       summary_mode = UI_MODE
 
-    valid_summary_modes = [UI_MODE, TEXT_MODE]
+    valid_summary_modes = [UI_MODE, TEXT_MODE, SAFE_MODE]
     if summary_mode not in valid_summary_modes:
       raise ValueError('Invalid summary mode "%s" given to the Tensor_Tracer.'
                        'Valid submodes are: %s'%(summary_mode,

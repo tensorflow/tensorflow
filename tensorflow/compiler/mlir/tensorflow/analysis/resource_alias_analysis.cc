@@ -375,7 +375,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      FuncOp func = dyn_cast_or_null<FuncOp>(call.resolveCallable());
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
         return WalkResult::advance();

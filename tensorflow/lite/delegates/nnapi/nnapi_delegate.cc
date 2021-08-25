@@ -57,11 +57,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/util.h"
 #ifdef NNAPI_VERBOSE_VALIDATION
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -4582,7 +4582,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
     case kTfLiteFloat32: {
       dense_size = output_tensor.bytes / sizeof(float);
       std::vector<float> output_data(dense_size);
-      tflite::optimize::sparsity::FormatConverter<float> converter(
+      tflite::internal::sparsity::FormatConverter<float> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(static_cast<const float*>(input_tensor.data.data),
                               dense_size, output_data.data(), context);
@@ -4596,7 +4596,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
       std::vector<uint16_t> output_data(dense_size);
       Eigen::half* unpacked_fp16_data =
           reinterpret_cast<Eigen::half*>(output_data.data());
-      tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+      tflite::internal::sparsity::FormatConverter<Eigen::half> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(
           static_cast<const Eigen::half*>(input_tensor.data.data), dense_size,
@@ -4621,7 +4621,7 @@ TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
     case kTfLiteInt8: {
       dense_size = output_tensor.bytes / sizeof(int8_t);
       std::vector<int8_t> output_data(dense_size);
-      tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+      tflite::internal::sparsity::FormatConverter<int8_t> converter(
           vector_shape, *input_tensor.sparsity);
       converter.SparseToDense(
           static_cast<const int8_t*>(input_tensor.data.data), dense_size,
@@ -5725,13 +5725,19 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   std::vector<int> supported_nodes;
   // We don't care about all nodes_, we only care about ones in the
   // current plan.
-  TfLiteIntArray* plan;
-  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
+  TfLiteIntArray* execution_plan;
+  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+  // Copy the execution plan and wrap it with unique_ptr.
+  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> plan(
+      TfLiteIntArrayCopy(execution_plan), TfLiteIntArrayFree);
 
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(
       delegate_options, nnapi, /*exclude_nnapi_reference=*/true);
   std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
+  // First pass through execution plan to remember mapping of FP16->FP32
+  // dequantizations in the graph.
+  std::vector<int> fp16_to_fp32(context->tensors_size, -1);
   bool should_prune_fp16_dequantize = false;
   for (int i = 0; i < plan->size; ++i) {
     const int node_id = plan->data[i];
@@ -5741,7 +5747,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, node_id, &node, &registration));
     if (IsDequantizeConstFloat16(context, node, registration)) {
       should_prune_fp16_dequantize = true;
-      break;
+      fp16_to_fp32[node->inputs->data[0]] = node->outputs->data[0];
     }
   }
   if (should_prune_fp16_dequantize) {
@@ -5749,7 +5755,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, target_feature_level, is_accelerator_specified,
         delegate_options.max_number_delegated_partitions);
   } else {
-    for (int node_index : TfLiteIntArrayView(plan)) {
+    for (int node_index : TfLiteIntArrayView(plan.get())) {
       TfLiteNode* node;
       TfLiteRegistration* registration;
       TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
@@ -5868,6 +5874,36 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
         context, supported_nodes_int_array.get(), &params_array,
         &num_partitions));
+  }
+
+  // FP16GraphPartitionHelper alters the orginal graph by remapping fp32
+  // dequantize output to fp16 input. In the case of accelerator backends does
+  // not support all the nodes of the fp16 model, We need to restore original
+  // graph in order for things to work.
+  if (should_prune_fp16_dequantize &&
+      supported_nodes.size() != nodes_to_delegate.size()) {
+    // Restore original graph
+    for (int execution_plan_index = 0; execution_plan_index < plan->size;
+         ++execution_plan_index) {
+      int node_index = plan->data[execution_plan_index];
+      TfLiteNode* node = nullptr;
+      TfLiteRegistration* reg = nullptr;
+      TF_LITE_ENSURE_STATUS(
+          context->GetNodeAndRegistration(context, node_index, &node, &reg));
+      if (reg->builtin_code == kTfLiteBuiltinDequantize) continue;
+
+      for (int i = 0; i < node->inputs->size; ++i) {
+        const int original_input_idx = node->inputs->data[i];
+        if (original_input_idx == kTfLiteOptionalTensor) continue;
+        // Use original FP32 input
+        if (context->tensors[original_input_idx].type == kTfLiteFloat16 &&
+            fp16_to_fp32[original_input_idx] != -1) {
+          node->inputs->data[i] = fp16_to_fp32[original_input_idx];
+        }
+      }
+    }
+    // Only allow full model delegation for fp16 model.
+    return kTfLiteOk;
   }
 
   TF_LITE_ENSURE_STATUS(

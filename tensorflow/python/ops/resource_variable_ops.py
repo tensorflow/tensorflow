@@ -157,7 +157,7 @@ def _variable_handle_from_shape_and_dtype(shape,
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
           "Using an explicit shared_name is not supported executing eagerly.")
-    shared_name = context.shared_name()
+    shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
       shape=shape,
@@ -474,7 +474,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       yield
 
-  def __array__(self):
+  def __array__(self, dtype=None):
     """Allows direct conversion to a numpy array.
 
     >>> np.array(tf.Variable([1.0]))
@@ -489,7 +489,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
     # the same error. The `EagerTensor` class must be doing something behind the
     # scenes to make `np.array(tf.constant(1))` work.
-    return np.asarray(self.numpy())
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __nonzero__(self):
     return self.__bool__()

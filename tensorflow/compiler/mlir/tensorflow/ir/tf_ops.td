@@ -1519,4 +1519,31 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
   let results = (outs);
 }
 
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", []> {
+  let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
+
+  let description = [{
+For the internal use of the TPU compiler.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    DefaultValuedAttr<StrAttr, "">:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
 #endif // TF_OPS

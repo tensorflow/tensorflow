@@ -550,6 +550,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<ReductionDimensionGrouper>();
   pipeline.AddPass<HloPassFix<ReductionSplitter>>();
 
+  if (RequireDeterminism(hlo_module->config()) ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        stream_exec->GetDeviceDescription().cuda_compute_capability());
+  }
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
@@ -565,12 +571,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-
-  if (RequireDeterminism(hlo_module->config()) ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-        stream_exec->GetDeviceDescription().cuda_compute_capability());
-  }
 
   // GemmRewriter assumes that all transposes are folded into gemms, but,
   // since commit 7d529df, this is not always true at this point.

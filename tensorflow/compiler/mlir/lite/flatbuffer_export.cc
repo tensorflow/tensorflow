@@ -1792,7 +1792,7 @@ bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
         auto inst = subgraph_op_inst_map_[i][j];
         tfl::AttachErrorCode(
             inst->emitOpError()
-                << "is not GPU compatible: " << status.message(),
+                << "is not GPU compatible: " << std::string(status.message()),
             tflite::metrics::ConverterErrorData::ERROR_GPU_NOT_COMPATIBLE);
       }
     }

@@ -863,8 +863,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetPythonStackTrace(
+      tensorflow::PythonStackTrace::kStackTraceInitialSize));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -1023,9 +1023,15 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
+      tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
+      for (const auto& payload : status->status.GetAllPayloads()) {
+        PyDict_SetItem(payloads.get(),
+                       PyBytes_FromString(payload.first.c_str()),
+                       PyBytes_FromString(payload.second.c_str()));
+      }
       tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
-          "si", FormatErrorStatusStackTrace(status->status).c_str(),
-          TF_GetCode(status)));
+          "siO", FormatErrorStatusStackTrace(status->status).c_str(),
+          TF_GetCode(status), payloads.get()));
       if (PyErr_Occurred()) {
         // NOTE: This hides the actual error (i.e. the reason `status` was not
         // TF_OK), but there is nothing we can do at this point since we can't
@@ -1051,8 +1057,15 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
-          "si", FormatErrorStatusStackTrace(status).c_str(), status.code()));
+      tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
+      for (const auto& element : status.GetAllPayloads()) {
+        PyDict_SetItem(payloads.get(),
+                       PyBytes_FromString(element.first.c_str()),
+                       PyBytes_FromString(element.second.c_str()));
+      }
+      tensorflow::Safe_PyObjectPtr val(
+          Py_BuildValue("siO", FormatErrorStatusStackTrace(status).c_str(),
+                        status.code(), payloads.get()));
       PyErr_SetObject(exception_class, val.get());
       return -1;
     } else {
@@ -3641,8 +3654,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetPythonStackTrace(
+      tensorflow::PythonStackTrace::kStackTraceInitialSize));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;

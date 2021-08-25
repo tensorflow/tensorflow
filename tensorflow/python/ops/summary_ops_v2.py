@@ -541,7 +541,7 @@ def create_file_writer_v2(logdir,
         # Use unique shared_name to prevent resource sharing in eager mode, but
         # otherwise use a fixed shared_name to allow SavedModel TF 1.x loading.
         if context.executing_eagerly():
-          shared_name = context.shared_name()
+          shared_name = context.anonymous_name()
         else:
           shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
         return gen_summary_ops.summary_writer(

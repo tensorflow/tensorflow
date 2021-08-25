@@ -97,7 +97,18 @@ tf_proto_library(
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "//tensorflow/stream_executor:dnn_proto",
     ],
+    visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "autotune_map_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
+#     deps = [":autotune_map_proto"],
+# )
+# copybara:uncomment_end
 
 tf_cuda_library(
     name = "autotune_serialize",
@@ -133,6 +144,7 @@ tf_cuda_only_cc_test(
         ":conv_parameters_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )

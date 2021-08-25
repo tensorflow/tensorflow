@@ -156,6 +156,8 @@ void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
                                          const uint64 running_time_usecs);
 void UpdateTFDataPassTime(const string& pass_name,
                           const uint64 running_time_usecs);
+void UpdateGraphOptimizerPassTime(const string& pass_name,
+                                  const uint64 running_time_usecs);
 
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);

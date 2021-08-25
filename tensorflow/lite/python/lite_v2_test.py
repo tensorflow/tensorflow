@@ -178,10 +178,23 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     add_signature_runner = interpreter.get_signature_runner('add')
     add_output = add_signature_runner(x=input_data)
     self.assertEqual(add_output['output_0'], 3)
+    input_details = add_signature_runner.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('add_x:0', input_details['x']['name'])
+    self.assertEqual(np.float32, input_details['x']['dtype'])
+    self.assertTrue(([1] == input_details['x']['shape']).all())
+    self.assertEqual((0.0, 0), input_details['x']['quantization'])
 
     sub_signature_runner = interpreter.get_signature_runner('sub')
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
+    output_details = sub_signature_runner.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('StatefulPartitionedCall:0',
+                     output_details['output_0']['name'])
+    self.assertEqual(np.float32, output_details['output_0']['dtype'])
+    self.assertTrue(([1] == output_details['output_0']['shape']).all())
+    self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
 
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
@@ -963,6 +976,37 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
     self.assertLen(quant_params['zero_points'], expected_num_params)
+
+  @parameterized.named_parameters(('MlirQuantize', True),
+                                  ('TocoQuantize', False))
+  @test_util.run_v2_only
+  def testQuantizeBiasOverflow(self, enable_mlir_quantizer):
+    """Tests if the quantizer handles bias overflow by adjusting scales."""
+    input_data = np.array([[-1e-3, 1e-3]], dtype=np.float32)
+
+    def calibration_gen():
+      yield {'x': input_data}
+
+    root = self._getMatMulModelWithSmallWeights()
+    input_data = tf.constant([-1e-3, 1e-3], shape=(1, 2))
+    concrete_func = root.matmul.get_concrete_function(input_data)
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.experimental_new_quantizer = enable_mlir_quantizer
+    quantized_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    output_details = interpreter.get_output_details()
+    output = interpreter.get_tensor(output_details[0]['index'])
+    # the inputs and weights are far smaller than the biases, so the final
+    # result should be equal to the biases.
+    self.assertAllClose(root.bias, output.flatten())
 
   @test_util.run_v2_only
   def testOpVersion(self):

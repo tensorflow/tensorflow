@@ -445,8 +445,8 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
   def constraint(self):
     return self._v.constraint
 
-  def __array__(self):
-    return np.asarray(self.numpy())
+  def __array__(self, dtype=None):
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __complex__(self):
     return complex(self.value().numpy())

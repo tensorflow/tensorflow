@@ -1317,10 +1317,8 @@ distribute_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -1329,6 +1327,51 @@ distribute_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "per_replica_test",
+    size = "medium",
+    srcs = ["per_replica_test.py"],
+    main = "per_replica_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
+        "noasan",  # b/175816710
+        "notsan",  # b/168645872
+    ],
+    tpu_tags = [
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":distribute_lib",
+        ":distribute_utils",
+        ":packed_distributed_variable",
+        ":parameter_server_strategy",
+        ":ps_values",
+        ":strategy_combinations",
+        ":test_util",
+        ":tpu_strategy",
+        ":tpu_values",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
     ],

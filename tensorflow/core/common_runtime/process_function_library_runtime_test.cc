@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -335,6 +336,36 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
   FunctionLibraryRuntime* flr =
       proc_flr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   EXPECT_NE(flr, nullptr);
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, DeviceSet) {
+  FunctionDefLibrary proto;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
+      new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+  OptimizerOptions opts;
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(std::move(device2_));
+  auto mgr = std::make_unique<DynamicDeviceMgr>();
+  TF_CHECK_OK(mgr.get()->AddDevices(std::move(devices)));
+
+  std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr(
+      new ProcessFunctionLibraryRuntime(
+          /*device_mgr=*/device_mgr_.get(), Env::Default(),
+          /*config=*/nullptr, TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
+          /*thread_pool=*/nullptr));
+  EXPECT_EQ(proc_flr->device_set()->devices().at(0)->name(),
+            "/job:a/replica:0/task:0/device:CPU:0");
+  EXPECT_EQ(proc_flr->device_set()->devices().at(1)->name(),
+            "/job:a/replica:0/task:0/device:CPU:1");
+
+  cluster_flr_.reset(new TestClusterFLR(mgr.get()));
+  proc_flr.reset(new ProcessFunctionLibraryRuntime(
+      /*device_mgr=*/device_mgr_.get(), Env::Default(),
+      /*config=*/nullptr, TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
+      /*thread_pool=*/nullptr, /*parent_=*/cluster_flr_.get()));
+  EXPECT_EQ(proc_flr->device_set()->devices().size(), 1);
+  EXPECT_EQ(proc_flr->device_set()->devices().at(0)->name(),
+            "/job:a/replica:0/task:0/device:CPU:2");
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {

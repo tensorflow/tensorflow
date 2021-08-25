@@ -45,6 +45,7 @@ load(
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
+    "tf_native_cc_binary",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -207,6 +208,15 @@ cc_library(
         ":logging",
         ":platform_port",
         "@com_google_absl//absl/base",
+    ],
+)
+
+# Used by //tensorflow/python/platform:platform.
+tf_native_cc_binary(
+    name = "_cpu_feature_guard.so",
+    linkshared = True,
+    deps = [
+        "//tensorflow/core/platform:cpu_feature_guard",
     ],
 )
 

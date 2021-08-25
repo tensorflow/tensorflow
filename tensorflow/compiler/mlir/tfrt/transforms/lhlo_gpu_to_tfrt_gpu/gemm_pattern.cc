@@ -342,19 +342,6 @@ struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
 
 }  // namespace
 
-mlir::LogicalResult GemmOpConversionRewrite(mlir::lmhlo_gpu::GEMMOp srcOp,
-                                            mlir::BlockAndValueMapping& mapping,
-                                            mlir::OpBuilder& builder) {
-  auto chain_type = builder.getType<tfrt::compiler::ChainType>();
-  auto chain =
-      builder.create<tfrt::compiler::NewChainOp>(srcOp->getLoc(), chain_type);
-  auto enclosing_func =
-      llvm::cast<mlir::FuncOp>(builder.getBlock()->getParentOp());
-  // The first argument is the GpuStream.
-  auto stream = enclosing_func.getArgument(0);
-  return GemmOpConversionRewrite(srcOp, chain, stream, mapping, builder);
-}
-
 void populateGemmConversionPattern(RewritePatternSet& patterns) {
   patterns.add<GemmRewritePattern<lmhlo_gpu::GEMMOp>,
                GemmRewritePattern<lmhlo_gpu::GEMM_BiasOp>>(

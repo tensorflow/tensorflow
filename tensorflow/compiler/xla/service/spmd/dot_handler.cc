@@ -388,10 +388,18 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64_t einsum_threshold_mib,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_lhs,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_rhs,
-    const HloSharding& lhs_sharding, const HloSharding& rhs_sharding) {
+    const HloSharding& lhs_sharding, const HloSharding& rhs_sharding,
+    const HloInstruction* lhs = nullptr, const HloInstruction* rhs = nullptr) {
+  // Hard limit on iteration count based on empirical data (above this amount
+  // there's pretty significant overhead).
+  const int64_t kPartitionLimit = 32;
+  if (num_partitions >= kPartitionLimit) {
+    return absl::nullopt;
+  }
   if (output_lhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      rhs_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      rhs_shape_size >= einsum_threshold_mib * 1024 * 1024 &&
+      (!rhs || rhs->users().size() == 1)) {
     if (rhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -416,7 +424,8 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      lhs_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      lhs_shape_size >= einsum_threshold_mib * 1024 * 1024 &&
+      (!lhs || lhs->users().size() == 1)) {
     if (lhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
@@ -1572,7 +1581,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           ShapeSizeInBytes(output_base_shape),
           options.threshold_for_windowed_einsum_mib,
           output_sharding_transposed_to_match_lhs,
-          output_sharding_transposed_to_match_rhs, lhs_sharding, rhs_sharding);
+          output_sharding_transposed_to_match_rhs, lhs_sharding, rhs_sharding,
+          original_hlo->operand(0), original_hlo->operand(1));
   if (e_config) {
     return emit_windowed_dot_general(*e_config);
   }

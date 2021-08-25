@@ -865,7 +865,8 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   # with ndarrays.
   __array_priority__ = 100
 
-  def __array__(self):
+  def __array__(self, dtype=None):
+    del dtype
     raise NotImplementedError(
         "Cannot convert a symbolic Tensor ({}) to a numpy array."
         " This error may indicate that you're trying to pass a Tensor to"
@@ -1055,10 +1056,14 @@ class _EagerTensorBase(Tensor):
     try:
       return self._shape_tuple()[0]
     except core._NotOkStatusException as e:
-      raise core._status_to_exception(e.code, e.message) from None
+      raise core._status_to_exception(e) from None
 
-  def __array__(self):
-    return self._numpy()
+  def __array__(self, dtype=None):
+    a = self._numpy()
+    if not dtype:
+      return a
+
+    return np.array(a, dtype=dtype)
 
   def _numpy_internal(self):
     raise NotImplementedError()
@@ -1067,7 +1072,7 @@ class _EagerTensorBase(Tensor):
     try:
       return self._numpy_internal()
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
-      raise core._status_to_exception(e.code, e.message) from None  # pylint: disable=protected-access
+      raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
   @property
   def dtype(self):
@@ -1176,7 +1181,7 @@ class _EagerTensorBase(Tensor):
       ctx.ensure_initialized()
       new_tensor = self._copy_to_device(device_name)
     except core._NotOkStatusException as e:
-      raise core._status_to_exception(e.code, e.message) from None
+      raise core._status_to_exception(e) from None
     return new_tensor
 
   def _copy(self, ctx=None, device_name=None):
@@ -1205,7 +1210,7 @@ class _EagerTensorBase(Tensor):
         # `EagerTensor`, in C.
         self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
       except core._NotOkStatusException as e:
-        raise core._status_to_exception(e.code, e.message) from None
+        raise core._status_to_exception(e) from None
 
     return self._tensor_shape
 
@@ -4360,12 +4365,16 @@ class Graph(object):
         # that are illegal as the initial character of an op name
         # (viz. '-', '\', '/', and '_').
         if not _VALID_SCOPE_NAME_REGEX.match(name):
-          raise ValueError("'%s' is not a valid scope name" % name)
+          raise ValueError(
+              f"'{name}' is not a valid scope name. A scope name has to match "
+              f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}")
       else:
         # Scopes created in the root must match the more restrictive
         # op name regex, which constrains the initial character.
         if not _VALID_OP_NAME_REGEX.match(name):
-          raise ValueError("'%s' is not a valid scope name" % name)
+          raise ValueError(
+              f"'{name}' is not a valid root scope name. A root scope name has "
+              f"to match the following pattern: {_VALID_OP_NAME_REGEX.pattern}")
     old_stack = self._name_stack
     if not name:  # Both for name=None and name="" we re-set to empty scope.
       new_stack = ""
@@ -7052,8 +7061,8 @@ def to_raw_op(f):
 
 
 def raise_from_not_ok_status(e, name):
-  message = e.message + (" name: " + name if name is not None else "")
-  raise core._status_to_exception(e.code, message) from None  # pylint: disable=protected-access
+  e.message += (" name: " + name if name is not None else "")
+  raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
 
 def add_exit_callback_to_default_func_graph(fn):

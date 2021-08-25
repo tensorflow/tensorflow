@@ -21,6 +21,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+enum class TfrtTpuInfraTarget {
+  kNoTpu,       // No TPU support.
+  kTpurt,       // Target TPURT dialect and kernels.
+  kTfFallback,  // Target TPU kernels in TF Fallback.
+};
+
 struct TfrtCompileOptions {
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
@@ -46,11 +52,18 @@ struct TfrtCompileOptions {
   // data format should be changed, instead of controlled by users.
   std::string force_data_format;
 
-  // TODO(tfrt-devs): Ideally, compiler should work for both CPU and TPU
-  // models and no need to manually specify this option.
-  // If true, the compiler runs TPU specific passes and the runtime does TPU
-  // specific initializations (e.g. create the TpuVariablesTable).
-  bool target_tpu = false;
+  // The target TPU infrastructure to use. This will trigger TPU target specific
+  // compiler passes and runtime initialization.
+  TfrtTpuInfraTarget tpu_target = TfrtTpuInfraTarget::kNoTpu;
+
+  // If true, use the fused TPU compile_and_execute kernel, which performs all
+  // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
+  // compile and execute.
+  bool tpu_fuse_ops = false;
+
+  // If true, resource gather ops in the device graph are moved to host graphs
+  // in order to saved TPU memory usage. This option is experimental.
+  bool tpu_move_resource_gather_to_host = false;
 
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the

@@ -26,7 +26,7 @@ TEST(ToStringTest, PayloadsArePrinted) {
                     absl::StrFormat("payload_value %c%c%c", 1, 2, 3));
 
   EXPECT_EQ(status.ToString(),
-            "Aborted: Aborted Error Message [payload_key='payload_value "
+            "ABORTED: Aborted Error Message [payload_key='payload_value "
             "\\x01\\x02\\x03']");
 }
 
@@ -40,7 +40,6 @@ TEST(ToStringTest, MatchesAbslStatus) {
   absl_status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
                                             "payload_value %c%c%c", 1, 2, 3)));
 
-  // TODO(b/194924033): Error Codes do not match capitalization
-  EXPECT_EQ(status.ToString().substr(7), absl_status.ToString().substr(7));
+  EXPECT_EQ(status.ToString(), absl_status.ToString());
 }
 }  // namespace tensorflow

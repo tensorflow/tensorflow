@@ -203,12 +203,16 @@ class TargetSpec(object):
       that may not be linked in by default with the TF ops that are provided
       when using the SELECT_TF_OPS path. The client is responsible for linking
       these ops into the target runtime.
+    experimental_supported_backends: Experimental flag, subject to change.
+      Set containing names of supported backends. Currently only "GPU" is
+      supported, more options will be available later.
   """
 
   def __init__(self,
                supported_ops=None,
                supported_types=None,
-               experimental_select_user_tf_ops=None):
+               experimental_select_user_tf_ops=None,
+               experimental_supported_backends=None):
     if supported_ops is None:
       supported_ops = {OpsSet.TFLITE_BUILTINS}
     self.supported_ops = supported_ops
@@ -218,6 +222,7 @@ class TargetSpec(object):
     if experimental_select_user_tf_ops is None:
       experimental_select_user_tf_ops = set()
     self.experimental_select_user_tf_ops = experimental_select_user_tf_ops
+    self.experimental_supported_backends = experimental_supported_backends
     self._experimental_custom_op_registerers = []
     # Hint for the supported accumulation type used for inference. Typically
     # used for fp16 post-training quantization, where some models can use fp16
@@ -468,8 +473,6 @@ class TFLiteConverterBase(object):
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
-    # TODO(b/195611245): Use tf.lite.TargetSpec.supported_backends instead.
-    self._experimental_supported_backends = []
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -562,7 +565,7 @@ class TFLiteConverterBase(object):
         "select_user_tf_ops":
             self.target_spec.experimental_select_user_tf_ops,
         "supported_backends":
-            self._experimental_supported_backends,
+            self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul":
             not self._experimental_disable_batchmatmul_unfold,
         "lower_tensor_list_ops":

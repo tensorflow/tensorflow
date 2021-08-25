@@ -1235,9 +1235,15 @@ HloSharding InferDotOperandSharding(
       output_other_dims_replicated, output_to_operand_dims,
       operand_to_output_dims);
   if (IsSpatiallyPartitioned(other)) {
+    HloSharding other_sharding = other->sharding();
+    if (other->sharding().IsManualSubgroup()) {
+      auto manual_group =
+          hlo_sharding_util::GetManualSubgroupSharding(other_sharding);
+      other_sharding = manual_group.sharding;
+    }
     auto other_operand_dims_replicated =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            other->sharding(), other_operand_dims_to_replicate);
+            other_sharding, other_operand_dims_to_replicate);
     std::vector<int64_t> other_to_operand_dims(other->shape().rank(), -1);
     std::vector<int64_t> operand_to_other_dims(operand->shape().rank(), -1);
     for (const auto& dim : dnums.batch_dims) {

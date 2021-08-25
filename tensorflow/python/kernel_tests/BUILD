@@ -1729,6 +1729,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
+    tags = ["no_cuda_asan"],  # TODO(b/3)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1936,6 +1937,25 @@ tf_py_test(
         "//tensorflow/python:control_flow_util_v2",
         "//tensorflow/python:while_v2",
     ],
+)
+
+CONV_TEST_BASENAMES = [
+    ":atrous_conv2d_test",
+    ":conv1d_test",
+    ":conv1d_transpose_test",
+    ":conv2d_backprop_filter_grad_test",
+    ":conv3d_transpose_test",
+    ":conv3d_backprop_filter_v2_grad_test",
+    ":conv_ops_3d_test",
+    ":conv_ops_test",
+    ":depthwise_conv_op_test",
+    ":conv2d_transpose_test",
+]
+
+test_suite(
+    name = "conv_tests",
+    tests = [basename for basename in CONV_TEST_BASENAMES] +
+            [basename + "_gpu" for basename in CONV_TEST_BASENAMES],
 )
 
 cuda_py_test(

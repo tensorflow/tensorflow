@@ -289,7 +289,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

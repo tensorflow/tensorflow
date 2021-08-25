@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -429,7 +429,8 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config = PtxOptsFromConfig(hlo_module_config);
+        auto ptxas_config =
+            PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }

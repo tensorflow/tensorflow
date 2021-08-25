@@ -75,6 +75,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 TF_EXPORT extern const char* const DEVICE_DEFAULT;     // "DEFAULT"
 TF_EXPORT extern const char* const DEVICE_CPU;         // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;         // "GPU"
+TF_EXPORT extern const char* const DEVICE_TPU;         // "TPU"
 TF_EXPORT extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM"
 
 template <typename Device>

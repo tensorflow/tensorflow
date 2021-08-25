@@ -4319,6 +4319,38 @@ ENTRY entry {
               op::Parameter(0));
 }
 
+TEST_F(SpmdPartitioningTest, EinsumRHSWindowedNonContractingNoDoubleAG) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,24,64,128] parameter(0)
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs2 = f32[32,24,64,128] parameter(2)
+  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,2,1,1]0,1}
+  %rhs = f32[32,39295,64,128] parameter(1)
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+    sharding={devices=[1,2,1]0,1}
+  %dot2 = f32[32,24,39295] dot(%lhs2.copy, %rhs.copy),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+    sharding={devices=[1,2,1]0,1}
+  ROOT %t = tuple(%dot, %dot2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
+                                                            /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
+                                  _, op::Dot(_, op::Slice(_)), _, _, _)),
+                              op::AllReduce(op::DynamicUpdateSlice(
+                                  _, op::Dot(_, op::Slice(_)), _, _, _))));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumRHSWindowedNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module

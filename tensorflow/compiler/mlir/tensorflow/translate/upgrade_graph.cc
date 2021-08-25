@@ -31,11 +31,16 @@ namespace {
 
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
+// Returns the variable ops.
+const llvm::StringSet<>& GetVariableOps() {
+  static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
+  return *ops;
+}
+
 // Returns the set of ops that we want to generate shared_names for them if
 // empty.
 const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
-  static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
-  return *ops;
+  return GetVariableOps();
 }
 
 }  // namespace
@@ -86,11 +91,19 @@ Status GenerateResourceSharedNameIfEmpty(
         // the node if the op is not registered.
         if (flib_def->LookUpOpDef(node_def.op(), &op_def).ok() &&
             is_resource_op_with_empty_shared_name(node_def, *op_def)) {
-          // Use the concat of function name and node name for such ops in a
-          // function as the shared_name. "@" is used as the separator because
-          // it is not allowed in the function name or the node name.
-          (*node_def.mutable_attr())["shared_name"].set_s(
-              absl::StrCat(node_def.name(), "@", func_name));
+          // TODO(b/197144710): improve the shared_name attr, each op may use
+          // the shared_name differently.
+          if (GetVariableOps().contains(op_def->name())) {
+            // Use the node name for such ops as the shared_name according to
+            // the document of variable ops.
+            (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
+          } else {
+            // Use the concat of function name and node name for such ops in a
+            // function as the shared_name. "@" is used as the separator because
+            // it is not allowed in the function name or the node name.
+            (*node_def.mutable_attr())["shared_name"].set_s(
+                absl::StrCat(node_def.name(), "@", func_name));
+          }
         }
       }
     }
@@ -100,6 +113,8 @@ Status GenerateResourceSharedNameIfEmpty(
   for (auto& node_def : *gdef.mutable_node()) {
     const OpDef* op_def = nullptr;
     TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
+    // TODO(b/197144710): improve the shared_name attr, each op may use the
+    // shared_name differently.
     if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
       (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
     }

@@ -2721,9 +2721,7 @@ class VariableTest(PForTestCase):
 
     # Note that this error is only raised under v2 behavior.
     with self.assertRaisesRegex(
-        ValueError,
-        "tf.function-decorated function tried to create variables on non-first"
-    ):
+        ValueError, "singleton tf.Variable.*on the first call"):
       pfor_control_flow_ops.vectorized_map(f, x)
 
   @test_util.run_all_in_graph_and_eager_modes

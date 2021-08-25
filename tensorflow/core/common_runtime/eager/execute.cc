@@ -881,6 +881,7 @@ Status GetOrCreateKernelAndDevice(
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
   if (kernel == nullptr) {
+    EagerOperation* original_op = op;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
       TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
@@ -916,12 +917,18 @@ Status GetOrCreateKernelAndDevice(
           DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
               ? op->GetDeviceParsedName()
               : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
+      // Note: We use the unwrapped op for inferring the device.
+      // Without this, when wrapping CPU-only ops like RangeDataset we would
+      // place the wrapped op on a GPU (if one is available) which leads to
+      // errors because placer pins the function output nodes to GPU thereby
+      // forcing a H2D copy of the dataset variant which is not supported.
+      const NodeDef& ndef = original_op->MutableAttrs()->BuildNodeDef();
       TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
-      DVLOG(4) << "Available kernels for " << op->Name() << " are"
-               << KernelsRegisteredForOp(op->Name());
+      DVLOG(4) << "Available kernels for " << original_op->Name() << " are"
+               << KernelsRegisteredForOp(original_op->Name());
       op->SetDevice(device);
     }
 

@@ -87,11 +87,13 @@ class Calibrator(object):
         # Convert signature based inputs to the tensor index based data.
         if not hasattr(self, "_interpreter"):
           self._interpreter = Interpreter(model_content=self._model_content)
-        input_array = [None] * len(sample)
+        input_array = []
         signature_runner = self._interpreter.get_signature_runner()
-        for input_name, value in sample.items():
-          tensor_index = signature_runner._inputs[input_name]  # pylint: disable=protected-access
-          input_array[tensor_index] = value
+        input_details = sorted(
+            signature_runner.get_input_details().items(),
+            key=lambda item: item[1]["index"])
+        for input_name, input_detail in input_details:
+          input_array.append(sample[input_name])
       elif isinstance(sample, list):
         input_array = sample
       else:

@@ -902,6 +902,21 @@ TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
                         m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
+// Test that A - A is simplified to 0.
+TEST_F(AlgebraicSimplifierTest, SubSame) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[2] parameter(0)
+      ROOT sub = s32[2] subtract(p0, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(0))));
+}
+
 // Test that Broadcast(x) where x has degenerate dimensions first removes the
 // degenerate dimensions.
 TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
@@ -4366,6 +4381,74 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Op().Is(forty_two))
                              .WithShapeEqualTo(&reshape_shape)));
+}
+
+// Test that a depth-to-space transformation expressed as
+// reshape(transpose(reshape(op))) can simplify to
+// reshape(concat(slice(op), ..., slice(op))).
+TEST_F(AlgebraicSimplifierTest, TransposeReshapeToConcatSlice) {
+  const string& hlo_string = R"(
+HloModule TransposeReshapeDepthToSpace
+
+ENTRY entry {
+  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %reshape.1 = f32[8,14,14,2,64] reshape(%param)
+  %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
+  ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8, 28, 14, 64});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Concatenate(m::Slice(m::Parameter(0)),
+                                                   m::Slice(m::Parameter(0))))
+                             .WithShapeEqualTo(&result_shape)));
+}
+
+// Test that a depth-to-space transformation expressed as
+// reshape(transpose(reshape(op))) with a large number of chunks
+// is not rewritten.
+TEST_F(AlgebraicSimplifierTest, TransposeReshapeTooLarge) {
+  const string& hlo_string = R"(
+HloModule TransposeReshapeDepthToSpaceBig
+
+ENTRY entry {
+  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %reshape.1 = f32[8,14,14,8,16] reshape(%param)
+  %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
+  ROOT %reshape.2 = f32[8,112,14,16] reshape(%transpose)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+// Test that a reshape(transpose(reshape(op))) that does not constitute a
+// depth-to-space transformation is not rewritten.
+TEST_F(AlgebraicSimplifierTest, TransposeReshapeNotDepthToSpace) {
+  const string& hlo_string = R"(
+HloModule TransposeReshapeDepthToSpace
+
+ENTRY entry {
+  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %reshape.1 = f32[8,14,14,2,64] reshape(%param)
+  %transpose = transpose(%reshape.1), dimensions={0,3,1,2,4}
+  ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).

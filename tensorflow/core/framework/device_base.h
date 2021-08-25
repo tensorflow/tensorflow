@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -227,6 +228,14 @@ class DeviceBase {
   virtual const DeviceAttributes& attributes() const;
   virtual int NumaNode() const { return attributes().locality().numa_node(); }
   virtual const std::string& name() const;
+  virtual const DeviceNameUtils::ParsedName& parsed_name() const;
+
+  // Updates `attributes()`, indicating the XLA global ID associated with this
+  // device. This ID is unique across clients in a multi-client setup. For TPUs
+  // this does not happen until the TPU system has been initialized.
+  //
+  // Implemented in Device.
+  virtual void set_xla_global_id(int64_t id) {}
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

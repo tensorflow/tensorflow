@@ -363,6 +363,17 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     results += self.getIteratorOutput(get_next_2)
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSharedJobNameMultipleEpochs(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = self.make_distributed_range_dataset(
+        10, cluster, job_name="job_name")
+
+    num_epochs = 5
+    for _ in range(num_epochs):
+      get_next = self.getNext(dataset)
+      self.assertEqual(self.getIteratorOutput(get_next), list(range(10)))
+
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(job_name=[None, "test"])))

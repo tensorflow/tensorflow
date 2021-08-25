@@ -166,7 +166,7 @@ StatusOr<int64> DatasetReader<T>::CreateJob(
   processing_mode_def.set_sharding_policy(sharding_policy);
   TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
       dataset_id, processing_mode_def, /*job_key=*/absl::nullopt,
-      /*num_consumers=*/absl::nullopt, job_client_id, target_workers));
+      /*num_consumers=*/absl::nullopt, target_workers, job_client_id));
   return job_client_id;
 }
 

@@ -835,6 +835,7 @@ tf_cuda_library(
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:platform_port",
@@ -1545,6 +1546,11 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 

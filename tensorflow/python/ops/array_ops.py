@@ -243,6 +243,7 @@ def fill(dims, value, name=None):
 
 
 @tf_export("identity")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a Tensor with the same shape and contents as input.
@@ -2979,6 +2980,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 
 
 @tf_export(v1=["zeros_like"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
@@ -3018,6 +3020,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("zeros_like", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def zeros_like_v2(
     input,  # pylint: disable=redefined-builtin
@@ -3094,6 +3097,7 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 
 
 @tf_export(v1=["ones_like"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
@@ -3127,6 +3131,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("ones_like", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
@@ -4906,12 +4911,12 @@ def reverse_sequence_v2(input,
 
 
 @tf_export(v1=["gather"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              ("The `validate_indices` argument has no effect. "
                               "Indices are always validated on CPU and never "
                               "validated on GPU."),
                              ("validate_indices", None))
-@dispatch.add_dispatch_support
 def gather(params,
            indices,
            validate_indices=None,
@@ -6679,3 +6684,7 @@ def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
     A `Tensor`. Has the same dtype as `input`.
   """
   return gen_array_ops.guarantee_const(input=input, name=name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_array_ops.check_numerics)

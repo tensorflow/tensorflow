@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -365,7 +366,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromConfig(hlo_module_config));
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -435,7 +437,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
 
     se::RedzoneAllocator scratch_allocator(
-        stream, allocator, PtxOptsFromConfig(hlo_module_config));
+        stream, allocator,
+        PtxOptsFromDebugOptions(hlo_module_config.debug_options()));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
             << instr->ToString();

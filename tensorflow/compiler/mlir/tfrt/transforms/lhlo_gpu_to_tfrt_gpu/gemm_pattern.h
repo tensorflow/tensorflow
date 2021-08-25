@@ -23,10 +23,6 @@
 
 namespace tensorflow {
 
-mlir::LogicalResult GemmOpConversionRewrite(mlir::lmhlo_gpu::GEMMOp srcOp,
-                                            mlir::BlockAndValueMapping& mapping,
-                                            mlir::OpBuilder& builder);
-
 void populateGemmConversionPattern(mlir::RewritePatternSet& patterns);
 
 }  // namespace tensorflow

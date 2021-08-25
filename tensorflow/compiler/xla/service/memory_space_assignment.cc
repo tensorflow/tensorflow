@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <iterator>
+#include <limits>
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -143,6 +145,48 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
     return absl::nullopt;
   }
   return *best_candidate;
+}
+
+Status InsertInstructionAndEnsureOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions);
+
+// Insert an instruction to the schedule, and make sure its dependencies
+// (operands) are already in the schedule. If not, insert these operands
+// before the instruction.
+Status EnsureInstructionAndOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
+  if (inserted_instructions->contains(new_instruction)) {
+    return Status::OK();
+  }
+  return InsertInstructionAndEnsureOperandsInserted(
+      new_instruction, new_sequence, inserted_instructions);
+}
+
+// Same as above, but does not check if instruction is already inserted. This is
+// used when the caller already knows the instruction isn't inserted yet, to
+// speed up compilation.
+Status InsertInstructionAndEnsureOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
+  for (HloInstruction* operand : new_instruction->operands()) {
+    // CopyStart/CopyDone dependencies should always be already inserted; it is
+    // a red flag when they haven't already been inserted.
+    if (operand->opcode() == HloOpcode::kCopyStart ||
+        operand->opcode() == HloOpcode::kCopyDone) {
+      TF_RET_CHECK(inserted_instructions->contains(operand))
+          << "Inserted instruction " << new_instruction->ToString()
+          << " has un-inserted dependency: " << operand->ToString();
+      continue;
+    }
+    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
+        operand, new_sequence, inserted_instructions));
+  }
+  VLOG(4) << "inserting: " << new_instruction->ToShortString();
+  new_sequence->push_back(new_instruction);
+  TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
+  return Status::OK();
 }
 
 }  // namespace
@@ -412,8 +456,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
   // instructions. The elapsed times are multiplied by
   // pow(while_execution_count, nest_level) to account for executing the HLOs
   // multiple times in while loops.
-  std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
-                                               0.0);
+  std::vector<float> instructions_elapsed_time(
+      instruction_schedule_->size() + 1, 0.0);
+  int max_while_nest_level = 0;
   for (const auto& instruction_and_logical_time : *instruction_schedule_) {
     // To avoid double counting, don't include the elapsed time of while and
     // conditional HLOs.
@@ -426,6 +471,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     int while_nest_level = cost_analysis_.CalculateComputationNestLevel(
         instruction_and_logical_time.first, /*while_only=*/true);
     while_nest_level_[logical_time] = while_nest_level;
+    max_while_nest_level = std::max(max_while_nest_level, while_nest_level);
     int computation_nest_level = cost_analysis_.CalculateComputationNestLevel(
         instruction_and_logical_time.first, /*while_only=*/false);
     computation_nest_level_[logical_time] = computation_nest_level;
@@ -451,17 +497,35 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
   }
   // To be able to accurately determine the minimum nest level between a start
   // time and an end time efficiently, populate a data structure that stores the
-  // closest nest level change index.
+  // closest 'smaller' nest level change index.
+  const int64_t size = instructions_elapsed_time.size();
+  CHECK_EQ(size, while_nest_level_.size());
+  std::vector<int> most_recent_by_level(while_nest_level_.size(), -1);
   int prev_nest_level = 0;
   int change_idx = -1;
-  while_nest_level_change_.reserve(instructions_elapsed_time.size());
-  for (int i = 0; i < while_nest_level_.size(); ++i) {
+  while_nest_level_change_.reserve(size);
+  for (int i = 0; i < size; ++i) {
     int nest_level = while_nest_level_[i];
     if (nest_level != prev_nest_level) {
       prev_nest_level = nest_level;
-      change_idx = i - 1;
+      // Compute last change index by choosing the most recent instruction index
+      // with smaller nesting level. Note that it may happen that even though
+      // there were few different regions with other nest levels before, all of
+      // then are same or bigger than this one, in which case we'll end up with
+      // -1, e.g. if you got nest level 0 no need checking anything else.
+      change_idx = -1;
+      for (int smaller_level = 0; smaller_level < nest_level; smaller_level++) {
+        change_idx = std::max(change_idx, most_recent_by_level[smaller_level]);
+      }
     }
+    most_recent_by_level[nest_level] = i;
     while_nest_level_change_.push_back(change_idx);
+  }
+  for (int i = 0; i <= max_while_nest_level; ++i) {
+    while_execution_counts_.push_back(tensorflow::MathUtil::IPow<float>(
+        cost_analysis_.options()
+            .xla_tpu_memory_space_assignment_while_execution_count,
+        i));
   }
 }
 
@@ -716,10 +780,7 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
   int interval_while_nest_level = GetMinWhileNestLevel(start_time, end_time);
   return (elapsed_time_cumsum_[end_time - 1] -
           elapsed_time_cumsum_[start_time]) /
-         tensorflow::MathUtil::IPow<float>(
-             cost_analysis_.options()
-                 .xla_tpu_memory_space_assignment_while_execution_count,
-             interval_while_nest_level);
+         while_execution_counts_[interval_while_nest_level];
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
@@ -1261,7 +1322,10 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    AppendBufferInfoDebugString(interval, &buffer_info_str_);
+    if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+      // Only fill buffer_info_str_ if needed.
+      AppendBufferInfoDebugString(interval, &buffer_info_str_);
+    }
 
     std::vector<AllocationValue> allocation_values;
     CreateAllocationValuesFromColocatedIntervals(colocated_intervals,
@@ -2162,8 +2226,11 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
-      AppendAllocationInfoDebugString(allocation_value, *allocation,
-                                      allocation_info_str_);
+      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+        // Only fill buffer_info_str_ if needed.
+        AppendAllocationInfoDebugString(allocation_value, *allocation,
+                                        allocation_info_str_);
+      }
       allocations_->push_back(std::move(allocation));
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();
@@ -3595,28 +3662,6 @@ Status MemorySpaceAssignment::SimplifyGraph() {
   return Status::OK();
 }
 
-void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions) const {
-  if (inserted_instructions->contains(new_instruction)) {
-    return;
-  }
-  for (HloInstruction* operand : new_instruction->operands()) {
-    // CopyStart/CopyDone dependencies should always be already inserted; it is
-    // a red flag when they haven't already been inserted.
-    CHECK((operand->opcode() != HloOpcode::kCopyStart &&
-           operand->opcode() != HloOpcode::kCopyDone) ||
-          inserted_instructions->contains(operand))
-        << "Inserted instruction " << new_instruction->ToString()
-        << " has un-inserted dependency: " << operand->ToString();
-    EnsureInstructionAndOperandsInserted(operand, new_sequence,
-                                         inserted_instructions);
-  }
-  VLOG(4) << "inserting: " << new_instruction->ToShortString();
-  new_sequence->push_back(new_instruction);
-  inserted_instructions->insert(new_instruction);
-}
-
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
   VLOG(1) << "Scheduling asynchronous copies...";
   for (MemorySpace memory_space :
@@ -3665,7 +3710,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
 
 Status MemorySpaceAssignment::FixSchedule() {
   VLOG(1) << "Fixing schedule...";
-  CHECK(module_->has_schedule());
+  TF_RET_CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
@@ -3676,7 +3721,7 @@ Status MemorySpaceAssignment::FixSchedule() {
               << " because it's not in the schedule.";
       continue;
     }
-    CHECK(schedule.is_computation_scheduled(computation));
+    TF_RET_CHECK(schedule.is_computation_scheduled(computation));
     HloInstructionSequence new_sequence;
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
@@ -3690,8 +3735,8 @@ Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
                     << new_instruction->name();
-            EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
-                                                 &inserted_instructions);
+            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions));
           }
         }
       }
@@ -3706,14 +3751,13 @@ Status MemorySpaceAssignment::FixSchedule() {
       // it was deleted) and not previously inserted. Also bitcasts and tuples
       // are treated specially and only inserted as a result of operand
       // dependencies.
-      if (instruction != nullptr &&
-          !inserted_instructions.contains(instruction) &&
-          instruction->parent() == computation &&
+      if (instruction != nullptr && instruction->parent() == computation &&
           instruction->opcode() != HloOpcode::kBitcast &&
-          instruction->opcode() != HloOpcode::kTuple) {
+          instruction->opcode() != HloOpcode::kTuple &&
+          !inserted_instructions.contains(instruction)) {
         VLOG(4) << "inst " << instruction_index << ": " << instruction->name();
-        EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
-                                             &inserted_instructions);
+        TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+            instruction, &new_sequence, &inserted_instructions));
       }
       auto insts_after_iter = schedule_after_.find(instruction_index);
       if (insts_after_iter != schedule_after_.end()) {
@@ -3721,16 +3765,17 @@ Status MemorySpaceAssignment::FixSchedule() {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
                     << new_instruction->name();
-            EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
-                                                 &inserted_instructions);
+            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions));
           }
         }
       }
     }
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
-    EnsureInstructionAndOperandsInserted(computation->root_instruction(),
-                                         &new_sequence, &inserted_instructions);
+    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
+        computation->root_instruction(), &new_sequence,
+        &inserted_instructions));
     CHECK_EQ(new_sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
         << new_sequence.size() << " instructions, expects "

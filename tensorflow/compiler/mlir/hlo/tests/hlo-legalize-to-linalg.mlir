@@ -2289,7 +2289,7 @@ func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf3
 
 // -----
 
-func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>)
+func @linalg.conv_1d_nwc(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>)
   -> tensor<?x7x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
@@ -2311,7 +2311,7 @@ func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tenso
   } : (tensor<?x8x?xf32>, tensor<2x?x?xf32>) -> tensor<?x7x?xf32>
   return %0 : tensor<?x7x?xf32>
 }
-// CHECK-LABEL: func @linalg.conv_1d_input_nwc_filter_wcf
+// CHECK-LABEL: func @linalg.conv_1d_nwc
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
@@ -2321,7 +2321,7 @@ func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tenso
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, %[[DIM2]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
-// CHECK:         linalg.conv_1d_input_nwc_filter_wcf
+// CHECK:         linalg.conv_1d_nwc_wcf
 // CHECK-SAME:      {dilations = dense<1> : tensor<1xi64>
 // CHECK-SAME:       strides = dense<1> : tensor<1xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x8x?xf32>, tensor<2x?x?xf32>)
@@ -2329,7 +2329,7 @@ func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tenso
 
 // -----
 
-func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf32>)
+func @conv_2d_nhwc_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf32>)
   -> tensor<?x2x3x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
@@ -2351,7 +2351,7 @@ func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3
   } : (tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>) -> tensor<?x2x3x?xf32>
   return %0 : tensor<?x2x3x?xf32>
 }
-// CHECK-LABEL: func @conv_2d_input_nhwc_filter_hwcf
+// CHECK-LABEL: func @conv_2d_nhwc_hwcf
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
@@ -2361,7 +2361,7 @@ func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 2, 3, %[[DIM3]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
-// CHECK:         linalg.conv_2d_input_nhwc_filter_hwcf
+// CHECK:         linalg.conv_2d_nhwc
 // CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>
 // CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>)
@@ -2369,7 +2369,7 @@ func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3
 
 // -----
 
-func @conv_3d_input_ndhwc_filter_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tensor<2x2x2x?x?xf32>)
+func @conv_3d_ndhwc_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tensor<2x2x2x?x?xf32>)
   -> tensor<?x7x7x7x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
@@ -2391,7 +2391,7 @@ func @conv_3d_input_ndhwc_filter_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tens
   } : (tensor<?x8x8x8x?xf32>, tensor<2x2x2x?x?xf32>) -> tensor<?x7x7x7x?xf32>
   return %0 : tensor<?x7x7x7x?xf32>
 }
-// CHECK-LABEL: func @conv_3d_input_ndhwc_filter_dhwcf
+// CHECK-LABEL: func @conv_3d_ndhwc_dhwcf
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
@@ -2401,7 +2401,7 @@ func @conv_3d_input_ndhwc_filter_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tens
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, 7, 7, %[[DIM4]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
-// CHECK:         linalg.conv_3d_input_ndhwc_filter_dhwcf
+// CHECK:         linalg.conv_3d_ndhwc_dhwcf
 // CHECK-SAME:      {dilations = dense<1> : tensor<3xi64>
 // CHECK-SAME:       strides = dense<1> : tensor<3xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x8x8x8x?xf32>, tensor<2x2x2x?x?xf32>)
@@ -2437,7 +2437,7 @@ func @conv2d_1452x2223_dilated_valid(%arg0: tensor<1x4x5x2xf32>, %arg1: tensor<2
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 2, 4, 3] : tensor<1x2x4x3xf32>
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f32, tensor<1x2x4x3xf32> -> tensor<1x2x4x3xf32>
-// CHECK:         linalg.conv_2d_input_nhwc_filter_hwcf
+// CHECK:         linalg.conv_2d_nhwc_hwcf
 // CHECK-SAME:      {dilations = dense<[2, 1]> : tensor<2xi64>
 // CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<1x4x5x2xf32>, tensor<2x2x2x3xf32>)
@@ -2472,7 +2472,7 @@ func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
 // CHECK:        %[[INIT:.+]] = linalg.init_tensor [2, 3, 4, 2, 3] : tensor<2x3x4x2x3xf32>
 // CHECK:        %[[CST:.+]] = constant 0.000000e+00 : f32
 // CHECK:        %[[FILL:.+]] = linalg.fill(%[[CST]], %[[INIT]]) : f32, tensor<2x3x4x2x3xf32> -> tensor<2x3x4x2x3xf32>
-// CHECK:        %[[OUT:.+]] = linalg.depthwise_conv_2d_input_nhwc_filter_hwcf
+// CHECK:        %[[OUT:.+]] = linalg.depthwise_conv2D_nhwc
 // CHECK-SAME:     {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:      ins(%[[IN]], %[[FILTER]] : tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>)
 // CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
@@ -2512,7 +2512,7 @@ func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
 // CHECK:         %[[RESHAPED_FILTER:.+]] = linalg.tensor_collapse_shape %[[FILTER]]
 // CHECK-SAME:     [0], [1], [2, 3]
 // CHECK-SAME:     : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
-// CHECK:         %{{.+}} = linalg.depthwise_conv_2d_input_nhwc_filter_hwc
+// CHECK:         %{{.+}} = linalg.depthwise_conv2D_nhw
 // CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>, strides = dense<2> : tensor<2xi64>}
 // CHECK-SAME:       ins(%[[IN]], %[[RESHAPED_FILTER]] : tensor<1x113x113x96xf32>, tensor<3x3x96xf32>)
 // CHECK-SAME:      outs(%[[FILL]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
