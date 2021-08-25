@@ -79,6 +79,8 @@
 #     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
 #     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
 #
+#     rbe_lite_linux: RBE options to build TF Lite.
+#
 # Embedded Linux options (experimental and only tested with TFLite build yet)
 #     elinux:          General Embedded Linux options shared by all flavors.
 #     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
