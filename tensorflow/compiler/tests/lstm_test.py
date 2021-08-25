@@ -29,6 +29,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -52,6 +53,8 @@ def _Clip(x):
   return np.maximum(np.minimum(x, 1.), -1.)
 
 
+@test_util.run_without_tensor_float_32("TF32 capable devices fail the test"
+                                          " due to reduced matmul precision")
 class LSTMTest(test.TestCase):
 
   def setUp(self):
@@ -175,7 +178,8 @@ class LSTMTest(test.TestCase):
       # Initialize variables and run the unrolled LSTM layer.
       self.evaluate(variables.global_variables_initializer())
       return self.evaluate(out_seq)
-  @test_util.run_without_tensor_float_32("This test fails in TF32")
+  @test_util.run_without_tensor_float_32("TF32 capable devices fail the test"
+                                          " due to reduced matmul precision")
   def testLSTMLayer(self):
     # Run with all-0 weights, no padding.
     o = self._RunLSTMLayer('zeros', init_ops.zeros_initializer(), 0., 0., 0.)

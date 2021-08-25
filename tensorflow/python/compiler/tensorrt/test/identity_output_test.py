@@ -28,12 +28,14 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_without_tensor_float_32("This test fails in TF32")
+@test_util.run_without_tensor_float_32("TF32 capable devices fail the test"
+                                          " due to reduced matmul precision")
 class IdentityTest(trt_test.TfTrtIntegrationTestBase):
   """Testing engine with the same tensor repeated as output via identity."""
 

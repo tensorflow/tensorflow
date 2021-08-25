@@ -132,7 +132,8 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 
-@test_util.run_without_tensor_float_32("This test fails in TF32")
+@test_util.run_without_tensor_float_32("TF32 capable devices fail the test"
+                                          " due to reduced matmul precision")
 class MatMulGradientTest(test_lib.TestCase):
   pass  # Will be filled in below.
 

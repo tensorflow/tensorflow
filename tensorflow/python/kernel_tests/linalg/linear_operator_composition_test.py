@@ -31,7 +31,6 @@ linalg = linalg_lib
 rng = np.random.RandomState(0)
 
 
-@test_util.run_without_tensor_float_32("This test fails in TF32")
 class SquareLinearOperatorCompositionTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -140,7 +139,6 @@ class SquareLinearOperatorCompositionTest(
       linalg.LinearOperatorComposition([])
 
 
-@test_util.run_without_tensor_float_32("This test fails in TF32")
 class NonSquareLinearOperatorCompositionTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
