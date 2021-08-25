@@ -32,6 +32,7 @@ package_group(
         "//platforms/darwinn/...",
         "//platforms/xla/...",
         "//smartass/brain/ops/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//waymo/ml/compiler/mlir/...",
     ]),
