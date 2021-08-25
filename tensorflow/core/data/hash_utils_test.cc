@@ -56,12 +56,14 @@ class DatasetHashUtilsTest : public ::testing::Test {
     *graph_def.mutable_library() = library;
 
     NodeDef* node1 = graph_def.add_node();
+    node1->set_name("RemoteCall");
     node1->set_op("RemoteCall");
     NameAttrList func1;
     func1.set_name(fn1.signature().name());
     AddNodeAttr("f", func1, node1);
 
     NodeDef* node2 = graph_def.add_node();
+    node1->set_name("RemoteCall2");
     node2->set_op("RemoteCall");
     NameAttrList func2;
     func2.set_name(fn2.signature().name());
@@ -145,7 +147,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
 
   FunctionDef* f2 = fl.add_function();
   *f2 = FunctionDefHelper::Create(
-      "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
+      "AddAndMul2", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
        {{"mul"}, "Mul", {"add:z:0", "c"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "mul:z:0"}},
@@ -420,7 +422,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
                   .Finalize(n3));
 
   NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Add")
                   .Device("CPU:0")
                   .Input(n2->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -458,7 +460,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
                   .Finalize(n3));
 
   NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Add")
                   .Device("CPU:0")
                   .Input(n1->name(), 1, DT_INT32)
                   .Input(n2->name(), 2, DT_INT32)
@@ -523,7 +525,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionDifferentNames) {
   NameAttrList* nal2 = a2.mutable_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -589,7 +591,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionListsDifferentNames) {
   NameAttrList* nal2 = list2->add_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -641,7 +643,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionsOps) {
                   .Finalize(n2));
 
   NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "AddAndMul2", &flib)
                   .Input(n1->name(), 0, DT_FLOAT)
                   .Device("CPU:0")
                   .Finalize(n3));
@@ -689,7 +691,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
                   .Finalize(n2));
 
   NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "AddAndMul2", &flib)
                   .Input(n1->name(), 0, DT_FLOAT)
                   .Device("CPU:0")
                   .Finalize(n3));
@@ -756,7 +758,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
   NameAttrList* nal2 = a2.mutable_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -829,7 +831,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionLists) {
   NameAttrList* nal2 = list2->add_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -877,7 +879,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
                   .Finalize(n4));
 
   NodeDef* n5 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Identity")
                   .Device("CPU:0")
                   .Input(n1->name(), 0, DT_INT32)
                   .ControlInput(n3->name())
@@ -923,7 +925,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeControlInputDifferentOrdering) {
                   .Finalize(n4));
 
   NodeDef* n5 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Identity")
                   .Device("CPU:0")
                   .Input(n1->name(), 0, DT_INT32)
                   .ControlInput(n3->name())
