@@ -96,7 +96,8 @@ class BacktrackAnalysis {
   using InfoT = BacktrackAnalysisInfo;
 
   // Constructs the analysis by analyzing the given module.
-  explicit BacktrackAnalysis(ModuleOp module);
+  BacktrackAnalysis(ModuleOp module,
+                    SymbolTableCollection& symbol_table_collection);
 
   // Returns backtracking analysis for the given region.
   const InfoT& GetAnalysisForRegion(Region& region) const {
@@ -148,10 +149,13 @@ class BacktrackAnalysis {
 
  private:
   llvm::SmallDenseMap<Region*, InfoT> info_map_;
+  SymbolTableCollection& symbol_table_collection_;
 };
 
 // Analyzes all regions attached to all operations in the module.
-BacktrackAnalysis::BacktrackAnalysis(ModuleOp module) {
+BacktrackAnalysis::BacktrackAnalysis(
+    ModuleOp module, SymbolTableCollection& symbol_table_collection)
+    : symbol_table_collection_(symbol_table_collection) {
   const CallGraph call_graph(module);
 
   // Visit functions bottom up when doing the analysis. Note that SCC iterator
@@ -196,7 +200,8 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
     } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      FuncOp func =
+          dyn_cast<FuncOp>(call.resolveCallable(&symbol_table_collection_));
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
@@ -275,7 +280,8 @@ void IncrementResourceTypeId(int64_t& resource_type_id) {
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
+    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
+    SymbolTableCollection& symbol_table_collection) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
   // See `ResourceAliasAnalysisInfo` class for ID semantics.
@@ -375,7 +381,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast_or_null<FuncOp>(call.resolveCallable());
+      FuncOp func = dyn_cast_or_null<FuncOp>(
+          call.resolveCallable(&symbol_table_collection));
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
         return WalkResult::advance();
@@ -609,12 +616,16 @@ llvm::SmallSetVector<Value, 8> ResourceAliasAnalysisInfo::GetResourceAliases(
 //===----------------------------------------------------------------------===//
 
 ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
+  // Create symbol table for module.
+  SymbolTableCollection symbol_table_collection;
+  symbol_table_collection.getSymbolTable(module);
   // Analyze all regions for backtracking info.
-  detail::BacktrackAnalysis backtrack_analysis(module);
+  detail::BacktrackAnalysis backtrack_analysis(module, symbol_table_collection);
 
   // Analyze each function.
   for (auto func : module.getOps<FuncOp>())
-    this->info_map_.try_emplace(func, func, backtrack_analysis);
+    this->info_map_.try_emplace(func, func, backtrack_analysis,
+                                symbol_table_collection);
 }
 
 }  // namespace TF
