@@ -82,6 +82,21 @@ void AddEventToXLine(const PythonTraceEntry& event, XLineBuilder* line,
   xevent.SetEndTimestampNs(event.end_time_ns);
 }
 
+template <typename ForEachThreadFunc>
+void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
+  // Note: PyThreadState's interp is not accessible in open source due to
+  // Py_LIMITED_API definition nuances. We can not iterate all threads through
+  // that PyInterpreterState.
+  for (PyThreadState* p = curr_thread; p != nullptr; p = p->next) {
+    PyThreadState_Swap(p);
+    callback(p);
+  }
+  for (PyThreadState* p = curr_thread->prev; p != nullptr; p = p->prev) {
+    PyThreadState_Swap(p);
+    callback(p);
+  }
+}
+
 }  // namespace
 
 /*static*/ PythonHookContext* PythonHooks::e2e_context_ = nullptr;
@@ -329,25 +344,19 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   // NOTE: This must be after `threading.setprofile` otherwise we
   // end up recording that in our trace.
   PyThreadState* curr_thread = PyThreadState_Get();
-  PyThreadState* next_thread = curr_thread;
-  while (next_thread != nullptr) {
-    VLOG(1) << "Setting profiler in " << next_thread->thread_id;
-    PyThreadState_Swap(next_thread);
+  ForEachThread(curr_thread, [](PyThreadState* thread) {
+    VLOG(1) << "Setting profiler in " << thread->thread_id;
     PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
-    next_thread = next_thread->next;
-  }
+  });
   PyThreadState_Swap(curr_thread);
 }
 
 /*static*/ void PythonHookContext::ClearProfilerInAllThreads() {
   PyThreadState* curr_thread = PyThreadState_Get();
-  PyThreadState* next_thread = curr_thread;
-  while (next_thread != nullptr) {
-    VLOG(1) << "Clearing profiler in " << next_thread->thread_id;
-    PyThreadState_Swap(next_thread);
+  ForEachThread(curr_thread, [](PyThreadState* thread) {
+    VLOG(1) << "Clearing profiler in " << thread->thread_id;
     PyEval_SetProfile(nullptr, nullptr);
-    next_thread = next_thread->next;
-  }
+  });
   PyThreadState_Swap(curr_thread);
 
   // And notify the threading library that we're done.
