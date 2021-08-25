@@ -61,6 +61,10 @@ struct TfrtCompileOptions {
   // compile and execute.
   bool tpu_fuse_ops = false;
 
+  // If true, resource gather ops in the device graph are moved to host graphs
+  // in order to saved TPU memory usage. This option is experimental.
+  bool tpu_move_resource_gather_to_host = false;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.
