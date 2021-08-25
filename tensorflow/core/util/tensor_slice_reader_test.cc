@@ -410,6 +410,81 @@ TEST(TensorSliceReaderTest, UnsupportedTensorType) {
   EXPECT_FALSE(reader.GetTensor("test", &tensor).ok());
 }
 
+TEST(TensorSliceReaderTest, NegativeTensorShapeDimension) {
+  const string fname =
+      io::JoinPath(testing::TmpDir(), "negative_dim_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const int32 data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TF_CHECK_OK(writer.Add("test", TensorShape({4, 5}),
+                         TensorSlice::ParseOrDie("0,2:-"), data));
+  TF_CHECK_OK(writer.Finish());
+
+  MutateSavedTensorSlices(fname, [](SavedTensorSlices sts) {
+    if (sts.has_meta()) {
+      for (auto& tensor : *sts.mutable_meta()->mutable_tensor()) {
+        for (auto& dim : *tensor.mutable_shape()->mutable_dim()) {
+          dim.set_size(-dim.size());
+        }
+      }
+    }
+    return sts.SerializeAsString();
+  });
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  // The negative dimension should cause loading to fail.
+  EXPECT_FALSE(reader.status().ok());
+}
+
+TEST(TensorSliceReaderTest, InvalidTensorSlice) {
+  const string fname =
+      io::JoinPath(testing::TmpDir(), "invalid_slice_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const int32 data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TF_CHECK_OK(writer.Add("test", TensorShape({4, 5}),
+                         TensorSlice::ParseOrDie("0,2:-"), data));
+  TF_CHECK_OK(writer.Finish());
+
+  MutateSavedTensorSlices(fname, [](SavedTensorSlices sts) {
+    if (sts.has_meta()) {
+      for (auto& tensor : *sts.mutable_meta()->mutable_tensor()) {
+        tensor.mutable_slice(0)->mutable_extent(0)->set_length(-10);
+      }
+    }
+    return sts.SerializeAsString();
+  });
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  // The negative exent length should cause loading to fail.
+  EXPECT_FALSE(reader.status().ok());
+}
+
+TEST(TensorSliceReaderTest, MissingTensorData) {
+  const string fname =
+      io::JoinPath(testing::TmpDir(), "missing_data_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const int32 data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TF_ASSERT_OK(writer.Add("test", TensorShape({4, 5}),
+                          TensorSlice::ParseOrDie("0,2:-"), data));
+  TF_ASSERT_OK(writer.Finish());
+
+  MutateSavedTensorSlices(fname, [&](SavedTensorSlices sts) {
+    if (sts.has_data()) {
+      // Replace the data with only 4 elements.
+      Fill(data, 4, sts.mutable_data()->mutable_data());
+    }
+    return sts.SerializeAsString();
+  });
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  TF_ASSERT_OK(reader.status());
+
+  // The tensor should be present, but loading it should fail due to the missing
+  // data.
+  EXPECT_TRUE(reader.HasTensor("test", nullptr, nullptr));
+  std::unique_ptr<Tensor> tensor;
+  EXPECT_FALSE(reader.GetTensor("test", &tensor).ok());
+}
+
 void CachedTensorSliceReaderTesterHelper(
     const TensorSliceWriter::CreateBuilderFunction& create_function,
     const TensorSliceReader::OpenTableFunction& open_function) {
