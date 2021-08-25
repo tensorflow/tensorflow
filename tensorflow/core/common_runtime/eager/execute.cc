@@ -784,7 +784,6 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   for (auto t : op->Inputs()) {
     TF_RETURN_IF_ERROR(call_op->AddInput(t));
   }
-  TF_RETURN_IF_ERROR(call_op->SetDeviceName(op->DeviceName().c_str()));
   *wrapped_op = down_cast<EagerOperation*>(call_op.release());
   // Attributes on the elementary eager operation are applied to the call op and
   // to the NodeDef inside the FunctionDef. This allows us to have a single
