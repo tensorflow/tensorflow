@@ -172,7 +172,9 @@ void TensorSliceReader::LoadShard(int shard) const {
     status_ = TensorShape::BuildTensorShapeBase(ssm.shape(), &ssm_shape);
     if (!status_.ok()) return;
     for (const TensorSliceProto& tsp : ssm.slice()) {
-      TensorSlice ss_slice(tsp);
+      TensorSlice ss_slice;
+      status_ = TensorSlice::BuildTensorSlice(tsp, &ss_slice);
+      if (!status_.ok()) return;
       status_ = RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname,
                                     ss_slice, &tensors_);
       if (!status_.ok()) return;
