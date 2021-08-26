@@ -447,13 +447,17 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
-      # If we cannot read the value for any reason, still produce a __repr__.
+      # If we cannot read the value for any reason (e.g. variable uninitialized
+      # during tf.function tracing), still produce a __repr__. Note that for
+      # async eager, errors due to uninitialized variables will raise in
+      # ops.value_text when the handle is resolved, so we need to keep that
+      # under the try...except if we want to suppress them.
       try:
-        value_text = ops.numpy_text(self.read_value(), is_repr=True)
+        value_text = ops.value_text(self.read_value(), is_repr=True)
       except:  # pylint: disable=bare-except
-        value_text = "<unavailable>"
+        value_text = "numpy=<unavailable>"
 
-      return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
+      return "<tf.Variable '%s' shape=%s dtype=%s, %s>" % (
           self.name, self.get_shape(), self.dtype.name, value_text)
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
