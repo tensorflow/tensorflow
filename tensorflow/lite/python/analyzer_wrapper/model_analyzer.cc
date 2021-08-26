@@ -28,6 +28,8 @@ namespace tflite {
 
 namespace {
 
+const float kThreshold_zero_buffer_ratio = 10.0f;
+
 // Dump details of the given tensor.
 void dump_tensor_detail(std::stringstream& out_stream,
                         const tflite::Tensor* tensor, const int tensor_idx) {
@@ -123,6 +125,66 @@ void dump_model_summary(std::stringstream& out_stream,
     dump_tensor_list(out_stream, first_op->outputs(), /*verbose=*/true);
     out_stream << " as output.\n\n";
   }
+}
+
+// Dump the statistics of the given TFLite flatbuffer model. It's printed at the
+// end of the analyzer output.
+void dump_model_stats(std::stringstream& out_stream,
+                      const ::tflite::Model* model, size_t model_size) {
+  size_t total_buffer_size = 0;
+  size_t total_zero_buffer_size = 0;
+  auto* buffers = model->buffers();
+  for (int i = 0; i < buffers->size(); ++i) {
+    const tflite::Buffer* buffer = buffers->Get(i);
+    if (buffer->data() == nullptr) {
+      continue;
+    }
+    bool is_all_zeros = true;
+    const unsigned char* data = buffer->data()->data();
+    for (int j = 0; j < buffer->data()->size(); ++j) {
+      if (data[j] != 0) {
+        is_all_zeros = false;
+        break;
+      }
+    }
+    if (is_all_zeros) {
+      total_zero_buffer_size += buffer->data()->size();
+    }
+    total_buffer_size += buffer->data()->size();
+  }
+
+  out_stream << "\n";
+  char temp[2048];
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes\n", "Model size", model_size);
+  out_stream << temp;
+  snprintf(
+      temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+      "Non-data buffer size", model_size - total_buffer_size,
+      (static_cast<float>(model_size - total_buffer_size) / model_size * 100));
+  out_stream << temp;
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+           "Total data buffer size", total_buffer_size,
+           (static_cast<float>(total_buffer_size) / model_size * 100));
+  out_stream << temp;
+  float zero_buffer_ratio =
+      static_cast<float>(total_zero_buffer_size) / model_size * 100;
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+           "(Zero value buffers)", total_zero_buffer_size, zero_buffer_ratio);
+  out_stream << temp;
+  out_stream
+      << "\n"
+      << "* Buffers of TFLite model are mostly used for constant tensors.\n";
+  out_stream << "  And zero value buffers are buffers filled with zeros.\n";
+  if (zero_buffer_ratio > kThreshold_zero_buffer_ratio) {
+    out_stream << "  (Consider use "
+                  "`converter._experimental_unfold_large_splat_constant` "
+                  "to save the model size.)\n";
+  }
+  out_stream << "  Non-data buffers area are used to store operators, "
+                "subgraphs and etc.\n";
+  out_stream << "  You can find more details from "
+                "https://github.com/tensorflow/tensorflow/blob/master/"
+                "tensorflow/lite/schema/schema.fbs\n";
 }
 
 }  // namespace
@@ -224,6 +286,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
         << ".\nBut it doesn't guarantee that your model works well with GPU "
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
   }
+
+  dump_model_stats(out_stream, model, fb_model->allocation()->bytes());
+
   return out_stream.str();
 }
 
