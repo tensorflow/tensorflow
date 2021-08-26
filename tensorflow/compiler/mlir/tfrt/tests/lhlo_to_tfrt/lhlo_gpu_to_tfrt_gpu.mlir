@@ -258,6 +258,45 @@ func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %re
   "lmhlo.terminator"() : () -> ()
 }
 
+// CHECK:      func @all_to_all(
+// CHECK-SAME:   %arg0: !tfrt.chain,
+// CHECK-SAME:   %arg1: !tfrt_gpu.stream,
+// CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg5: !tfrt_gpu.buffer
+// CHECK-SAME: ) -> !tfrt.chain
+func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+  // CHECK-NOT: cast
+  // CHECK-NOT: async.execute
+
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = xlir.ccl.create [[CONTEXT]]
+  // CHECK: [[PEER0:%[0-9]+]] = tfrt.constant.i32 0
+  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.ccl.send [[HANDLE]],
+  // CHECK-SAME: %arg2, [[PEER0]], ncclFloat32, %arg0
+  // CHECK: [[CHAIN2:%[0-9]+]] = tfrt_gpu.ccl.recv [[HANDLE]],
+  // CHECK-SAME: %arg4, [[PEER0]], ncclFloat32, [[CHAIN1]]
+  // CHECK: [[PEER1:%[0-9]+]] = tfrt.constant.i32 1
+  // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.send [[HANDLE]],
+  // CHECK-SAME: %arg3, [[PEER1]], ncclFloat32, [[CHAIN2]]
+  // CHECK: [[CHAIN4:%[0-9]+]] = tfrt_gpu.ccl.recv [[HANDLE]],
+  // CHECK-SAME: %arg5, [[PEER1]], ncclFloat32, [[CHAIN3]]
+  // CHECK: [[CHAIN5:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
+  // CHECK-SAME: [[CHAIN4]]
+
+  "lmhlo.all_to_all"(%operand0, %operand1, %result0, %result1) {
+      replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>,
+      channel_id = {handle = 1 : i64, type = 0 : i64},
+      constrain_layout = false,
+      use_global_device_ids = false
+  } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+
+  // CHECK-NOT: cast
+  // CHECK: tfrt.return [[CHAIN5]] : !tfrt.chain
+  "lmhlo.terminator"() : () -> ()
+}
+
 // CHECK:      func @two_ops(
 // CHECK-SAME:   %arg0: !tfrt.chain,
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,

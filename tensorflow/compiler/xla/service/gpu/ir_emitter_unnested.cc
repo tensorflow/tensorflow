@@ -2979,7 +2979,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     std::unique_ptr<Thunk> thunk;
     if (IsBefThunkEnabled() && (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
                                 mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
-                                mlir::isa<mlir::lmhlo::ReduceScatterOp>(op))) {
+                                mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
+                                mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
       std::vector<BufferAllocation::Slice> inputs, outputs;
       for (const auto& buffer : buffers) {
         inputs.push_back(buffer.source_buffer);

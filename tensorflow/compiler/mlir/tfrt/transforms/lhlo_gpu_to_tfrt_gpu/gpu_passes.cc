@@ -81,7 +81,7 @@ struct LmhloGpuAsyncConversionPass
     wrap_target
         .addLegalDialect<lmhlo_gpu::LmhloGpuDialect, mlir::gpu::GPUDialect>();
     wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
-                           lmhlo::ReduceScatterOp>();
+                           lmhlo::ReduceScatterOp, lmhlo::AllToAllOp>();
     tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                   wrap_target);
 
