@@ -178,6 +178,49 @@ REGISTER_OP("TestGpuSegmentedSum")
 REGISTER_KERNELS(int32, int32);
 #undef REGISTER_KERNELS
 
+template <typename T>
+class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
+ public:
+  explicit TestGpuSelectFlaggedKernel(tensorflow::OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("output_size", &output_size_));
+  }
+
+  void Compute(tensorflow::OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const T* input_data = input.flat<T>().data();
+    const Tensor& flags = context->input(1);
+    const bool* flags_data = flags.flat<bool>().data();
+
+    int64_t input_size = input.dim_size(0);
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({output_size_}), &output));
+    T* output_data = output->flat<T>().data();
+
+    OP_REQUIRES_OK(context, GpuSelectFlagged(context, input_size, input_data,
+                                             flags_data, output_data));
+  }
+
+ private:
+  int64_t output_size_;
+};
+
+REGISTER_OP("TestGpuSelectFlagged")
+    .Input("input: T")
+    .Input("flags: bool")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("output_size: int");
+#define REGISTER_KERNELS(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("TestGpuSelectFlagged")        \
+                              .Device(tensorflow::DEVICE_GPU) \
+                              .TypeConstraint<T>("T"),        \
+                          TestGpuSelectFlaggedKernel<T>)
+REGISTER_KERNELS(int32);
+#undef REGISTER_KERNELS
+
 class GpuPrimHelpersTest : public OpsTestBase {
  protected:
   GpuPrimHelpersTest() {
@@ -209,6 +252,15 @@ class GpuPrimHelpersTest : public OpsTestBase {
                      .Input(FakeInput(type))
                      .Input(FakeInput(offset_type))
                      .Input(FakeInput(type))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+
+  void MakeSelectFlagged(DataType type, int64 output_size) {
+    TF_ASSERT_OK(NodeDefBuilder("test_op", "TestGpuSelectFlagged")
+                     .Input(FakeInput(type))
+                     .Input(FakeInput(DT_BOOL))
+                     .Attr("output_size", output_size)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -325,6 +377,19 @@ TEST_F(GpuPrimHelpersTest, GpuSegmentedReduce_Sum) {
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({5}));
   test::FillValues<int32>(&expected_output, {3, 3, 0, 22, 17});
+  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+}
+
+TEST_F(GpuPrimHelpersTest, GpuSelectFlagged) {
+  MakeSelectFlagged(DT_INT32, 3);
+  // Input.
+  AddInputFromArray<int32>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // Flags.
+  AddInputFromArray<bool>(TensorShape({10}), {0, 0, 1, 0, 1, 0, 0, 1, 0, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_output(allocator(), DT_INT32, TensorShape({3}));
+  test::FillValues<int32>(&expected_output, {2, 4, 7});
   test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
 }
 
