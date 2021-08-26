@@ -65,6 +65,8 @@ tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
   }
 
   ncclComm_t comm = xccl_ctx->clique.GetCommForDeviceOrdinal(device_ordinal);
+  auto ccl_comm = tfrt::gpu::wrapper::CclComm(comm, current->platform());
+
   xccl_ctx->ccl_handle =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuCclHandle>(
           context.ValueRef(),

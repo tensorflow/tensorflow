@@ -14,6 +14,7 @@ load("@tf_toolchains//toolchains/embedded/arm-linux:arm_linux_toolchain_configur
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+load("//third_party/llvm:setup.bzl", "llvm_setup")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
@@ -32,8 +33,8 @@ load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
-load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -74,6 +75,7 @@ def _initialize_third_party():
     opencl_headers()
     pasta()
     psimd()
+    pybind11_abseil()
     ruy()
     sobol_data()
     vulkan_headers()
@@ -131,11 +133,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "36255b4d4485e9537aa63b656f3bafe74c44eaa8101c88b318a856505388d5e4",
-        strip_prefix = "XNNPACK-8c96521d55877cf971fc9318603798d923e0059a",
+        sha256 = "f3b3256b6dcde8002159df50380b86087ae9ee927464b4179a22028be8a5ac20",
+        strip_prefix = "XNNPACK-0f6613555829d59cbc165f1be87bdcd5137e23d2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/8c96521d55877cf971fc9318603798d923e0059a.zip",
-            "https://github.com/google/XNNPACK/archive/8c96521d55877cf971fc9318603798d923e0059a.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
+            "https://github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -648,7 +650,7 @@ def _tf_repositories():
         ],
     )
 
-    llvm("llvm-project")
+    llvm_setup(name = "llvm-project")
 
     # Intel openMP that is part of LLVM sources.
     tf_http_archive(
@@ -998,16 +1000,6 @@ def _tf_repositories():
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
             "https://github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
-        ],
-    )
-
-    # https://github.com/bazelbuild/bazel-skylib/releases
-    tf_http_archive(
-        name = "bazel_skylib",
-        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
         ],
     )
 

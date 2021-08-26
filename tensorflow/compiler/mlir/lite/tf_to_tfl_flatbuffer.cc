@@ -236,8 +236,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     } else {
       return errors::InvalidArgument("Quantized type not supported");
     }
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
-                                            quantized_type) != kTfLiteOk) {
+    bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
+    if (::tflite::optimize::QuantizeWeights(
+            &q_builder, input_model, quantized_type,
+            use_updated_hybrid_scheme) != kTfLiteOk) {
       return errors::InvalidArgument("Quantize weights transformation failed.");
     }
     const uint8_t* q_buffer = q_builder.GetBufferPointer();

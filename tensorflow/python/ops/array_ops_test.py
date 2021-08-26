@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -74,6 +76,24 @@ class ArrayOpTest(test.TestCase):
 
   def testEmptyMeshgrid(self):
     self.assertEqual(array_ops.meshgrid(), [])
+
+  def testSlicedPartialShapeInference(self):
+
+    @def_function.function(autograph=False)
+    def g(x):
+      return array_ops.zeros([array_ops.shape(x)[0]])
+
+    conc = g.get_concrete_function(tensor_spec.TensorSpec([10, None]))
+    self.assertAllEqual(conc.output_shapes.as_list(), [10])
+
+  def testIdentityOnSlicedPartialShapeInference(self):
+
+    @def_function.function(autograph=False)
+    def g(x):
+      return array_ops.zeros([array_ops.identity(array_ops.shape(x)[0])])
+
+    conc = g.get_concrete_function(tensor_spec.TensorSpec([10, None]))
+    self.assertAllEqual(conc.output_shapes.as_list(), [10])
 
 
 if __name__ == "__main__":

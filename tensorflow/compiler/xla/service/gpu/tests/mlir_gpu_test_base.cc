@@ -135,7 +135,7 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
 StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect,
+                      mlir::StandardOpsDialect, mlir::gpu::GPUDialect,
                       mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;

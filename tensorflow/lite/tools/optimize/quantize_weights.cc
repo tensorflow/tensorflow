@@ -653,7 +653,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
 }
 
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model, BufferType quant_type) {
+                             const Model* input_model, BufferType quant_type,
+                             bool use_updated_hybrid_scheme) {
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
       // By default we require that only weights with more than
@@ -661,7 +662,7 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
       CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
-                                 kUseUpdatedHybridSchemeDefault);
+                                 use_updated_hybrid_scheme);
     }
     case BufferType::QUANTIZED_FLOAT16:
       return QuantizeWeightsFloat16(builder, input_model);

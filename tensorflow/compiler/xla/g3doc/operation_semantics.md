@@ -1919,15 +1919,11 @@ an identity of the reduction function (for example, `0` for addition) or
 undefined behavior will occur. The applied `computation` is always passed the
 `init_value` on the left-hand side.
 
-The evaluation order of the reduction function is arbitrary and may be
-non-deterministic. Therefore, the reduction function should not be overly
-sensitive to reassociation.
-
-Some reduction functions like addition are not strictly associative for floats.
+Different backends are allowed to reassociate the reduction computation.  This
+can lead to numerical differences, as some reduction functions like addition are
+not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
-enough to being associative for most practical uses. It is possible to conceive
-of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA.
+enough to being associative for most practical uses.
 
 As an example, when reducing across one dimension in a single 1D array with
 values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)

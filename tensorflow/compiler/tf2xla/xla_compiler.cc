@@ -168,7 +168,7 @@ Status BuildComputation(
     const std::map<int, xla::OpSharding>& retval_shardings,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
     std::unique_ptr<xla::XlaOp> token_output,
-    const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
+    const XlaHelpers::ShapeRepresentationFn& shape_representation_fn,
     bool is_entry_computation, bool return_updated_values_for_all_resources,
     bool always_return_tuple, bool use_tuple_arg, bool alias_resource_update,
     xla::XlaBuilder* builder, xla::XlaComputation* computation,
@@ -1401,7 +1401,7 @@ Status XlaCompiler::CompileGraph(
       real_args, retvals, arg_shardings, retval_shardings, context->resources(),
       std::move(token_output),
       options.is_entry_computation ? options_.shape_representation_fn
-                                   : ShapeRepresentationFn{},
+                                   : XlaHelpers::ShapeRepresentationFn{},
       options.is_entry_computation,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, options.use_tuple_arg,

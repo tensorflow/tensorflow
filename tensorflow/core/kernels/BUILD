@@ -3464,8 +3464,18 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "nextafter_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "nextafter_op",
-    deps = MATH_DEPS + [":cwise_op"],
+    deps = MATH_DEPS + [
+        ":cwise_op",
+        "//tensorflow/core/kernels/mlir_generated:nextafter_op",
+    ],
 )
 
 tf_kernel_library(
@@ -6096,6 +6106,7 @@ filegroup(
         "mfcc_mel_filterbank.h",
         "multinomial_op.h",
         "pad_op.h",
+        "partitioned_function_ops.h",
         "pooling_ops_3d.h",
         "ragged_tensor_variant.h",
         "random_op.h",
@@ -6363,6 +6374,7 @@ filegroup(
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
         "parse_tensor_op.cc",
+        "partitioned_function_ops.cc",
         "pooling_ops_3d.cc",
         "queue_base.cc",
         "queue_op.cc",

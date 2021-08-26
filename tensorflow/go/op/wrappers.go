@@ -38,16 +38,31 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 	return list, start + size, nil
 }
 
+// XlaSpmdShardToFullShapeAttr is an optional argument to XlaSpmdShardToFullShape.
+type XlaSpmdShardToFullShapeAttr func(optionalAttr)
+
+// XlaSpmdShardToFullShapeDim sets the optional dim attribute to value.
+// If not specified, defaults to -1
+func XlaSpmdShardToFullShapeDim(value int64) XlaSpmdShardToFullShapeAttr {
+	return func(m optionalAttr) {
+		m["dim"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from manual partitioning to
 //
 // automatic partitioning. It converts the shard-shaped, manually partitioned input
 // into full-shaped tensor to be partitioned automatically with the same sharding
-// used by manual partitioning.
-func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape) (output tf.Output) {
+// used by manual partitioning. The conversion can happen partially in subgroups,
+// by specifying the dim attribute, where only that dim will be converted.
+func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape, optional ...XlaSpmdShardToFullShapeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"manual_sharding": manual_sharding, "full_shape": full_shape}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaSpmdShardToFullShape",
 		Input: []tf.Input{
@@ -16197,6 +16212,30 @@ func LogMatrixDeterminant(scope *Scope, input tf.Output) (sign tf.Output, log_ab
 	return op.Output(0), op.Output(1)
 }
 
+// Computes the determinant of one or more square matrices.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. The output is a tensor containing the determinants
+// for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[...]`.
+func MatrixDeterminant(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixDeterminant",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a TensorList by indexing into a Tensor.
 //
 // Each member of the TensorList corresponds to one row of the input tensor,
@@ -26581,6 +26620,38 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	return op.Output(0)
 }
 
+// Assigns sparse updates to the variable referenced by `resource`.
+//
+// This operation computes
+//
+//     # Scalar indices
+//     ref[indices, ...] = updates[...]
+//
+//     # Vector indices (for each i)
+//     ref[indices[i], ...] = updates[i, ...]
+//
+//     # High rank indices (for each i, ..., j)
+//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+//
+// Arguments:
+//	resource: Should be from a `Variable` node.
+//	indices: A tensor of indices into the first dimension of `ref`.
+//	updates: A tensor of updated values to add to `ref`.
+//
+// Returns the created operation.
+func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterUpdate",
+		Input: []tf.Input{
+			resource, indices, updates,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Creates a Dataset that returns pseudorandom numbers.
 //
 // Creates a Dataset that returns a stream of uniformly distributed
@@ -27399,17 +27470,33 @@ func FusedBatchNormGrad(scope *Scope, y_backprop tf.Output, x tf.Output, scale t
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
+// XlaSpmdFullToShardShapeAttr is an optional argument to XlaSpmdFullToShardShape.
+type XlaSpmdFullToShardShapeAttr func(optionalAttr)
+
+// XlaSpmdFullToShardShapeDim sets the optional dim attribute to value.
+// If not specified, defaults to -1
+func XlaSpmdFullToShardShapeDim(value int64) XlaSpmdFullToShardShapeAttr {
+	return func(m optionalAttr) {
+		m["dim"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from automatic partitioning to
 //
 // manual partitioning. It annotates the input (full-shape, to be automatically
 // partitioned) with the same sharding used by manual partitioning, and outputs a
 // shard-shaped tensor to be consumed by later manually-partitioned ops. If the
 // shape is not evenly partitionable, the padding region will be masked with 0s.
-func XlaSpmdFullToShardShape(scope *Scope, input tf.Output, manual_sharding string) (output tf.Output) {
+// The conversion can happen partially in subgroups, by specifying the dim
+// attribute, where only that dim will be converted.
+func XlaSpmdFullToShardShape(scope *Scope, input tf.Output, manual_sharding string, optional ...XlaSpmdFullToShardShapeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"manual_sharding": manual_sharding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "XlaSpmdFullToShardShape",
 		Input: []tf.Input{
@@ -32512,38 +32599,6 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output, optional ..
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Assigns sparse updates to the variable referenced by `resource`.
-//
-// This operation computes
-//
-//     # Scalar indices
-//     ref[indices, ...] = updates[...]
-//
-//     # Vector indices (for each i)
-//     ref[indices[i], ...] = updates[i, ...]
-//
-//     # High rank indices (for each i, ..., j)
-//     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
-//
-// Arguments:
-//	resource: Should be from a `Variable` node.
-//	indices: A tensor of indices into the first dimension of `ref`.
-//	updates: A tensor of updated values to add to `ref`.
-//
-// Returns the created operation.
-func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterUpdate",
-		Input: []tf.Input{
-			resource, indices, updates,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Creates ngrams from ragged string data.
@@ -46250,30 +46305,6 @@ func TPUEmbeddingActivations(scope *Scope, embedding_variable tf.Output, sliced_
 	return op.Output(0)
 }
 
-// Computes the determinant of one or more square matrices.
-//
-// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. The output is a tensor containing the determinants
-// for all input submatrices `[..., :, :]`.
-//
-// Arguments:
-//	input: Shape is `[..., M, M]`.
-//
-// Returns Shape is `[...]`.
-func MatrixDeterminant(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDeterminant",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // IRFFTAttr is an optional argument to IRFFT.
 type IRFFTAttr func(optionalAttr)
 
@@ -49072,6 +49103,14 @@ func ConfigureDistributedTPUEnableWholeMeshCompilations(value bool) ConfigureDis
 func ConfigureDistributedTPUCompilationFailureClosesChips(value bool) ConfigureDistributedTPUAttr {
 	return func(m optionalAttr) {
 		m["compilation_failure_closes_chips"] = value
+	}
+}
+
+// ConfigureDistributedTPUTpuCancellationClosesChips sets the optional tpu_cancellation_closes_chips attribute to value.
+// If not specified, defaults to 0
+func ConfigureDistributedTPUTpuCancellationClosesChips(value int64) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["tpu_cancellation_closes_chips"] = value
 	}
 }
 

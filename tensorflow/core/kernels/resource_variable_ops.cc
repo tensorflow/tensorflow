@@ -140,7 +140,7 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status=", status.ToString()));
+                  ", status error message=", status.error_message()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while

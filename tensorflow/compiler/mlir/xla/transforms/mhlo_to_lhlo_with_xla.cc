@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -1681,10 +1682,15 @@ Status HloToLhloModule(const BufferAssignment& assignment,
       assignment.hlo_ordering().SequentialOrder(*computation);
   if (!schedule)
     return xla::Unimplemented("Missing sequential order for the computation");
+
+  StatusScopedDiagnosticHandler status_handler(module.getContext());
+
   const std::vector<HloInstruction*>& ordering = schedule->instructions();
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(&emitter, ordering));
-  TF_RET_CHECK(succeeded(mlir::verify(module)));
-  return Status::OK();
+  TF_RETURN_IF_ERROR(status_handler.ConsumeStatus());
+
+  (void)mlir::verify(module);
+  return status_handler.ConsumeStatus();
 }
 
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,

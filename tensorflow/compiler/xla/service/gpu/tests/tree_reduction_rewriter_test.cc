@@ -91,6 +91,71 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(TreeReductionRewriterTest, RowReductionWeirdOutputLayout) {
+  const char* hlo_text = R"(
+HloModule ReduceWithPadding
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[2,4,17000]{2,1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[2,4]{0,1} reduce(input, zero), dimensions={2}, to_apply=add
+}
+)";
+
+  // Check that we preserve the layout.
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: reduce.1 = f32[2,4]{0,1}
+      )");
+
+  EnsureDeterminism(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(TreeReductionRewriterTest,
+       RowReductionSingleDimensionNoBatchedDivisible) {
+  const char* hlo_text = R"(
+HloModule ReduceWithPadding
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[49952] parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[] reduce(input, zero), dimensions={0}, to_apply=add
+}
+)";
+
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: %fused_computation (param_0.2: f32[49952]) -> f32[223] {
+// CHECK:   %param_0.2 = f32[49952]{0} parameter(0)
+// CHECK:   %bitcast.1 = f32[223,224]{1,0} bitcast(f32[49952]{0} %param_0.2)
+// CHECK:   %zero_1 = f32[] constant(0)
+// CHECK:   ROOT %reduce.2 = f32[223]{0} reduce(f32[223,224]{1,0} %bitcast.1, f32[] %zero_1), dimensions={1}, to_apply=%add
+// CHECK: }
+// CHECK: ENTRY %main (input: f32[49952]) -> f32[] {
+// CHECK:   %input = f32[49952]{0} parameter(0)
+// CHECK:   %fusion = f32[223]{0} fusion(f32[49952]{0} %input), kind=kInput, calls=%fused_computation
+// CHECK:   %zero = f32[] constant(0)
+// CHECK:   ROOT %reduce.1 = f32[] reduce(f32[223]{0} %fusion, f32[] %zero), dimensions={0}, to_apply=%add
+// CHECK: }
+      )");
+
+  EnsureDeterminism(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(TreeReductionRewriterTest, RowReductionNoBatched) {
   const char* hlo_text = R"(
 HloModule ReduceWithPadding
@@ -102,9 +167,9 @@ add {
 }
 
 ENTRY main {
-  input = f32[100,100,90000] parameter(0)
+  input = f32[100,10,90000] parameter(0)
   zero = f32[] constant(0)
-  ROOT out = f32[100,100] reduce(input, zero), dimensions={2}, to_apply=add
+  ROOT out = f32[100,10] reduce(input, zero), dimensions={2}, to_apply=add
 }
 )";
 
@@ -112,18 +177,17 @@ ENTRY main {
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: %fused_computation (param_0.2: f32[100,100,90000]) -> f32[100,100,300] {
-// CHECK:   %param_0.2 = f32[100,100,90000]{2,1,0} parameter(0)
+// CHECK: %fused_computation (param_0.2: f32[100,10,90000]) -> f32[100,10,300] {
+// CHECK:   %param_0.2 = f32[100,10,90000]{2,1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[100,10,300,300]{3,2,1,0} bitcast(f32[100,10,90000]{2,1,0} %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[100,100,90000]{2,1,0} pad(f32[100,100,90000]{2,1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0x0_0
-// CHECK:   %bitcast.1 = f32[100,100,300,300]{3,2,1,0} bitcast(f32[100,100,90000]{2,1,0} %pad.1)
-// CHECK:   ROOT %reduce.2 = f32[100,100,300]{2,1,0} reduce(f32[100,100,300,300]{3,2,1,0} %bitcast.1, f32[] %zero_1), dimensions={3}, to_apply=%add
+// CHECK:   ROOT %reduce.2 = f32[100,10,300]{2,1,0} reduce(f32[100,10,300,300]{3,2,1,0} %bitcast.1, f32[] %zero_1), dimensions={3}, to_apply=%add
 // CHECK: }
-// CHECK: ENTRY %main (input: f32[100,100,90000]) -> f32[100,100] {
-// CHECK:   %input = f32[100,100,90000]{2,1,0} parameter(0)
-// CHECK:   %fusion = f32[100,100,300]{2,1,0} fusion(f32[100,100,90000]{2,1,0} %input), kind=kInput, calls=%fused_computation
+// CHECK: ENTRY %main (input: f32[100,10,90000]) -> f32[100,10] {
+// CHECK:   %input = f32[100,10,90000]{2,1,0} parameter(0)
+// CHECK:   %fusion = f32[100,10,300]{2,1,0} fusion(f32[100,10,90000]{2,1,0} %input), kind=kInput, calls=%fused_computation
 // CHECK:   %zero = f32[] constant(0)
-// CHECK:   ROOT %reduce.1 = f32[100,100]{1,0} reduce(f32[100,100,300]{2,1,0} %fusion, f32[] %zero), dimensions={2}, to_apply=%add
+// CHECK:   ROOT %reduce.1 = f32[100,10]{1,0} reduce(f32[100,10,300]{2,1,0} %fusion, f32[] %zero), dimensions={2}, to_apply=%add
 // CHECK: }
       )");
 
@@ -152,9 +216,8 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[1000000]) -> f32[1000] {
 // CHECK:   %param_0.2 = f32[1000000]{0} parameter(0)
+// CHECK:   %bitcast.1 = f32[1000,1000]{1,0} bitcast(f32[1000000]{0} %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[1000000]{0} pad(f32[1000000]{0} %param_0.2, f32[] %zero_1), padding=0_0
-// CHECK:   %bitcast.1 = f32[1000,1000]{1,0} bitcast(f32[1000000]{0} %pad.1)
 // CHECK:   ROOT %reduce.2 = f32[1000]{0} reduce(f32[1000,1000]{1,0} %bitcast.1, f32[] %zero_1), dimensions={1}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[1000000]) -> f32[] {
@@ -192,9 +255,8 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[8,100,90000]) -> f32[100,300] {
 // CHECK:   %param_0.2 = f32[8,100,90000]{2,1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[8,100,300,300]{3,2,1,0} bitcast(f32[8,100,90000]{2,1,0} %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[8,100,90000]{2,1,0} pad(f32[8,100,90000]{2,1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0x0_0
-// CHECK:   %bitcast.1 = f32[8,100,300,300]{3,2,1,0} bitcast(f32[8,100,90000]{2,1,0} %pad.1)
 // CHECK:   ROOT %reduce.2 = f32[100,300]{1,0} reduce(f32[8,100,300,300]{3,2,1,0} %bitcast.1, f32[] %zero_1), dimensions={3,0}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[8,100,90000]) -> f32[100] {
@@ -231,9 +293,8 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[32,100,90000]) -> f32[32,100,300] {
 // CHECK:   %param_0.2 = f32[32,100,90000]{2,1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[32,100,300,300]{3,2,1,0} bitcast(f32[32,100,90000]{2,1,0} %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[32,100,90000]{2,1,0} pad(f32[32,100,90000]{2,1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0x0_0
-// CHECK:   %bitcast.1 = f32[32,100,300,300]{3,2,1,0} bitcast(f32[32,100,90000]{2,1,0} %pad.1)
 // CHECK:   ROOT %reduce.4 = f32[32,100,300]{2,1,0} reduce(f32[32,100,300,300]{3,2,1,0} %bitcast.1, f32[] %zero_1), dimensions={3}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[32,100,90000]) -> f32[100] {
@@ -271,9 +332,9 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[10000,100]) -> f32[100,100] {
 // CHECK:   %param_0.2 = f32[10000,100]{1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[100,100,100]{2,1,0} bitcast(f32[10000,100]{1,0}
+// %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[10000,100]{1,0} pad(f32[10000,100]{1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0
-// CHECK:   %bitcast.1 = f32[100,100,100]{2,1,0} bitcast(f32[10000,100]{1,0} %pad.1)
 // CHECK:   ROOT %reduce.2 = f32[100,100]{1,0} reduce(f32[100,100,100]{2,1,0} %bitcast.1, f32[] %zero_1), dimensions={0}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[10000,100]) -> f32[100] {
@@ -281,6 +342,44 @@ ENTRY main {
 // CHECK:   %fusion = f32[100,100]{1,0} fusion(f32[10000,100]{1,0} %input), kind=kInput, calls=%fused_computation
 // CHECK:   %zero = f32[] constant(0)
 // CHECK:   ROOT %reduce.1 = f32[100]{0} reduce(f32[100,100]{1,0} %fusion, f32[] %zero), dimensions={0}, to_apply=%add
+// CHECK: }
+      )");
+
+  EnsureDeterminism(hlo_text);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(TreeReductionRewriterTest, ColumnReductionSimpleNoSquareDivisible) {
+  const char* hlo_text = R"(
+HloModule ReduceWithPadding
+
+add {
+  accum = f32[] parameter(0)
+  op = f32[] parameter(1)
+  ROOT out = f32[] add(accum, op)
+}
+
+ENTRY main {
+  input = f32[10302,100] parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[100] reduce(input, zero), dimensions={0}, to_apply=add
+}
+)";
+
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: %fused_computation (param_0.2: f32[10302,100]) -> f32[102,100] {
+// CHECK:   %param_0.2 = f32[10302,100]{1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[101,102,100]{2,1,0} bitcast(f32[10302,100]{1,0}
+// %param_0.2)
+// CHECK:   %zero_1 = f32[] constant(0)
+// CHECK:   ROOT %reduce.2 = f32[102,100]{1,0} reduce(f32[101,102,100]{2,1,0} %bitcast.1, f32[] %zero_1), dimensions={0}, to_apply=%add
+// CHECK: }
+// CHECK: ENTRY %main (input: f32[10302,100]) -> f32[100] {
+// CHECK:   %input = f32[10302,100]{1,0} parameter(0)
+// CHECK:   %fusion = f32[102,100]{1,0} fusion(f32[10302,100]{1,0} %input), kind=kInput, calls=%fused_computation
+// CHECK:   %zero = f32[] constant(0)
+// CHECK:   ROOT %reduce.1 = f32[100]{0} reduce(f32[102,100]{1,0} %fusion, f32[] %zero), dimensions={0}, to_apply=%add
 // CHECK: }
       )");
 
@@ -309,9 +408,8 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[10000,2,2,2]) -> f32[100,2,2,2] {
 // CHECK:   %param_0.2 = f32[10000,2,2,2]{3,2,1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[100,100,2,2,2]{4,3,2,1,0} bitcast(f32[10000,2,2,2]{3,2,1,0} %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[10000,2,2,2]{3,2,1,0} pad(f32[10000,2,2,2]{3,2,1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0x0_0x0_0
-// CHECK:   %bitcast.1 = f32[100,100,2,2,2]{4,3,2,1,0} bitcast(f32[10000,2,2,2]{3,2,1,0} %pad.1)
 // CHECK:   ROOT %reduce.2 = f32[100,2,2,2]{3,2,1,0} reduce(f32[100,100,2,2,2]{4,3,2,1,0} %bitcast.1, f32[] %zero_1), dimensions={0}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[10000,2,2,2]) -> f32[2,2,2] {
@@ -349,9 +447,9 @@ ENTRY main {
                               R"(
 // CHECK: %fused_computation (param_0.2: f32[1000000,5]) -> f32[1000,5] {
 // CHECK:   %param_0.2 = f32[1000000,5]{1,0} parameter(0)
+// CHECK:   %bitcast.1 = f32[1000,1000,5]{2,1,0} bitcast(f32[1000000,5]{1,0}
+// %param_0.2)
 // CHECK:   %zero_1 = f32[] constant(0)
-// CHECK:   %pad.1 = f32[1000000,5]{1,0} pad(f32[1000000,5]{1,0} %param_0.2, f32[] %zero_1), padding=0_0x0_0
-// CHECK:   %bitcast.1 = f32[1000,1000,5]{2,1,0} bitcast(f32[1000000,5]{1,0} %pad.1)
 // CHECK:   ROOT %reduce.2 = f32[1000,5]{1,0} reduce(f32[1000,1000,5]{2,1,0} %bitcast.1, f32[] %zero_1), dimensions={0}, to_apply=%add
 // CHECK: }
 // CHECK: ENTRY %main (input: f32[1000000,5]) -> f32[5] {

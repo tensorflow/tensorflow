@@ -354,6 +354,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
       distributed_runtime_service(m, "DistributedRuntimeService");
+  distributed_runtime_service.def("shutdown",
+                                  &DistributedRuntimeService::Shutdown);
   py::class_<DistributedRuntimeClient,
              std::shared_ptr<DistributedRuntimeClient>>
       distributed_runtime_client(m, "DistributedRuntimeClient");

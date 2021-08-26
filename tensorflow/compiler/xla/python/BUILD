@@ -28,24 +28,6 @@ pytype_library(
     ],
 )
 
-cc_library(
-    name = "absl_casters",
-    hdrs = ["absl_casters.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-        "@pybind11",
-    ],
-)
-
 pyx_library(
     name = "custom_call_for_test",
     testonly = True,
@@ -145,7 +127,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":absl_casters",
         ":status_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -161,6 +142,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -208,12 +190,14 @@ cc_library(
         "py_client.cc",
         "py_executable.cc",
         "py_values.cc",
+        "sharded_device_array.cc",
     ],
     hdrs = [
         "py_buffer.h",
         "py_client.h",
         "py_executable.h",
         "py_values.h",
+        "sharded_device_array.h",
     ],
     compatible_with = [],
     copts = [
@@ -235,6 +219,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
@@ -245,6 +230,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )
@@ -373,19 +359,21 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
-        ":absl_casters",
         ":jax_jit",
         ":py_client",
         ":types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -445,7 +433,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":absl_casters",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -455,6 +442,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 

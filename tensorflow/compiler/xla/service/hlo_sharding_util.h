@@ -199,6 +199,10 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
 HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
     const HloSharding& sharding, absl::Span<const int64_t> dims_to_keep);
 
+// Returns a sharding that replicates all data dimensions, but keep manual
+// subgroups.
+HloSharding ReplicateAllDataDims(const HloSharding& sharding);
+
 // Returns a sharding the removes given tile dimensions.
 //
 // Precondition: if not tile maximal, the size of each tile dimension must be 1.

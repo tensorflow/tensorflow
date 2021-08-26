@@ -1172,6 +1172,19 @@ func @test_relu6_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707
 
 // -----
 
+// CHECK-LABEL: test_relu6_qu8
+// CHECK: %[[CAST:.+]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: %[[RESCALE:.+]] = "tosa.rescale"(%[[CAST]]) {double_round = false, input_zp = -128 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: %[[CLAMP:.+]] = "tosa.clamp"(%[[RESCALE]]) {max_fp = 6.000000e+00 : f32, max_int = 22 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+// CHECK: %[[OUT:.+]] = "tosa.rescale"(%[[CLAMP]]) {double_round = false, input_zp = -128 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: return %[[OUT]]
+func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.04>> {
+  %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>
+  return %0 : tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>
+}
+
+// -----
+
 // CHECK-LABEL: test_leaky_relu_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<i32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)

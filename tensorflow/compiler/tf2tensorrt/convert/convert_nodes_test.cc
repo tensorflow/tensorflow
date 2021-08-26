@@ -278,7 +278,8 @@ void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) &&
-         lhs.TrtDType() == rhs.TrtDType() && lhs.GetValues() == rhs.GetValues();
+         lhs.TrtDType() == rhs.TrtDType() &&
+         lhs.GetPointer<int8>() == rhs.GetPointer<int8>();
 }
 
 template <typename T>
@@ -287,7 +288,7 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
                      const std::vector<T>& expected_value) {
   ExpectTrtDimsEqualsArray(expected_dims, weights.shape_);
   ASSERT_EQ(expected_value.size(), weights.count()) << weights.DebugString();
-  const T* actual_values = static_cast<const T*>(weights.GetValues());
+  const T* actual_values = weights.GetPointer<T>();
   for (int i = 0; i < expected_value.size(); ++i) {
     EXPECT_EQ(expected_value[i], actual_values[i]);
   }
@@ -328,7 +329,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_EQ(nullptr, trt_weights.values);
       EXPECT_EQ(0, trt_weights.count);
 
-      EXPECT_EQ(nullptr, ptr->GetValues());
+      EXPECT_EQ(nullptr, ptr->GetPointer<int8>());
       EXPECT_EQ(0, ptr->count());
       EXPECT_EQ(0, ptr->size_bytes());
     }
@@ -343,7 +344,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_EQ(nullptr, trt_weights.values);
       EXPECT_EQ(0, trt_weights.count);
 
-      EXPECT_EQ(nullptr, ptr->GetValues());
+      EXPECT_EQ(nullptr, ptr->GetPointer<int8>());
       EXPECT_EQ(0, ptr->count());
       EXPECT_EQ(0, ptr->size_bytes());
     }
@@ -360,12 +361,12 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_NE(nullptr, trt_weights.values);
       EXPECT_EQ(10, trt_weights.count);
 
-      EXPECT_EQ(trt_weights.values, ptr->GetValues());
+      EXPECT_EQ(trt_weights.values, ptr->GetPointer<int8>());
       EXPECT_EQ(10, ptr->count());
       EXPECT_EQ(40, ptr->size_bytes());
     }
     // Test that it doesn't copy the underlying buffer.
-    EXPECT_EQ(weights.GetValues(), copy.GetValues());
+    EXPECT_EQ(weights.GetPointer<int8>(), copy.GetPointer<int8>());
   }
 }
 
@@ -978,7 +979,7 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   TRT_ShapedWeights weights =
       weight_store->GetTempWeights(trt_type, GetTestDims({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
-  memcpy(weights.GetValues(), values.data(), weights.size_bytes());
+  memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
 
   float out_min = 0.0f;
   float out_max = 0.0f;
@@ -1500,7 +1501,7 @@ class OpConverterTest : public ::testing::Test {
       weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
       QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
           << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(weights.GetValues(), values.data(), weights.size_bytes());
+      memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
     }
     TF_EXPECT_OK(
         converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
@@ -2779,11 +2780,6 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     return einsum.operation.node()->def();
   };
 
-  // TODO(b/191407966): re-enable the test for kExplicitBatch.
-  if (trt_mode_ == TrtTestMode::kExplicitBatch) {
-    return;
-  }
-
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     Reset();
     NodeDef node_def = get_einsum_nodedef(tf_type_, "ab,cb->ac");
@@ -2811,120 +2807,120 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
   Status unimplemented_eq =
       errors::Unimplemented("No conversion for einsum equation.");
 
-  std::vector<TestParams> params{
-      // Dot product.
-      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
-          // Outer product.
-          TestParams{"i,k->ik",
-                     {2},
-                     {1, 2},
-                     {3},
-                     {1, 2, 3},
-                     {2, 3},
-                     {1, 2, 3, 2, 4, 6},
-                     unimplemented_eq},
-          // Transpose.
-          TestParams{"ik->ki", {2, 3}, {0, 1, 2, 3, 4, 5}, {},
-                     {},       {3, 2}, {0, 3, 1, 4, 2, 5}, unimplemented_eq},
-          // Diag.
-          TestParams{"ii->i",
-                     {3, 3},
-                     {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                     {},
-                     {},
-                     {3},
-                     {0, 4, 8},
-                     unimplemented_eq},
-          // Trace.
-          TestParams{
-              "ii", {3, 3},          {0, 1, 2, 3, 4, 5, 6, 7, 8}, {}, {}, {},
-              {12}, unimplemented_eq},
-          // MatMul with reduction.
-          TestParams{"abbc,dc->ad",
-                     {1, 2, 2, 3},
-                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                     {2, 3},
-                     {1, 2, 3, 4, 5, 6},
-                     {2, 3},
-                     {1, 2, 3, 2, 4, 6},
-                     unimplemented_eq},
-          // Ellipsis with broadcast.
-          TestParams{"...ik,...jk->...ij",
-                     {1, 3, 1, 4},
-                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                     {2, 1, 1, 4},
-                     {1, 2, 3, 4, 5, 6, 7, 8},
-                     {2, 3, 1, 1},
-                     {20, 60, 100, 44, 148, 252},
-                     unimplemented_eq},
-          // MatMul and Batched MatMul.
-          TestParams{"ab,bc->ac",        {2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
-                     {1, 2, 3, 4, 5, 6}, {2, 2}, {13, 16, 40, 52}},
-          TestParams{"abc,cde->abde",
-                     {1, 2, 3},
-                     {0, 1, 2, 3, 4, 5},
-                     {3, 2, 2},
-                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                     {1, 2, 2, 2},
-                     {23, 26, 29, 32, 68, 80, 92, 104}},
-          TestParams{"abcd,cde->abe",
-                     {1, 2, 2, 3},
-                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                     {2, 3, 2},
-                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                     {1, 2, 2},
-                     {125, 140, 341, 392}},
-          TestParams{"abc,cd->abd",      {1, 2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
-                     {1, 2, 3, 4, 5, 6}, {1, 2, 2}, {13, 16, 40, 52}},
-          TestParams{"acbe,aecd->abcd",
-                     {1, 2, 3, 4},
-                     {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                      12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                     {1, 4, 2, 3},
-                     {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
-                     {1, 3, 2, 3},
-                     {90, 96, 102, 732, 786, 840, 250, 272, 294, 940, 1010,
-                      1080, 410, 448, 486, 1148, 1234, 1320}},
-          TestParams{
-              "aecd,abcd->acbe",
-              {1, 2, 3, 4},
-              {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-              {1, 2, 3, 4},
-              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
-              {1, 3, 2, 2},
-              {20, 140, 92, 788, 148, 460, 412, 1300, 404, 908, 860, 1940}},
-          TestParams{"acd,dce->ae",
-                     {1, 2, 3},
-                     {0, 1, 2, 3, 4, 5},
-                     {3, 2, 2},
-                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                     {1, 2},
-                     {115, 130}},
-          TestParams{"abcd,bace->bade",
-                     {2, 3, 2, 1},
-                     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-                     {3, 2, 2, 1},
-                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                     {3, 2, 1, 1},
-                     {2, 46, 28, 128, 86, 242}},
+  std::vector<TestParams> params {
+    // Dot product.
+    TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
+        // Outer product.
+        TestParams{"i,k->ik",
+                   {2},
+                   {1, 2},
+                   {3},
+                   {1, 2, 3},
+                   {2, 3},
+                   {1, 2, 3, 2, 4, 6},
+                   unimplemented_eq},
+        // Transpose.
+        TestParams{"ik->ki", {2, 3}, {0, 1, 2, 3, 4, 5}, {},
+                   {},       {3, 2}, {0, 3, 1, 4, 2, 5}, unimplemented_eq},
+        // Diag.
+        TestParams{"ii->i",
+                   {3, 3},
+                   {0, 1, 2, 3, 4, 5, 6, 7, 8},
+                   {},
+                   {},
+                   {3},
+                   {0, 4, 8},
+                   unimplemented_eq},
+        // Trace.
+        TestParams{
+            "ii", {3, 3},          {0, 1, 2, 3, 4, 5, 6, 7, 8}, {}, {}, {},
+            {12}, unimplemented_eq},
+        // MatMul with reduction.
+        TestParams{"abbc,dc->ad",
+                   {1, 2, 2, 3},
+                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   {2, 3},
+                   {1, 2, 3, 4, 5, 6},
+                   {2, 3},
+                   {1, 2, 3, 2, 4, 6},
+                   unimplemented_eq},
+        // Ellipsis with broadcast.
+        TestParams{"...ik,...jk->...ij",
+                   {1, 3, 1, 4},
+                   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                   {2, 1, 1, 4},
+                   {1, 2, 3, 4, 5, 6, 7, 8},
+                   {2, 3, 1, 1},
+                   {20, 60, 100, 44, 148, 252},
+                   unimplemented_eq},
+        // MatMul and Batched MatMul.
+        TestParams{"ab,bc->ac",        {2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
+                   {1, 2, 3, 4, 5, 6}, {2, 2}, {13, 16, 40, 52}},
+        TestParams{"abc,cde->abde",
+                   {1, 2, 3},
+                   {0, 1, 2, 3, 4, 5},
+                   {3, 2, 2},
+                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   {1, 2, 2, 2},
+                   {23, 26, 29, 32, 68, 80, 92, 104}},
+        TestParams{"abcd,cde->abe",
+                   {1, 2, 2, 3},
+                   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                   {2, 3, 2},
+                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   {1, 2, 2},
+                   {125, 140, 341, 392}},
+        TestParams{"abc,cd->abd",      {1, 2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
+                   {1, 2, 3, 4, 5, 6}, {1, 2, 2}, {13, 16, 40, 52}},
+        TestParams{"acbe,aecd->abcd",
+                   {1, 2, 3, 4},
+                   {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                    12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                   {1, 4, 2, 3},
+                   {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                   {1, 3, 2, 3},
+                   {90, 96, 102, 732, 786, 840, 250, 272, 294, 940, 1010, 1080,
+                    410, 448, 486, 1148, 1234, 1320}},
+        TestParams{
+            "aecd,abcd->acbe",
+            {1, 2, 3, 4},
+            {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+            {1, 2, 3, 4},
+            {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+            {1, 3, 2, 2},
+            {20, 140, 92, 788, 148, 460, 412, 1300, 404, 908, 860, 1940}},
+        TestParams{"acd,dce->ae",
+                   {1, 2, 3},
+                   {0, 1, 2, 3, 4, 5},
+                   {3, 2, 2},
+                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   {1, 2},
+                   {115, 130}},
+        TestParams{"abcd,bace->bade",
+                   {2, 3, 2, 1},
+                   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                   {3, 2, 2, 1},
+                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   {3, 2, 1, 1},
+                   {2, 46, 28, 128, 86, 242}},
 #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
-          // Deactivating buggy test case for TRT8 per nvbug 3322485.
-          TestParams{"cebfad,fageb->abcdg",
-                     {1, 1, 3, 3, 2, 2},
-                     {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                      12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                      24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35},
-                     {3, 2, 2, 1, 3},
-                     {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
-                      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-                      25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
-                     {2, 3, 1, 2, 2},
-                     {252,  288,  291,  336,  768,  912,  810,  963,
-                      1356, 1608, 1401, 1662, 438,  492,  495,  558,
-                      1176, 1338, 1236, 1407, 1986, 2256, 2049, 2328}},
+        // Deactivating buggy test case for TRT8 per nvbug 3322485.
+        TestParams{"cebfad,fageb->abcdg",
+                   {1, 1, 3, 3, 2, 2},
+                   {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                    12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                    24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35},
+                   {3, 2, 2, 1, 3},
+                   {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+                    25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
+                   {2, 3, 1, 2, 2},
+                   {252,  288,  291,  336,  768,  912,  810,  963,
+                    1356, 1608, 1401, 1662, 438,  492,  495,  558,
+                    1176, 1338, 1236, 1407, 1986, 2256, 2049, 2328}},
 #endif
   };
 
@@ -7384,6 +7380,7 @@ struct ResizeTestParams {
   std::vector<int> input_dims;
   std::vector<int> output_resize_dims;
   std::vector<float> input_value;
+  bool size_as_tensor;
   bool align_corners;
   std::vector<int> expected_output_dims;
   std::vector<float> expected_nearest_output_values;
@@ -7402,7 +7399,13 @@ void TestConvertResize(ParameterizedOpConverterTestBase* test,
   test->AddTestTensor("input", p.input_dims, test->get_tf_type(),
                       p.input_value);
   // Create output size.
-  test->AddTestWeights("size", {2}, p.output_resize_dims, DT_INT32);
+  if (p.size_as_tensor) {
+    std::vector<int32> size_dims{2};
+    std::vector<int32> size_values{p.output_resize_dims};
+    test->AddTestTensor("size", size_dims, DT_INT32, size_values, size_dims);
+  } else {
+    test->AddTestWeights("size", {2}, p.output_resize_dims, DT_INT32);
+  }
 
   std::vector<float> expected_out;
 
@@ -7435,48 +7438,45 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
         "The input \"input\" for ResizeBilinear must be a "
         "tensor, at my_resize");
   }
-  {
-    // Output dimension is a tensor, should fail.
-    Reset();
-    NodeDef node_def = MakeResizeNodeDef<ops::ResizeBilinear>(tf_type_,
-                                                              /*align_corners=*/
-                                                              true);
-    AddTestTensor("input", {1, 2});
-    AddTestTensor("size", {1, 2});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"size\" for ResizeBilinear must be a "
-        "constant, at my_resize");
-  }
-
-  const auto job_status =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "TensorRT IResizeLayer requires input with static "
-                "shape")
-          : Status::OK();
 
   std::vector<ResizeTestParams> params{
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
        /*input_values=*/{2.0f, -1.0f},
+       /*size_as_tensor=*/false,
        /*align_corners=*/false,
        /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
        /*expected_nearest_output_values=*/
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f},
-       /*status=*/job_status},
+       /*status=*/Status::OK()},
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
        /*input_values=*/{2.0f, -1.0f},
+       /*size_as_tensor=*/false,
        /*align_corners=*/true,
        /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
        /*expected_nearest_output_values=*/
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
-       /*status=*/job_status}};
+       /*status=*/Status::OK()}};
+
+  if (trt_mode_ != TrtTestMode::kImplicitBatch) {
+    // Size as a tensor is not supported in implicit batch mode.
+    params.push_back({/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
+                      /*output_resize_dims=*/{2, 3},  // H_out, W_out
+                      /*input_values=*/{2.0f, -1.0f},
+                      /*size_as_tensor=*/true,
+                      /*align_corners=*/true,
+                      /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
+                      /*expected_nearest_output_values=*/
+                      {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
+                      /*expected_bilinear_output_values=*/
+                      {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
+                      /*status=*/Status::OK()});
+  }
 
   for (auto p : params) {
     TestConvertResize<ops::ResizeNearestNeighbor>(this, p);

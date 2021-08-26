@@ -167,6 +167,8 @@ class HostComputeOp : public XlaOpKernel {
       xla::FrontendAttributes attrs;
       (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
           channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+          xla::kXlaHostTransferTfRendezvousHandlerName;
       (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
           xla::primitive_util::LowercasePrimitiveTypeName(
               xla_shape.element_type());
@@ -227,6 +229,8 @@ class HostComputeOp : public XlaOpKernel {
       xla::FrontendAttributes attrs;
       (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
           channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+          xla::kXlaHostTransferTfRendezvousHandlerName;
       (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
           xla::primitive_util::LowercasePrimitiveTypeName(
               xla_output_shapes->at(i).element_type());
@@ -433,6 +437,8 @@ class SendToHostOp : public XlaOpKernel {
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+        xla::kXlaHostTransferTfRendezvousHandlerName;
     (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
         xla::primitive_util::LowercasePrimitiveTypeName(
             xla_shape.element_type());
@@ -489,6 +495,8 @@ class RecvFromHostOp : public XlaOpKernel {
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
     (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+        xla::kXlaHostTransferTfRendezvousHandlerName;
     (*attrs.mutable_map())[xla::kXlaHostTransferOriginalTypeAttr] =
         xla::primitive_util::LowercasePrimitiveTypeName(
             xla_shape.element_type());

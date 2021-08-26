@@ -1242,7 +1242,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   EXPECT_TRUE(
       absl::StrContains(status.error_message(),
                         "All 10 retry attempts failed. The last failure: "
-                        "Unavailable: important HTTP error 503"))
+                        "important HTTP error 503"))
       << status;
 }
 
@@ -1307,7 +1307,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
     EXPECT_TRUE(
         absl::StrContains(status.error_message(),
                           "Upload to gs://bucket/path/writeable.txt failed, "
-                          "caused by: Not found: important HTTP error 410"))
+                          "caused by: important HTTP error 410"))
         << status;
     EXPECT_TRUE(
         absl::StrContains(status.error_message(),

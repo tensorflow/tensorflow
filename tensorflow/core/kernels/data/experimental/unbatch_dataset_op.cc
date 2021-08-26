@@ -15,6 +15,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -136,12 +137,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->clear();
             out_tensors->reserve(tensors_.size());
             for (int i = 0; i < tensors_.size(); ++i) {
-              Tensor slice = tensors_[i].SubSlice(current_index_);
-              if (slice.IsAligned()) {
-                out_tensors->push_back(std::move(slice));
-              } else {
-                out_tensors->push_back(tensor::DeepCopy(std::move(slice)));
-              }
+              out_tensors->push_back(
+                  MaybeCopySubSlice(tensors_[i], current_index_));
             }
             ++current_index_;
             *end_of_sequence = false;

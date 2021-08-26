@@ -183,10 +183,20 @@ class TRT_ShapedWeights {
 
   const Tensor& GetTensor() const { return tensor_; }
 
-  // Returns the raw pointer to the underlying buffer which holds the weights
-  // value.
-  void* GetValues() const {
-    return const_cast<char*>(tensor_.tensor_data().data());
+  // Returns a pointer of type const T to the underlying buffer of the tensor.
+  template <typename T>
+  const T* GetPointer() const {
+    int64 num_elem =
+        (tensor_.NumElements() * DataTypeSize(tensor_.dtype())) / sizeof(T);
+    return tensor_.bit_casted_shaped<T, 1>({num_elem}).data();
+  }
+
+  // Returns a pointer of type T to the underlying buffer of the tensor.
+  template <typename T>
+  T* GetPointer() {
+    int64 num_elem =
+        (tensor_.NumElements() * DataTypeSize(tensor_.dtype())) / sizeof(T);
+    return tensor_.bit_casted_shaped<T, 1>({num_elem}).data();
   }
 
   // Fills all the weight values with value.

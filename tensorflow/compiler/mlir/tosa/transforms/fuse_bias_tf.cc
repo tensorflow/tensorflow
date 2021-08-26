@@ -123,9 +123,6 @@ std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
 
-static PassRegistration<FuseBiasTF> pass(
-    PASS_NAME, "Fuse tf.Op + tf.BiasAdd and legalized to TOSA.");
-
 }  // namespace tosa
 
 }  // namespace mlir

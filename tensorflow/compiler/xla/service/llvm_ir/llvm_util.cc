@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -650,32 +653,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   }
 
   return function;
-}
-
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
-  auto options = config.debug_options().xla_backend_extra_options();
-  if (!options.empty()) {
-    std::vector<string> fake_argv_storage;
-    fake_argv_storage.push_back("");
-    for (const auto& it : options) {
-      // Skip options the XLA backend itself consumes.
-      if (!absl::StartsWith(it.first, "xla_")) {
-        if (it.second.empty()) {
-          fake_argv_storage.push_back(it.first);
-        } else {
-          fake_argv_storage.push_back(it.first + "=" + it.second);
-        }
-      }
-    }
-
-    VLOG(2) << "Passing argv to LLVM:";
-    std::vector<const char*> fake_argv;
-    for (const auto& s : fake_argv_storage) {
-      fake_argv.push_back(s.c_str());
-      VLOG(2) << s;
-    }
-    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
-  }
 }
 
 std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,

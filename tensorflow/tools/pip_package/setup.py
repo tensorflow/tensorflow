@@ -83,7 +83,7 @@ REQUIRED_PACKAGES = [
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
     'libclang ~= 11.1.0',
-    'flatbuffers ~= 1.12.0',
+    'flatbuffers ~= 2.0',
     'google_pasta ~= 0.2',
     'h5py ~= 3.1.0',
     'keras_preprocessing ~= 1.1.2',
@@ -104,6 +104,7 @@ REQUIRED_PACKAGES = [
     'tensorboard ~= 2.6',
     'tensorflow_estimator ~= 2.6',
     'keras ~= 2.6',
+    'tensorflow-io-gcs-filesystem >= 0.20.0',
 ]
 
 

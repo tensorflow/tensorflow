@@ -65,10 +65,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
-    std::array<int64_t, 3> reduction_tiling = GetReductionTiling(
-        reduction_dimensions,
-        primitive_util::BitWidth(hlo->shape().element_type()),
-        cuda_compute_capability_);
+    std::array<int64_t, 3> reduction_tiling =
+        GetReductionTiling(reduction_dimensions, cuda_compute_capability_);
     VLOG(5) << "Input: " << hlo->ToString();
 
     HloInstruction *input = hlo->mutable_operand(0);
@@ -116,7 +114,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     int64_t num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
+    bool no_padding_necessary = reduced_dim_size % num_fit == 0;
     HloInstruction *padded = [&] {
+      if (no_padding_necessary) {
+        return input;
+      }
+
       int64_t padded_num_elements = num_fit * num_fit;
       PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
       padding_config.mutable_dimensions(reduced_input_dimension)
@@ -136,7 +139,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
-        reshaped_dimensions.push_back(num_fit);
+        if (no_padding_necessary) {
+          reshaped_dimensions.push_back(reduced_dim_size / num_fit);
+        } else {
+          reshaped_dimensions.push_back(num_fit);
+        }
+
         reshaped_dimensions.push_back(num_fit);
       } else {
         reshaped_dimensions.push_back(padded->shape().dimensions(dim_idx));
@@ -145,6 +153,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     Shape reshaped_shape =
         ShapeUtil::MakeShape(input_shape.element_type(), reshaped_dimensions);
+
     HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
         HloInstruction::CreateBitcast(reshaped_shape, padded));
     VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
@@ -182,11 +191,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Remove reduced dimension.
     outer_reduce_dimensions.erase(outer_reduce_dimensions.begin() +
                                   outer_reduced_dimension);
-    Shape outer_reduce_shape = ShapeUtil::MakeShape(input_shape.element_type(),
-                                                    outer_reduce_dimensions);
     std::unique_ptr<HloInstruction> outer_reduce = HloInstruction::CreateReduce(
-        outer_reduce_shape, inner_reduce, initial_value,
-        {outer_reduced_dimension}, hlo->to_apply());
+        hlo->shape(), inner_reduce, initial_value, {outer_reduced_dimension},
+        hlo->to_apply());
 
     VLOG(1) << "Generated outer reduction: " << outer_reduce->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(outer_reduce));

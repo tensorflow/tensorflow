@@ -326,6 +326,78 @@ TEST(WorkerIndexResolverTest, NumericPorts) {
   EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:34567"), IsOkAndHolds(2));
 }
 
+TEST(WorkerIndexResolverTest, IPv6Addresses) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "[1080:0:0:0:8:800:200C:417A]", "[1080:0:0:0:8:800:200C:417B]",
+      "[1080:0:0:0:8:800:200C:417C]"});
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417A]:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417B]:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417C]:34567"));
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417A]:12345");
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417B]:23456");
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417C]:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417A]:12345"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417B]:23456"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417C]:34567"),
+              IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, IPv6AddressesWithDynamicPort) {
+  WorkerIndexResolver resolver(
+      std::vector<std::string>{"[1080:0:0:0:8:800:200C:417A]:%port%",
+                               "[1080:0:0:0:8:800:200C:417B]:%port%",
+                               "[1080:0:0:0:8:800:200C:417C]:%port%"});
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417A]:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417B]:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("[1080:0:0:0:8:800:200C:417C]:34567"));
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417A]:12345");
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417B]:23456");
+  resolver.AddWorker("[1080:0:0:0:8:800:200C:417C]:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417A]:12345"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417B]:23456"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("[1080:0:0:0:8:800:200C:417C]:34567"),
+              IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, AddressesWithProtocols) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "http://127.0.0.1", "http://127.0.0.1", "http://127.0.0.1"});
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:34567"));
+  resolver.AddWorker("http://127.0.0.1:12345");
+  resolver.AddWorker("http://127.0.0.1:23456");
+  resolver.AddWorker("http://127.0.0.1:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:12345"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:23456"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:34567"),
+              IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, AddressesWithProtocolsAndDynamicPorts) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "http://127.0.0.1:%port_name%", "http://127.0.0.1:%port_name%",
+      "http://127.0.0.1:%port_name%"});
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("http://127.0.0.1:34567"));
+  resolver.AddWorker("http://127.0.0.1:12345");
+  resolver.AddWorker("http://127.0.0.1:23456");
+  resolver.AddWorker("http://127.0.0.1:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:12345"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:23456"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("http://127.0.0.1:34567"),
+              IsOkAndHolds(2));
+}
+
 TEST(WorkerIndexResolverTest, HostNameHasColons) {
   WorkerIndexResolver resolver(
       std::vector<std::string>{":worker:task:0:%port%", ":worker:task:1:%port%",

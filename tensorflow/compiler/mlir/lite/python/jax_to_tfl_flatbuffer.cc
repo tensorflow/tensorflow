@@ -35,7 +35,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
+#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -48,7 +50,72 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
 
+// Error collector that simply ignores errors reported.
+class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
+ public:
+  void AddError(int line, int column, const string& message) override {}
+};
+
+bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
+  tensorflow::protobuf::TextFormat::Parser parser;
+  NoOpErrorCollector collector;
+  parser.RecordErrorsTo(&collector);
+  return hlo_proto->ParseFromString(contents) ||
+         parser.ParseFromString(contents, hlo_proto) ||
+         hlo_proto->mutable_hlo_module()->ParseFromString(contents) ||
+         parser.ParseFromString(contents, hlo_proto->mutable_hlo_module());
+}
+
+mlir::OwningModuleRef HloToMlirHloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations) {
+  xla::HloProto hlo_proto;
+  string content(input.data(), input.size());
+  if (!LoadHloProto(content, &hlo_proto)) {
+    LOG(ERROR) << "Failed to load proto";
+    return nullptr;
+  }
+
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  auto status = ConvertHloToMlirHlo(
+      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
+  if (!status.ok()) {
+    LOG(ERROR) << "Hlo module import failed: " << status;
+    return nullptr;
+  }
+
+  return module;
+}
+
+mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations) {
+  xla::HloProto hlo_proto;
+  string content(input.data(), input.size());
+
+  auto hlo_module_error = xla::ParseAndReturnUnverifiedModule(content);
+  if (!hlo_module_error.ok()) {
+    LOG(ERROR) << "HLO Module loading failed: " << hlo_module_error.status();
+    return nullptr;
+  }
+
+  auto hlo_module = std::move(hlo_module_error.ValueOrDie());
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  auto status =
+      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
+  if (!status.ok()) {
+    LOG(ERROR) << "HLO Module import failed: " << status;
+    return nullptr;
+  }
+
+  return module;
+}
+
+}  // namespace
 Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                     const toco::ModelFlags& model_flags,
                                     const toco::TocoFlags& toco_flags,
@@ -91,9 +158,9 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
 
   mlir::OwningModuleRef module;
   if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {
-    module = xla::HloTextToMlirHloTranslateFunction(input, &context, false);
+    module = HloTextToMlirHloTranslateFunction(input, &context, false);
   } else if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_PROTO) {
-    module = xla::HloToMlirHloTranslateFunction(input, &context, false);
+    module = HloToMlirHloTranslateFunction(input, &context, false);
   } else {
     return errors::InvalidArgument("unknown hlo format type.");
   }

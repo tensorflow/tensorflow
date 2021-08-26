@@ -20,9 +20,9 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -652,7 +652,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   // Invariant: optimized_graph contains the most recently optimized version of
   // the graph.
   auto original_producer = item.graph.versions().producer();
-  optimized_graph->Swap(&item.graph);
+  *optimized_graph = std::move(item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
   GraphOptimizer* sa_optimizer = nullptr;
@@ -760,20 +760,21 @@ Status MetaOptimizer::RunOptimizer(
 
   // If optimizer doesn't need a function library, we will replace it with a
   // stub before running optimization, and will put it back at the end.
-  FunctionDefLibrary optimized_graph_function_library;
+  std::unique_ptr<FunctionDefLibrary> optimized_graph_function_library;
   const bool is_function_library_aware = optimizer->UsesFunctionLibrary();
 
   // Replace function library in optimized graph with a stub.
   if (!is_function_library_aware) {
     VLOG(3) << "Replace function library with a stub for " << optimizer->name();
-    optimized_graph_function_library.Swap(optimized_graph->mutable_library());
+    optimized_graph_function_library =
+        absl::WrapUnique(optimized_graph->release_library());
     *optimized_graph->mutable_library() =
-        GetFunctionDefLibraryStub(optimized_graph_function_library);
+        GetFunctionDefLibraryStub(*optimized_graph_function_library);
   }
 
   // This swaps the current optimized_graph into optimized item and
   // resets optimized_graph to an empty graph.
-  optimized_graph->Swap(&optimized_item->graph);
+  optimized_item->graph = std::move(*optimized_graph);
   *optimized_graph = GraphDef();
   optimizer->set_deadline_usec(this->deadline_usec());
   Status status =
@@ -784,7 +785,7 @@ Status MetaOptimizer::RunOptimizer(
 
   string message;
   if (!status.ok()) {
-    optimized_graph->Swap(&optimized_item->graph);
+    *optimized_graph = std::move(optimized_item->graph);
     if (errors::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
@@ -809,7 +810,8 @@ Status MetaOptimizer::RunOptimizer(
 
   // Swap function library back into the main graph.
   if (!is_function_library_aware) {
-    optimized_graph->mutable_library()->Swap(&optimized_graph_function_library);
+    optimized_graph->set_allocated_library(
+        optimized_graph_function_library.release());
   }
 
   OptimizerResult optimizer_result{optimizer->name(), message, status};
@@ -1067,10 +1069,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
         // Implementation selector needs to have access to valid function
         // signature and attributes, and it doesn't need actual function body.
-        FunctionDefLibrary func_item_function_library;
-        func_item_function_library.Swap(func_item.graph.mutable_library());
+        std::unique_ptr<FunctionDefLibrary> func_item_function_library(
+            func_item.graph.release_library());
         *func_item.graph.mutable_library() =
-            GetFunctionDefLibraryStub(func_item_function_library);
+            GetFunctionDefLibraryStub(*func_item_function_library);
 
         TF_RETURN_IF_ERROR(implementation_selector.Optimize(
             cluster, func_item, &optimized_func_graph));

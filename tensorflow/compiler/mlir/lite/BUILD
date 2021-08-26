@@ -22,11 +22,13 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
     ],
 )
 
@@ -668,12 +670,10 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -1157,25 +1157,5 @@ cc_library(
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-# Smaller version of flatbuffer_translate which only converts flatbuffer to MLIR.
-cc_library(
-    name = "flatbuffer_to_mlir",
-    srcs = [
-        "flatbuffer_to_mlir.cc",
-    ],
-    hdrs = [
-        "flatbuffer_to_mlir.h",
-    ],
-    deps = [
-        ":flatbuffer_import",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
     ],
 )

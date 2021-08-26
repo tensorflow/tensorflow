@@ -25,8 +25,10 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 class TfReshapeTest(googletest.TestCase):
 
   def test_reshape_unknown_1d(self):
+    # TODO(ezhulenev): Make it work without shape constraint.
     mlir_function = """
-      func @test(%arg0: tensor<?xf32>) -> tensor<?x?xf32> {
+      func @test(%arg0: tensor<?xf32>
+                {cpurt.constraint = "shape"}) -> tensor<?x?xf32> {
         %0 = "tf.Const"() { value = dense<[2, -1]> : tensor<2xi32> }
              : () -> tensor<2xi32>
         %1 = "tf.Reshape"(%arg0, %0)

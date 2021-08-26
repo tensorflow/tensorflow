@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -99,8 +100,11 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Perform optimizations in a meaningful order.
   for (const auto& optimization : kTFDataOptimizations) {
-    TF_RETURN_IF_ERROR(
-        ApplyOptimization(optimization, cluster, &optimized_item));
+    const uint64 pass_start_us = Env::Default()->NowMicros();
+    Status status = ApplyOptimization(optimization, cluster, &optimized_item);
+    const uint64 pass_end_us = Env::Default()->NowMicros();
+    metrics::UpdateTFDataPassTime(optimization, pass_end_us - pass_start_us);
+    if (!status.ok()) return status;
   }
 
   // Store the final result of all the optimizations in `output`.

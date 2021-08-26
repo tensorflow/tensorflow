@@ -38,10 +38,10 @@
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -70,7 +70,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
 }
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
-xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
+StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -84,7 +84,7 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   if (mlir::makeOptimizingTransformer(
           /*optLevel=*/2, /*sizeLevel=*/0,
           target_machine.get())(llvm_module.get())) {
-    return xla::InternalError("Failed to run LLVM optimizer passess");
+    return tensorflow::errors::Internal("Failed to run LLVM optimizer passess");
   }
 
   // Set up the output stream.
@@ -98,19 +98,18 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
                                           llvm::CGFT_ObjectFile, false)) {
-    return xla::InternalError("Failed add passes to emit file");
+    return tensorflow::errors::Internal("Failed add passes to emit file");
   }
   codegen_passes.run(*llvm_module);
   return ostream.str().str();
 }
 
-xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                llvm::ArrayRef<std::string> architectures,
-                llvm::ArrayRef<int64_t> tile_sizes,
-                llvm::ArrayRef<int64_t> unroll_factors,
-                int64_t max_supported_rank, bool embed_memref_prints,
-                bool print_ptx, bool print_llvmir, bool enable_ftz,
-                bool cpu_codegen, bool jit_compile) {
+Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+           llvm::ArrayRef<std::string> architectures,
+           llvm::ArrayRef<int64_t> tile_sizes,
+           llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
+           bool embed_memref_prints, bool print_ptx, bool print_llvmir,
+           bool enable_ftz, bool cpu_codegen, bool jit_compile) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -129,7 +128,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Write .a file.
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), output_file.str(), binary));
-  return xla::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace

@@ -116,8 +116,8 @@ func @inline_bcasted_shape_operands(%a : tensor<?xindex>, %b : tensor<?xindex>,
 // CHECK-LABEL: @move_shape_of_into_assuming
 // CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<?x32xf32>)
 func @move_shape_of_into_assuming(%arg0 : !shape.witness,
-    %arg1 : tensor<?x32xf32>) -> tensor<3xindex> {
-  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<?x32xf32>, tensor<?x32xf32>, tensor<3xindex>) {
+    %arg1 : tensor<?x32xf32>) -> tensor<2xindex> {
+  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<?x32xf32>, tensor<?x32xf32>, tensor<2xindex>) {
   // CHECK:       %[[DUMMY_TENSOR:.*]] = "dummy.tensor"() : () -> tensor<?x32xf32>
   // CHECK:       %[[SHAPE:.*]] = shape.shape_of %[[DUMMY_TENSOR]]
   // CHECK:       shape.assuming_yield %[[ARG1]], %[[DUMMY_TENSOR]], %[[SHAPE]]
@@ -128,9 +128,9 @@ func @move_shape_of_into_assuming(%arg0 : !shape.witness,
     %1 = "dummy.tensor"() : () -> tensor<?x32xf32>
     shape.assuming_yield %arg1, %1 : tensor<?x32xf32>, tensor<?x32xf32>
   }
-  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
   "use"(%0#0, %0#1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> ()
-  return %2 : tensor<3xindex>
+  return %2 : tensor<2xindex>
 }
 
 // -----
@@ -159,7 +159,7 @@ func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
 
 // CHECK-LABEL: @not_move_shape_of_into_assuming
 func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
-    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<3xindex> {
+    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<2xindex> {
   // CHECK:      shape.assuming
   // CHECK-SAME: {
   // CHECK-NOT:    shape_of
@@ -170,8 +170,8 @@ func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
     shape.assuming_yield %arg1, %arg2 : tensor<?x32xf32>, tensor<?x32xf32>
   }
   "some.other.op"() : () -> ()
-  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
-  return %2 : tensor<3xindex>
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
+  return %2 : tensor<2xindex>
 }
 
 // -----

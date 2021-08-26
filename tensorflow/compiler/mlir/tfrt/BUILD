@@ -24,6 +24,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
 )
@@ -150,6 +151,7 @@ tfrt_cc_library(
         "@llvm-project//mlir:Async",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_async_runtime_api",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -268,6 +270,7 @@ cc_library(
     srcs = [
         "transforms/cross_device_transfer.cc",
         "transforms/deduplicate_batch_function.cc",
+        "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",

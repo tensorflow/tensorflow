@@ -559,23 +559,52 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
  public:
   LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
                                 PatternRewriter &rewriter) const override {
-    auto preceding_cast = dyn_cast<CastOp>(raw_data_op.input().getDefiningOp());
-    if (!getQuantizedElementType(preceding_cast)) {
+    auto preceding_op = raw_data_op.input().getDefiningOp();
+    if (isa<BuildListOp>(preceding_op)) {
+      return rewritePrecedingListOp(raw_data_op, rewriter);
+    }
+
+    auto preceding_cast = dyn_cast_or_null<CastOp>(preceding_op);
+    if (!preceding_cast || !getQuantizedElementType(preceding_cast)) {
       return failure();
     }
     // If there are redundant casts, hoist output of raw data op originating op.
-    if (auto redundant_cast = preceding_cast.arg().getDefiningOp()) {
-      if (!isa<CastOp>(redundant_cast) ||
-          cast<CastOp>(redundant_cast).arg().getType() !=
-              preceding_cast.out().getType()) {
+    if (auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>()) {
+      if (!redundant_cast ||
+          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
         return failure();
       }
-      raw_data_op.output().replaceAllUsesWith(
-          cast<CastOp>(redundant_cast).arg());
+      raw_data_op.output().replaceAllUsesWith(redundant_cast.arg());
     } else {
       // If the argument of cast op is input, then simply remove the RawData op.
       raw_data_op.output().replaceAllUsesWith(preceding_cast.out());
     }
+    return success();
+  }
+
+  LogicalResult rewritePrecedingListOp(TFRQuantRawDataOp raw_data_op,
+                                       PatternRewriter &rewriter) const {
+    llvm::SmallVector<Value> new_list_values;
+    auto preceding_list = raw_data_op.input().getDefiningOp<BuildListOp>();
+    for (Value operand : preceding_list.tensors()) {
+      auto preceding_cast = operand.getDefiningOp<CastOp>();
+      if (!preceding_cast || !getQuantizedElementType(preceding_cast)) {
+        return failure();
+      }
+
+      // This function currently only supports the case with redundant casts.
+      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
+      if (!redundant_cast ||
+          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
+        return failure();
+      }
+
+      new_list_values.push_back(redundant_cast.arg());
+    }
+
+    auto new_list = rewriter.create<BuildListOp>(
+        raw_data_op.getLoc(), preceding_list.getType(), new_list_values);
+    raw_data_op.output().replaceAllUsesWith(new_list.out());
     return success();
   }
 };

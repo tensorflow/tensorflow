@@ -34,6 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("clip_by_value")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):

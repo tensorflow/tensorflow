@@ -65,7 +65,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
-
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
 GLOBAL_TEST_VALUE = None
@@ -80,16 +79,13 @@ def c_tfe_py_fastpath_execute(a,
   assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
-    return pywrap_tfe.TFE_Py_FastPathExecute(ctx,
-                                             "MatMul", name,
-                                             a, b, "transpose_a", transpose_a,
+    return pywrap_tfe.TFE_Py_FastPathExecute(ctx, "MatMul", name, a, b,
+                                             "transpose_a", transpose_a,
                                              "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
-      message = e.message + " name: " + name
-    else:
-      message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+      e.message += " name: " + name
+    six.raise_from(core._status_to_exception(e), None)
 
 
 def run_benchmark(func, num_iters, execution_mode=None):
@@ -205,6 +201,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_create_constant(42, dtype=dtypes.int32, cached=False)
 
   def _benchmark_add(self, a, b):
+
     def func():
       return memoryview(math_ops.add_v2(a, b))
 
@@ -214,6 +211,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._run(func, 30000)
 
   def _benchmark_add_operator_overload(self, a, b):
+
     def func():
       return memoryview(a + b)
 
@@ -413,7 +411,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: np.dot(a, b)
     self._run(func, num_iters)
 
-  def _benchmark_tf_matmul(self, m, transpose_b, num_iters,
+  def _benchmark_tf_matmul(self,
+                           m,
+                           transpose_b,
+                           num_iters,
                            execution_mode=None):
     func = lambda: math_ops.matmul(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
@@ -834,6 +835,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def _benchmark_forwardprop_in_defun_matmul_CPU(self, shape):
     with ops.device(CPU):
+
       @def_function.function
       def compiled_function(x, tangent):
         with forwardprop.ForwardAccumulator(x, tangent) as acc:
@@ -933,8 +935,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_reduce_logsumexp(device=GPU)
 
   def benchmark_tf_reduce_logsumexp_GPU_async(self):
-    self._benchmark_tf_reduce_logsumexp(device=GPU,
-                                        execution_mode=context.ASYNC)
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC)
 
   @test_util.disable_tfrt(
       "b/169371527: Support inserting transfer op in lowering.")
@@ -1071,8 +1073,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32)
 
   def benchmark_tf_random_uniform_2_by_2_float_GPU(self):
-    self._benchmark_tf_random_uniform_2_by_2(
-        dtype=dtypes.float32, device=GPU)
+    self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32, device=GPU)
 
   def benchmark_tf_random_uniform_2_by_2_default_setting_CPU(self):
     with context.device(CPU):
@@ -1115,8 +1116,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_dropout_2_by_2(rate=0, is_rate_tensor=False)
 
   def benchmark_tf_dropout_scalar_rate_2_by_2_GPU_rate_0(self):
-    self._benchmark_tf_dropout_2_by_2(rate=0.0,
-                                      is_rate_tensor=False, device=GPU)
+    self._benchmark_tf_dropout_2_by_2(
+        rate=0.0, is_rate_tensor=False, device=GPU)
 
   def benchmark_tf_dropout_2_by_2_CPU_rate_0(self):
     self._benchmark_tf_dropout_2_by_2(rate=0.0)
@@ -1172,8 +1173,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     defined = function.defun(func)
     t = constant_op.constant(0.0)
+
     def cache_computation():
       return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+
     self._run(cache_computation, 30000)
 
   def benchmark_defun_with_signature(self):
@@ -1197,8 +1200,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     defined = function.defun(
         func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
     t = constant_op.constant(0.0)
+
     def signature_computation():
       return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+
     self._run(signature_computation, 30000)
 
   def benchmark_matmul_read_variable_op_2_by_2_CPU(self):
@@ -1357,6 +1362,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
               30000)
 
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
+
     @def_function.function
     def add_all(*args):
       return math_ops.add_n(*args)
@@ -1439,6 +1445,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._run(fn, 10000)
 
   def benchmark_tf_nest_flatten_none(self):
+
     def fn():
       nest.flatten(None)
 
@@ -1446,6 +1453,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_nest_flatten(self):
     nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+
     def fn():
       nest.flatten(nested)
 

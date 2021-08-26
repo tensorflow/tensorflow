@@ -22,6 +22,7 @@ import itertools
 import pickle
 import re
 import sys
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -240,6 +241,28 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
 
+  @unittest.expectedFailure
+  def testMethodAllowDynamicVariableWithoutGuards(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._var = 0
+
+      def __call__(self, val):
+        self.compute(val)
+        return self._var
+
+      @def_function.function
+      def compute(self, val):
+        self._var = variables.Variable(val)
+
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
+    foo = Foo()
+    self.assertAllEqual(foo(0.3), 0.3)
+    self.assertAllEqual(
+        foo(0.9), 0.9, 'https://github.com/tensorflow/tensorflow/issues/27120')
+
   def testMethodAllowDynamicVariable(self):
 
     class Foo:
@@ -297,11 +320,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(foo.trace_count, 2)
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
-    msg = ('tf.function-decorated function tried to ' +
-           'create variables on non-first call.')
+    msg = 'singleton tf.Variable.*on the first call'
     with self.assertRaisesRegex(ValueError, msg):
-      self.assertAllEqual(foo(False), 2.0)
-      self.assertEqual(foo.trace_count, 3)
+      foo(False)
+    self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(
@@ -754,12 +776,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    # No retracing because v2's data type and shape are the same as v1
-    self.assertEqual(trace_count[0], 1)
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    # Retracing because of data type change
-    self.assertEqual(trace_count[0], 2)
+    self.assertEqual(trace_count[0], 3)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):

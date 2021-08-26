@@ -488,5 +488,99 @@ TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
 }
 
+TEST_F(HloLivenessAnalysisTest, PropagateLivenessFromConditionalComputation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule main.67
+
+%region_0.10 (Arg_0.11: (s32[], s32[], f32[1024,3], s32[1])) -> (s32[], s32[], f32[1024,3], s32[1]) {
+  %Arg_0.11 = (s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) parameter(0)
+  %get-tuple-element.17 = s32[] get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %Arg_0.11), index=0, metadata={op_name="while"}
+  %constant.13 = s32[] constant(1)
+  %add.25 = s32[] add(s32[] %get-tuple-element.17, s32[] %constant.13), metadata={op_name="while/add_1"}
+  %get-tuple-element.18 = s32[] get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %Arg_0.11), index=1, metadata={op_name="while"}
+  %add.22 = s32[] add(s32[] %get-tuple-element.18, s32[] %constant.13), metadata={op_name="while/add"}
+  %get-tuple-element.19 = f32[1024,3]{1,0} get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %Arg_0.11), index=2, metadata={op_name="while"}
+  %constant.16 = f32[] constant(0)
+  %constant.15 = f32[] constant(1)
+  %rng.21 = f32[3]{0} rng(f32[] %constant.16, f32[] %constant.15), distribution=rng_uniform, metadata={op_name="while/random_uniform/RandomUniform"}
+  %reshape.23 = f32[1,3]{1,0} reshape(f32[3]{0} %rng.21), metadata={op_name="while/TensorArrayV2Write/TensorListSetItem"}
+  %constant.12 = s32[] constant(0)
+  %dynamic-update-slice.24 = f32[1024,3]{1,0} dynamic-update-slice(f32[1024,3]{1,0} %get-tuple-element.19, f32[1,3]{1,0} %reshape.23, s32[] %get-tuple-element.18, s32[] %constant.12), metadata={op_name="while/TensorArrayV2Write/TensorListSetItem"}
+  %get-tuple-element.20 = s32[1]{0} get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %Arg_0.11), index=3, metadata={op_name="while"}
+  ROOT %tuple.26 = (s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) tuple(s32[] %add.25, s32[] %add.22, f32[1024,3]{1,0} %dynamic-update-slice.24, s32[1]{0} %get-tuple-element.20), metadata={op_name="while"}
+}
+
+%region_1.27 (Arg_0.28: (s32[], s32[], f32[1024,3], s32[1])) -> pred[] {
+  %Arg_0.28 = (s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) parameter(0)
+  %get-tuple-element.30 = s32[] get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %Arg_0.28), index=1, metadata={op_name="while"}
+  %constant.29 = s32[] constant(1024)
+  ROOT %compare.31 = pred[] compare(s32[] %get-tuple-element.30, s32[] %constant.29), direction=LT, metadata={op_name="while/Less"}
+}
+
+%region_2.42 (Arg_0.43: (f32[3,32,32,3], token[])) -> (pred[], token[]) {
+  %constant.44 = pred[] constant(true)
+  %Arg_0.43 = (f32[3,32,32,3]{3,2,1,0}, token[]) parameter(0)
+  %get-tuple-element.52 = f32[3,32,32,3]{3,2,1,0} get-tuple-element((f32[3,32,32,3]{3,2,1,0}, token[]) %Arg_0.43), index=0, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %constant.49 = f32[] constant(255.5)
+  %broadcast.50 = f32[3,32,32,3]{3,2,1,0} broadcast(f32[] %constant.49), dimensions={}, metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Mul"}
+  %multiply.53 = f32[3,32,32,3]{3,2,1,0} multiply(f32[3,32,32,3]{3,2,1,0} %get-tuple-element.52, f32[3,32,32,3]{3,2,1,0} %broadcast.50), metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Mul"}
+  %constant.47 = f32[] constant(0)
+  %broadcast.48 = f32[3,32,32,3]{3,2,1,0} broadcast(f32[] %constant.47), dimensions={}, metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Maximum"}
+  %maximum.54 = f32[3,32,32,3]{3,2,1,0} maximum(f32[3,32,32,3]{3,2,1,0} %multiply.53, f32[3,32,32,3]{3,2,1,0} %broadcast.48), metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Maximum"}
+  %constant.45 = f32[] constant(255)
+  %broadcast.46 = f32[3,32,32,3]{3,2,1,0} broadcast(f32[] %constant.45), dimensions={}, metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Minimum"}
+  %minimum.55 = f32[3,32,32,3]{3,2,1,0} minimum(f32[3,32,32,3]{3,2,1,0} %maximum.54, f32[3,32,32,3]{3,2,1,0} %broadcast.46), metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Minimum"}
+  %convert.56 = u8[3,32,32,3]{3,2,1,0} convert(f32[3,32,32,3]{3,2,1,0} %minimum.55), metadata={op_name="image_sample/write_summary/summary_cond/convert_image"}
+  %get-tuple-element.51 = token[] get-tuple-element((f32[3,32,32,3]{3,2,1,0}, token[]) %Arg_0.43), index=1, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %send.57 = (u8[3,32,32,3]{3,2,1,0}, u32[], token[]) send(u8[3,32,32,3]{3,2,1,0} %convert.56, token[] %get-tuple-element.51), channel_id=2, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
+  %send-done.58 = token[] send-done((u8[3,32,32,3]{3,2,1,0}, u32[], token[]) %send.57), channel_id=2, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
+  ROOT %tuple.59 = (pred[], token[]) tuple(pred[] %constant.44, token[] %send-done.58), metadata={op_name="image_sample/write_summary/summary_cond"}
+}
+
+%region_3.60 (Arg_0.61: (f32[3,32,32,3], token[])) -> (pred[], token[]) {
+  %constant.62 = pred[] constant(false)
+  %Arg_0.61 = (f32[3,32,32,3]{3,2,1,0}, token[]) parameter(0)
+  %get-tuple-element.63 = token[] get-tuple-element((f32[3,32,32,3]{3,2,1,0}, token[]) %Arg_0.61), index=1, metadata={op_name="image_sample/write_summary/summary_cond"}
+  ROOT %tuple.64 = (pred[], token[]) tuple(pred[] %constant.62, token[] %get-tuple-element.63), metadata={op_name="image_sample/write_summary/summary_cond"}
+}
+
+ENTRY %main.67 (arg_tuple.1: (s32[])) -> () {
+  %arg_tuple.1 = (s32[]{:T(256)}) parameter(0), sharding={{maximal device=0}}
+  %get-tuple-element.2 = s32[]{:T(256)} get-tuple-element((s32[]{:T(256)}) %arg_tuple.1), index=0, sharding={maximal device=0}
+  %constant.3 = s32[] constant(0)
+  %compare.8 = pred[]{:T(256)} compare(s32[]{:T(256)} %get-tuple-element.2, s32[] %constant.3), direction=EQ, metadata={op_name="image_sample/write_summary/Equal"}
+  %constant.5 = f32[] constant(0)
+  %broadcast.6 = f32[1024,3]{1,0} broadcast(f32[] %constant.5), dimensions={}, metadata={op_name="tokens_accumulator"}
+  %constant.4 = s32[1]{0} constant({1024})
+  %tuple.9 = (s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) tuple(s32[] %constant.3, s32[] %constant.3, f32[1024,3]{1,0} %broadcast.6, s32[1]{0} %constant.4), metadata={op_name="while"}
+  %while.32 = (s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) while((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %tuple.9), condition=%region_1.27, body=%region_0.10, metadata={op_name="while"}
+  %get-tuple-element.33 = f32[1024,3]{1,0} get-tuple-element((s32[], s32[], f32[1024,3]{1,0}, s32[1]{0}) %while.32), index=2, metadata={op_name="while"}
+  %transpose.34 = f32[3,1024]{0,1} transpose(f32[1024,3]{1,0} %get-tuple-element.33), dimensions={1,0}, metadata={op_name="transpose.transpose/perm"}
+  %reshape.35 = f32[3,32,32,1]{3,2,1,0} reshape(f32[3,1024]{0,1} %transpose.34), metadata={op_name="Reshape"}
+  %broadcast.36 = f32[3,32,32,1]{3,2,1,0} broadcast(f32[3,32,32,1]{3,2,1,0} %reshape.35), dimensions={0,1,2,3}, metadata={op_name="Tile"}
+  %reshape.37 = f32[3,32,32]{2,1,0} reshape(f32[3,32,32,1]{3,2,1,0} %broadcast.36), metadata={op_name="Tile"}
+  %broadcast.38 = f32[3,32,32,3]{3,2,1,0} broadcast(f32[3,32,32]{2,1,0} %reshape.37), dimensions={0,1,2}, metadata={op_name="Tile"}
+  %after-all.7 = token[] after-all(), metadata={op_name="image_sample/write_summary/summary_cond"}
+  %send.39 = (pred[]{:T(256)}, u32[], token[]) send(pred[]{:T(256)} %compare.8, token[] %after-all.7), channel_id=1, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %send-done.40 = token[] send-done((pred[]{:T(256)}, u32[], token[]) %send.39), channel_id=1, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %tuple.41 = (f32[3,32,32,3]{3,2,1,0}, token[]) tuple(f32[3,32,32,3]{3,2,1,0} %broadcast.38, token[] %send-done.40), metadata={op_name="image_sample/write_summary/summary_cond"}
+  %conditional.65 = (pred[], token[]) conditional(pred[]{:T(256)} %compare.8, (f32[3,32,32,3]{3,2,1,0}, token[]) %tuple.41, (f32[3,32,32,3]{3,2,1,0}, token[]) %tuple.41), true_computation=%region_2.42, false_computation=%region_3.60, metadata={op_name="image_sample/write_summary/summary_cond"}
+  ROOT %tuple.66 = () tuple()
+}
+)")
+                    .ValueOrDie();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(
+      liveness.IsLive(GetInstruction(module.get(), "conditional.65"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.41"), {}));
+  EXPECT_TRUE(liveness.IsLive(
+      GetInstruction(module.get(), "get-tuple-element.33"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "while.32"), {}));
+  EXPECT_TRUE(liveness.IsLive(
+      GetInstruction(module.get(), "dynamic-update-slice.24"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "send.57"), {}));
+}
+
 }  // namespace
 }  // namespace xla

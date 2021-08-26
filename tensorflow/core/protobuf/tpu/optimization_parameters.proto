@@ -10,6 +10,30 @@ message ClippingLimits {
   google.protobuf.FloatValue upper = 2;  // +inf if not set
 }
 
+// Configuration for simulated quantization; simulated quantization is used to
+// reduce training/serving skew when the serving variables are quantized. The
+// same quantization operations are executed during training to minimize
+// differences with serving.
+//
+// Simulated quantization inserts the following operations on the forward pass
+// after gathering the embedding vector from HBM. The backward pass operations
+// are unchanged.
+//
+// clipped_val = clip(input, clipping_limits)
+// quantum = clipping_limits.range() / (num_buckets - 1)
+// quantized_val = floor((clipped_val - clipping_limits.lower()) / quantum + .5)
+// return quantized_val * quantum + clipping_limits.lower().
+message SimulatedQuantization {
+  // Whether simulated quantization is enabled.
+  bool enabled = 1;
+
+  // Minimum and maximum values of the range used for quantization.
+  ClippingLimits clipping_limits = 2;
+
+  // Number of possible quantized values.
+  int32 num_buckets = 3;
+}
+
 // Dynamic learning rate specification in the TPUEmbeddingConfiguration. The
 // actual learning rates are provided as a scalar input list to the
 // SendTPUEmbeddingGradients Op indexed by their tag specified through the
@@ -414,6 +438,12 @@ message OptimizationParameters {
   // weight_decay_optimizers.py.
   bool multiply_weight_decay_factor_by_learning_rate = 22;
 
+  // Configuration for simulated quantization which is used to reduce
+  // training/serving skew when the serving variables are quantized. The same
+  // quantization operations are executed during training to minimize
+  // differences with serving.
+  SimulatedQuantization simulated_quantization = 27;
+
   // Status of using gradient accumulation (doing two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
   // apply them using the actual optimization algorithm).
@@ -446,6 +476,8 @@ message OptimizationParameters {
   }
 
   reserved 15;  // Old use_gradient_accumulation.
+
+  // NEXT_ID: 28
 }
 
 // Specification of an optimization algorithm's state variables (both the main

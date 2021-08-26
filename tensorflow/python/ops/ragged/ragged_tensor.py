@@ -2088,7 +2088,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     # np.ndarray with dtype=object and rank=1.  If they have uniform lengths,
     # they will be combined into a single np.ndarray with dtype=row.dtype and
     # rank=row.rank+1.
-    return np.array(rows)
+    #
+    # Manually set dtype as numpy now complains when given ragged rows.
+    dtype = np.object if any(len(row) != len(rows[0]) for row in rows) else None
+    return np.array(rows, dtype=dtype)
 
   def to_list(self):
     """Returns a nested Python `list` with the values for this `RaggedTensor`.

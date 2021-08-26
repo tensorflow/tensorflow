@@ -156,6 +156,9 @@ class AutoGraphTestCase(test.TestCase):
   def assertEqual(self, *args):
     self.assertions.append((super().assertEqual, list(args)))
 
+  def assertLess(self, *args):
+    self.assertions.append((super().assertLess, list(args)))
+
   def assertGreaterEqual(self, *args):
     self.assertions.append((super().assertGreaterEqual, list(args)))
 

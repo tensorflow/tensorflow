@@ -35,12 +35,12 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-HostStream *AsHostStream(Stream *stream) {
+HostStream* AsHostStream(Stream* stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<HostStream *>(stream->implementation());
+  return dynamic_cast<HostStream*>(stream->implementation());
 }
 
-HostExecutor::HostExecutor(const PluginConfig &plugin_config)
+HostExecutor::HostExecutor(const PluginConfig& plugin_config)
     : plugin_config_(plugin_config) {}
 
 HostExecutor::~HostExecutor() {}
@@ -59,7 +59,7 @@ port::Status HostExecutor::Init(int device_ordinal,
   return port::Status::OK();
 }
 
-bool HostExecutor::DeviceMemoryUsage(int64_t *free, int64_t *total) const {
+bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
   *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
   *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
@@ -75,40 +75,40 @@ DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
       tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
-void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent,
+void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
                                  uint64_t offset_bytes, uint64_t size_bytes) {
-  return reinterpret_cast<char *>(parent->opaque()) + offset_bytes;
+  return reinterpret_cast<char*>(parent->opaque()) + offset_bytes;
 }
 
-void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
+void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
   tensorflow::port::AlignedFree(mem->opaque());
 }
 
-port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   memset(location->opaque(), 0, size);
   return port::Status::OK();
 }
 
-port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
                                              int value, uint64_t size) {
   memset(location->opaque(), value, size);
   return port::Status::OK();
 }
 
-bool HostExecutor::Memcpy(Stream *stream, void *host_dst,
-                          const DeviceMemoryBase &gpu_src, uint64_t size) {
+bool HostExecutor::Memcpy(Stream* stream, void* host_dst,
+                          const DeviceMemoryBase& gpu_src, uint64_t size) {
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
-  void *src_mem = const_cast<void *>(gpu_src.opaque());
+  void* src_mem = const_cast<void*>(gpu_src.opaque());
   AsHostStream(stream)->EnqueueTask(
       [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
   return true;
 }
 
-bool HostExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
-                          const void *host_src, uint64_t size) {
-  void *dst_mem = gpu_dst->opaque();
+bool HostExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                          const void* host_src, uint64_t size) {
+  void* dst_mem = gpu_dst->opaque();
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
@@ -116,12 +116,12 @@ bool HostExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
   return true;
 }
 
-bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
-                                        DeviceMemoryBase *gpu_dst,
-                                        const DeviceMemoryBase &gpu_src,
+bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
+                                        DeviceMemoryBase* gpu_dst,
+                                        const DeviceMemoryBase& gpu_src,
                                         uint64_t size) {
-  void *dst_mem = gpu_dst->opaque();
-  void *src_mem = const_cast<void *>(gpu_src.opaque());
+  void* dst_mem = gpu_dst->opaque();
+  void* src_mem = const_cast<void*>(gpu_src.opaque());
   // Enqueue this [asynchronous] "device-to-device" (i.e., host-to-host, given
   // the nature of the HostExecutor) memcpy  on the stream (HostStream)
   // associated with the HostExecutor.
@@ -130,9 +130,9 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   return true;
 }
 
-port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+port::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
                                    uint64_t size) {
-  void *gpu_mem = location->opaque();
+  void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
@@ -140,9 +140,9 @@ port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
   return port::Status::OK();
 }
 
-port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
+port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                   uint8 pattern, uint64_t size) {
-  void *gpu_mem = location->opaque();
+  void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
@@ -150,9 +150,9 @@ port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
   return port::Status::OK();
 }
 
-port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
+port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
                                     uint32 pattern, uint64_t size) {
-  void *gpu_mem = location->opaque();
+  void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
@@ -160,27 +160,27 @@ port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
   return port::Status::OK();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                             const void *host_src,
+port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                             const void* host_src,
                                              uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(void *host_dst,
-                                             const DeviceMemoryBase &gpu_src,
+port::Status HostExecutor::SynchronousMemcpy(void* host_dst,
+                                             const DeviceMemoryBase& gpu_src,
                                              uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
   return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64_t size) {
+    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
   return port::Status::OK();
 }
 
-bool HostExecutor::HostCallback(Stream *stream,
+bool HostExecutor::HostCallback(Stream* stream,
                                 std::function<port::Status()> callback) {
   AsHostStream(stream)->EnqueueTask([callback]() {
     port::Status s = callback();
@@ -191,11 +191,11 @@ bool HostExecutor::HostCallback(Stream *stream,
   return true;
 }
 
-bool HostExecutor::AllocateStream(Stream *stream) { return true; }
+bool HostExecutor::AllocateStream(Stream* stream) { return true; }
 
-void HostExecutor::DeallocateStream(Stream *stream) {}
+void HostExecutor::DeallocateStream(Stream* stream) {}
 
-bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   auto event = std::make_shared<absl::Notification>();
   AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
   AsHostStream(dependent)->EnqueueTask(
@@ -207,7 +207,7 @@ class HostEvent : public internal::EventInterface {
  public:
   HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
 
-  std::shared_ptr<absl::Notification> &notification() { return notification_; }
+  std::shared_ptr<absl::Notification>& notification() { return notification_; }
 
  private:
   // We use a std::shared_ptr here because the client may delete the HostEvent
@@ -221,20 +221,20 @@ HostExecutor::CreateEventImplementation() {
   return std::unique_ptr<internal::EventInterface>(new HostEvent());
 }
 
-static HostEvent *AsHostEvent(Event *event) {
+static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
-  return static_cast<HostEvent *>(event->implementation());
+  return static_cast<HostEvent*>(event->implementation());
 }
 
-port::Status HostExecutor::AllocateEvent(Event * /*event*/) {
+port::Status HostExecutor::AllocateEvent(Event* /*event*/) {
   return port::Status::OK();
 }
 
-port::Status HostExecutor::DeallocateEvent(Event * /*event*/) {
+port::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
   return port::Status::OK();
 }
 
-port::Status HostExecutor::RecordEvent(Stream *stream, Event *event) {
+port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask([notification]() {
@@ -244,7 +244,7 @@ port::Status HostExecutor::RecordEvent(Stream *stream, Event *event) {
   return port::Status::OK();
 }
 
-port::Status HostExecutor::WaitForEvent(Stream *stream, Event *event) {
+port::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask(
@@ -252,23 +252,23 @@ port::Status HostExecutor::WaitForEvent(Stream *stream, Event *event) {
   return port::Status::OK();
 }
 
-Event::Status HostExecutor::PollForEventStatus(Event *event) {
-  absl::Notification &notification = *AsHostEvent(event)->notification();
+Event::Status HostExecutor::PollForEventStatus(Event* event) {
+  absl::Notification& notification = *AsHostEvent(event)->notification();
   return notification.HasBeenNotified() ? Event::Status::kComplete
                                         : Event::Status::kPending;
 }
 
-bool HostExecutor::StartTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<HostTimer *>(timer->implementation())->Start(stream);
+bool HostExecutor::StartTimer(Stream* stream, Timer* timer) {
+  dynamic_cast<HostTimer*>(timer->implementation())->Start(stream);
   return true;
 }
 
-bool HostExecutor::StopTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<HostTimer *>(timer->implementation())->Stop(stream);
+bool HostExecutor::StopTimer(Stream* stream, Timer* timer) {
+  dynamic_cast<HostTimer*>(timer->implementation())->Stop(stream);
   return true;
 }
 
-port::Status HostExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   AsHostStream(stream)->BlockUntilDone();
   return port::Status::OK();
 }
@@ -300,8 +300,8 @@ bool HostExecutor::SupportsBlas() const {
       .ok();
 }
 
-blas::BlasSupport *HostExecutor::CreateBlas() {
-  PluginRegistry *registry = PluginRegistry::Instance();
+blas::BlasSupport* HostExecutor::CreateBlas() {
+  PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId,
                                                         plugin_config_.blas());
@@ -321,8 +321,8 @@ bool HostExecutor::SupportsFft() const {
       .ok();
 }
 
-fft::FftSupport *HostExecutor::CreateFft() {
-  PluginRegistry *registry = PluginRegistry::Instance();
+fft::FftSupport* HostExecutor::CreateFft() {
+  PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId,
                                                        plugin_config_.fft());
@@ -342,8 +342,8 @@ bool HostExecutor::SupportsRng() const {
       .ok();
 }
 
-rng::RngSupport *HostExecutor::CreateRng() {
-  PluginRegistry *registry = PluginRegistry::Instance();
+rng::RngSupport* HostExecutor::CreateRng() {
+  PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
                                                        plugin_config_.rng());

@@ -167,7 +167,6 @@ class ConvertTFConvOp : public RewritePattern {
     //   [1, X, Y, 1] if exists.
 
     TFConvOpType tf_op = cast<TFConvOpType>(op);
-
     if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
         !(allow_bf16_and_f16_type_legalization_ &&
           TFTypeIsBFloat16OrHalfTensor(tf_op.input())))
@@ -192,7 +191,7 @@ class ConvertTFConvOp : public RewritePattern {
       state.dilation_width_factor = intAttrOne;
     }
 
-    if (!TFPaddingIsSameOrValid(op, &state.padding)) return failure();
+    TFPaddingIsSameOrValid(op, &state.padding);
 
     // Additionally, we require the filter operand to be of 4-D tensor type so
     // that we can extract info from the shape (e.g., for constructing bias
@@ -221,9 +220,40 @@ class ConvertTFConvOp : public RewritePattern {
     auto bias =
         rewriter.create<TF::ConstOp>(op->getLoc(), bias_type, bias_attr);
 
+    auto input = tf_op.input();
+    if (op->getAttrOfType<StringAttr>("padding").getValue() == "EXPLICIT") {
+      // Add Const op for padding value.
+      ArrayRef<Attribute> padding_attr_array =
+          op->getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+
+      auto get_int = [](Attribute attr) {
+        return attr.template cast<IntegerAttr>().getInt();
+      };
+
+      SmallVector<int32_t> padding_values(padding_attr_array.size());
+      for (int i = 0; i < padding_attr_array.size(); i++) {
+        padding_values[i] =
+            static_cast<int32_t>(get_int(padding_attr_array[i]));
+      }
+
+      RankedTensorType padding_attr_type = RankedTensorType::get(
+          {filter_type.getRank(), 2}, rewriter.getIntegerType(32));
+      auto padding_attr =
+          mlir::DenseIntElementsAttr::get(padding_attr_type, padding_values);
+
+      auto padding_const =
+          rewriter.create<TF::ConstOp>(op->getLoc(), padding_attr);
+
+      // Add Pad op.
+      auto pad_output_type = UnrankedTensorType::get(elem_type);
+      input = rewriter.create<TF::PadOp>(op->getLoc(), pad_output_type, input,
+                                         padding_const);
+
+      // Set Conv padding to `VALID` since padding has been handled by Pad op.
+      state.padding = rewriter.getStringAttr("VALID");
+    }
     auto conv_op = static_cast<const ConcreteType *>(this)->createTFLOp(
-        &state, rewriter, op->getLoc(), tf_op.getType(), tf_op.input(), filter,
-        bias);
+        &state, rewriter, op->getLoc(), tf_op.getType(), input, filter, bias);
 
     rewriter.replaceOp(op, conv_op.getResult());
     return success();

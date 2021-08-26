@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 namespace xla {
@@ -357,16 +356,6 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
       stream, se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
       se::BlockDim(block_counts.x, block_counts.y, block_counts.z), kernel,
       *kernel_args);
-}
-
-se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
-  string extra_string =
-      hlo_module_config.debug_options().xla_gpu_asm_extra_flags();
-  std::vector<std::string> extra_flags;
-  extra_flags = absl::StrSplit(extra_string, ',', absl::SkipEmpty());
-  return se::GpuAsmOpts(
-      hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
-      hlo_module_config.debug_options().xla_gpu_cuda_data_dir(), extra_flags);
 }
 
 // Unimplemented for integers yet.

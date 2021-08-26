@@ -66,6 +66,7 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -392,6 +393,9 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_device_id_(tf_device_id),
       sync_every_op_(sync_every_op) {
+  // XLA device IDs for GPUs are arbitrary but must be unique, so we hash device
+  // names (which include a replica index even for multi-client).
+  set_xla_global_id(Fingerprint32(name) % std::numeric_limits<int32_t>::max());
   GPUProcessState::singleton()->EnableGPUDevice();
 }
 
@@ -526,6 +530,13 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      node_file_writer_,
+      NodeFileWriter::GetNodeFileWriterIfEnabled(name(), env()));
+  if (node_file_writer_) {
+    LOG(INFO) << "Writing NodeDefs to file: " << node_file_writer_->filename();
   }
 
   return Status::OK();
@@ -686,6 +697,13 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
         em_->ThenExecute(stream, [tracker, queued_count]() {
           tracker->RecordTerminated(queued_count);
         });
+      }
+    }
+    if (node_file_writer_) {
+      Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+      if (!s.ok()) {
+        LOG(ERROR) << s;
+        context->SetStatus(s);
       }
     }
   } else {

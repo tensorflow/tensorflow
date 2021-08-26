@@ -284,6 +284,15 @@ class SavedModelImpl final : public SavedModel {
     std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
+  // Create a ResourceContext and populate it with per model resource from
+  // Runtime. If `tpu_target` is set to kTpurt, also call a special
+  // `AddTpuResources` function to populate TPU related resources for tpurt.
+  //
+  // TODO(b/178227859): Remove the need for the special handling for TPU here.
+  static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
+      tensorflow::tfrt_stub::Runtime* runtime,
+      tensorflow::TfrtTpuInfraTarget tpu_target);
+
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   StatusOr<mlir::OwningModuleRef> ImportSubgraph(
@@ -306,7 +315,8 @@ class SavedModelImpl final : public SavedModel {
   // target_node_names.
   StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(
-      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_node_names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);

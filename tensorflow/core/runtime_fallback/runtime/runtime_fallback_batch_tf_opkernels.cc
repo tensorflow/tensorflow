@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
@@ -61,7 +62,7 @@ llvm::Expected<tensorflow::Tensor> ConvertTFRTTensorToTFTensor(
     const tensorflow::Tensor* tf_tensor;
     Status s = rtfbt->GetTensorHandle()->Tensor(&tf_tensor);
     if (!s.ok()) {
-      return tfrt::MakeStringError(s.ToString());
+      return tfrt::MakeStatusError(s);
     }
     return *tf_tensor;
   }
@@ -148,11 +149,6 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
       : AsyncOpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
     OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
-    // If shared_name is not supplied, use name instead (prevent collisions by
-    // default).
-    if (shared_name_.empty()) {
-      shared_name_ = name();
-    }
     OP_REQUIRES_OK(c, c->GetAttr("batching_queue", &batcher_queue_));
     OP_REQUIRES_OK(c, c->GetAttr("num_batch_threads", &num_batch_threads_));
     OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
@@ -168,6 +164,12 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
       OP_REQUIRES_OK(c, c->GetAttr("tfrt_bef_func", &bef_func_intptr));
       bef_func_ =
           tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
+    }
+
+    // If shared_name is not supplied, use function name instead (prevent
+    // collisions by default).
+    if (shared_name_.empty()) {
+      shared_name_ = bef_func_->name();
     }
 
     if (c->HasAttr("enable_large_batch_splitting")) {

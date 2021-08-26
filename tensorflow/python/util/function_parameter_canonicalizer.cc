@@ -107,10 +107,15 @@ bool FunctionParameterCanonicalizer::Canonicalize(
       // string table.
       if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {
         // `key` might not be an interend string, so get the interned string
-        // and try again.
+        // and try again.  Note: we need to call INCREF before we use
+        // InternInPlace, to prevent the key in the dictionary from being
+        // prematurely deleted in the case where InternInPlace switches `key`
+        // to point at a new object.  We call DECREF(key) once we're done
+        // (which might decref the original key *or* the interned version).
+        Py_INCREF(key);
         PyUnicodeInternInPlaceCompat(&key);
-
         index = InternedArgNameLinearSearch(key);
+        Py_DECREF(key);
 
         // Stil not found, then return an error.
         if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {

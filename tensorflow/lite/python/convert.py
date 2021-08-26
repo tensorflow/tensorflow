@@ -283,7 +283,8 @@ def toco_convert_protos(model_flags_str,
       `toco/model_flags.proto`.
     toco_flags_str: Serialized proto describing conversion properties, see
       `toco/toco_flags.proto`.
-    input_data_str: Input data in serialized form (e.g. a graphdef is common)
+    input_data_str: Input data in serialized form (e.g. a graphdef is common, or
+      it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of the default
@@ -445,11 +446,12 @@ def build_toco_flags(inference_type=dtypes.float32,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
-                     default_to_single_batch_in_tensor_list_ops=True,
+                     default_to_single_batch_in_tensor_list_ops=False,
                      accumulation_type=None,
                      allow_bfloat16=False,
                      unfold_large_splat_constant=False,
                      supported_backends=None,
+                     disable_per_channel_quantization=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -494,7 +496,7 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.allow_bfloat16 = allow_bfloat16
   if supported_backends:
     toco.supported_backends.extend(supported_backends)
-
+  toco.disable_per_channel_quantization = disable_per_channel_quantization
   return toco
 
 
@@ -527,11 +529,12 @@ def build_toco_convert_protos(input_tensors,
                               allow_all_select_tf_ops=False,
                               unfold_batchmatmul=True,
                               lower_tensor_list_ops=True,
-                              default_to_single_batch_in_tensor_list_ops=True,
+                              default_to_single_batch_in_tensor_list_ops=False,
                               accumulation_type=None,
                               allow_bfloat16=False,
                               unfold_large_splat_constant=False,
-                              supported_backends=None):
+                              supported_backends=None,
+                              disable_per_channel_quantization=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -625,6 +628,8 @@ def build_toco_convert_protos(input_tensors,
       in the flatbuffer model to reduce size.
     supported_backends: List of TFLite backends which needs to check
       compatibility.
+    disable_per_channel_quantization: Disable per-channel quantized weights for
+      dynamic range quantization. Only per-tensor quantization will be used.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -660,7 +665,8 @@ def build_toco_convert_protos(input_tensors,
       accumulation_type=accumulation_type,
       allow_bfloat16=allow_bfloat16,
       unfold_large_splat_constant=unfold_large_splat_constant,
-      supported_backends=supported_backends)
+      supported_backends=supported_backends,
+      disable_per_channel_quantization=disable_per_channel_quantization)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -847,6 +853,27 @@ def convert_saved_model(saved_model_dir=None,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_JAX_HLO)
+def convert_jax_hlo(input_content, is_proto_format, **kwargs):
+  """Converts a Jax hlo-based model using TF Lite converter."""
+  model_flags = _model_flags_pb2.ModelFlags()
+  model_flags.use_hlo_import = True
+  if is_proto_format:
+    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_PROTO
+  else:
+    model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_TEXT
+
+  toco_flags = build_toco_flags(**kwargs)
+  data = toco_convert_protos(
+      model_flags.SerializeToString(),
+      toco_flags.SerializeToString(),
+      input_content,
+      None,  # debug_info_str, unused
+      enable_mlir_converter=True)
+  return data
+
+
 @_tf_export(v1=["lite.toco_convert"])
 @deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
@@ -858,7 +885,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   been deprecated. Please use `tf.lite.TFLiteConverter` instead.
 
   Args:
-    input_data: Input data (i.e. often `sess.graph_def`),
+    input_data: Input data (i.e. often `sess.graph_def`).
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).

@@ -113,6 +113,8 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
 //
 // `variables` is allowed to contain instances that don't track a resource
 // variable (i.e. variables[i].var() can be null for some i).
+Status LockVariables(absl::Span<VariableInfo*> variables)
+    TF_EXCLUSIVE_LOCK_FUNCTION();
 Status LockVariables(absl::Span<VariableInfo> variables)
     TF_EXCLUSIVE_LOCK_FUNCTION();
 

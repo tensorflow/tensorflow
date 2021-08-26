@@ -104,6 +104,7 @@ def lbeta(x, name=None):
 
 
 @tf_export('math.special.dawsn')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def dawsn(x, name=None):
   """Computes Dawson's integral of `x` element-wise.
@@ -134,6 +135,7 @@ def dawsn(x, name=None):
 
 
 @tf_export('math.special.expint')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def expint(x, name=None):
   """Computes the Exponential integral of `x` element-wise.
@@ -163,6 +165,7 @@ def expint(x, name=None):
 
 
 @tf_export('math.special.fresnel_cos')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_cos(x, name=None):
   """Computes Fresnel's cosine integral of `x` element-wise.
@@ -193,6 +196,7 @@ def fresnel_cos(x, name=None):
 
 
 @tf_export('math.special.fresnel_sin')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_sin(x, name=None):
   """Computes Fresnel's sine integral of `x` element-wise.
@@ -222,6 +226,7 @@ def fresnel_sin(x, name=None):
 
 
 @tf_export('math.special.spence')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def spence(x, name=None):
   """Computes Spence's integral of `x` element-wise.
@@ -251,6 +256,7 @@ def spence(x, name=None):
 
 
 @tf_export('math.bessel_i0', 'math.special.bessel_i0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
@@ -279,6 +285,7 @@ def bessel_i0(x, name=None):
 
 
 @tf_export('math.bessel_i0e', 'math.special.bessel_i0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0e(x, name=None):
   """Computes the Bessel i0e function of `x` element-wise.
@@ -305,6 +312,7 @@ def bessel_i0e(x, name=None):
 
 
 @tf_export('math.bessel_i1', 'math.special.bessel_i1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
@@ -333,6 +341,7 @@ def bessel_i1(x, name=None):
 
 
 @tf_export('math.bessel_i1e', 'math.special.bessel_i1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1e(x, name=None):
   """Computes the Bessel i1e function of `x` element-wise.
@@ -359,6 +368,7 @@ def bessel_i1e(x, name=None):
 
 
 @tf_export('math.special.bessel_k0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0(x, name=None):
   """Computes the Bessel k0 function of `x` element-wise.
@@ -387,6 +397,7 @@ def bessel_k0(x, name=None):
 
 
 @tf_export('math.special.bessel_k0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0e(x, name=None):
   """Computes the Bessel k0e function of `x` element-wise.
@@ -413,6 +424,7 @@ def bessel_k0e(x, name=None):
 
 
 @tf_export('math.special.bessel_k1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1(x, name=None):
   """Computes the Bessel k1 function of `x` element-wise.
@@ -441,6 +453,7 @@ def bessel_k1(x, name=None):
 
 
 @tf_export('math.special.bessel_k1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1e(x, name=None):
   """Computes the Bessel k1e function of `x` element-wise.
@@ -467,6 +480,7 @@ def bessel_k1e(x, name=None):
 
 
 @tf_export('math.special.bessel_j0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j0(x, name=None):
   """Computes the Bessel j0 function of `x` element-wise.
@@ -493,6 +507,7 @@ def bessel_j0(x, name=None):
 
 
 @tf_export('math.special.bessel_j1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j1(x, name=None):
   """Computes the Bessel j1 function of `x` element-wise.
@@ -519,6 +534,7 @@ def bessel_j1(x, name=None):
 
 
 @tf_export('math.special.bessel_y0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y0(x, name=None):
   """Computes the Bessel y0 function of `x` element-wise.
@@ -545,6 +561,7 @@ def bessel_y0(x, name=None):
 
 
 @tf_export('math.special.bessel_y1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y1(x, name=None):
   """Computes the Bessel y1 function of `x` element-wise.

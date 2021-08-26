@@ -517,6 +517,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const SessionOptions& session_options() const { return opts_; }
   void InitPrioritizedDeviceTypeList();
 
+  // Re-assign cluster-FLR and re-initialize devices and FLR in process-FLR
+  void UpdateClusterFLRAndInitDevices(
+      DistributedFunctionLibraryRuntime* cluster_flr);
+
  private:
   Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
@@ -598,12 +602,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
       device_placement_policy_ TF_GUARDED_BY(policy_map_mu_);
 
+  // This device manager maintains only the local devices on this worker.
   OwnedOrUnownedHelper<DeviceMgr> local_device_manager_;
   // Maintain copy of all previously created local device managers.
   std::vector<std::unique_ptr<DeviceMgr>> old_local_device_managers_;
 
   // Unowned DynamicDeviceMgr is set on remote worker to allow running
   // multi-device function on remote worker.
+  // This device manager maintains all the devices (including both local and
+  // remote to this worker) in the cluster.
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
   Device* host_cpu_device_;  // Owned by device_manager

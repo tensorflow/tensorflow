@@ -138,7 +138,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-Status LockVariables(absl::Span<VariableInfo> variables) {
+Status LockVariables(absl::Span<VariableInfo*> variables) {
   std::vector<int> lock_order(variables.size());
   std::iota(lock_order.begin(), lock_order.end(), 0);
 
@@ -148,17 +148,17 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
   // since we're sorting by pointer value the sort is pretty non-deterministic
   // anyway so we don't bother using std::stable_sort for now.
   absl::c_sort(lock_order, [&](int a, int b) {
-    if (variables[a].var() && variables[b].var()) {
-      return variables[a].var()->mu() < variables[b].var()->mu();
+    if (variables[a]->var() && variables[b]->var()) {
+      return variables[a]->var()->mu() < variables[b]->var()->mu();
     }
 
     // Move all the empty VariableInfo instances to the end.
-    return variables[a].var() != nullptr;
+    return variables[a]->var() != nullptr;
   });
 
   mutex* prev = nullptr;
   for (int i : lock_order) {
-    Var* variable = variables[i].var();
+    Var* variable = variables[i]->var();
     if (variable == nullptr) {
       // All empty VariableInfo instances are at the end of the order
       // so we're done.
@@ -176,11 +176,20 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
     VLOG(4) << "Acquiring lock for variable "
             << reinterpret_cast<void*>(variable);
     mu->lock();
-    variables[i].set_lock_held();
+    variables[i]->set_lock_held();
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
   return Status::OK();
+}
+
+Status LockVariables(absl::Span<VariableInfo> variables) {
+  std::vector<VariableInfo*> variable_ptrs;
+  variable_ptrs.reserve(variables.size());
+  for (auto& var : variables) {
+    variable_ptrs.push_back(&var);
+  }
+  return LockVariables(absl::MakeSpan(variable_ptrs));
 }
 
 Status SnapshotResourceVariables(OpKernelContext* ctx,

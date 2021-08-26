@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -97,7 +98,8 @@ using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 
 // -------------------------------------------------------------------------- //
-// JIT compiled kernels use Eigen CPU device as async runtime worker threads.
+// JIT compiled kernels use Eigen ThreadPool managed by the kernel fallback as
+// an async runtime worker threads.
 // -------------------------------------------------------------------------- //
 
 static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
@@ -107,6 +109,10 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback) return MakeStringError("fallback request state was not found");
 
+  // Return user provided intra op thread pool if it is available.
+  if (fallback->intra_op_threadpool()) return fallback->intra_op_threadpool();
+
+  // Otherwise find the default CPU device in the device manager.
   Device* host_cpu = fallback->device_manager().HostCPU();
   assert(host_cpu && "fallback state must have a valid host cpu device");
 
@@ -264,11 +270,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     EnqueueWork(exec_ctx, [request_id, kernel, num_specializations,
                            compile = std::move(compile),
                            args = std::move(args)]() mutable {
+      absl::string_view name(kernel.root_symbol().data(),
+                             kernel.root_symbol().size());
       TraceMe trace_me([&] {
         return TraceMeEncode("tf_cpurt.CompileSpecialization",
                              {{"id", request_id},
                               {"kernel_id", kernel.id()},
-                              {"executable", kernel.root_symbol()},
+                              {"executable", name},
                               {"num_specializations", num_specializations}});
       });
 
@@ -278,8 +286,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         });
       }
 
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       trace_me.AppendMetadata([&] {
-        return TraceMeEncode({{"src", kernel.serialized_operation()}});
+        return TraceMeEncode({{"src", serialized_operation}});
       });
 
       compile();
@@ -290,11 +301,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
                          ptr = entry.ptr]() {
     TraceMe trace_me([&] {
+      absl::string_view name(kernel.root_symbol().data(),
+                             kernel.root_symbol().size());
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       return TraceMeEncode("tf_cpurt.CompileDefault",
                            {{"id", request_id},
                             {"kernel_id", kernel.id()},
-                            {"executable", kernel.root_symbol()},
-                            {"src", kernel.serialized_operation()}});
+                            {"executable", name},
+                            {"src", serialized_operation}});
     });
 
     CompilationOptions opts;
@@ -303,13 +319,14 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.num_worker_threads = workers->NumThreads();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
     opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+    opts.type_converter = mlir::BufferizeTypeConverter();
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();
 
     // Instantiate new JitExecutable from the MLIR source.
     Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, opts, runner);
+        JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
@@ -386,19 +403,26 @@ static void ConvertTensorOperandsToMemrefDesc(
 }
 
 struct DebugListener : public JitExecutable::Listener {
-  void notifyModuleSpecialized(ArrayRef<mlir::Type> inputs) const override {
+  void notifyModuleSpecialized(
+      ArrayRef<mlir::Type> operands,
+      ArrayRef<mlir::DictionaryAttr> attrs) const override {
     std::string message;
-    llvm::raw_string_ostream(message)
-        << "Specialized module: " << inputs << "\n";
+    llvm::raw_string_ostream os(message);
+    os << "Specialized operands:\n";
+    for (auto tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+      mlir::Type type = std::get<0>(tuple.value());
+      mlir::Attribute attr = std::get<1>(tuple.value());
+      os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
+    }
     printf("%s", message.c_str());
     fflush(stdout);
   }
 
   void notifyValueSpecialized(unsigned index, mlir::Type type,
-                              mlir::Attribute attr) const override {
+                              mlir::Attribute value) const override {
     std::string message;
-    llvm::raw_string_ostream(message) << "Arg[" << index << "] "
-                                      << "value specialized: " << attr << "\n";
+    llvm::raw_string_ostream(message) << "%arg" << index << " "
+                                      << "value specialized: " << value << "\n";
     printf("%s", message.c_str());
     fflush(stdout);
   }
@@ -412,8 +436,9 @@ static void ExecuteImpl(Executable& executable,
   // Bind execution trace to the request context.
   TraceMe trace_me([&] {
     int64_t id = exec_ctx.request_ctx()->id();
+    absl::string_view name(executable.name().data(), executable.name().size());
     return TraceMeEncode("tf_cpurt.Execute",
-                         {{"id", id}, {"executable", executable.name()}});
+                         {{"id", id}, {"executable", name}});
   });
 
   // Keep track of memory address to tensor mapping for result conversion.

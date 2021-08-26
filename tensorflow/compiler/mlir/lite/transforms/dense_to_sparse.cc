@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 //===----------------------------------------------------------------------===//
 // The DenseToSparse Pass.
@@ -116,7 +116,7 @@ float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
                          &b_size);
 
   if (type.getElementType().isF32()) {
-    tflite::optimize::sparsity::FormatConverter<float> format_converter(
+    tflite::internal::sparsity::FormatConverter<float> format_converter(
         shape, traversal_order, format, b_size, b_map);
     std::vector<float> data;
     data.reserve(type.getNumElements());
@@ -126,7 +126,7 @@ float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
         GetSparsity(type.getNumElements() - format_converter.GetData().size(),
                     type.getNumElements());
   } else if (type.getElementType().isF16()) {
-    tflite::optimize::sparsity::FormatConverter<Eigen::half> format_converter(
+    tflite::internal::sparsity::FormatConverter<Eigen::half> format_converter(
         shape, traversal_order, format, b_size, b_map);
     std::vector<Eigen::half> data;
     data.reserve(type.getNumElements());
@@ -137,7 +137,7 @@ float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
         GetSparsity(type.getNumElements() - format_converter.GetData().size(),
                     type.getNumElements());
   } else if (type.getElementType().isa<quant::QuantizedType>()) {
-    tflite::optimize::sparsity::FormatConverter<int8_t> format_converter(
+    tflite::internal::sparsity::FormatConverter<int8_t> format_converter(
         shape, traversal_order, format, b_size, b_map);
     std::vector<int8_t> data;
     data.reserve(type.getNumElements());
@@ -241,7 +241,7 @@ std::vector<T> BuildSparsityParameterAttribute(
   PopulateEncodingParams(block_size, &traversal_order, &format, &b_map,
                          &b_size);
 
-  tflite::optimize::sparsity::FormatConverter<T> format_converter(
+  tflite::internal::sparsity::FormatConverter<T> format_converter(
       shape, traversal_order, format, b_size, b_map);
   format_converter.DenseToSparse(dense_buffer);
   const auto& metadata = format_converter.GetDimMetadata();

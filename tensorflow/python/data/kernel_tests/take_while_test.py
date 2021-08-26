@@ -114,6 +114,13 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
         predicate=lambda x: x < 2).repeat(5)
     self.assertDatasetProduces(dataset, np.tile([0, 1], 5))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testTakeWhileDatasetStops(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.take_while(
+        lambda x: math_ops.logical_not(math_ops.equal(x, 5)))
+    self.assertDatasetProduces(dataset, range(5))
+
 
 class TakeWhileCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                               parameterized.TestCase):

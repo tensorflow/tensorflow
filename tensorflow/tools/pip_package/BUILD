@@ -133,8 +133,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/distribute:dataset_creator_model_fit_test_base",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
     "//tensorflow/python/keras/mixed_precision:test_util",
-    "//tensorflow/python/keras/tests:model_subclassing_test_util",
-    "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/keras/utils:dataset_creator",
     "//tensorflow/python/keras/utils:kpl_test_utils",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
@@ -161,6 +159,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
+    "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow:tensorflow_py",
     "//tensorflow/tools/docs:tf_doctest_lib",
 ]

@@ -39,10 +39,21 @@ namespace tensorflow {
 class ConvParameters {
  public:
   struct FusionInfo {
-    bool has_side_input = false;
+    // For some implementations (e.g. cuDNN new backend) these scales are part
+    // of the algorithm, not part of the parameters an algorithm take. They need
+    // to be used to distinguish different algorithms.
+    double conv_scale;
+    double side_input_scale;
     stream_executor::dnn::ActivationMode activation_mode;
     bool is_contrib;
   };
+
+  // LINT.IfChange(conv_parameters_version)
+  // A positive number that denotes the version of this class. Should be
+  // incremented everytime this class or ConvParametersProto are updated in a
+  // way that may invalidate autotune results.
+  static constexpr int kVersion = 1;
+  // LINT.ThenChange()
 
   // We have three kinds of convolutions today.  Vanilla unfused convolutions,
   // fused convolutions, and fused convolutions as implemented in the `contrib`
@@ -55,7 +66,9 @@ class ConvParameters {
       absl::Span<const int64_t> dilation, absl::Span<const int64_t> stride,
       absl::Span<const int64_t> padding, DataType dtype, int device_id,
       int group_count,
-      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>());
+      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>(),
+      // This argument should be set only for test use.
+      int version = kVersion);
 
   ConvParameters(int device_id, const ConvParametersProto& proto);
 

@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/public/version.h"
 
@@ -55,6 +58,14 @@ REGISTER_OP("RequiresOlderGraphVersion")
 REGISTER_OP("Old")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(8, "For reasons");
+
+REGISTER_OP("GetDeadline")
+    .Output("deadline_from_epoch_micros: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("SleepOp")
+    .Input("sleep_seconds: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_RESOURCE_HANDLE_OP(StubResource);
 
@@ -161,6 +172,33 @@ class OldOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
+
+class GetDeadlineOp : public OpKernel {
+ public:
+  explicit GetDeadlineOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    if (!ctx->deadline()) {
+      ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+    }
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<int64_t>()() = absl::ToUnixMicros(*ctx->deadline());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("GetDeadline").Device(DEVICE_CPU), GetDeadlineOp);
+
+class SleepOp : public OpKernel {
+ public:
+  explicit SleepOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("SleepOp").Device(DEVICE_CPU), SleepOp);
 
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {

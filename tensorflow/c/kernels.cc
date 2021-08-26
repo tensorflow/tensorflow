@@ -460,14 +460,14 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
 }
 
 TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
-                             TF_DataType dtype, int64_t* dims, int num_dims,
-                             size_t len, TF_Status* status) {
+                             TF_DataType dtype, const int64_t* dims,
+                             int num_dims, size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<int64_t> dimarray(
-      reinterpret_cast<int64_t*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
   tensorflow::Status s = cc_ctx->allocate_output(
       index, tensorflow::TensorShape(dimarray), &tensor);
@@ -485,8 +485,9 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 
 TF_Tensor* TF_ForwardInputOrAllocateOutput(
     TF_OpKernelContext* context, int* candidate_input_indices,
-    int num_candidate_input_indices, int output_index, int64_t* output_dims,
-    int output_num_dims, int* forwarded_input, TF_Status* status) {
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
@@ -494,8 +495,8 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
                 "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<int> input_indices_array(
       candidate_input_indices, num_candidate_input_indices);
-  tensorflow::gtl::ArraySlice<int64_t> output_dimarray(
-      reinterpret_cast<int64_t*>(output_dims), output_num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
+      reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
   tensorflow::Status s = cc_ctx->forward_input_or_allocate_output(
       input_indices_array, output_index,
@@ -514,15 +515,15 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 }
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
-                           int64_t* dims, int num_dims,
+                           const int64_t* dims, int num_dims,
                            TF_AllocatorAttributes* attributes,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
   static_assert(sizeof(int64_t) == sizeof(int64_t),
                 "64-bit int types should match in size");
-  tensorflow::gtl::ArraySlice<int64_t> dimarray(
-      reinterpret_cast<int64_t*>(dims), num_dims);
+  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+      reinterpret_cast<const int64_t*>(dims), num_dims);
   if (attributes && !attributes->struct_size) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,

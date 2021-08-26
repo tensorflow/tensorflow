@@ -94,7 +94,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saved_model_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "no_windows",

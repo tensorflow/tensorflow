@@ -69,10 +69,6 @@ cases:
 Note: This feature is currently experimental and available since version 2.4 and
 may change.
 
-## Known issues/limitations
-
-1.  Selective Build for C API and iOS version is not supported currently.
-
 ## Selectively build TensorFlow Lite with Bazel
 
 This section assumes that you have downloaded TensorFlow source codes and
@@ -423,3 +419,11 @@ or by
 [publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/guide/build_android#install_aar_to_local_maven_repository).
 Note that you have to add the AAR files for `tensorflow-lite-select-tf-ops.aar`
 as well if you generate it.
+
+## Selective Build for iOS
+
+Please see the
+[Building locally section](../guide/build_ios.md#building_locally) to set up the
+build environment and configure TensorFlow workspace and then follow the
+[guide](../guide/build_ios.md#selectively_build_tflite_frameworks) to use the
+selective build script for iOS.

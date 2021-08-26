@@ -1288,8 +1288,10 @@ class ApiTest(test.TestCase):
     ]:
       with self.assertRaises(expected_exception) as error:
         raise_from_tf_function(code)
-      self.assertEqual(error.exception.experimental_payloads['key1'], 'value1')
-      self.assertEqual(error.exception.experimental_payloads['key2'], 'value2')
+      self.assertEqual(error.exception.experimental_payloads[b'key1'],
+                       b'value1')
+      self.assertEqual(error.exception.experimental_payloads[b'key2'],
+                       b'value2')
 
 
 if __name__ == '__main__':

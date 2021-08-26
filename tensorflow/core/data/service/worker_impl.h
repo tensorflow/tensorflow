@@ -64,6 +64,11 @@ class DataServiceWorkerImpl {
   Status GetElementResult(const GetElementRequest* request,
                           GetElementResult* result);
 
+  // Deletes the local task and iterator. Only called by local clients to delete
+  // unused task iterators assuming the task is not read by remote clients. This
+  // method is not visible to gRPC clients.
+  void DeleteLocalTask(const TaskInfo& task_info);
+
   // See worker.proto for API documentation.
 
   /// Dispatcher-facing API.
@@ -126,6 +131,9 @@ class DataServiceWorkerImpl {
   absl::flat_hash_set<int64_t> finished_tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64_t> pending_completed_tasks_ TF_GUARDED_BY(mu_);
+  // Tasks deleted by the local client. If the client tries to read from them
+  // again, the worker will return a non-retriable FailedPrecondition error.
+  absl::flat_hash_set<int64_t> deleted_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;

@@ -587,7 +587,7 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
-                        std::vector<Tensor>* out_tensors) {
+                        std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented(
       "Random access is not implemented for this dataset.");
 }

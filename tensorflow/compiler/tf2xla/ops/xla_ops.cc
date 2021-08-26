@@ -1034,6 +1034,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
     .Output("output: T")
     .Attr("T: type")
     .Attr("manual_sharding: string")
+    .Attr("dim: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto input_handle = c->input(0);
       if (!c->RankKnown(input_handle)) {
@@ -1041,6 +1042,8 @@ REGISTER_OP("XlaSpmdFullToShardShape")
       }
       string sharding_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      int32 single_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("dim", &single_dim));
       xla::OpSharding sharding;
       sharding.ParseFromString(sharding_attr);
       if (sharding.type() != xla::OpSharding::OTHER) {
@@ -1049,10 +1052,12 @@ REGISTER_OP("XlaSpmdFullToShardShape")
       std::vector<shape_inference::DimensionHandle> dims;
       for (int64_t i = 0; i < c->Rank(input_handle); ++i) {
         auto dim = c->Value(c->Dim(input_handle, i));
-        int64_t partitions_i = sharding.tile_assignment_dimensions(i);
-        if (dim != shape_inference::InferenceContext::kUnknownDim &&
-            partitions_i != 1) {
-          dim = (dim + partitions_i - 1) / partitions_i;
+        if (single_dim < 0 || single_dim == i) {
+          int64_t partitions_i = sharding.tile_assignment_dimensions(i);
+          if (dim != shape_inference::InferenceContext::kUnknownDim &&
+              partitions_i != 1) {
+            dim = (dim + partitions_i - 1) / partitions_i;
+          }
         }
         dims.push_back(c->MakeDim(dim));
       }
@@ -1065,6 +1070,8 @@ manual partitioning. It annotates the input (full-shape, to be automatically
 partitioned) with the same sharding used by manual partitioning, and outputs a
 shard-shaped tensor to be consumed by later manually-partitioned ops. If the
 shape is not evenly partitionable, the padding region will be masked with 0s.
+The conversion can happen partially in subgroups, by specifying the dim
+attribute, where only that dim will be converted.
 )doc");
 
 REGISTER_OP("XlaSpmdShardToFullShape")
@@ -1073,6 +1080,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
     .Attr("T: type")
     .Attr("manual_sharding: string")
     .Attr("full_shape: shape")
+    .Attr("dim: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
@@ -1085,7 +1093,8 @@ REGISTER_OP("XlaSpmdShardToFullShape")
 An op used by XLA SPMD partitioner to switch from manual partitioning to
 automatic partitioning. It converts the shard-shaped, manually partitioned input
 into full-shaped tensor to be partitioned automatically with the same sharding
-used by manual partitioning.
+used by manual partitioning. The conversion can happen partially in subgroups,
+by specifying the dim attribute, where only that dim will be converted.
 )doc");
 
 REGISTER_OP("XlaSharding")
