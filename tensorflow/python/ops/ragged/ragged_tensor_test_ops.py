@@ -108,6 +108,7 @@ BINARY_FLOAT_OPS = [
     math_ops.maximum,
     math_ops.minimum,
     math_ops.multiply,
+    math_ops.multiply_no_nan,
     math_ops.not_equal,
     math_ops.pow,
     math_ops.realdiv,
