@@ -1631,6 +1631,7 @@ def div_no_nan(x, y, name=None):
 
 
 @tf_export("math.multiply_no_nan")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
