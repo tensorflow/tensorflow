@@ -222,7 +222,7 @@ class SegmentReductionOp : public OpKernel {
 //     small. When to use the tiled version or the untiled version depends on
 //     many factors including data alignments, ratio of calculation to memory
 //     traffic and obviously, the problem sizes.
-template <class T, class Index, class SegmentReductionFunctor>
+template <class T, class Index, class SegmentReductionFunctor, bool IsMean>
 class SegmentReductionGPUOp : public AsyncOpKernel {
  public:
   explicit SegmentReductionGPUOp(OpKernelConstruction* context)
@@ -300,6 +300,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       // for the unsorted segment reduction ops) because the done callback
       // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
       bool determinism_requirement_met =
+          !UseNonDeterministicSegmentReductions() ||
           SegmentReductionFunctor::atomic_reduction_is_associative ||
           !OpDeterminismRequired() ||
           DisableSegmentReductionOpDeterminismExceptions();
@@ -314,8 +315,8 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       auto data_ptr = input.template flat<T>().data();
       auto segment_flat = segment_ids.flat<Index>();
       functor_(context, context->eigen_device<GPUDevice>(), output_rows,
-               segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
-               output_flat);
+               segment_ids.shape(), IsMean, segment_flat, input.NumElements(),
+               data_ptr, output_flat);
 
       done();
     };
