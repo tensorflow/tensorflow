@@ -763,6 +763,7 @@ cc_library(
     deps = [
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
     ],
 )
 
