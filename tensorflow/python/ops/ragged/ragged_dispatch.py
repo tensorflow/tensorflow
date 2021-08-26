@@ -287,7 +287,6 @@ class RaggedDispatcher(dispatch.OpDispatcher):
 
 _UNARY_ELEMENTWISE_OPS = [
     array_ops.check_numerics,
-    array_ops.identity,
     array_ops.ones_like,
     array_ops.ones_like_v2,
     array_ops.zeros_like,

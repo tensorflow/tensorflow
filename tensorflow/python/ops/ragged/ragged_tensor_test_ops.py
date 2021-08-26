@@ -75,7 +75,6 @@ UNARY_FLOAT_OPS = [
     math_ops.square,
     math_ops.tan,
     math_ops.tanh,
-    array_ops.identity,
     array_ops.ones_like,
     array_ops.zeros_like,
     special_math_ops.bessel_i0,

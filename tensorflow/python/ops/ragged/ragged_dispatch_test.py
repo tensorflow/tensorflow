@@ -768,7 +768,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
         'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
         'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
-        'gather', 'identity', 'io.decode_base64', 'io.decode_compressed',
+        'gather', 'io.decode_base64', 'io.decode_compressed',
         'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
         'math.add', 'math.angle', 'math.asin', 'math.asinh', 'math.atan2',
         'math.atan', 'math.atanh', 'math.bessel_i0', 'math.bessel_i0e',
