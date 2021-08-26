@@ -164,6 +164,10 @@
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs
         that are files. This will enable creating hermetic SavedModels when
         using datasets created from files.
+    *   Promoting
+        `tf.data.experimental.sample_from_datasets` API to
+        `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
+        endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
