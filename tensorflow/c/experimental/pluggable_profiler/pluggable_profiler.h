@@ -47,18 +47,18 @@ limitations under the License.
 //   /* Sample TensorFlow code below, exact implementation might differ. */
 //   // Version checking uses `struct_size`. It is exempt from the `TF/TP` rule
 //   // above and should be set both by core and the plugin."
-
+//
 //   /* Plugin code below */
 //   void profiler_start(const TP_Profiler* profiler, TF_Status* status) {
 //     /* Enable profiler */
 //     ...
 //   }
-
+//
 //  void profiler_stop(const TP_Profiler* profiler, TF_Status* status) {
 //    /* Disable Profiler */
 //    ...
 //  }
-
+//
 //  void profiler_collect_data_xspace(const TP_Profiler* profiler, uint8_t*
 //  buffer, size_t* size_in_bytes, TF_Status* status) {
 //    Xspace xspace = get_my_xspace(); /* Plugin generates Xspace based on
@@ -71,7 +71,7 @@ limitations under the License.
 //    }
 //    bool success = xspace.SerializeToArray(buffer, buffer_size_in_bytes);
 //    }
-
+//
 // void TF_InitProfiler(TF_ProfilerRegistrationParams* params, TF_Status*
 // status) {
 //   *params = { TF_PROFILER_REGISTRATION_PARAMS_STRUCT_SIZE };

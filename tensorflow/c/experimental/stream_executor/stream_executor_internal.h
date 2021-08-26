@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform.h"
 
+#include "tensorflow/c/experimental/pluggable_device_utils/pluggable_device_utils.h"
+
 namespace stream_executor {
 
 // Plugin initialization function that a device plugin

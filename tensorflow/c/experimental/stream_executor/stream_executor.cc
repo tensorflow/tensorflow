@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -46,47 +45,6 @@ using tensorflow::StringPiece;
 using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
 
 namespace {
-
-#define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME) \
-  do {                                                                 \
-    if (STRUCT_OBJ.struct_size == 0) {                                 \
-      return port::FailedPreconditionError(                            \
-          "struct_size field in " #STRUCT_NAME                         \
-          " must be set to " #SIZE_VALUE_NAME ".");                    \
-    }                                                                  \
-  } while (0)
-
-#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)           \
-  do {                                                           \
-    if (STRUCT_OBJ.NAME == 0) {                                  \
-      return port::FailedPreconditionError(                      \
-          "'" #NAME "' field in " #STRUCT_NAME " must be set."); \
-    }                                                            \
-  } while (0)
-
-port::Status ValidateDeviceType(StringPiece type) {
-  // Validate device type. Device type must start with a capital letter and
-  // consist of capital letters and underscores. Reasoning behind this decision:
-  // * At the minimum we want to disallow '/' and ':' since
-  //   these characters are used in device spec, for e.g.
-  //   /job:foo/replica:12/device:GPU:1.
-  // * Underscores seem useful, for e.g. XLA_GPU uses underscores.
-  // * Allowing lowercase might get confusing. For example, say someone
-  //   registers a new type called "Gpu". It might be confusing for users that
-  //   "Gpu" is not the same device type as "GPU".
-  //   Note that lowercase "cpu" and "gpu" are currently supported only for
-  //   legacy reasons:
-  //   https://cs.opensource.google/tensorflow/tensorflow/+/master:tensorflow/python/framework/device_spec.py;l=46;drc=d3a378f9665d8eee827c74cb9ecbee81e4c288dd
-  static const LazyRE2 kTfDeviceTypeRegEx = {"[A-Z][A-Z_]*"};
-  bool matches = RE2::FullMatch(type, *kTfDeviceTypeRegEx);
-  if (!matches) {
-    return port::FailedPreconditionError(
-        tensorflow::strings::StrCat("Device name/type '", type, "' must match ",
-                                    kTfDeviceTypeRegEx->pattern(), "."));
-  }
-  return port::Status::OK();
-}
-
 port::Status ValidateSPPlatform(const SP_Platform& platform) {
   VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
   VALIDATE_MEMBER(SP_Platform, platform, name);
