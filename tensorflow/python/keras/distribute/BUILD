@@ -59,12 +59,7 @@ py_library(
     name = "distribute_test_lib_pip",
     srcs_version = "PY3",
     deps = [
-        ":distribute_strategy_test_lib",
-        ":keras_test_lib",
-        ":model_combinations",
         ":multi_worker_testing_utils",
-        ":saved_model_test_base",
-        ":test_example",
     ],
 )
 
@@ -96,99 +91,6 @@ py_library(
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training/tracking:util",
-    ],
-)
-
-py_library(
-    name = "model_collection_base",
-    srcs = ["model_collection_base.py"],
-    srcs_version = "PY3",
-)
-
-py_library(
-    name = "model_combinations",
-    srcs = ["model_combinations.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":simple_models",
-        "//tensorflow/python/distribute:combinations",
-    ],
-)
-
-py_library(
-    name = "simple_models",
-    srcs = ["simple_models.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":model_collection_base",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python/keras",
-    ],
-)
-
-py_library(
-    name = "saved_model_test_base",
-    srcs = ["saved_model_test_base.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":model_combinations",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/saved_model",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "distribute_strategy_test_lib",
-    srcs = [
-        "distribute_strategy_test.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":multi_worker_testing_utils",
-        ":optimizer_combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_library(
-    name = "keras_test_lib",
-    srcs = [
-        "keras_utils_test.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -259,20 +161,6 @@ py_library(
 )
 
 py_library(
-    name = "test_example",
-    srcs = ["test_example.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_library(
     name = "distribute_coordinator_utils",
     srcs = [
         "distribute_coordinator_utils.py",
@@ -285,32 +173,5 @@ py_library(
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:multi_worker_util",
-    ],
-)
-
-py_library(
-    name = "dataset_creator_model_fit_test_base",
-    srcs = [
-        "dataset_creator_model_fit_test_base.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":multi_worker_testing_utils",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:callbacks",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/layers:core",
-        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
-        "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/utils:dataset_creator",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
