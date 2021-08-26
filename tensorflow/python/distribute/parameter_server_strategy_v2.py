@@ -494,6 +494,11 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     # is to simplify worker failure handling in the runtime
     os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
 
+    # Disable async executors to make context.async_wait a no-op. This avoids
+    # sending RPCs to remote workers since the executors used by PSStrategy
+    # are known to be always synchronous.
+    os.environ["TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"] = "True"
+
     logging.info("%s is now connecting to cluster with cluster_spec: %r",
                  self.__class__.__name__, cluster_spec)
     remote.connect_to_cluster(

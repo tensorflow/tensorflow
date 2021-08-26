@@ -28,24 +28,6 @@ pytype_library(
     ],
 )
 
-cc_library(
-    name = "absl_casters",
-    hdrs = ["absl_casters.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
-        "@pybind11",
-    ],
-)
-
 pyx_library(
     name = "custom_call_for_test",
     testonly = True,

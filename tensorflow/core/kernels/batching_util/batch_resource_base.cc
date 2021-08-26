@@ -640,16 +640,17 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  // We use the 'propagated_context' from one of the threads which setup one
+  // of the tasks. This will propagate any common context over all the threads
+  // which are running this Session, of which this BatchOp is a part.
+  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
+  // Creates the CostMeasurement within the same context that runs the Session.
   const char* cost_measurement_type = GetCostMeasurementType();
   auto batch_cost_measurement =
       cost_measurement_type
           ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
           : nullptr;
-
-  // We use the 'propagated_context' from one of the threads which setup one
-  // of the tasks. This will propagate any common context over all the threads
-  // which are running this Session, of which this BatchOp is a part.
-  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -737,6 +738,12 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  // We use the 'propagated_context' from one of the threads which setup one
+  // of the tasks. This will propagate any common context over all the threads
+  // which are running this Session, of which this BatchOp is a part.
+  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
+  // Creates the CostMeasurement within the same context that runs the Session.
   const char* cost_measurement_type = GetCostMeasurementType();
   auto batch_cost_measurement =
       cost_measurement_type
@@ -746,8 +753,6 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
     SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
   });
-
-  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   OpKernelContext* last_task_context =
       batch->task(batch->num_tasks() - 1).context;

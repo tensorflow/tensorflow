@@ -314,10 +314,9 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
     return mlir_result;
   }
 
-  LOG_FIRST_N(WARNING, 5)
-      << "Failed second phase of the MLIR bridge. Will "
-         "retry with the old bridge. MLIR bridge compilation status: "
-      << mlir_result;
+  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
+             "retry with the old bridge. MLIR bridge compilation status: "
+          << mlir_result;
   return compile_with_old_bridge();
 }
 

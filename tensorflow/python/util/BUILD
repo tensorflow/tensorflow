@@ -393,6 +393,28 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_stack_trace_test_lib",
+    srcs = ["stack_trace_test_lib.cc"],
+    module_name = "_stack_trace_test_lib",
+    deps = [
+        ":stack_trace",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "stack_trace_test",
+    size = "small",
+    srcs = ["stack_trace_test.py"],
+    main = "stack_trace_test.py",
+    python_version = "PY3",
+    deps = [
+        ":_stack_trace_test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 cc_library(
     name = "function_parameter_canonicalizer",
     srcs = ["function_parameter_canonicalizer.cc"],

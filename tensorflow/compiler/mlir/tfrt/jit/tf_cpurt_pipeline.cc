@@ -74,7 +74,8 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
-  pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
 
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());

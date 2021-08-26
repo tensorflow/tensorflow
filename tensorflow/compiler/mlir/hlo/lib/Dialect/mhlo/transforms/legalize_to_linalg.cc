@@ -2202,21 +2202,21 @@ struct NormalConvOpOnTensorsConversion
     Attribute dilations = op.rhs_dilationAttr();
     switch (rank) {
       case 3: {
-        res = rewriter.create<linalg::ConvInputNWCFilterWCFOp>(
+        res = rewriter.create<linalg::Conv1DNwcWcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, dilations, strides);
+            ValueRange{zero_tensor}, strides, dilations);
         break;
       }
       case 4: {
-        res = rewriter.create<linalg::ConvInputNHWCFilterHWCFOp>(
+        res = rewriter.create<linalg::Conv2DNhwcHwcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, dilations, strides);
+            ValueRange{zero_tensor}, strides, dilations);
         break;
       }
       case 5: {
-        res = rewriter.create<linalg::ConvInputNDHWCFilterDHWCFOp>(
+        res = rewriter.create<linalg::Conv3DNdhwcDhwcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, dilations, strides);
+            ValueRange{zero_tensor}, strides, dilations);
         break;
       }
       default:
@@ -2323,9 +2323,9 @@ struct DepthwiseConvOpOnTensorsConversion
 
       auto reshaped_output_type = RankedTensorType::get(
           reshaped_output_dims, result_type.getElementType());
-      auto conv = rewriter.create<linalg::DepthwiseConvInputNHWCFilterHWCFOp>(
+      auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcOp>(
           op.getLoc(), reshaped_output_type, ValueRange{input, filter},
-          ValueRange{zero_tensor}, rhs_dilation, window_strides);
+          ValueRange{zero_tensor}, window_strides, rhs_dilation);
 
       // Create a Linalg reshape op that converts the output from 5 dimensions
       // into 4 dimensions (by collapsing the last two dimensions). This is
@@ -2363,9 +2363,9 @@ struct DepthwiseConvOpOnTensorsConversion
       Value reshaped_filter = rewriter.create<linalg::TensorCollapseShapeOp>(
           loc, filter_shape, filter, collapsed_dim_list);
 
-      rewriter.replaceOpWithNewOp<linalg::DepthwiseConvInputNHWCFilterHWCOp>(
+      rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwOp>(
           op, result_type, ValueRange{input, reshaped_filter},
-          ValueRange{zero_tensor}, rhs_dilation, window_strides);
+          ValueRange{zero_tensor}, window_strides, rhs_dilation);
     }
 
     return success();

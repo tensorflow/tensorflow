@@ -54,7 +54,6 @@ class Generate2Test(googletest.TestCase):
           output_dir=output_dir,
           code_url_prefix='',
           search_hints=True,
-          gen_report=False,
       )
 
 

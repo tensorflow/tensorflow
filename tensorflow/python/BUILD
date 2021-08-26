@@ -177,6 +177,7 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
@@ -886,6 +887,18 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/core:tpu_outfeed_ops_op_lib",
         "//tensorflow/core:tpu_replication_ops_op_lib",
         "//tensorflow/core:tpu_sharding_util_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "tpu_xla_ops_gen",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/python/tpu:__pkg__",
+        "//tensorflow/python/tpu/ops:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/ops",
     ],
 )
 
@@ -3202,6 +3215,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",

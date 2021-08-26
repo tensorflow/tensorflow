@@ -24,6 +24,7 @@ package_group(
         "//tensorflow/cc/...",
         "//tensorflow/python/...",
         "//tensorflow/tools/pip_package/...",
+        "//tensorflow/tools/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/dtensor/...",
@@ -37,6 +38,7 @@ package_group(
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
         "//waymo/ml/compiler/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
     ]),
 )
 

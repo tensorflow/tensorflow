@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/PassDetail.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/ccl_pattern.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gemm_pattern.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memcpy_pattern.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
@@ -57,7 +58,8 @@ struct LmhloGpuAsyncConversionPass
     converter.addConversion([&](BaseMemRefType) { return buffer_type; });
 
     ConversionTarget target(*context);
-    target.addIllegalDialect<lmhlo_gpu::LmhloGpuDialect>();
+    target
+        .addIllegalDialect<lmhlo_gpu::LmhloGpuDialect, mlir::gpu::GPUDialect>();
     target.addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
                            xla::gpu::XlirDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
@@ -72,10 +74,12 @@ struct LmhloGpuAsyncConversionPass
     RewritePatternSet patterns(context);
     populateCclConversionPattern(patterns);
     populateGemmConversionPattern(patterns);
+    populateMemcpyConversionPattern(patterns);
     populateFuncOpTypeConversionPattern(patterns, converter);
 
     ConversionTarget wrap_target(*context);
-    wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
+    wrap_target
+        .addLegalDialect<lmhlo_gpu::LmhloGpuDialect, mlir::gpu::GPUDialect>();
     wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
                            lmhlo::ReduceScatterOp>();
     tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,

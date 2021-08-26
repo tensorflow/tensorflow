@@ -148,7 +148,6 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 
 std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
-    int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
@@ -629,44 +628,6 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
              first_reduce->operand(0)->shape(), inst->shape()) &&
          LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
                            inst->shape().layout());
-}
-
-bool IsFusedReductionOutputConsistent(
-    mlir::mhlo::ReduceOp inst, mlir::mhlo::ReduceOp first_reduce,
-    const FusionLayoutAnalysis& layout_analysis) {
-  CHECK_EQ(1, first_reduce.getNumResults());
-  Shape first_reduce_operand_shape =
-      layout_analysis.GetShape(first_reduce.inputs()[0]);
-  CHECK_EQ(1, inst.getNumResults());
-  Shape inst_shape = layout_analysis.GetShape(inst.getResult(0));
-
-  if (IsReductionFromOrToContiguousDimensions(inst, layout_analysis)) {
-    Shape first_reduce_shape =
-        layout_analysis.GetShape(first_reduce.getResult(0));
-    Shape first_reduce_init_shape =
-        layout_analysis.GetShape(first_reduce.init_values()[0]);
-
-    Shape inst_operand_shape = layout_analysis.GetShape(inst.inputs()[0]);
-    Shape inst_init_shape = layout_analysis.GetShape(inst.init_values()[0]);
-
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-    if (!(ShapeUtil::Equal(first_reduce_shape, inst_shape) &&
-          ShapeUtil::Equal(first_reduce_operand_shape, inst_operand_shape) &&
-          ShapeUtil::Equal(first_reduce_init_shape, inst_init_shape) &&
-          absl::c_equal(first_reduce.dimensions(), inst.dimensions()))) {
-      return false;
-    }
-  } else {
-    if (!(ShapeUtil::CompatibleIgnoringElementType(first_reduce_operand_shape,
-                                                   inst_shape) &&
-          LayoutUtil::Equal(first_reduce_operand_shape.layout(),
-                            inst_shape.layout()))) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // Given an LMHLO op, returns the operand index of the first output operand.

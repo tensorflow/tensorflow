@@ -113,7 +113,8 @@ def _tpu_system_device_name(job: Optional[Text]) -> Text:
 def initialize_system(
     embedding_config: Optional[embedding_pb2.TPUEmbeddingConfiguration] = None,
     job: Optional[Text] = None,
-    compilation_failure_closes_chips: bool = True
+    compilation_failure_closes_chips: bool = True,
+    tpu_cancellation_closes_chips: Optional[bool] = None,
 ) -> core_types.Tensor:
   """Initializes a distributed TPU system for use with TensorFlow.
 
@@ -127,15 +128,30 @@ def initialize_system(
       be returned if this assumption does not hold.
     compilation_failure_closes_chips: Set the configuration whether
       we want to close TPU chips when there is a compilation failure.
+    tpu_cancellation_closes_chips: Set the configuration whether
+      we want to close TPU chips when a TPU execution is cancelled. If the value
+      is None, the behavior will be determined by the command line flag
+      `tpu_cancellation_closes_chips` for the TPU worker.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
   """
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
+
+  # The enum is defined in core/tpu/kernels/tpu_execute_op_options.h.
+  tpu_cancellation_closes_chips_enum = 0
+  if tpu_cancellation_closes_chips is not None:
+    if tpu_cancellation_closes_chips:
+      tpu_cancellation_closes_chips_enum = 1
+    else:
+      tpu_cancellation_closes_chips_enum = 2
+
   with ops.device(_tpu_system_device_name(job)):
     topology = tpu_ops.configure_distributed_tpu(
-        compilation_failure_closes_chips=compilation_failure_closes_chips)
+        compilation_failure_closes_chips=compilation_failure_closes_chips,
+        tpu_cancellation_closes_chips=tpu_cancellation_closes_chips_enum,
+    )
 
     if embedding_config is None:
       return topology

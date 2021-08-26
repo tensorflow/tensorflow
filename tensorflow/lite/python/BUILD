@@ -587,6 +587,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

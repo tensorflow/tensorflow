@@ -160,6 +160,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         }
         *end_of_sequence = !result[0].scalar<bool>()();
         if (*end_of_sequence) {
+          mutex_lock l(mu_);
+          input_impl_.reset();
           out_tensors->clear();
         }
         return Status::OK();
@@ -177,21 +179,23 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        if (input_impl_)
+        if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        else
+        } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
+        }
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty")))
+        if (reader->Contains(full_name("input_impls_empty"))) {
           input_impl_.reset();
-        else
+        } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        }
         return Status::OK();
       }
 

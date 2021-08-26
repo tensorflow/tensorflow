@@ -186,7 +186,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     for _ in tf.range(num_steps):
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
   @tf.function
   def evalution_step(dataset_iterator, num_steps):
@@ -198,7 +198,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     for _ in tf.range(num_steps):
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=False)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
   ```
 
   NOTE: The calls to `enqueue` have `training` set to `True` when
@@ -610,7 +610,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
     training_step()
     ```
@@ -707,7 +707,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
     training_step()
     ```
@@ -1166,7 +1166,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features,))
+      strategy.run(tpu_step, args=(tpu_features,))
 
     training_step()
     ```

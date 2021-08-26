@@ -742,3 +742,13 @@ tf_py_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+tf_py_test(
+    name = "keras_injection_test",
+    size = "small",
+    srcs = ["keras_injection_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)

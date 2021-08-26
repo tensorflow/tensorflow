@@ -69,8 +69,12 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
     }
 
+    TfrtTpuCompileOptions tpu_compile_options;
+    tpu_compile_options.move_resource_gather_to_host =
+        options.tpu_move_resource_gather_to_host;
+
     auto backward_compat_result =
-        tensorflow::RunTPUBackwardCompatConversion(module);
+        tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
     if (mlir::failed(backward_compat_result)) {
       return diag_handler.Combine(
           tensorflow::errors::Internal("Failed to handle legacy TPU Ops"));

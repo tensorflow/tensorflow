@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -66,17 +68,6 @@ bool IsNodeOfType(const NodeDef& node,
   return false;
 }
 
-Status FindNode(const GraphDef& graph, const string& name,
-                const NodeDef** result) {
-  for (const auto& node : graph.node()) {
-    if (node.name() == name) {
-      *result = &node;
-      return Status::OK();
-    }
-  }
-  return errors::NotFound("Could not find node ", name, ".");
-}
-
 Status GetSink(const GraphDef& graph_def, const NodeDef** sink) {
   for (auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
@@ -120,14 +111,15 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
   return Status::OK();
 }
 
-Status ParseInputNodeName(const std::string& input_name, std::string* node_name,
-                          std::string* suffix, bool* is_control_input) {
+Status ParseInputNodeName(absl::string_view input_name,
+                          absl::string_view* node_name,
+                          absl::string_view* suffix, bool* is_control_input) {
   if (input_name[0] == '^') {
     *node_name = input_name.substr(1);
     *is_control_input = true;
     return Status::OK();
   }
-  std::pair<std::string, std::string> node_spec =
+  std::pair<absl::string_view, absl::string_view> node_spec =
       absl::StrSplit(input_name, absl::MaxSplits(':', 1));
   *node_name = node_spec.first;
   *suffix = node_spec.second;
@@ -153,9 +145,26 @@ class GraphHasher {
       : graph_(graph), root_(root), flib_(flib) {}
 
   Status Init() {
+    // Construct a map of name -> NodeDef to avoid repeated linear searches.
+    absl::flat_hash_map<absl::string_view, const NodeDef*> node_def_by_name;
+    node_def_by_name.reserve(graph_->node_size());
+    for (const auto& node : graph_->node()) {
+      auto result = node_def_by_name.emplace(node.name(), &node);
+      if (TF_PREDICT_FALSE(!result.second)) {
+        auto node_name_formatter =
+            [](std::string* out,
+               const decltype(node_def_by_name)::value_type& item) {
+              absl::StrAppend(out, "'", item.first, "'");
+            };
+        return errors::Internal(
+            "Encountered graph with duplicate node name '", node.name(),
+            "' in [", absl::StrJoin(node_def_by_name, ",", node_name_formatter),
+            "]");
+      }
+    }
     // Pre-process the graph to do a BFS and prune away cycles that might cause
     // problems.
-    absl::flat_hash_set<std::string> visited;
+    absl::flat_hash_set<absl::string_view> visited;
     std::queue<const NodeDef*> bfs_queue;
     bfs_queue.push(root_);
     while (!bfs_queue.empty()) {
@@ -175,16 +184,20 @@ class GraphHasher {
         TF_RETURN_IF_ERROR(ShouldIgnoreInput(*node, i, &should_ignore_input));
         if (should_ignore_input) continue;
 
-        std::string node_name, suffix;
+        absl::string_view node_name, suffix;
         bool is_control_input;
         TF_RETURN_IF_ERROR(ParseInputNodeName(node->input(i), &node_name,
                                               &suffix, &is_control_input));
-        const NodeDef* input_node;
-        TF_RETURN_IF_ERROR(FindNode(*graph_, node_name, &input_node));
+
+        auto* input_node = gtl::FindPtrOrNull(node_def_by_name, node_name);
+        if (input_node == nullptr) {
+          return errors::Internal("Graph node [", node->name(), "] has input [",
+                                  node_name, "] that doesn't exist in graph");
+        }
 
         // If we've already seen this node before, skip it and don't add it to
         // the queue.
-        if (visited.find(node_name) != visited.end()) {
+        if (visited.contains(node_name)) {
           EdgeRep cycle_edge(node, input_node);
           cycle_forming_edges_.insert(cycle_edge.GetHash());
           continue;
@@ -209,8 +222,8 @@ class GraphHasher {
 
  private:
   Status HashNode(const NodeDef* node, uint64* hash) {
-    auto it = cache_.find(node);
-    if (it != cache_.end()) {
+    auto it = node_cache_.find(node);
+    if (it != node_cache_.end()) {
       *hash = it->second;
       return Status::OK();
     }
@@ -234,20 +247,20 @@ class GraphHasher {
       uint64 node_hash = 0;
       EdgeRep edge(node, input.first);
       // If the edge was pruned we get the non input node hash to avoid cycles.
-      if (cycle_forming_edges_.find(edge.GetHash()) !=
-          cycle_forming_edges_.end()) {
+      if (cycle_forming_edges_.contains(edge.GetHash())) {
         TF_RETURN_IF_ERROR(
             HashNodeNonInput(input.first, /*hash_functions=*/true, &node_hash));
       } else {
         TF_RETURN_IF_ERROR(HashNode(input.first, &node_hash));
       }
       inputs_hash = Hash64Combine(
-          inputs_hash, Hash64Combine(node_hash, Hash64(input.second)));
+          inputs_hash, Hash64Combine(node_hash, Hash64(input.second.data(),
+                                                       input.second.size())));
     }
 
     *hash = Hash64Combine(non_input_hash,
                           Hash64Combine(control_inputs_hash, inputs_hash));
-    cache_[node] = *hash;
+    node_cache_[node] = *hash;
     return Status::OK();
   }
 
@@ -287,8 +300,8 @@ class GraphHasher {
       } else {
         TF_RETURN_IF_ERROR(CheckNodesEqual(this_input, that, that_input));
       }
-      std::string this_input_suffix = this_node_inputs[i].second;
-      std::string that_input_suffix = that_node_inputs[i].second;
+      absl::string_view this_input_suffix = this_node_inputs[i].second;
+      absl::string_view that_input_suffix = that_node_inputs[i].second;
       if (this_input_suffix != that_input_suffix) {
         return errors::FailedPrecondition(
             "Node inputs ", this_input->name(), " and ", that_input->name(),
@@ -301,6 +314,11 @@ class GraphHasher {
 
   Status HashNodeNonInput(const NodeDef* node, bool hash_functions,
                           uint64* hash) {
+    auto iter = attr_hash_cache_.find(std::make_pair(node, hash_functions));
+    if (iter != attr_hash_cache_.end()) {
+      *hash = iter->second;
+      return Status::OK();
+    }
     // Hash Attrs. We get the list of attrs from the op registry and then look
     // up their values in the NodeDef attr map. This avoids looping over
     // a map which is non-deterministic.
@@ -318,8 +336,11 @@ class GraphHasher {
 
     for (const auto& attr : reg->op_def.attr()) {
       const auto& attr_key = attr.name();
-      if (!node->attr().contains(attr_key)) continue;
-      auto attr_value = node->attr().at(attr_key);
+      auto node_attr_iter = node->attr().find(attr_key);
+      if (node_attr_iter == node->attr().end()) {
+        continue;
+      }
+      const auto& attr_value = node_attr_iter->second;
       if (attr_key == kColocationAttrName ||
           attr_key == kColocationGroupPrefix) {
         continue;
@@ -334,6 +355,8 @@ class GraphHasher {
     uint64 device_hash = Hash64(node->device());
 
     *hash = Hash64Combine(op_hash, Hash64Combine(attrs_hash, device_hash));
+
+    attr_hash_cache_.emplace(std::make_pair(node, hash_functions), *hash);
     return Status::OK();
   }
 
@@ -361,21 +384,24 @@ class GraphHasher {
 
     for (const auto& attr : reg->op_def.attr()) {
       const auto& attr_key = attr.name();
-      if (this_node->attr().contains(attr_key) !=
-          that_node->attr().contains(attr_key)) {
+      const bool this_has_attr = this_node->attr().contains(attr_key);
+      const bool that_has_attr = that_node->attr().contains(attr_key);
+      if (this_has_attr != that_has_attr) {
         return errors::FailedPrecondition(
             "attr with key ", attr_key, " is different for nodes ",
             this_node->name(), " and ", that_node->name(),
-            ". Present in former: ", this_node->attr().contains(attr_key),
-            ". Present in latter: ", that_node->attr().contains(attr_key));
+            ". Present in former: ", this_has_attr,
+            ". Present in latter: ", that_has_attr);
       }
-      if (!this_node->attr().contains(attr_key)) continue;
+      if (!this_has_attr) {
+        continue;
+      }
       if (attr_key == kColocationAttrName ||
           attr_key == kColocationGroupPrefix) {
         continue;
       }
-      auto this_attr = this_node->attr().at(attr_key);
-      auto that_attr = that_node->attr().at(attr_key);
+      const auto& this_attr = this_node->attr().at(attr_key);
+      const auto& that_attr = that_node->attr().at(attr_key);
       TF_RETURN_IF_ERROR(CheckAttrsEqual(attr_key, this_attr, that, that_attr,
                                          compare_functions));
     }
@@ -407,7 +433,7 @@ class GraphHasher {
     } else {
       value_hash = DeterministicProtoHash64(attr_value);
     }
-    *hash = Hash64(absl::StrCat(attr_name, "=", value_hash));
+    *hash = Hash64Combine(Hash64(attr_name), value_hash);
     return Status::OK();
   }
 
@@ -484,6 +510,7 @@ class GraphHasher {
     }
 
     std::vector<const NodeDef*> control_rets;
+    control_rets.reserve(fbody->control_ret_nodes.size());
     for (const auto& control_ret_node : fbody->control_ret_nodes) {
       control_rets.push_back(&control_ret_node->def());
     }
@@ -548,10 +575,12 @@ class GraphHasher {
     }
 
     std::vector<const NodeDef*> this_control_rets;
+    this_control_rets.reserve(this_fbody->control_ret_nodes.size());
     for (const auto& control_ret_node : this_fbody->control_ret_nodes) {
       this_control_rets.push_back(&control_ret_node->def());
     }
     std::vector<const NodeDef*> that_control_rets;
+    that_control_rets.reserve(that_fbody->control_ret_nodes.size());
     for (const auto& control_ret_node : that_fbody->control_ret_nodes) {
       that_control_rets.push_back(&control_ret_node->def());
     }
@@ -587,26 +616,23 @@ class GraphHasher {
       uint64 node_hash = 0;
       TF_RETURN_IF_ERROR(
           HashNodeNonInput(input, /*hash_functions=*/false, &node_hash));
-      if (this_hashes.contains(node_hash)) {
-        this_hashes.erase(node_hash);
+      auto this_iter = this_hashes.find(node_hash);
+      if (this_iter != this_hashes.end()) {
+        this_hashes.erase(this_iter);
       } else {
         that_hashes[node_hash] = input;
       }
     }
     if (!this_hashes.empty()) {
-      std::vector<std::string> this_unmatched;
-      for (const auto& it : this_hashes) {
-        this_unmatched.push_back(it.second->name());
-      }
-      std::vector<std::string> that_unmatched;
-      for (const auto& it : that_hashes) {
-        that_unmatched.push_back(it.second->name());
-      }
+      auto formatter = [](string* out,
+                          const decltype(this_hashes)::value_type& item) {
+        out->append(item.second->name());
+      };
       return errors::FailedPrecondition(
           "Control dependencies are different. One node has dependencies [",
-          absl::StrJoin(this_unmatched, ", "),
+          absl::StrJoin(this_hashes, ", ", formatter),
           "], which don't match any of the other node's dependencies [",
-          absl::StrJoin(that_unmatched, ", "), "]");
+          absl::StrJoin(that_hashes, ", ", formatter), "]");
     }
     return Status::OK();
   }
@@ -619,7 +645,7 @@ class GraphHasher {
 
   struct NodeRep {
     std::vector<const NodeDef*> node_control_inputs;
-    std::vector<std::pair<const NodeDef*, std::string>> node_inputs;
+    std::vector<std::pair<const NodeDef*, absl::string_view>> node_inputs;
   };
 
   struct EdgeRep {
@@ -640,7 +666,8 @@ class GraphHasher {
   // Edges that need to be pruned as their presence will cause cycles.
   absl::flat_hash_set<uint64> cycle_forming_edges_;
   absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
-  absl::flat_hash_map<const NodeDef*, uint64> cache_;
+  absl::flat_hash_map<const NodeDef*, uint64> node_cache_;
+  absl::flat_hash_map<std::pair<const NodeDef*, bool>, uint64> attr_hash_cache_;
 };
 
 }  // anonymous namespace

@@ -266,7 +266,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
-
+      DeleteLocalWorkerTasks();
       VLOG(1) << "Destroyed data service dataset iterator for job id "
               << job_client_id_;
     }
@@ -291,8 +291,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           [&]() {
             return dispatcher_->GetOrCreateJob(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
-                dataset()->num_consumers_, job_client_id_,
-                dataset()->target_workers_);
+                dataset()->num_consumers_, dataset()->target_workers_,
+                job_client_id_);
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
@@ -503,6 +503,25 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
       get_next_cv_.notify_all();
+    }
+
+    void DeleteLocalWorkerTasks() {
+      if (dataset()->target_workers_ != TARGET_WORKERS_LOCAL) {
+        return;
+      }
+      std::vector<std::shared_ptr<Task>> tasks;
+      {
+        mutex_lock l(mu_);
+        tasks = tasks_;
+      }
+
+      for (const std::shared_ptr<Task>& task : tasks) {
+        std::shared_ptr<DataServiceWorkerImpl> worker =
+            LocalWorkers::Get(task->info.worker_address());
+        if (worker) {
+          worker->DeleteLocalTask(task->info);
+        }
+      }
     }
 
     // Periodically refresh the task list.

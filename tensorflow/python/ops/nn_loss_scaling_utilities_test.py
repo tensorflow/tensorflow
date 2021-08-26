@@ -44,6 +44,30 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     loss = nn_impl.compute_average_loss(per_example_loss, global_batch_size=10)
     self.assertEqual(self.evaluate(loss), 1.5)
 
+  def testComputeAverageLossGlobalBatchSize_BatchSizeNonScalar(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "global_batch_size must be scalar"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=[10])
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeFloat(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "global_batch_size must be an int"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=10.0)
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeNegative(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=-1)
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeZero(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=0)
+
   @combinations.generate(
       combinations.combine(
           distribution=[

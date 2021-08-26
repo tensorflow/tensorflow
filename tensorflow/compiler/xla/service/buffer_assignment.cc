@@ -909,38 +909,39 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
 
   const auto& buffer_live_ranges = hlo_live_range.buffer_live_ranges();
 
-  CHECK(buffer_live_ranges.contains(buffer1))
+  auto live_range_it1 = buffer_live_ranges.find(buffer1);
+  CHECK(live_range_it1 != buffer_live_ranges.end())
       << "Buffer doesn't have a proper live range:" << buffer1;
 
-  CHECK(buffer_live_ranges.contains(buffer2))
+  auto live_range_it2 = buffer_live_ranges.find(buffer2);
+  CHECK(live_range_it2 != buffer_live_ranges.end())
       << "Buffer doesn't have a proper live range:" << buffer2;
 
   // Check if a user value can share the same buffer as its operand.
-  auto can_share_as_operand = [&assignment, &buffer_live_ranges](
-                                  const HloValue* user_value,
-                                  const HloValue* operand_value) {
-    // An hlo value can hold multiple instructions during its life time. We only
-    // look at the last instruction and check if it can be shared with the
-    // operand.
-    HloPosition operand_end_position =
-        buffer_live_ranges.at(operand_value).end_position;
-    return user_value->instruction()->IsUserOf(
-               operand_end_position.instruction) &&
-           assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-               operand_end_position.instruction, operand_end_position.index,
-               user_value->instruction(), user_value->index()) &&
-           user_value->instruction()->opcode() != HloOpcode::kCopy;
-  };
+  auto can_share_as_operand =
+      [&assignment](const HloValue* user_value, const HloValue* operand_value,
+                    const HloLiveRange::TimeBound& operand_live_range) {
+        // An hlo value can hold multiple instructions during its life time. We
+        // only look at the last instruction and check if it can be shared with
+        // the operand.
+        HloPosition operand_end_position = operand_live_range.end_position;
+        return user_value->instruction()->opcode() != HloOpcode::kCopy &&
+               user_value->instruction()->IsUserOf(
+                   operand_end_position.instruction) &&
+               assignment->dataflow_analysis().CanShareOperandBufferWithUser(
+                   operand_end_position.instruction, operand_end_position.index,
+                   user_value->instruction(), user_value->index());
+      };
 
-  auto live_range_1 = buffer_live_ranges.at(buffer1);
-  auto live_range_2 = buffer_live_ranges.at(buffer2);
+  const auto& live_range_1 = live_range_it1->second;
+  const auto& live_range_2 = live_range_it2->second;
 
   if (!(live_range_1.start > live_range_2.end ||
         live_range_2.start > live_range_1.end)) {
     if (live_range_1.end == live_range_2.start) {
       auto operand_value = buffer1;
       auto user_value = buffer2;
-      if (!can_share_as_operand(user_value, operand_value)) {
+      if (!can_share_as_operand(user_value, operand_value, live_range_1)) {
         VLOG(4) << "End of live range of " << buffer1->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer2->ToShortString() << ", buffer cannot be shared.";
@@ -949,7 +950,7 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
     } else if (live_range_2.end == live_range_1.start) {
       auto operand_value = buffer2;
       auto user_value = buffer1;
-      if (!can_share_as_operand(user_value, operand_value)) {
+      if (!can_share_as_operand(user_value, operand_value, live_range_2)) {
         VLOG(4) << "End of live range of " << buffer2->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer1->ToShortString() << ", buffer cannot be shared.";
@@ -1052,16 +1053,17 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
         return false;
       }
 
-      for (const HloPosition& assigned_buffer_position :
-           assigned_buffer.positions()) {
-        // Copy instruction don't share a buffer with their input operand.
-        if (new_value->instruction()->IsUserOf(
-                assigned_buffer_position.instruction) &&
-            new_value->instruction()->opcode() == HloOpcode::kCopy) {
-          VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                  << " is used at copy instruction "
-                  << new_value->ToShortString();
-          return false;
+      // Copy instruction don't share a buffer with their input operand.
+      if (new_value->instruction()->opcode() == HloOpcode::kCopy) {
+        for (const HloPosition& assigned_buffer_position :
+             assigned_buffer.positions()) {
+          if (new_value->instruction()->IsUserOf(
+                  assigned_buffer_position.instruction)) {
+            VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                    << " is used at copy instruction "
+                    << new_value->ToShortString();
+            return false;
+          }
         }
       }
     }

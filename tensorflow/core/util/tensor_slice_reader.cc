@@ -168,9 +168,13 @@ void TensorSliceReader::LoadShard(int shard) const {
                           "checkpoint");
   if (!status_.ok()) return;
   for (const SavedSliceMeta& ssm : sts.meta().tensor()) {
-    TensorShape ssm_shape(ssm.shape());
+    TensorShape ssm_shape;
+    status_ = TensorShape::BuildTensorShapeBase(ssm.shape(), &ssm_shape);
+    if (!status_.ok()) return;
     for (const TensorSliceProto& tsp : ssm.slice()) {
-      TensorSlice ss_slice(tsp);
+      TensorSlice ss_slice;
+      status_ = TensorSlice::BuildTensorSlice(tsp, &ss_slice);
+      if (!status_.ok()) return;
       status_ = RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname,
                                     ss_slice, &tensors_);
       if (!status_.ok()) return;
@@ -248,7 +252,9 @@ Status TensorSliceReader::GetTensor(
     slice = tss->Slices().begin()->second.slice;
   }
 
-  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor(type, shape));
+  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
+  Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
+  if (!s.ok()) return s;
   bool success = false;
 
 #define READER_COPY(dt)                                                  \

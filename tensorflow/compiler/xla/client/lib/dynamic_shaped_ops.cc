@@ -15,11 +15,51 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 namespace xla {
 namespace {
+
+// Given a list of shapes, create a shape whose dimensions are largest among all
+// inputs.
+//
+// e.g.,
+// shape_a = f32[10, 50]
+// shape_b = f32[100, 10]
+//
+// result = f32[max(shape_a[0], shape_b[0]), max(shape_a[1], shape_b[1])]
+//        = f32[100, 50]
+Shape FindMaxShape(absl::Span<const Shape*> shapes) {
+  CHECK(!shapes.empty());
+  if (shapes[0]->IsTuple()) {
+    // Recurse into sub-element.
+    std::vector<Shape> results;
+    results.reserve(shapes[0]->tuple_shapes_size());
+    for (int64_t i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
+      std::vector<const Shape*> subshapes;
+      subshapes.reserve(shapes.size());
+      for (int64_t j = 0; j < shapes.size(); ++j) {
+        subshapes.push_back(&shapes[j]->tuple_shapes(i));
+      }
+      results.push_back(FindMaxShape(absl::MakeSpan(subshapes)));
+    }
+    return ShapeUtil::MakeTupleShape(results);
+  }
+  Shape result = *shapes[0];
+
+  for (const Shape* shape : shapes) {
+    CHECK(result.rank() == shape->rank());
+    for (int64_t dim = 0; dim < result.rank(); ++dim) {
+      if (shape->dimensions(dim) > result.dimensions(dim)) {
+        result.set_dimensions(dim, shape->dimensions(dim));
+      }
+    }
+  }
+  return result;
+}
 
 XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
                                 const Shape& right_branch_shape,
@@ -107,6 +147,70 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
                          true_shape, false_computation));
     return xla::Conditional(predicate, true_operand, true_computation_rewritten,
                             false_operand, false_computation_rewritten);
+  });
+}
+
+XlaOp DynamicConditional(
+    XlaBuilder* builder, XlaOp branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    std::vector<Shape> root_shapes;
+    root_shapes.reserve(branch_computations.size());
+    for (int64_t i = 0; i < branch_computations.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(auto program_shape,
+                          branch_computations[i]->GetProgramShape());
+      root_shapes.push_back(program_shape.result());
+    }
+    TF_RET_CHECK(!root_shapes.empty());
+    bool all_shapes_compatible =
+        absl::c_all_of(root_shapes, [&](const Shape& shape) {
+          return ShapeUtil::Compatible(root_shapes[0], shape);
+        });
+    if (all_shapes_compatible) {
+      // All shapes are compatible, fall back to static case.
+      return xla::Conditional(branch_index, branch_computations,
+                              branch_operands);
+    }
+
+    std::vector<const Shape*> root_shapes_ptrs;
+    root_shapes_ptrs.reserve(root_shapes.size());
+    for (int64_t i = 0; i < root_shapes.size(); ++i) {
+      root_shapes_ptrs.push_back(&root_shapes[i]);
+    }
+
+    Shape max_shape = FindMaxShape(absl::MakeSpan(root_shapes_ptrs));
+
+    auto reconsile_branch = [](const Shape& root_shape,
+                               const Shape& operand_shape,
+                               const Shape& reference_root_shape,
+                               const XlaComputation& computation) {
+      xla::XlaBuilder builder("dynamic_builder");
+      auto param = xla::Parameter(&builder, 0, operand_shape, "param");
+      auto call = Call(&builder, computation, {param});
+
+      ReconsileBranchDifference(root_shape, reference_root_shape, call);
+      return builder.Build();
+    };
+    std::vector<XlaComputation> rewritten_computations;
+    rewritten_computations.reserve(branch_computations.size());
+
+    for (int64_t i = 0; i < branch_computations.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(Shape branch_operand_shape,
+                          builder->GetShape(branch_operands[i]));
+
+      TF_ASSIGN_OR_RETURN(auto rewritten,
+                          reconsile_branch(root_shapes[i], branch_operand_shape,
+                                           max_shape, *branch_computations[i]));
+      rewritten_computations.push_back(std::move(rewritten));
+    }
+    std::vector<const XlaComputation*> rewritten_computation_ptrs;
+    rewritten_computation_ptrs.reserve(branch_computations.size());
+    for (int64_t i = 0; i < branch_computations.size(); ++i) {
+      rewritten_computation_ptrs.push_back(&rewritten_computations[i]);
+    }
+    return xla::Conditional(branch_index, rewritten_computation_ptrs,
+                            branch_operands);
   });
 }
 

@@ -88,6 +88,57 @@ func @add_vec_vec_vec(
 
 // -----
 
+// Verify that symbolic shape optimization can move all the broadcasts up, and
+// progressively remove all shape constraints and replace mhlo broadcasts with
+// linalg.generic operations that in the end all are fused together.
+
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, 0)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d2)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK: compute_with_bcast
+func @compute_with_bcast(
+  %arg0: tensor<1x?x1xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+  %arg1: tensor<512xf32>,
+  %arg2: tensor<1x?x512xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+  %arg3: tensor<1x?x1xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+  %arg4: tensor<512xf32>
+) -> tensor<?x?x512xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK:     linalg.generic
+  // CHECK:        addf
+  // CHECK-NEXT:   math.rsqrt
+  // CHECK-NEXT:   mulf
+  // CHECK-NEXT:   mulf
+  // CHECK-NEXT:   subf
+  // CHECK-NEXT:   mulf
+  // CHECK-NEXT:   addf
+  // CHECK-NEXT:   linalg.yield
+  // CHECK-NOT:    linalg.generic
+  %c = "tf.Const"() {value = dense<9.99999996E-13>
+       : tensor<f32>} : () -> tensor<f32>
+  %0 = "tf.AddV2"(%arg0, %c)
+       : (tensor<1x?x1xf32>, tensor<f32>) -> tensor<?x?x1xf32>
+  %1 = "tf.Rsqrt"(%0)
+       : (tensor<?x?x1xf32>) -> tensor<?x?x1xf32>
+  %2 = "tf.Mul"(%1, %arg1)
+       : (tensor<?x?x1xf32>, tensor<512xf32>) -> tensor<?x?x512xf32>
+  %3 = "tf.Mul"(%2, %arg2)
+       : (tensor<?x?x512xf32>, tensor<1x?x512xf32>) -> tensor<?x?x512xf32>
+  %4 = "tf.Mul"(%2, %arg3)
+       : (tensor<?x?x512xf32>, tensor<1x?x1xf32>) -> tensor<?x?x512xf32>
+  %5 = "tf.Sub"(%arg4, %4)
+       : (tensor<512xf32>, tensor<?x?x512xf32>) -> tensor<?x?x512xf32>
+  %6 = "tf.AddV2"(%3, %5)
+       : (tensor<?x?x512xf32>, tensor<?x?x512xf32>) -> tensor<?x?x512xf32>
+  return %6 : tensor<?x?x512xf32>
+}
+
+// -----
+
 // CHECK: add_vec_vec_vec_vec
 func @add_vec_vec_vec_vec(
   %arg0: tensor<?xf32> {cpurt.symbolic_shape = dense<-2>: tensor<1xi64>},
@@ -105,6 +156,28 @@ func @add_vec_vec_vec_vec(
   %1 = "tf.AddV2"(%0, %arg2): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.AddV2"(%1, %arg3): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   return %2 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK: add_vec_tensor_tensor
+func @add_vec_tensor_tensor(
+  %arg0: tensor<512xf32>,
+  %arg1: tensor<1x?x512xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+  %arg2: tensor<1x?x512xf32>
+    {cpurt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
+) -> tensor<1x?x512xf32> {
+  // CHECK-NOT: memref.reinterpret_cast
+  // CHECK: linalg.generic
+  // CHECK:   addf
+  // CHECK:   addf
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.AddV2"(%arg0, %arg1)
+        : (tensor<512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
+  %1 = "tf.AddV2"(%arg2, %0)
+        : (tensor<1x?x512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
+  return %1 : tensor<1x?x512xf32>
 }
 
 // -----

@@ -23,6 +23,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/runtime_fallback/util:attr_util",
+        "//tensorflow/core/tfrt/utils:error_util",
         "@tf_runtime//backends/common:eigencompat",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
