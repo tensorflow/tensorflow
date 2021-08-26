@@ -117,6 +117,13 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   int driverVersion;
   cuDriverGetVersion(&driverVersion);
   VLOG(2) << "DRIVER VERSION: " << driverVersion;
+  if (driverVersion < 11020) {
+    LOG(FATAL)  // Crash OK.
+      << "Disable cuda_malloc_async or update your CUDA driver to a version"
+      << " compitible with CUDA 11.2 or higher."
+      << " We detected a version compatible with: " << driverVersion;
+  }
+
   if (platform_device_id.value() > 0 && driverVersion < 11030) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
@@ -131,12 +138,6 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     LOG(FATAL)  // Crash OK.
       << "Error while fetching driver version: "
       << GetCudaErrorMessage(status2);
-  }
-  if (driverVersion < 11020) {
-    LOG(FATAL)  // Crash OK.
-      << "Disable cuda_malloc_async or update your CUDA driver to a version"
-      << " compitible with CUDA 11.2 or higher."
-      << " We detected a version compatible with: " << driverVersion;
   }
 
   // Check that cudaMallocAsync is supported.
