@@ -17,7 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
+// We need to include gpu_kernel_helper.h before segment_reduction_ops.h
+// See comment in segment_reduction_ops.h for more details.
+// clang-format off
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
+
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
@@ -25,46 +30,11 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 
 namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
-
-// Non/Atomic reduction functors for the gpu.
-#define DEFINE_REDUCE_UPDATE_OP_GPU(name, func)                             \
-  struct name##OpGpu {                                                      \
-    template <typename T>                                                   \
-    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,          \
-                                                          const T& value) { \
-      func;                                                                 \
-    }                                                                       \
-  };
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicSum, GpuAtomicAdd(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicProd, GpuAtomicMul(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMax, GpuAtomicMax(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMin, GpuAtomicMin(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicSum, *dest += value)
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicProd, *dest *= value)
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMax, *dest = max(*dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMin, *dest = min(*dest, value))
-#undef DEFINE_REDUCE_UPDATE_OP_GPU
-
-template <typename ReduceOp>
-struct ReduceUpdateOpFor {};
-
-#define DEFINE_REDUCE_UPDATE_OP_FOR(reduce_op, atomic, nonatomic) \
-  template <>                                                     \
-  struct ReduceUpdateOpFor<reduce_op> {                           \
-    using atomic_op = atomic;                                     \
-    using nonatomic_op = nonatomic;                               \
-  };
-DEFINE_REDUCE_UPDATE_OP_FOR(functor::Sum, AtomicSumOpGpu, NonAtomicSumOpGpu)
-DEFINE_REDUCE_UPDATE_OP_FOR(functor::Prod, AtomicProdOpGpu, NonAtomicProdOpGpu)
-DEFINE_REDUCE_UPDATE_OP_FOR(functor::Max, AtomicMaxOpGpu, NonAtomicMaxOpGpu)
-DEFINE_REDUCE_UPDATE_OP_FOR(functor::Min, AtomicMinOpGpu, NonAtomicMinOpGpu)
-#undef DEFINE_REDUCE_UPDATE_OP_FOR
 
 // SortedSegmentReductionFunctor kernel reduces input data just as
 // UnsortedSegmentReductionCustomKernel does except that input data
@@ -136,35 +106,6 @@ __global__ void SortedSegmentReductionCustomKernel(
         last_output_segment_id * inner_dim_size + segment_offset;
     AtomicReductionF()(output + output_index, reduce_res);
   }
-}
-
-template <typename SegmentId, typename Index, typename T>
-__global__ void SegmentMeanNormalizeKernel(
-    SegmentId nsegments, Index ninner,
-    const Index* __restrict__ segment_offsets,  // [nsegments + 1]
-    T* __restrict__ output) {                   // [nsegments, ninner]
-  for (SegmentId seg : GpuGridRangeY(nsegments)) {
-    SegmentId segment_size = segment_offsets[seg + 1] - segment_offsets[seg];
-    segment_size = max(segment_size, Index(1));  // Avoid division by zero
-    T inv_norm = T(1) / static_cast<T>(segment_size);
-    for (Index i : GpuGridRangeX(ninner)) {
-      output[seg * ninner + i] *= inv_norm;
-    }
-  }
-}
-
-template <typename SegmentId, typename Index, typename T>
-Status LaunchSegmentMeanNormalizeKernel(
-    const GPUDevice& d, SegmentId nsegments, Index ninner,
-    const Index* __restrict__ segment_offsets,  // [nsegments + 1]
-    T* __restrict__ output) {                   // [nsegments, ninner]
-  Gpu2DLaunchConfig config = GetGpu2DLaunchConfig(
-      ninner, nsegments, d, SegmentMeanNormalizeKernel<SegmentId, Index, T>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
-  return GpuLaunchKernel(SegmentMeanNormalizeKernel<SegmentId, Index, T>,
-                         config.block_count, config.thread_per_block, 0,
-                         d.stream(), nsegments, ninner, segment_offsets,
-                         output);
 }
 
 // UnsortedSegmentSumKernel processes 'input_total_size' elements.
@@ -682,27 +623,37 @@ struct ReduceType {
 
 // Sum fp16 values using an fp32 accumulator to avoid numerical issues.
 template <>
-struct ReduceType<functor::Sum, Eigen::half> {
+struct ReduceType<gpuprim::Sum, Eigen::half> {
   using type = float;
 };
 
 namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,
-          typename EmptySegmentValueF, typename ReductionF>
+          typename ReductionF, typename AtomicReductionF>
 void SegmentReductionFunctor<
-    T, Index, InitialValueF, EmptySegmentValueF,
-    ReductionF>::operator()(OpKernelContext* ctx, const GPUDevice& d,
-                            const Index output_rows,
-                            const TensorShape& segment_ids_shape, bool is_mean,
-                            typename TTypes<Index>::ConstFlat segment_ids,
-                            const Index data_size, const T* data,
-                            typename TTypes<T, 2>::Tensor output) {
+    T, Index, InitialValueF, ReductionF,
+    AtomicReductionF>::operator()(OpKernelContext* ctx, const GPUDevice& d,
+                                  const Index output_rows,
+                                  const TensorShape& segment_ids_shape,
+                                  typename TTypes<Index>::ConstFlat segment_ids,
+                                  const Index data_size, const T* data,
+                                  typename TTypes<T, 2>::Tensor output) {
   if (output.size() == 0) {
     return;
   }
 
-  // Launch kernel(s) to compute sorted segment reduction.
+  // Set 'output' to initial value.
+  GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+  const T InitialValue = InitialValueF()();
+  TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              output.size(), output.data(), InitialValue));
+  if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
+    return;
+  }
+
+  // Launch kernel to compute sorted segment reduction.
   // Notes:
   // *) 'input_total_size' is the total number of elements to process.
   // *) 'segment_ids.shape' is a prefix of data's shape.
@@ -710,84 +661,30 @@ void SegmentReductionFunctor<
   const Index input_total_size = data_size;
   const Index input_outer_dim_size = segment_ids.dimension(0);
   const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
-  const Index num_segments = output.size() / input_inner_dim_size;
 
-  // TODO(benbarsdell): If there are no performance concerns with the new
-  // deterministic kernels, remove this runtime check and only compile the old
-  // non-deterministic kernels on Windows (as a workaround for the build failure
-  // issue).
-  if (UseNonDeterministicSegmentReductions()) {
-    // Set 'output' to initial value.
-    GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-    const T InitialValue = InitialValueF()();
-    TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
-                                config.thread_per_block, 0, d.stream(),
-                                output.size(), output.data(), InitialValue));
-    if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
-      return;
-    }
+  const int OuterDimTileSize = 8;
 
-    const int OuterDimTileSize = 8;
+  const Index input_outer_dim_num_stripe =
+      Eigen::divup(input_outer_dim_size, Index(OuterDimTileSize));
 
-    const Index input_outer_dim_num_stripe =
-        Eigen::divup(input_outer_dim_size, Index(OuterDimTileSize));
+  const Index total_stripe_count =
+      input_inner_dim_size * input_outer_dim_num_stripe;
 
-    const Index total_stripe_count =
-        input_inner_dim_size * input_outer_dim_num_stripe;
-
-    config = GetGpuLaunchConfig(total_stripe_count, d);
-    TF_CHECK_OK(GpuLaunchKernel(
-        SortedSegmentReductionCustomKernel<
-            T, Index, OuterDimTileSize,
-            typename ReduceUpdateOpFor<ReductionF>::nonatomic_op,
-            typename ReduceUpdateOpFor<ReductionF>::atomic_op>,
-        config.block_count, config.thread_per_block, 0, d.stream(),
-        input_outer_dim_size, input_inner_dim_size, output_rows,
-        segment_ids.data(), data, output.data(), total_stripe_count,
-        InitialValue));
-
-    if (is_mean) {
-      Tensor segment_offsets;
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<Index>::value,
-                                             TensorShape({num_segments + 1}),
-                                             &segment_offsets));
-      Index* segment_offsets_ptr = segment_offsets.flat<Index>().data();
-      OP_REQUIRES_OK(ctx, LaunchSegmentOffsetsKernel(
-                              d, input_outer_dim_size, num_segments,
-                              segment_ids.data(), segment_offsets_ptr));
-
-      OP_REQUIRES_OK(ctx, LaunchSegmentMeanNormalizeKernel(
-                              d, num_segments, input_inner_dim_size,
-                              segment_offsets_ptr, output.data()));
-    }
-  } else {
-    // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-    // build error.
-#if !defined(PLATFORM_WINDOWS)
-    using Treduce = typename ReduceType<ReductionF, T>::type;
-    OP_REQUIRES_OK(
-        ctx,
-        SegmentReduceGPU<Treduce>(
-            ctx, input_outer_dim_size, input_inner_dim_size, num_segments,
-            ReductionF(), InitialValueF()(), EmptySegmentValueF()(),
-            /*is_mean=*/is_mean, /*is_sqrtn=*/false, data, segment_ids.data(),
-            /*indices=*/static_cast<const Index*>(nullptr),
-            /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-    // Note: Shouldn't reach here because UseNonDeterministicSegmentReductions()
-    // always returns true on Windows.
-    OP_REQUIRES(ctx, false,
-                errors::Unimplemented("Deterministic segment reductions are "
-                                      "not implemented on Windows."));
-#endif
-  }
+  config = GetGpuLaunchConfig(total_stripe_count, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      SortedSegmentReductionCustomKernel<T, Index, OuterDimTileSize, ReductionF,
+                                         AtomicReductionF>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
+      input_outer_dim_size, input_inner_dim_size, output_rows,
+      segment_ids.data(), data, output.data(), total_stripe_count,
+      InitialValue));
 }
 
 template <typename T, typename Index, typename InitialValueF,
           typename ReductionF>
 struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
   void operator()(OpKernelContext* ctx, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat unsorted_segment_ids,
+                  typename TTypes<Index>::ConstFlat segment_ids,
                   typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output) {
     if (output.size() == 0) {
@@ -795,9 +692,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
 
     bool determinism_requirement_met =
-        !UseNonDeterministicSegmentReductions() ||
-        ReduceOpIsAssociative<ReductionF, T>::value ||
-        !OpDeterminismRequired() ||
+        ReductionF::is_associative || !OpDeterminismRequired() ||
         DisableSegmentReductionOpDeterminismExceptions();
     OP_REQUIRES(
         ctx, determinism_requirement_met,
@@ -805,85 +700,31 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
             "Deterministic GPU implementation of unsorted segment reduction op"
             " not available."));
 
-    // Launch kernel(s) to compute unsorted segment reduction.
+    // Set 'output' to initial value.
+    GPUDevice d = ctx->template eigen_device<GPUDevice>();
+    GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetToValue<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output.size(), output.data(), InitialValueF()()));
+    const int64_t data_size = data.size();
+    if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
+      return;
+    }
+    // Launch kernel to compute unsorted segment reduction.
     // Notes:
     // *) 'data_size' is the total number of elements to process.
     // *) 'segment_ids.shape' is a prefix of data's shape.
     // *) 'input_outer_dim_size' is the total number of segments to process.
-    const Index input_outer_dim_size = unsorted_segment_ids.dimension(0);
-    const Index input_inner_dim_size = data.dimension(1);
-    const Index output_outer_dim_size = output.dimension(0);
-    const Index num_segments = output.size() / input_inner_dim_size;
+    const int64_t input_outer_dim_size = segment_ids.dimension(0);
+    const int64_t input_inner_dim_size = data.dimension(1);
+    const int64_t output_outer_dim_size = output.dimension(0);
+    config = GetGpuLaunchConfig(data_size, d);
 
-    // TODO(benbarsdell): If there are no performance concerns with the new
-    // deterministic kernels, remove this runtime check and only compile the old
-    // non-deterministic kernels on Windows (as a workaround for the build
-    // failure issue).
-    if (UseNonDeterministicSegmentReductions()) {
-      // Set 'output' to initial value.
-      GPUDevice d = ctx->template eigen_device<GPUDevice>();
-      GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-      TF_CHECK_OK(GpuLaunchKernel(
-          SetToValue<T>, config.block_count, config.thread_per_block, 0,
-          d.stream(), output.size(), output.data(), InitialValueF()()));
-      const int64_t data_size = data.size();
-      if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
-        return;
-      }
-      config = GetGpuLaunchConfig(data_size, d);
-      TF_CHECK_OK(GpuLaunchKernel(
-          UnsortedSegmentCustomKernel<
-              T, Index, typename ReduceUpdateOpFor<ReductionF>::atomic_op>,
-          config.block_count, config.thread_per_block, 0, d.stream(),
-          input_outer_dim_size, input_inner_dim_size, output_outer_dim_size,
-          unsorted_segment_ids.data(), data.data(), output.data()));
-    } else {
-      // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-      // build error.
-#if !defined(PLATFORM_WINDOWS)
-      // Allocate temporary space and sort segment_ids, then call the sorted
-      // implem.
-      Tensor segment_ids;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(
-                   DataTypeToEnum<Index>::value,
-                   TensorShape({static_cast<int64_t>(input_outer_dim_size)}),
-                   &segment_ids));
-      Index* segment_ids_ptr = segment_ids.flat<Index>().data();
-      Tensor sorted_indices;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(
-                   DataTypeToEnum<Index>::value,
-                   TensorShape({static_cast<int64_t>(input_outer_dim_size)}),
-                   &sorted_indices));
-      Index* sorted_indices_ptr = sorted_indices.flat<Index>().data();
-      // Note: We must sort using all bits here because unsorted_segment_ids
-      // may contain negative values.
-      OP_REQUIRES_OK(
-          ctx, GpuRadixSort(ctx, input_outer_dim_size,
-                            /*keys_in=*/unsorted_segment_ids.data(),
-                            /*keys_out=*/segment_ids_ptr,
-                            /*indices_in=*/static_cast<const Index*>(nullptr),
-                            /*indices_out=*/sorted_indices_ptr));
-      using Treduce = typename ReduceType<ReductionF, T>::type;
-      OP_REQUIRES_OK(
-          ctx,
-          SegmentReduceGPU<Treduce>(
-              ctx, input_outer_dim_size, input_inner_dim_size, num_segments,
-              ReductionF(), /*initial_value=*/InitialValueF()(),
-              /*empty_segment_value=*/InitialValueF()(), /*is_mean=*/false,
-              /*is_sqrtn=*/false, /*input=*/data.data(),
-              /*segment_ids=*/segment_ids_ptr, /*indices=*/sorted_indices_ptr,
-              /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-      // Note: Shouldn't reach here because
-      // UseNonDeterministicSegmentReductions() always returns true on Windows.
-      OP_REQUIRES(
-          ctx, false,
-          errors::Unimplemented("Deterministic unsorted segment reductions are "
-                                "not implemented on Windows."));
-#endif
-    }
+    TF_CHECK_OK(GpuLaunchKernel(
+        UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,
+        config.thread_per_block, 0, d.stream(), input_outer_dim_size,
+        input_inner_dim_size, output_outer_dim_size, segment_ids.data(),
+        data.data(), output.data()));
   }
 };
 
@@ -894,7 +735,7 @@ Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
     typename TTypes<Index>::ConstVec indices,
     typename TTypes<SegmentId>::ConstVec segment_ids,
     typename TTypes<T, 2>::Tensor output) {
-  using ReduceOp = functor::Sum;
+  using ReduceOp = gpuprim::Sum;
   using Treduce = typename ReduceType<ReduceOp, T>::type;
   Index nouter = segment_ids.size();
   Index ninner = input.dimension(1);

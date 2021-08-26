@@ -108,29 +108,26 @@ class SegmentReductionOpTest(SegmentReductionHelper):
                          math_ops.segment_mean)]
 
     n = 10
-    # Note that the GPU implem has different paths for different inner sizes.
-    for shape in [[n, 1], [n, 2], [n, 3], [n, 32]]:
-      indices = [i // 3 for i in range(n)]
-      for dtype in dtypes:
-        if dtype in (dtypes_lib.complex64, dtypes_lib.complex128):
-          curr_ops_list = complex_ops_list
-        else:
-          curr_ops_list = ops_list
-        for use_gpu in [True, False]:
-          with self.cached_session(use_gpu=use_gpu):
-            tf_x, np_x = self._input(shape, dtype=dtype)
-            for np_op1, np_op2, tf_op in curr_ops_list:
-              initial_value = 1 if tf_op is math_ops.segment_prod else 0
-              np_ans = self._segmentReduce(
-                  indices, np_x, np_op1, np_op2, initial_value=initial_value)
-              s = tf_op(data=tf_x, segment_ids=indices)
-              tf_ans = self.evaluate(s)
-              self.assertAllClose(np_ans, tf_ans)
-              # NOTE(mrry): The static shape inference that computes
-              # `tf_ans.shape` can only infer that sizes from dimension 1
-              # onwards, because the size of dimension 0 is data-dependent
-              # and may therefore vary dynamically.
-              self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+    shape = [n, 2]
+    indices = [i // 3 for i in range(n)]
+    for dtype in dtypes:
+      if dtype in (dtypes_lib.complex64, dtypes_lib.complex128):
+        curr_ops_list = complex_ops_list
+      else:
+        curr_ops_list = ops_list
+      for use_gpu in [True, False]:
+        with self.cached_session(use_gpu=use_gpu):
+          tf_x, np_x = self._input(shape, dtype=dtype)
+          for np_op1, np_op2, tf_op in curr_ops_list:
+            np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
+            s = tf_op(data=tf_x, segment_ids=indices)
+            tf_ans = self.evaluate(s)
+            self.assertAllClose(np_ans, tf_ans)
+            # NOTE(mrry): The static shape inference that computes
+            # `tf_ans.shape` can only infer that sizes from dimension 1
+            # onwards, because the size of dimension 0 is data-dependent
+            # and may therefore vary dynamically.
+            self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
   @test_util.run_deprecated_v1
   def testSegmentIdsShape(self):
@@ -305,36 +302,29 @@ class UnsortedSegmentTest(SegmentReductionHelper):
     indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
     num_segments = 12
     for indices in indices_flat, indices_flat.reshape(5, 2):
-      # Note that the GPU implem has different paths for different inner sizes.
-      for inner_size in [1, 2, 3, 32]:
-        shape = indices.shape + (inner_size,)
-        for dtype in self.all_dtypes:
-          ops_list = (
-              self.complex_ops_list if dtype.is_complex else self.ops_list)
-          tf_x, np_x = self._input(shape, dtype=dtype)
-          for use_gpu in [True, False]:
-            with self.cached_session():
-              for np_op1, np_op2, tf_op, init_op in ops_list:
-                # sqrt_n doesn't support integers
-                if (np_op2 == self._sqrt_n_reduce_op and dtype.is_integer):
-                  continue
-                # todo(philjd): enable this test once real_div supports bfloat16
-                if (np_op2 in [self._sqrt_n_reduce_op, self._mean_reduce_op] and
-                    dtype == dtypes_lib.bfloat16):
-                  continue
-                np_ans = self._segmentReduce(
-                    indices,
-                    np_x,
-                    np_op1,
-                    np_op2,
-                    num_segments=num_segments,
-                    initial_value=init_op(dtype))
-                s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
-                tf_ans = self.evaluate(s)
-                if dtype is dtypes_lib.bfloat16:
-                  tf_ans = tf_ans.astype(np.float32)
-                self.assertAllCloseAccordingToType(np_ans, tf_ans)
-                self.assertShapeEqual(np_ans, s)
+      shape = indices.shape + (2,)
+      for dtype in self.all_dtypes:
+        ops_list = self.complex_ops_list if dtype.is_complex else self.ops_list
+        tf_x, np_x = self._input(shape, dtype=dtype)
+        for use_gpu in [True, False]:
+          with self.cached_session():
+            for np_op1, np_op2, tf_op, init_op in ops_list:
+              # sqrt_n doesn't support integers
+              if (np_op2 == self._sqrt_n_reduce_op and dtype.is_integer):
+                continue
+              # todo(philjd): enable this test once real_div supports bfloat16
+              if (np_op2 in [self._sqrt_n_reduce_op, self._mean_reduce_op] and
+                  dtype == dtypes_lib.bfloat16):
+                continue
+              np_ans = self._segmentReduce(
+                  indices, np_x, np_op1, np_op2, num_segments=num_segments,
+                  initial_value=init_op(dtype))
+              s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
+              tf_ans = self.evaluate(s)
+              if dtype is dtypes_lib.bfloat16:
+                tf_ans = tf_ans.astype(np.float32)
+              self.assertAllCloseAccordingToType(np_ans, tf_ans)
+              self.assertShapeEqual(np_ans, s)
 
   def testNumSegmentsTypes(self):
     dtypes = [dtypes_lib.int32, dtypes_lib.int64]
