@@ -25,6 +25,7 @@ package_group(
         "//tensorflow/tools/...",
     ] + if_google([
         "//learning/brain/experimental/dtensor/mlir/...",
+        "//learning/brain/experimental/mlir/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/google/xla/mlir/...",
         "//learning/brain/mlir/...",
