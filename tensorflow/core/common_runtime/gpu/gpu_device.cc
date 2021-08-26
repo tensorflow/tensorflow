@@ -822,8 +822,9 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                    tensor_proto.DebugString());
   }
 
-  ScopedMemoryDebugAnnotation op_annotation("MakeTensorFromProto", "dynamic",
-                                            parsed.dtype(), &parsed.shape());
+  ScopedMemoryDebugAnnotation op_annotation(
+      "MakeTensorFromProto", "dynamic", parsed.dtype(),
+      [&parsed]() { return parsed.shape().DebugString(); });
   if (parsed.dtype() == DT_VARIANT) {
     const Variant* from = parsed.flat<Variant>().data();
     int numa_node = attributes().locality().numa_node();

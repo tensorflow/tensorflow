@@ -260,8 +260,9 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", step_id_,
-                                            "dynamic", in.dtype(), &in.shape());
+  ScopedMemoryDebugAnnotation op_annotation(
+      "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
+      [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
