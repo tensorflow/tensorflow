@@ -95,7 +95,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   *binding_index = cuda_engine->getBindingIndex(tensor_name);
   if (*binding_index == -1) {
     const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(ERROR) << msg;
+    LOG(WARNING) << msg;
     return errors::NotFound(msg);
   }
   int n_profiles = cuda_engine->getNbOptimizationProfiles();
@@ -121,8 +121,17 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
-    TF_RETURN_IF_ERROR(GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
-                                          cuda_engine, &binding_index));
+    Status status = GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
+                                       cuda_engine, &binding_index);
+    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TF_RETURN_IF_ERROR(status);
+    } else if (!status.ok()) {
+      // Before TRT 8, an input tensor can be pruned if it is not used by the
+      // network (e.g. only its shape is used, but the shape is already defined
+      // by the optimization profile by setting min=max). nvbugs/3153064
+      VLOG(2) << "Skipping pruned input " << input_name;
+      continue;
+    }
     const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
     const TensorShape& input_shape = input_tensor.shape();
 
