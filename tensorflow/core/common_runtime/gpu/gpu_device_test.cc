@@ -114,6 +114,14 @@ class GPUDeviceTest : public ::testing::Test {
 };
 
 TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  // cudaMallocAsync supported only for driver supporting CUDA 11.2+
+  int driverVersion;
+  cuDriverGetVersion(&driverVersion);
+  if (driverVersion < 11020) {
+    LOG(INFO) << "DRIVER VERSION TOO OLD, skipping this test: " << driverVersion;
+    return;
+  }
+
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
