@@ -34,7 +34,9 @@ import numpy as np
 from google.protobuf import wrappers_pb2
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -51,6 +53,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
@@ -1793,6 +1796,49 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      root.v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
+
+  def test_captured_dataset_with_asset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self, temp_dir, file_name):
+        super(HasDataset, self).__init__()
+        file = os.path.join(temp_dir, file_name)
+        with tf_record.TFRecordWriter(file, "GZIP") as f:
+          for v in ["a", "aa", "aaa"]:
+            f.write(str(v))
+        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int32)
+        for element in self.dataset:
+          current_sum += x * string_ops.string_length(element)
+        return current_sum
+
+    temp_dir = self.get_temp_dir()
+    file_name = "tf_record_asset.tfrecord.gz"
+    root = HasDataset(temp_dir, file_name)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(os.path.join(temp_dir, file_name))
+    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
+    if compat.forward_compatible(2021, 9, 20):
+      self.assertTrue(file_io.file_exists(asset_path))
+      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+      file_io.rename(save_dir, load_dir)
+
+      # TODO(b/188455028): Remove assertRaises block and check that invoking
+      # loaded SavedModel behaves as expected.
+      with self.assertRaises(ValueError) as error:
+        _ = load.load(load_dir)
+      self.assertEqual("Signature specifies 1 arguments, got: 0.",
+                       str(error.exception))
 
   def test_captured_dataset(self, cycles):
 

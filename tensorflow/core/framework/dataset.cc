@@ -49,6 +49,11 @@ static std::unordered_set<string>* get_dataset_op_registry() {
   return names;
 }
 
+std::string UniqueNodeName(const std::string& base) {
+  static std::atomic<int64> counter(0);
+  return strings::StrCat(base, "/", counter.fetch_add(1));
+}
+
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
 // and the wrapper's copy constructor and destructor take care of managing the
@@ -715,6 +720,15 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
     }
   }
   return AddTensor(t, output);
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddIdentity(
+    SerializationContext* ctx, const std::string& name_prefix, Node** input,
+    Node** output) {
+  *output =
+      ops::UnaryOp("Identity", *input,
+                   builder()->opts().WithName(UniqueNodeName(name_prefix)));
+  return Status::OK();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
