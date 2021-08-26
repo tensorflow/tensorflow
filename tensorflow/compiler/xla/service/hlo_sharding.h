@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -80,7 +81,8 @@ class HloSharding {
       absl::Span<const OpMetadata> metadata = {});
 
   // Creates a subgroup sharding with device-level tile assignment, the
-  // sharding type of each subgroup is defined by subgroup_types.
+  // sharding type of each subgroup is defined by subgroup_types. When creating
+  // the HloSharding, subgroup dims of the same type will be merged.
   static HloSharding Subgroup(const Array<int64_t>& tile_assignment,
                               absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {});
@@ -174,6 +176,13 @@ class HloSharding {
   // true, data is sharded according to other dimensions of tile_assignment(),
   // but replicated across devices along the last dimension.
   bool ReplicateOnLastTileDim() const { return replicate_on_last_tile_dim_; }
+
+  // Returns whether there is any partial replication. This can be using
+  // ReplicateOnLastTileDim or subgroups with REPLICATED.
+  bool HasPartialReplication() const {
+    return replicate_on_last_tile_dim_ ||
+           absl::c_linear_search(subgroup_types_, OpSharding::REPLICATED);
+  }
 
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64_t device) const;
@@ -316,6 +325,38 @@ class HloSharding {
   std::vector<OpMetadata>& metadata() { return metadata_; }
   const std::vector<OpMetadata>& metadata() const { return metadata_; }
 
+  // Returns the replication subgroiup dim, or -1 if it doesn't exist.
+  int64_t SubgroupReplicationDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
+    if (it != subgroup_types_.end()) {
+      return it - subgroup_types_.begin();
+    }
+    if (replicate_on_last_tile_dim_) {
+      return tile_assignment_.num_dimensions() - 1;
+    }
+    return -1;
+  }
+
+  // Returns the manual subgroiup dim, or -1 if it doesn't exist.
+  int64_t SubgroupManualDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
+    if (it != subgroup_types_.end()) {
+      return it - subgroup_types_.begin();
+    }
+    return -1;
+  }
+
+  // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
+  int64_t TiledDataRank() const {
+    CHECK(IsTiled());
+    int64_t rank = tile_assignment_.num_dimensions();
+    if (ReplicateOnLastTileDim()) {
+      rank--;
+    }
+    rank -= subgroup_types_.size();
+    return rank;
+  }
+
  private:
   explicit HloSharding(bool manual, bool replicated,
                        absl::Span<const OpMetadata> metadata)
@@ -419,7 +460,9 @@ class HloSharding {
   // This field is used to represented the sharding type of each subgroup.
   // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
   // replicate, manual, unreduced}} means that each of the last 3 dimensions
-  // in [2,2,2,2] represents a subgrouping in replicate, manual,
+  // in [2,2,2,2] represents a subgrouping in replicate, manual.
+  // When creating HloSharding, subgroup dims of the same type will be merged,
+  // so that there is at most one dim with a given type.
   std::vector<OpSharding::Type> subgroup_types_;
 };
 
