@@ -132,7 +132,7 @@ std::string StackFrameToString(
 
 class StackTraceWrapper : public AbstractStackTrace {
  public:
-  StackTraceWrapper(PythonStackTrace&& captured,
+  StackTraceWrapper(StackTrace&& captured,
                     const std::shared_ptr<SourceMap>& source_map,
                     const std::shared_ptr<StringSet>& filter)
       : captured_(std::move(captured)),
@@ -146,7 +146,7 @@ class StackTraceWrapper : public AbstractStackTrace {
   static StackTraceWrapper ExtractStack(
       const std::shared_ptr<SourceMap>& source_map,
       const std::shared_ptr<StringSet>& filter) {
-    return StackTraceWrapper{PythonStackTrace::Capture(-1), source_map, filter};
+    return StackTraceWrapper{StackTrace::Capture(-1), source_map, filter};
   }
 
   absl::Span<StackFrame const> ToFrames() const override {
@@ -248,7 +248,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     return filter_->contains(file_name);
   }
 
-  PythonStackTrace captured_;
+  StackTrace captured_;
   std::shared_ptr<SourceMap> source_map_;
   std::shared_ptr<StringSet> filter_;
 
