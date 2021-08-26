@@ -55877,6 +55877,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "is_files"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
