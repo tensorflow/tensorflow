@@ -169,8 +169,17 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
     // If shared_name is not supplied, use function name instead (prevent
     // collisions by default).
     if (shared_name_.empty()) {
-      shared_name_ = bef_func_->name();
+      shared_name_ = bef_func_->name().str();
+      VLOG(1) << "BatchFunctionFallbackKernel(" << this
+              << ") updated the empty shared_name to BEF function name: \""
+              << shared_name_ << "\"";
+    } else {
+      VLOG(1) << "BatchFunctionFallbackKernel(" << this
+              << ") shared_name attribute: \"" << shared_name_ << "\"";
     }
+    VLOG(1) << "BatchFunctionFallbackKernel(" << this
+            << ") container attribute: \"" << container_
+            << "\", batching_queue attribute: \"" << batcher_queue_ << "\"";
 
     if (c->HasAttr("enable_large_batch_splitting")) {
       OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
