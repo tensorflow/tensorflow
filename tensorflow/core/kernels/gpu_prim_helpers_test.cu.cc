@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
 namespace {
@@ -199,8 +200,34 @@ class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
                                 0, TensorShape({output_size_}), &output));
     T* output_data = output->flat<T>().data();
 
-    OP_REQUIRES_OK(context, GpuSelectFlagged(context, input_size, input_data,
-                                             flags_data, output_data));
+    Tensor output_size_t;
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_INT64, TensorShape({}),
+                                                   &output_size_t));
+    int64_t* output_size_data = output_size_t.scalar<int64_t>().data();
+
+    OP_REQUIRES_OK(context,
+                   GpuSelectFlagged(context, input_size, input_data, flags_data,
+                                    output_data, output_size_data));
+
+    // Copy the computed output size to host and ensure it matches.
+    se::Stream* stream = context->op_device_context()->stream();
+    int64_t output_size_host;
+    OP_REQUIRES(context,
+                stream
+                    ->ThenMemcpy(&output_size_host,
+                                 se::DeviceMemoryBase(output_size_data,
+                                                      sizeof(output_size_data)),
+                                 sizeof(output_size_host))
+                    .ok(),
+                errors::Internal("Failed to copy output_size_gpu to host"));
+    gpuEvent_t copy_done;
+    gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming);
+    gpuEventRecord(copy_done, context->eigen_gpu_device().stream());
+    gpuEventSynchronize(copy_done);
+    gpuEventDestroy(copy_done);
+    OP_REQUIRES(context, output_size_host == output_size_,
+                errors::Internal("Incorrect output size: expected ",
+                                 output_size_, ", got ", output_size_host));
   }
 
  private:
@@ -390,6 +417,19 @@ TEST_F(GpuPrimHelpersTest, GpuSelectFlagged) {
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({3}));
   test::FillValues<int32>(&expected_output, {2, 4, 7});
+  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+}
+
+TEST_F(GpuPrimHelpersTest, GpuSelectFlagged_Empty) {
+  MakeSelectFlagged(DT_INT32, 0);
+  // Input.
+  AddInputFromArray<int32>(TensorShape({0}), {});
+  // Flags.
+  AddInputFromArray<bool>(TensorShape({0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_output(allocator(), DT_INT32, TensorShape({0}));
+  test::FillValues<int32>(&expected_output, {});
   test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
 }
 

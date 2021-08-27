@@ -216,7 +216,6 @@ Status GpuSelectFlagged(OpKernelContext* context, int size,
                         InputIteratorT input, FlagIteratorT flags,
                         OutputIteratorT output,
                         NumSelectedT* out_num_selected = nullptr) {
-  if (size == 0) return Status::OK();
   const auto& cu_stream = GetGpuStream(context);
   Tensor out_num_selected_t;
   if (!out_num_selected) {
