@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
 namespace {
@@ -220,11 +219,7 @@ class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
                                  sizeof(output_size_host))
                     .ok(),
                 errors::Internal("Failed to copy output_size_gpu to host"));
-    gpuEvent_t copy_done;
-    gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming);
-    gpuEventRecord(copy_done, context->eigen_gpu_device().stream());
-    gpuEventSynchronize(copy_done);
-    gpuEventDestroy(copy_done);
+    OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
     OP_REQUIRES(context, output_size_host == output_size_,
                 errors::Internal("Incorrect output size: expected ",
                                  output_size_, ", got ", output_size_host));
