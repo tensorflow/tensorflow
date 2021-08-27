@@ -137,12 +137,32 @@ Status ParseInputNodeName(absl::string_view input_name,
 // fashion though). Idea for this algorithm was borrowed from:
 // https://stackoverflow.com/questions/11338746/directed-graphs-with-a-given-root-node-match-another-directed-graph-for-equali
 class GraphHasher {
+  using NodeCache = absl::flat_hash_map<const NodeDef*, uint64>;
+  using FunctionCache = absl::flat_hash_map<const FunctionDef*, uint64>;
+  using AttrCache =
+      absl::flat_hash_map<std::pair<const NodeDef*, bool>, uint64>;
+
  public:
   // `GraphHasher` does not take ownership of `graph_def`, `root_node`, or
   // `flib_def`.
   explicit GraphHasher(const GraphDef* graph, const NodeDef* root,
                        const FunctionLibraryDefinition* flib)
-      : graph_(graph), root_(root), flib_(flib) {}
+      : graph_(graph), root_(root), flib_(flib) {
+    node_cache_ = std::make_shared<NodeCache>();
+    function_cache_ = std::make_shared<FunctionCache>();
+    attr_cache_ = std::make_shared<AttrCache>();
+  }
+  explicit GraphHasher(const GraphDef* graph, const NodeDef* root,
+                       const FunctionLibraryDefinition* flib,
+                       std::shared_ptr<NodeCache> node_cache,
+                       std::shared_ptr<FunctionCache> function_cache,
+                       std::shared_ptr<AttrCache> attr_cache)
+      : graph_(graph),
+        root_(root),
+        flib_(flib),
+        node_cache_(node_cache),
+        function_cache_(function_cache),
+        attr_cache_(attr_cache) {}
 
   Status Init() {
     // Construct a map of name -> NodeDef to avoid repeated linear searches.
@@ -222,8 +242,8 @@ class GraphHasher {
 
  private:
   Status HashNode(const NodeDef* node, uint64* hash) {
-    auto it = node_cache_.find(node);
-    if (it != node_cache_.end()) {
+    auto it = node_cache_->find(node);
+    if (it != node_cache_->end()) {
       *hash = it->second;
       return Status::OK();
     }
@@ -260,7 +280,11 @@ class GraphHasher {
 
     *hash = Hash64Combine(non_input_hash,
                           Hash64Combine(control_inputs_hash, inputs_hash));
-    node_cache_[node] = *hash;
+    auto result = node_cache_->emplace(node, *hash);
+    if (!result.second) {
+      return errors::Internal(absl::StrCat("Computed the hash for node ",
+                                           node->DebugString(), " twice!"));
+    }
     return Status::OK();
   }
 
@@ -314,8 +338,8 @@ class GraphHasher {
 
   Status HashNodeNonInput(const NodeDef* node, bool hash_functions,
                           uint64* hash) {
-    auto iter = attr_hash_cache_.find(std::make_pair(node, hash_functions));
-    if (iter != attr_hash_cache_.end()) {
+    auto iter = attr_cache_->find(std::make_pair(node, hash_functions));
+    if (iter != attr_cache_->end()) {
       *hash = iter->second;
       return Status::OK();
     }
@@ -356,7 +380,13 @@ class GraphHasher {
 
     *hash = Hash64Combine(op_hash, Hash64Combine(attrs_hash, device_hash));
 
-    attr_hash_cache_.emplace(std::make_pair(node, hash_functions), *hash);
+    auto result =
+        attr_cache_->emplace(std::make_pair(node, hash_functions), *hash);
+    if (!result.second) {
+      return errors::Internal(absl::StrCat(
+          "Computed the hash for non-input node: ", node->DebugString(),
+          " and hash function bool: ", hash_functions, "twice!"));
+    }
     return Status::OK();
   }
 
@@ -491,6 +521,11 @@ class GraphHasher {
   Status HashFunction(const std::string& name, const AttrValueMap& attrs,
                       uint64* hash) {
     const FunctionDef* fdef = flib_->Find(name);
+    auto it = function_cache_->find(fdef);
+    if (it != function_cache_->end()) {
+      *hash = it->second;
+      return Status::OK();
+    }
 
     // Convert to a GraphDef.
     std::unique_ptr<FunctionBody> fbody;
@@ -503,7 +538,8 @@ class GraphHasher {
     uint64 ret_nodes_hash = 0;
     for (const auto& ret_node : fbody->ret_nodes) {
       uint64 ret_node_hash = 0;
-      GraphHasher hasher(&graph_def, &ret_node->def(), flib_);
+      GraphHasher hasher(&graph_def, &ret_node->def(), flib_, node_cache_,
+                         function_cache_, attr_cache_);
       TF_RETURN_IF_ERROR(hasher.Init());
       TF_RETURN_IF_ERROR(hasher.HashRoot(&ret_node_hash));
       ret_nodes_hash = Hash64Combine(ret_nodes_hash, ret_node_hash);
@@ -519,6 +555,11 @@ class GraphHasher {
         HashControlInputs(control_rets, &control_ret_nodes_hash));
 
     *hash = Hash64Combine(ret_nodes_hash, control_ret_nodes_hash);
+    auto result = function_cache_->emplace(fdef, *hash);
+    if (!result.second) {
+      return errors::Internal(
+          absl::StrCat("Computed the hash for function ", name, " twice!"));
+    }
     return Status::OK();
   }
 
@@ -567,9 +608,11 @@ class GraphHasher {
     for (int i = 0; i < this_fbody->ret_nodes.size(); ++i) {
       const NodeDef* this_root = &this_fbody->ret_nodes[i]->def();
       const NodeDef* that_root = &that_fbody->ret_nodes[i]->def();
-      GraphHasher this_hasher(&this_graph_def, this_root, flib_);
+      GraphHasher this_hasher(&this_graph_def, this_root, flib_, node_cache_,
+                              function_cache_, attr_cache_);
       TF_RETURN_IF_ERROR(this_hasher.Init());
-      GraphHasher that_hasher(&that_graph_def, that_root, that->flib_);
+      GraphHasher that_hasher(&that_graph_def, that_root, that->flib_,
+                              node_cache_, function_cache_, attr_cache_);
       TF_RETURN_IF_ERROR(that_hasher.Init());
       TF_RETURN_IF_ERROR(this_hasher.CheckEqual(&that_hasher));
     }
@@ -666,8 +709,9 @@ class GraphHasher {
   // Edges that need to be pruned as their presence will cause cycles.
   absl::flat_hash_set<uint64> cycle_forming_edges_;
   absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
-  absl::flat_hash_map<const NodeDef*, uint64> node_cache_;
-  absl::flat_hash_map<std::pair<const NodeDef*, bool>, uint64> attr_hash_cache_;
+  std::shared_ptr<NodeCache> node_cache_;
+  std::shared_ptr<FunctionCache> function_cache_;
+  std::shared_ptr<AttrCache> attr_cache_;
 };
 
 }  // anonymous namespace
