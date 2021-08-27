@@ -156,11 +156,11 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
-#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 
 #if BEF_EXECUTABLE
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
 
 namespace xla {
@@ -227,6 +227,7 @@ class GpuBfloat16Support : public BFloat16Support {
 }  // end anonymous namespace
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
+using OwnedBefBuffer = GpuExecutable::OwnedBefBuffer;
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -688,7 +689,7 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
 }
 
 #if BEF_EXECUTABLE
-static StatusOr<tfrt::BefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   if (!mlir_module) {
     return tensorflow::errors::FailedPrecondition(
         "No mlir module to lower to BEF.");
@@ -718,7 +719,10 @@ static StatusOr<tfrt::BefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
     return InternalError("Failed to lower TFRT Dialect to BEF.");
   }
 
-  return tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
+  auto ptr = static_cast<uint8_t*>(
+      tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
+  std::copy(bef.begin(), bef.end(), ptr);
+  return OwnedBefBuffer(ptr, {bef.size()});
 }
 #endif  // BEF_EXECUTABLE
 
@@ -733,7 +737,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  absl::variant<OwnedThunkSchedule, tfrt::BefBuffer> thunks_or_bef;
+  absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
   Shape output_shape;

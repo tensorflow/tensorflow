@@ -527,12 +527,12 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor/lib",
-        "@tf_runtime//:hostcontext",
     ]) + if_nccl([
         ":virtual_nccl",
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            "@tf_runtime//:hostcontext",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
@@ -566,6 +566,7 @@ config_setting(
 
 gentbl_cc_library(
     name = "xlir_opdefs_inc_gen",
+    tags = ["manual"],
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -590,6 +591,7 @@ cc_library(
     name = "xlir_opdefs",
     srcs = ["xlir_ops.cc"],
     hdrs = ["xlir_ops.h"],
+    tags = ["manual"],
     deps = [
         ":xlir_opdefs_inc_gen",
         "@llvm-project//mlir:IR",
@@ -617,14 +619,14 @@ cc_library(
     }),
     deps = [
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_wrapper",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
@@ -742,11 +744,6 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/gpu:gpu_stream",
-        "@tf_runtime//:basic_kernels_alwayslink",
-        "@tf_runtime//:befexecutor",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -784,8 +781,13 @@ cc_library(
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
+            "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
             "@tf_runtime//backends/gpu:gpu_types",
@@ -794,6 +796,11 @@ cc_library(
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
@@ -1583,11 +1590,11 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "@tf_runtime//:mlirtobef_translate",
-        "@tf_runtime//:support",
     ] + select({
         ":is_bef_executable_enabled": [
             "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
         ],
         "//conditions:default": [],
     }),
