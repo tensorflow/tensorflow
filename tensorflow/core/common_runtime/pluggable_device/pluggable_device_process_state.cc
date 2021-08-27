@@ -125,7 +125,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     if (cplatform->UseBfcAllocator()) {
       device_allocator = new PluggableDeviceBFCAllocator(
           sub_allocator, total_bytes, options,
-          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
+          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
+          cplatform->ForceMemoryGrowth());
     } else {
       device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);
     }
