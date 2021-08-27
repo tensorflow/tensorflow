@@ -18,13 +18,22 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#if (defined(ANDROID) || defined(__ANDROID__)) && \
+    (defined(__arm__) || defined(__aarch64__))
+#define TFLITE_BUILD_WITH_XNNPACK_DELEGATE
+#endif
+
 namespace tflite {
 namespace tools {
 
 class XnnpackDelegateProvider : public DelegateProvider {
  public:
   XnnpackDelegateProvider() {
+#if defined(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
+    default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(true));
+#else
     default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(false));
+#endif
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
