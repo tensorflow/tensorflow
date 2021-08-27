@@ -8343,6 +8343,27 @@ ENTRY entry {
               op::Tuple(op::Constant(), op::GetTupleElement(op::Parameter(0))));
 }
 
+TEST_F(SpmdPartitioningTest, SubgroupManualSharedOperand) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = f32[] constant(1), sharding={replicated}
+  broadcast = f32[2,2] broadcast(constant), dimensions={},
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dims={manual}}
+  ROOT add = f32[2,2] add(broadcast, broadcast),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dims={manual}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Broadcast(op::Constant()),
+                            op::Broadcast(op::Constant())));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -1544,7 +1544,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
           manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
 
       visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
-      for (auto operand : hlo->operands()) {
+      for (HloInstruction* operand : hlo->unique_operands()) {
         visiting_hlo_operand_shardings_.push_back(operand->sharding());
         operand->set_sharding(
             manual_to_onedevice(operand->shape(), operand->sharding()));
@@ -1616,16 +1616,23 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
         // Update sharding for the operands.
         visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
         visiting_state_.reserve(hlo->operand_count());
-        for (auto operand : hlo->operands()) {
+        for (HloInstruction* operand : hlo->unique_operands()) {
+          visiting_hlo_operand_shardings_.push_back(operand->sharding());
+          auto old_state = GetPartitionedHlo(operand).state();
+          visiting_state_.push_back(old_state);
+          if (operand->shape().IsArray() && operand->IsConstant() &&
+              operand->shape().rank() == 0 &&
+              !operand->sharding().IsManualSubgroup()) {
+            // We allowed scalar constants to be CSE'ed between manual/auto
+            // subgraphs. It's possible that it doesn't have a manual subgroup.
+            continue;
+          }
           TF_ASSIGN_OR_RETURN(
               auto op_group_sharding,
               get_grouped_sharding(operand->sharding(), operand->shape(),
                                    &group_sharding));
-          visiting_hlo_operand_shardings_.push_back(operand->sharding());
           operand->set_sharding(op_group_sharding.sharding);
           GetPartitionedHlo(operand).hlo()->set_sharding(operand->sharding());
-          auto old_state = GetPartitionedHlo(operand).state();
-          visiting_state_.push_back(old_state);
           auto group_state = CreatePerGroupPartitioningState(
               old_state, op_group_sharding.device_groups, &b_);
           GetPartitionedHlo(operand).set_state(group_state);
@@ -1645,9 +1652,9 @@ Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
   if (visiting_hlo_sharding_) {
     hlo->set_sharding(*visiting_hlo_sharding_);
     GetPartitionedHlo(hlo).hlo()->set_sharding(*visiting_hlo_sharding_);
-    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-      auto operand = hlo->mutable_operand(i);
-      operand->set_sharding(visiting_hlo_operand_shardings_[i]);
+    int64_t i = 0;
+    for (HloInstruction* operand : hlo->unique_operands()) {
+      operand->set_sharding(visiting_hlo_operand_shardings_[i++]);
       GetPartitionedHlo(operand).hlo()->set_sharding(operand->sharding());
     }
     visiting_hlo_sharding_.reset();
@@ -1662,9 +1669,9 @@ Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
   }
 
   if (!visiting_state_.empty()) {
-    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-      const HloInstruction* operand = hlo->operand(i);
-      GetPartitionedHlo(operand).set_state(visiting_state_[i]);
+    int64_t i = 0;
+    for (const HloInstruction* operand : hlo->unique_operands()) {
+      GetPartitionedHlo(operand).set_state(visiting_state_[i++]);
     }
     visiting_state_.clear();
   }
