@@ -2093,15 +2093,19 @@ shard.
 <b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
 replica_group_ids, channel_id)` </b>
 
-| Arguments        | Type                 | Semantics                         |
-| ---------------- | -------------------- | --------------------------------- |
-| `operand`        | `XlaOp`              | Array or a non-empty tuple of     |
-:                  :                      : arrays to reduce across replicas. :
-| `computation`    | `XlaComputation`     | Reduction computation             |
-| `replica_groups` | vector of vectors of | Groups between which the          |
-:                  : `int64`              : reductions are performed          :
-| `channel_id`     | optional `int64`     | Optional channel ID for           |
-:                  :                      : cross-module communication        :
+| Arguments           | Type                 | Semantics                     |
+| ------------------- | -------------------- | ----------------------------- |
+| `operand`           | `XlaOp`              | Array or a non-empty tuple of |
+:                     :                      : arrays to reduce across       :
+:                     :                      : replicas.                     :
+| `computation`       | `XlaComputation`     | Reduction computation         |
+| `scatter_dimension` | `int64`              | Dimension to scatter.         |
+| `shard_count`       | `int64`              | Number of blocks to split     |
+:                     :                      : `scatter_dimension`           :
+| `replica_groups`    | vector of vectors of | Groups between which the      |
+:                     : `int64`              : reductions are performed      :
+| `channel_id`        | optional `int64`     | Optional channel ID for       |
+:                     :                      : cross-module communication    :
 
 -   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
     element of the tuple.
@@ -2120,11 +2124,11 @@ replica_group_ids, channel_id)` </b>
 -   `channel_id` is used for cross-module communication: only `reduce-scatter`
     operations with the same `channel_id` can communicate with each other.
 
-The output shape is the input shape with the `scatter_dim` made `shard_count`
-times smaller. For example, if there are two replicas and the operand has the
-value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two replicas, then the
-output value from this op where `scatter_dim` is `0` will be `[4.0]` for the
-first replica and `[7.5]` for the second replica.
+The output shape is the input shape with the `scatter_dimension` made
+`shard_count` times smaller. For example, if there are two replicas and the
+operand has the value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two
+replicas, then the output value from this op where `scatter_dim` is `0` will be
+`[4.0]` for the first replica and `[7.5]` for the second replica.
 
 ## ReduceWindow
 
