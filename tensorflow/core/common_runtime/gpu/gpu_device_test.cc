@@ -115,16 +115,20 @@ class GPUDeviceTest : public ::testing::Test {
 
 TEST_F(GPUDeviceTest, CudaMallocAsync) {
   // cudaMallocAsync supported only when cuda toolkit and driver supporting CUDA 11.2+
-  #if CUDA_VERSION < 11020
+#ifndef GOOGLE_CUDA
+  return;
+#elif CUDA_VERSION < 11020
   LOG(INFO) << "CUDA toolkit too old, skipping this test: " << CUDA_VERSION;
   return;
-  #endif
+#else
+  // cudaMallocAsync supported only for driver supporting CUDA 11.2+
   int driverVersion;
   cuDriverGetVersion(&driverVersion);
   if (driverVersion < 11020) {
     LOG(INFO) << "Driver version too old, skipping this test: " << driverVersion;
     return;
   }
+#endif
 
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
                                            /*use_cuda_malloc_async=*/true);
