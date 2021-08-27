@@ -102,7 +102,8 @@ struct AsyncGpuTfrtConversionPass
                            xla::gpu::XlirDialect>();
 
     RewritePatternSet patterns(context);
-    tfrt::gpu::populateTfrtConversionPatterns(patterns, target);
+    TypeConverter converter;
+    tfrt::gpu::populateTfrtConversionPatterns(patterns, converter, target);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
