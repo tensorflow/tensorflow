@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
@@ -53,6 +54,19 @@ limitations under the License.
 
 namespace mlir {
 namespace {
+
+template <typename OpTy>
+SmallVector<NamedAttribute> PruneAttributeList(OpTy op) {
+  auto op_attributes = op.getAttributeNames();
+  llvm::StringSet<> elided_attrs;
+  elided_attrs.insert(op_attributes.begin(), op_attributes.end());
+  SmallVector<NamedAttribute> preserved_attrs;
+  for (auto attr : op->getAttrs()) {
+    if (elided_attrs.count(attr.first)) continue;
+    preserved_attrs.push_back(attr);
+  }
+  return preserved_attrs;
+}
 
 /// Returns an ArrayAttr that contains `nLoops` attributes. All the attributes
 /// are "parallel" except the last `nReduction` elements, where are "reduction"
@@ -317,7 +331,8 @@ struct RngUniformConversion : public OpConversionPattern<mhlo::RngUniformOp> {
           Value scale_update = b.create<MulFOp>(loc, update_cast, scale);
           Value res = b.create<AddFOp>(loc, scale_update, args[0]);
           b.create<linalg::YieldOp>(loc, res);
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
   }
@@ -527,7 +542,8 @@ class EinsumToLinalgConverter : public OpConversionPattern<mhlo::EinsumOp> {
                 b.create<mlir::AddFOp>(nested_loc, args[2], result_val);
           }
           b.create<linalg::YieldOp>(nested_loc, result_val);
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
   }
@@ -688,7 +704,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           } else {
             nested_builder.create<linalg::YieldOp>(loc, inner_result);
           }
-        });
+        },
+        PruneAttributeList(op));
     if (failed) return failure();
     rewriter.replaceOp(op, linalg_op->getResults());
     return success();
@@ -818,7 +835,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, linalg_op.getOperation()->getResults());
     return success();
   }
@@ -976,7 +994,8 @@ class HloDynamicBroadcastInDimConverter
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, generic->getResults());
     return success();
   }
@@ -1019,7 +1038,8 @@ class LhloBroadcastInDimConverter
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
             nested_builder.create<linalg::YieldOp>(loc, val);
-          });
+          },
+          PruneAttributeList(op));
 
     } else {
       auto indexing_maps = getIndexingMaps(op, broadcast_dims, result_shape,
@@ -1030,7 +1050,8 @@ class LhloBroadcastInDimConverter
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
             nested_builder.create<linalg::YieldOp>(loc, *args.begin());
-          });
+          },
+          PruneAttributeList(op));
     }
     rewriter.replaceOp(op, llvm::None);
     return success();
@@ -1353,7 +1374,8 @@ class IotaConverter : public OpConversionPattern<OpTy> {
                                                       result_element_type);
           }
           nested_builder.create<linalg::YieldOp>(nested_loc, cast_op);
-        });
+        },
+        PruneAttributeList(iota_op));
     if (isLHLO)
       rewriter.replaceOp(iota_op, llvm::None);
     else
@@ -1462,7 +1484,8 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
             }
           }
           nested_builder.create<linalg::YieldOp>(loc, result);
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, linalg_op.result_tensors());
     return success();
   }
@@ -1552,7 +1575,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
         /*inputs=*/adaptor.inputs(), /*outputBuffers=*/adaptor.out(), maps,
-        types);
+        types, /*bodyBuild=*/nullptr, PruneAttributeList(reduce_op));
     rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
                                 linalg_op.region().end());
     {
@@ -1891,7 +1914,7 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
         rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
     rewriter.replaceOpWithNewOp<LinalgOp>(
         op, TypeRange{op.getType()}, ValueRange{adaptor.lhs(), adaptor.rhs()},
-        ValueRange{zero_tensor});
+        ValueRange{zero_tensor}, PruneAttributeList(op));
     return success();
   }
 };
@@ -1960,7 +1983,7 @@ class DotGeneralOpOnTensorsConversion
     Operation* linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{op.getType()},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
-        /*outputBuffers=*/ValueRange{zero_tensor});
+        /*outputBuffers=*/ValueRange{zero_tensor}, PruneAttributeList(op));
 
     rewriter.replaceOp(op, linalg_op->getResults());
     return success();
@@ -2095,7 +2118,8 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/op.getResultTypes(), inputs,
         /*outputBuffers=*/ValueRange{outputs}, indexing_maps,
-        GetParallelAndReductionIterators(src_rank, reduction_dims.size()));
+        GetParallelAndReductionIterators(src_rank, reduction_dims.size()),
+        /*bodyBuild=*/nullptr, PruneAttributeList(op));
 
     // Convert the signature of the body. The reduce op region apply function
     // has a signature (lhs, rhs) -> output, all of the same tensor type t.
@@ -2204,19 +2228,22 @@ struct NormalConvOpOnTensorsConversion
       case 3: {
         res = rewriter.create<linalg::Conv1DNwcWcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, strides, dilations);
+            ValueRange{zero_tensor}, strides, dilations,
+            PruneAttributeList(op));
         break;
       }
       case 4: {
         res = rewriter.create<linalg::Conv2DNhwcHwcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, strides, dilations);
+            ValueRange{zero_tensor}, strides, dilations,
+            PruneAttributeList(op));
         break;
       }
       case 5: {
         res = rewriter.create<linalg::Conv3DNdhwcDhwcfOp>(
             loc, result_type, ValueRange{input, filter},
-            ValueRange{zero_tensor}, strides, dilations);
+            ValueRange{zero_tensor}, strides, dilations,
+            PruneAttributeList(op));
         break;
       }
       default:
@@ -2325,7 +2352,8 @@ struct DepthwiseConvOpOnTensorsConversion
           reshaped_output_dims, result_type.getElementType());
       auto conv = rewriter.create<linalg::DepthwiseConv2DNhwcOp>(
           op.getLoc(), reshaped_output_type, ValueRange{input, filter},
-          ValueRange{zero_tensor}, window_strides, rhs_dilation);
+          ValueRange{zero_tensor}, window_strides, rhs_dilation,
+          PruneAttributeList(op));
 
       // Create a Linalg reshape op that converts the output from 5 dimensions
       // into 4 dimensions (by collapsing the last two dimensions). This is
@@ -2365,7 +2393,8 @@ struct DepthwiseConvOpOnTensorsConversion
 
       rewriter.replaceOpWithNewOp<linalg::DepthwiseConv2DNhwOp>(
           op, result_type, ValueRange{input, reshaped_filter},
-          ValueRange{zero_tensor}, window_strides, rhs_dilation);
+          ValueRange{zero_tensor}, window_strides, rhs_dilation,
+          PruneAttributeList(op));
     }
 
     return success();
@@ -2517,7 +2546,8 @@ struct ReduceWindowOpOnTensorsConversion
                 .create<std::remove_pointer_t<decltype(type_ptr)>>(
                     loc, ArrayRef<Type>{result_type},
                     ValueRange{input, fake_window_dims.getResult()},
-                    filled_init_tensor, strides, dilations)
+                    filled_init_tensor, strides, dilations,
+                    PruneAttributeList(op))
                 .getOperation());
       };
       linalg::LinalgOp pooling_op;
@@ -2621,7 +2651,8 @@ struct TorchIndexSelectOpOnTensorsConversion
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensors=*/ArrayRef<Type>{result_type},
         /*inputs=*/adaptor.index(),
-        /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank));
+        /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank),
+        /*bodyBuild=*/nullptr, PruneAttributeList(op));
 
     SmallVector<Type, 4> body_arg_types;
     SmallVector<Value, 2> linalg_op_args = {adaptor.index()};
@@ -2747,7 +2778,8 @@ struct ScatterUpdateOnTensorsConversion
           Value res = b.create<SelectOp>(loc, args[2].getType(), pred, args[2],
                                          args[3]);
           b.create<linalg::YieldOp>(loc, res);
-        });
+        },
+        PruneAttributeList(op));
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
   }
