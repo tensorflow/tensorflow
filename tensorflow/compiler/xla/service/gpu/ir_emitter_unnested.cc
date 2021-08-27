@@ -168,7 +168,7 @@ void AnnotateWithInt32Value(string name, int64_t value,
             llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
                 llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
                 value))}));
-};
+}
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
