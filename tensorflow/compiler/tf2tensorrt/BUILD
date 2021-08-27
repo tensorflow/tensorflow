@@ -445,11 +445,14 @@ tf_cuda_library(
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/ops/slice_ops.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
+        "convert/ops/layer_utils.h",
+        "convert/ops/slice_ops.h",
         "convert/trt_optimization_pass.h",
     ],
     deps = [
@@ -525,7 +528,9 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "convert_nodes_test",
     size = "medium",
-    srcs = ["convert/convert_nodes_test.cc"],
+    srcs = [
+        "convert/convert_nodes_test.cc",
+    ],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
