@@ -615,24 +615,42 @@ bool EagerContext::RunEagerOpAsFunction() const {
 }
 
 void EagerContext::ListDevices(
-    std::vector<tensorflow::DeviceAttributes>* devices) {
-  // Since remote_device_mgr may contain local devices, ListDevices() needs to
-  // make sure no duplicated device is returned.
-  std::unordered_set<string> dev_names;
-  for (auto& dev : local_device_mgr()->ListDevices()) {
-    devices->emplace_back(dev->attributes());
-    dev_names.emplace(dev->attributes().name());
+    std::vector<tensorflow::DeviceAttributes>* device_attributes) {
+  std::vector<Device*> devices = ListAllTfDevices();
+  device_attributes->reserve(devices.size());
+  for (const auto& dev : devices) {
+    device_attributes->emplace_back(dev->attributes());
   }
+}
+
+std::vector<Device*> EagerContext::ListAllTfDevices() {
+  // Since remote_device_mgr may also contain local devices, make sure no
+  // duplicated device is returned.
+  std::vector<Device*> devices;
+  std::unordered_set<string> dev_names;
+
+  if (local_device_mgr()) {
+    for (const auto& dev : local_device_mgr()->ListDevices()) {
+      devices.emplace_back(dev);
+      dev_names.emplace(dev->attributes().name());
+    }
+  }
+
   // TODO (b/197281777): Include local devices in remote_device_mgr on the
   // client-side in single-client deployment.
   if (remote_device_mgr()) {
-    for (auto& dev : remote_device_mgr()->ListDevices()) {
-      if (dev_names.find(dev->attributes().name()) == dev_names.end()) {
-        devices->emplace_back(dev->attributes());
-        dev_names.emplace(dev->attributes().name());
+    for (const auto& dev : remote_device_mgr()->ListDevices()) {
+      Device* device = nullptr;
+      if (local_device_mgr()->LookupDevice(dev->name(), &device) !=
+          Status::OK()) {
+        // Include this device from remote_device_mgr only if it does not exist
+        // in local_device_mgr.
+        devices.emplace_back(dev);
       }
     }
   }
+
+  return devices;
 }
 
 Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
