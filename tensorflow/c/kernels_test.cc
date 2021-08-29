@@ -259,7 +259,7 @@ TEST_F(TestKernelAttr, StringList) {
     s->created = true;
     s->compute_called = false;
 
-    std::vector<string> list = {"bugs", "bunny", "duck"};
+    const std::vector<string> list = {"bugs", "bunny", "duck"};
     int list_total_size = 0;
     for (const auto& s : list) {
       list_total_size += s.size();

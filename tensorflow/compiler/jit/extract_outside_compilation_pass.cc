@@ -146,6 +146,7 @@ StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
     // Record out edges and remove `n` before adding those edges to RecvAtHost.
     // This is to avoid multiple producers.
     std::vector<OutEdgeInfo> out_edge_info;
+    out_edge_info.reserve(n->out_edges());
     for (auto edge : n->out_edges()) {
       out_edge_info.push_back(
           {edge->dst(), edge->src_output(), edge->dst_input()});
@@ -1240,6 +1241,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
     // This is an "top-level" outside compilation. Clear the graph, and copy
     // SendFromHost and all its predecessors from `host_graph`.
     std::vector<Node*> nodes;
+    nodes.reserve(g->op_nodes());
     for (Node* n : g->op_nodes()) {
       nodes.push_back(n);
     }

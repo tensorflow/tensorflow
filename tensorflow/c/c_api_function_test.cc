@@ -144,6 +144,7 @@ class CApiFunctionTest : public ::testing::Test {
 
   std::vector<TF_Output> ToOutput(const std::vector<TF_Operation*> ops) {
     std::vector<TF_Output> out;
+    out.reserve(ops.size());
     for (auto op : ops) {
       out.push_back({op, 0});
     }

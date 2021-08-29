@@ -101,6 +101,7 @@ class GpuKernelToBlobPass
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
     std::vector<tensorflow::se::HsacoImage> images;
+    images.reserve(architectures_.size());
     for (const std::string& arch_str : architectures_) {
       // Parse ROCm architecture.
       absl::string_view consumable_arch(arch_str);
