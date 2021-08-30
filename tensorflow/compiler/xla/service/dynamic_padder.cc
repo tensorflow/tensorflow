@@ -45,12 +45,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
 namespace {
+
+auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/core/use_dynamic_padding_gauge",
+    "Tracks if dynamic padder is used.");
 
 // ChooseIdentityValue looks at the instruction's operand, returns a
 // identity value which, when padded, doesn't change the result of the
@@ -2135,6 +2140,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     }
   }
   if (changed == true) {
+    dynamic_padding_gauge->GetCell()->Set(changed);
     module->set_is_dynamic(true);
   }
 
