@@ -18,8 +18,6 @@
 
 # buildifier: disable=same-origin-load
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
 package(
     default_visibility = [
         "//tensorflow/python/keras/saving:__subpackages__",
@@ -56,57 +54,5 @@ py_library(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-    ],
-)
-
-tf_py_test(
-    name = "revive_test",
-    size = "medium",
-    srcs = ["revive_test.py"],
-    python_version = "PY3",
-    shard_count = 8,
-    tags = [
-        "no_windows",  # b/158005583
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "json_utils_test",
-    size = "small",
-    srcs = ["json_utils_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":saved_model",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "saved_model_test",
-    size = "medium",
-    srcs = ["saved_model_test.py"],
-    python_version = "PY3",
-    shard_count = 8,
-    tags = [
-        "no_rocm",
-        "no_windows",
-        "notsan",  #TODO(b/181771982): it is flaky
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
