@@ -75,8 +75,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", 0, "dynamic",
-                                            in.dtype(), &in.shape());
+  ScopedMemoryDebugAnnotation op_annotation(
+      "SameWorkerRecvDone", 0, "dynamic", in.dtype(),
+      [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());

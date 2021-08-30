@@ -34,7 +34,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
+include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
   let name = "chlo";
@@ -449,7 +449,7 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    traits # [InferFusibilityOpInterface, NoSideEffect, Elementwise,
+    traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
     SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);

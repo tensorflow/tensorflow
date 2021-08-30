@@ -100,6 +100,13 @@ class RaiseTargetSubgraphsPass
     : public mlir::PassWrapper<RaiseTargetSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
  private:
+  llvm::StringRef getArgument() const final {
+    return "tfl-raise-target-subgraphs";
+  }
+  llvm::StringRef getDescription() const final {
+    return "This pass will merge those have target-annotated TFL IRs together "
+           "& raise them as a function.";
+  }
   void runOnOperation() override;
 
   void RaiseTargetSubgraphsForBlock(Block* block, OpBuilder* builder,
@@ -376,10 +383,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass() {
   return std::make_unique<RaiseTargetSubgraphsPass>();
 }
 
-static PassRegistration<RaiseTargetSubgraphsPass> pass(
-    "tfl-raise-target-subgraphs",
-    "This pass will merge those have target-annotated TFL IRs together & raise "
-    "them as a function.");
+static PassRegistration<RaiseTargetSubgraphsPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

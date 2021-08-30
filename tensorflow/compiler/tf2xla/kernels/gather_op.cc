@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -261,7 +262,7 @@ class GatherOp : public XlaOpKernel {
   int32 batch_dims_ = 0;
 };
 
-REGISTER_XLA_OP(Name("Gather"), GatherOp);
+REGISTER_XLA_OP(Name("Gather"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {

@@ -21,6 +21,12 @@ namespace tfrt_compiler {
 class TestCostAnalysis
     : public mlir::PassWrapper<TestCostAnalysis,
                                mlir::OperationPass<mlir::FuncOp>> {
+  llvm::StringRef getArgument() const final {
+    return "tfrt-test-cost-analysis";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Add remarks based on cost analysis for testing purpose.";
+  }
   void runOnOperation() override {
     const auto& cost_analysis = getAnalysis<CostAnalysis>();
 
@@ -31,9 +37,7 @@ class TestCostAnalysis
   }
 };
 
-static mlir::PassRegistration<TestCostAnalysis> pass(
-    "tfrt-test-cost-analysis",
-    "Add remarks based on cost analysis for testing purpose.");
+static mlir::PassRegistration<TestCostAnalysis> pass;
 
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

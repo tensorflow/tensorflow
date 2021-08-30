@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -223,7 +224,8 @@ bool IsConstantFoldable(
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
   if (n->IsConstant()) {
-    return true;
+    // Skip constant folding resources as they cannot be deep copied.
+    return n->output_type(0) != DT_RESOURCE;
   }
   if (MaybeReplaceShapeOp(n, shape_map, shape_replacement_map)) {
     return true;

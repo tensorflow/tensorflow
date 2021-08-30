@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
@@ -221,15 +222,18 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
   return xla::Reshape(to_shape, original);
 }
 
-StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
+Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info) {
+        collective_reduce_info,
+    xla::ExecutableRunOptions& run_options,
+    xla::DeviceAssignment& device_assignment,
+    xla::gpu::GpuExecutableRunOptions& gpu_options) {
   static const int kTimeoutSeconds = 30;
   if (!collective_reduce_info) {
     // An empty device assignment is sufficient for the case where no
     // collectives are present.
-    return {{absl::nullopt}};
+    return Status::OK();
   }
   if (ctx->collective_executor() == nullptr) {
     return errors::InvalidArgument(
@@ -263,27 +267,64 @@ StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
   }
   TF_RETURN_IF_ERROR(st);
 
-  xla::DeviceAssignment out(params->group.group_size, 1);
+  // Identify the physical device associated with each replica.
+  device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
   for (int device_idx = 0; device_idx < params->group.group_size;
        device_idx++) {
-    const std::string& device_name = params->group.devices[device_idx].name();
-    Device* resolved_device = nullptr;
-    TF_RETURN_IF_ERROR(ctx->function_library()->device_mgr()->LookupDevice(
-        device_name, &resolved_device));
-
-    // TODO(cheshire): CPU support.
-    // Both GPU and TPU uses GpuDeviceInfo, see DeviceBase::GpuDeviceInfo.
-    const DeviceBase::GpuDeviceInfo* gpu_device_info =
-        resolved_device->tensorflow_gpu_device_info();
-    if (!gpu_device_info || !gpu_device_info->stream) {
-      return errors::Internal(
-          "CollectiveReduceV2Op compilation is only supported on GPUs");
+    const DeviceAttributes& device = params->group.devices[device_idx];
+    if (device.xla_global_id() == -1) {
+      if (params->group.device_type == DEVICE_TPU) {
+        return errors::InvalidArgument(
+            absl::StrCat("No global ID was set for TPU device ", device.name(),
+                         ". Try initializing the TPU system, e.g. "
+                         "`tf.tpu.experimental.initialize_tpu_system()`."));
+      } else if (params->group.device_type == DEVICE_GPU) {
+        return errors::Internal(
+            absl::StrCat("No global ID was set for ", device.name(),
+                         ". This is unexpected, please file a bug."));
+      } else {
+        // TODO(b/194942685): Implement CPU collectives.
+        return errors::Unimplemented(
+            absl::StrCat("Collectives are not yet implemented for ",
+                         params->group.device_type.type_string(),
+                         " devices when compiling with XLA. Attempted to "
+                         "compile a collective running on",
+                         device.name(),
+                         ". Please comment on b/194942685 or "
+                         "file a new bug if you don't have access."));
+      }
     }
-
-    out(device_idx, 0) = gpu_device_info->stream->parent()->device_ordinal();
+    VLOG(2) << "Assigning physical id " << device.xla_global_id()
+            << " for replica " << device_idx << " (" << device.name() << ")";
+    device_assignment(device_idx, 0) = device.xla_global_id();
   }
+  if (params->group.device_type == DEVICE_GPU) {
+    // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
+    // requires a mapping from local device IDs to global device IDs.
+    const DeviceMgr* device_mgr = ctx->function_library()->device_mgr();
+    std::vector<xla::GlobalDeviceId> global_device_ids(
+        device_mgr->NumDeviceType(params->group.device_type.type_string()));
 
-  return {{out}};
+    for (int device_idx = 0; device_idx < params->group.group_size;
+         device_idx++) {
+      const DeviceAttributes& device_attributes =
+          params->group.devices[device_idx];
+      Device* resolved_device = nullptr;
+      Status lookup_status =
+          device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
+      if (lookup_status.ok()) {
+        // This is a local device, so include it in the mapping.
+        const DeviceBase::GpuDeviceInfo* gpu_device_info =
+            resolved_device->tensorflow_gpu_device_info();
+        global_device_ids[gpu_device_info->stream->parent()->device_ordinal()] =
+            device_attributes.xla_global_id();
+      }
+    }
+    gpu_options.set_gpu_global_device_ids(global_device_ids);
+  }
+  run_options.set_device_assignment(&device_assignment);
+  run_options.set_gpu_executable_run_options(&gpu_options);
+  return Status::OK();
 }
 
 std::string DefinitionLocationMsg(

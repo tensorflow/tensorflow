@@ -327,6 +327,16 @@ def make_zip_of_tests(options,
 
   processed_labels = set()
 
+  if options.make_tf_ptq_tests:
+    # For cases with fully_quantize is True, also generates a case with
+    # fully_quantize is False. Marks these cases as suitable for PTQ tests.
+    parameter_count = 0
+    for parameters in test_parameters:
+      if True in parameters.get("fully_quantize", []):
+        parameters.update({"fully_quantize": [True, False], "tf_ptq": [True]})
+        parameter_count += functools.reduce(
+            operator.mul, [len(values) for values in parameters.values()])
+
   if options.make_edgetpu_tests:
     extra_toco_options.inference_input_type = tf.uint8
     extra_toco_options.inference_output_type = tf.uint8
@@ -367,6 +377,9 @@ def make_zip_of_tests(options,
       processed_labels.add(label)
 
       param_dict = dict(zip(keys, curr))
+
+      if options.make_tf_ptq_tests and not param_dict.get("tf_ptq", False):
+        continue
 
       if options.make_edgetpu_tests and (not param_dict.get(
           "fully_quantize", False) or param_dict.get("quant_16x8", False)):
@@ -563,7 +576,8 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if not options.make_edgetpu_tests and tf_failures != expected_tf_failures:
+  if tf_failures != expected_tf_failures and not (options.make_edgetpu_tests or
+                                                  options.make_tf_ptq_tests):
     raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))

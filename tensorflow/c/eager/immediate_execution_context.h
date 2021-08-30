@@ -206,6 +206,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // TODO(tfrt-devs): We shouldn't expose legacy device in this API.
   virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
 
+  // Return a list of all tensorflow::Device*.
+  virtual std::vector<tensorflow::Device*> ListAllTfDevices() = 0;
+
   //===--------------------------------------------------------------------===//
   // Following are helper functions to assist integrating TFRT with current
   // TF eager runtime.

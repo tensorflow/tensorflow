@@ -304,7 +304,7 @@ void PlaceholderAttr::print(DialectAsmPrinter &os) const {
 Attribute PlaceholderAttr::parse(MLIRContext *context, DialectAsmParser &parser,
                                  Type type) {
   if (failed(parser.parseLess())) return {};
-  StringRef content;
+  std::string content;
   if (failed(parser.parseOptionalString(&content))) {
     parser.emitError(parser.getCurrentLocation())
         << "expected string while parsing tf.placeholder attribute";

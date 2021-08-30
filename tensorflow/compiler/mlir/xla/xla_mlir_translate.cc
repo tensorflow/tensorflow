@@ -82,7 +82,6 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
-  HloProto hlo_proto;
   string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);

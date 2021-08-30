@@ -61,14 +61,14 @@ TEST(Status, Assign) {
 TEST(Status, Move) {
   Status a(errors::InvalidArgument("Invalid"));
   Status b(std::move(a));
-  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
+  ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
 }
 
 TEST(Status, MoveAssign) {
   Status a(errors::InvalidArgument("Invalid"));
   Status b;
   b = std::move(a);
-  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
+  ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
 }
 
 TEST(Status, Update) {

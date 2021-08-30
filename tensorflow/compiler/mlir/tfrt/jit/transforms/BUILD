@@ -47,6 +47,7 @@ cc_library(
         "tf_cpurt_fission.cc",
         "tf_cpurt_matmul_specialization.cc",
         "tf_cpurt_passes.cc",
+        "tf_cpurt_symbolic_shape_optimization.cc",
     ],
     hdrs = ["tf_cpurt_passes.h"],
     deps = [

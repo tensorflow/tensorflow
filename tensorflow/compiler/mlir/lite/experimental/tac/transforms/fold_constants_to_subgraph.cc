@@ -60,6 +60,12 @@ class FoldConstantsToSubgraphPass
     : public mlir::PassWrapper<FoldConstantsToSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  llvm::StringRef getArgument() const final {
+    return "tfl-fold-constants-to-subgraph";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Fold constants into each subgraph.";
+  }
   FoldConstantsToSubgraphPass() = default;
   FoldConstantsToSubgraphPass(const FoldConstantsToSubgraphPass& other) {
     this->fold_all_constants_flag_ = other.fold_all_constants_flag_;
@@ -163,8 +169,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFoldConstantsToSubgraphPass(
   return std::make_unique<FoldConstantsToSubgraphPass>(fold_all_constants);
 }
 
-static PassRegistration<FoldConstantsToSubgraphPass> pass(
-    "tfl-fold-constants-to-subgraph", "Fold constants into each subgraph.");
+static PassRegistration<FoldConstantsToSubgraphPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

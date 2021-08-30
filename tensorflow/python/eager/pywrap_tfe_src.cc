@@ -1023,9 +1023,15 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
+      tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
+      for (const auto& payload : status->status.GetAllPayloads()) {
+        PyDict_SetItem(payloads.get(),
+                       PyBytes_FromString(payload.first.c_str()),
+                       PyBytes_FromString(payload.second.c_str()));
+      }
       tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
-          "si", FormatErrorStatusStackTrace(status->status).c_str(),
-          TF_GetCode(status)));
+          "siO", FormatErrorStatusStackTrace(status->status).c_str(),
+          TF_GetCode(status), payloads.get()));
       if (PyErr_Occurred()) {
         // NOTE: This hides the actual error (i.e. the reason `status` was not
         // TF_OK), but there is nothing we can do at this point since we can't
@@ -1051,8 +1057,15 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
-          "si", FormatErrorStatusStackTrace(status).c_str(), status.code()));
+      tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
+      for (const auto& element : status.GetAllPayloads()) {
+        PyDict_SetItem(payloads.get(),
+                       PyBytes_FromString(element.first.c_str()),
+                       PyBytes_FromString(element.second.c_str()));
+      }
+      tensorflow::Safe_PyObjectPtr val(
+          Py_BuildValue("siO", FormatErrorStatusStackTrace(status).c_str(),
+                        status.code(), payloads.get()));
       PyErr_SetObject(exception_class, val.get());
       return -1;
     } else {

@@ -162,8 +162,9 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
  public:
-  explicit SpmdLogger(int64_t report_instruction_count)
-      : report_instruction_count_(report_instruction_count) {}
+  SpmdLogger(int64_t report_instruction_count, bool disabled)
+      : report_instruction_count_(report_instruction_count),
+        disabled_(disabled) {}
   static std::string ReportBeforePartition(const HloModule& module,
                                            int64_t report_instruction_count);
   static std::string ReportAfterPartition(const HloModule& module,
@@ -186,6 +187,12 @@ class SpmdLogger {
   std::vector<std::pair<int64_t, std::string>> entries_;
 
   int64_t report_instruction_count_;
+
+  // Note that we allow creating a *disabled* logger when logging is not
+  // enabled, in which case it is supposed to avoid doing any potentially
+  // expensive work. The logger is still created in this case and passed to the
+  // users to help avoid changing current call sites.
+  const bool disabled_;
 };
 
 class SpmdPartitioningVisitor;

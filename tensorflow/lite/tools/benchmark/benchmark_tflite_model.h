@@ -84,11 +84,6 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   void CleanUp();
 
-  std::unique_ptr<tflite::FlatBufferModel> model_;
-  std::unique_ptr<tflite::Interpreter> interpreter_;
-  std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
-
- private:
   // Implement type erasure with unique_ptr with custom deleter.
   using VoidUniquePtr = std::unique_ptr<void, void (*)(void*)>;
 
@@ -99,6 +94,16 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     size_t bytes;
   };
 
+  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
+                                      const std::string& input_file_path);
+
+  std::vector<InputLayerInfo> inputs_;
+  std::vector<InputTensorData> inputs_data_;
+  std::unique_ptr<tflite::FlatBufferModel> model_;
+  std::unique_ptr<tflite::Interpreter> interpreter_;
+  std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
+
+ private:
   template <typename T, typename Distribution>
   inline InputTensorData CreateInputTensorData(int num_elements,
                                                Distribution distribution) {
@@ -116,17 +121,12 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   InputTensorData CreateRandomTensorData(const TfLiteTensor& t,
                                          const InputLayerInfo* layer_info);
 
-  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
-                                      const std::string& input_file_path);
-
   void AddOwnedListener(std::unique_ptr<BenchmarkListener> listener) {
     if (listener == nullptr) return;
     owned_listeners_.emplace_back(std::move(listener));
     AddListener(owned_listeners_.back().get());
   }
 
-  std::vector<InputLayerInfo> inputs_;
-  std::vector<InputTensorData> inputs_data_;
   std::vector<std::unique_ptr<BenchmarkListener>> owned_listeners_;
   std::mt19937 random_engine_;
   std::vector<Interpreter::TfLiteDelegatePtr> owned_delegates_;

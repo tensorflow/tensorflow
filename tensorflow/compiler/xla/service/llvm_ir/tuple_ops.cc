@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 
 #include <stddef.h>
+
 #include <string>
 #include <vector>
 
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"

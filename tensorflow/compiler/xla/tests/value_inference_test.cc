@@ -259,6 +259,16 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
   EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), false);
 }
 
+TEST_F(DynamismInferenceTest, DynamicSliceWithConstantOperands) {
+  XlaBuilder b(TestName());
+
+  auto constant = ConstantR1<int32>(&b, {0, 1, 2, 3});
+  auto slice_start = ConstantR0(&b, 1);
+  auto dynamic_slice = DynamicSlice(constant, {slice_start}, {1});
+  EXPECT_FALSE(
+      ComputeDynamismLiteral(dynamic_slice, &b).ValueOrDie().Get<bool>({0}));
+}
+
 TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather where first operand and second operand have
@@ -360,6 +370,32 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is not dynamic.
   EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
+TEST_F(DynamismInferenceTest, InferThroughCall) {
+  // The result of following call instruction is static.
+  //
+  // Callee:
+  //   p = param
+  //   return p
+  //
+  // Entry:
+  //   c = constant(3)
+  //   return call(c), callee
+  //
+  //
+
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  XlaBuilder call_builder("call");
+  Parameter(&call_builder, 0, s32_shape, "call_param");
+  auto call_computation = call_builder.Build().ValueOrDie();
+
+  XlaBuilder b(TestName());
+  auto constant = ConstantR0<int32>(&b, 3);
+  auto call = Call(&b, call_computation, {constant});
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is static.
+  EXPECT_EQ(ComputeDynamismScalar(call, &b, {}).ValueOrDie(), false);
 }
 
 TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {

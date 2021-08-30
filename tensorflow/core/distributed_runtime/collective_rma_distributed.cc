@@ -154,7 +154,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     ScopedMemoryDebugAnnotation op_annotation(
         "CollectiveRemoteAccessDistributed::RecvFromPeer"
         "::recv_buf_callback",
-        step_id_, "dynamic", to_tensor->dtype(), &to_tensor->shape());
+        step_id_, "dynamic", to_tensor->dtype(),
+        [to_tensor]() { return to_tensor->shape().DebugString(); });
 
     state->cpu_tensor =
         std::make_unique<Tensor>(cpu_dev->GetAllocator(cpu_attr),

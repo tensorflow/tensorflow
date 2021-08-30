@@ -72,6 +72,10 @@ namespace {
 class ComputeCostPass
     : public mlir::PassWrapper<ComputeCostPass, mlir::OperationPass<ModuleOp>> {
  private:
+  llvm::StringRef getArgument() const final { return "tfl-compute-cost"; }
+  llvm::StringRef getDescription() const final {
+    return "Compute the total cost for each available subgraph.";
+  }
   void runOnOperation() override;
 };
 
@@ -101,8 +105,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeCostPass() {
   return std::make_unique<ComputeCostPass>();
 }
 
-static PassRegistration<ComputeCostPass> pass(
-    "tfl-compute-cost", "Compute the total cost for each available subgraph.");
+static PassRegistration<ComputeCostPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

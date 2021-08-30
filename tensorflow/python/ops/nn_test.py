@@ -1333,6 +1333,24 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [4, 9])
 
+  def testNDHWCtoNCDHW(self):
+    x_val = [7, 4, 9, 3, 5]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [7, 5, 4, 9, 3])
+
+  def testNDHWCtoNCDHW_Size3(self):
+    x_val = [4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9, 3])
+
   @test_util.disable_xla("unsupported data format")
   def testNHWCToWHCN(self):
     x_val = [7, 4, 9, 3]
@@ -1351,6 +1369,26 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [9, 4])
 
+  @test_util.disable_xla("unsupported data format")
+  def testNDHWCToWHDCN(self):
+    x_val = [7, 4, 9, 3, 5]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="WHDCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [3, 9, 4, 5, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNDHWCToWHDCN_Size3(self):
+    x_val = [4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="WHDCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [3, 9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1366,6 +1404,24 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [9, 3])
+
+  def testNCDHWToNDHWC(self):
+    x_val = [7, 4, 9, 3, 5]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NCDHW", dst_format="NDHWC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [7, 9, 3, 5, 4])
+
+  def testNCDHWToNDHWC_Size3(self):
+    x_val = [9, 3, 5]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NCDHW", dst_format="NDHWC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3, 5])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]
@@ -1414,6 +1470,44 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
+
+  def testNDHWCToNCDHW2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="NCDHW")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [[7, 4], [8, 2], [9, 3], [4, 5], [5, 1]])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNDHWCToDHWNC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NDHWC", dst_format="DHWNC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [[9, 3], [4, 5], [5, 1], [7, 4], [8, 2]])
+
+  @test_util.disable_xla("unsupported data format")
+  def testDHWNCToNDHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="DHWNC", dst_format="NDHWC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [[5, 1], [7, 4], [9, 3], [4, 5], [8, 2]])
+
+  def testNCDHWToNDHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1], [8, 2]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(
+        x, src_format="NCDHW", dst_format="NDHWC")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [8, 2], [9, 3]])
 
   @test_util.disable_xla("XLA catches the error and rethrows as different one")
   def testInvalidLength(self):

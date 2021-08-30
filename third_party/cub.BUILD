@@ -12,5 +12,5 @@ exports_files(["LICENSE.TXT"])
 cc_library(
     name = "cub",
     hdrs = glob(["cub/**"]),
-    deps = if_local_cuda(["@local_cuda//:cuda_headers"]),
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )

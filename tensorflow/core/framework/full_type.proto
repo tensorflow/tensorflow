@@ -45,14 +45,31 @@ enum FullTypeId {
   //
   TFT_PRODUCT = 3;
 
+  // Represents a named field, with the name stored in the attribute.
+  //
+  // Parametrization:
+  //   TFT_NAMED[<type>]{<name>}
+  //   * <type> is the type of the field
+  //   * <name> is the field name, as string (thpugh can theoretically be an int
+  //     as well)
+  //
+  // Example:
+  //   TFT_RECORD[
+  //     TFT_NAMED[TFT_TENSOR[TFT_INT32]]{'foo'},
+  //     TFT_NAMED[TFT_TENSOR[TFT_FLOAT32]]{'bar'},
+  //   ]
+  //     is a structure with two fields, an int tensor "foo" and a float tensor
+  //     "bar".
+  TFT_NAMED = 4;
+
   // Callable types describe functions and ops.
   //
   // Parametrization:
   //   TFT_CALLABLE[<arg type>, <return type>]
-  //   * <arg_type> is the type of the arguments; TFT_PRODUCT represents
+  //   * <arg type> is the type of the arguments; TFT_PRODUCT represents
   //   multiple
   //     arguments.
-  //   * <return_type> is the return type; TFT_PRODUCT represents multiple
+  //   * <return type> is the return type; TFT_PRODUCT represents multiple
   //     return values (that means that callables returning multiple things
   //     don't necessarily return a single tuple).
   //
@@ -73,9 +90,9 @@ enum FullTypeId {
   //
   // Parametrization:
   //   TFT_TENSOR[<element type>, <shape type>]
-  //   * <element_type> is currently limited to one of the element types
+  //   * <element type> is currently limited to one of the element types
   //     defined below.
-  //   * <shape_type> is not yet defined, and may only be TFT_UNKNOWN for now.
+  //   * <shape type> is not yet defined, and may only be TFT_UNKNOWN for now.
   //
   // A TFT_SHAPE type will be defined in the future.
   //
@@ -97,7 +114,7 @@ enum FullTypeId {
   //
   // Parametrization:
   //   TFT_ARRAY[<element type>]
-  //   * <element_type> may be any concrete type.
+  //   * <element type> may be any concrete type.
   //
   // Examples:
   //   TFT_ARRAY[TFT_TENSOR[TFT_INT32]] is a TensorArray holding int32 Tensors
@@ -115,12 +132,24 @@ enum FullTypeId {
   //
   // Parametrization:
   //   TFT_OPTIONAL[<element type>]
-  //   * <element_type> may be any concrete type.
+  //   * <element type> may be any concrete type.
   //
   // Examples:
   //   TFT_OPTIONAL[TFT_TENSOR[TFT_INT32]] is an Optional holding an int32
   //     Tensor of any shape.
   TFT_OPTIONAL = 1002;
+
+  // Literal types describe compile-time constant values.
+  // Literal types may also participate in dependent types.
+  //
+  // Parametrization:
+  //   TFT_LITERAL[<value type>]{<value>}
+  //   * <value type> may be any concrete type compatible that can hold <value>
+  //   * <value> is the type's attribute, and holds the actual literal value
+  //
+  // Examples:
+  //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
+  TFT_LITERAL = 1003;
 
   // Datasets created by tf.data ops and APIs. Datasets have generator/iterable
   // semantics, that is, one can construct an iterator from them. Like
@@ -132,15 +161,14 @@ enum FullTypeId {
   //
   //
   // Parametrization: TFT_ARRAY[<element type>].
-  // <element_type> may be a concrete type or a type symbol. It represents the
-  //   data type of the elements produced by the dataset.
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
   //
   // Examples:
   //   TFT_DATSET[TFT_TENSOR[TFT_INT32]] is a Dataset producing single int32
   //     Tensors of unknown shape.
   //   TFT_DATSET[TFT_PRODUCT[TFT_TENSOR[TFT_INT32], TFT_TENSOR[TFT_FLOAT32]] is
-  //   a
-  //     Dataset producing pairs of Tensors, one integer and one float.
+  //     a Dataset producing pairs of Tensors, one integer and one float.
   // Note: The high ID number is to prepare for the eventuality that Datasets
   // will be supported by user types in the future.
   TFT_DATASET = 10102;
@@ -192,5 +220,7 @@ message FullTypeDef {
   // Fields for more data types to be added as needed.
   oneof attr {
     string s = 3;
+    int64 i = 4;
+    // TODO(mdan): list/tensor, map? Need to reconcile with TFT_RECORD, etc.
   }
 }

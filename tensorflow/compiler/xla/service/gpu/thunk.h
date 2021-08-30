@@ -56,6 +56,7 @@ class Thunk {
     kGemm,
     kInfeed,
     kKernel,
+    kMemcpy,
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,

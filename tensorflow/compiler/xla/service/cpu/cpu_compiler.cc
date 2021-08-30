@@ -106,6 +106,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_command_line_options.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
@@ -675,6 +676,11 @@ struct OrcJITPostCompilationHook {
   const HloModule* module;
 };
 
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  llvm_ir::InitializeLLVMCommandLineOptions(
+      config.debug_options().xla_backend_extra_options());
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
@@ -688,7 +694,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   absl::call_once(llvm_command_line_options_initialized,
-                  &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
+                  &InitializeLLVMCommandLineOptions, module->config());
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
@@ -843,8 +849,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       module_group->ConsumeModules();
 
   absl::call_once(llvm_command_line_options_initialized,
-                  &llvm_ir::InitializeLLVMCommandLineOptions,
-                  modules[0]->config());
+                  &InitializeLLVMCommandLineOptions, modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only

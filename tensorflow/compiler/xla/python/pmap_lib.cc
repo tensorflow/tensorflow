@@ -32,7 +32,7 @@ limitations under the License.
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -200,6 +200,10 @@ class PmapFunction {
         python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
   }
+  PmapFunction(const PmapFunction&) = delete;
+  PmapFunction& operator=(const PmapFunction& other) = delete;
+  PmapFunction(PmapFunction&&) = default;
+  PmapFunction& operator=(PmapFunction&&) = default;
 
   // This function will:
   // (a) flatten the inputs using pytree
@@ -215,6 +219,7 @@ class PmapFunction {
   }
 
   int cache_size() const { return executables_.size(); }
+  const pybind11::function& cache_miss() const { return cache_miss_; }
 
  private:
   void PopulateCacheEntry(PmapCacheEntry* cache_entry,
@@ -485,7 +490,17 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
                            /*indices=*/result_spec.out_indices,
                            /*weak_type=*/result_spec.weak_type)));
   }
-  return cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
+  py::object out =
+      cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
+
+  // If there is a post-hook function, call it with the inputs and the outputs.
+  absl::optional<py::object> post_hook =
+      tls.post_hook.has_value() ? tls.post_hook : global_state.post_hook;
+  if (post_hook) {
+    (*post_hook)(py::cast(*this), args, kwargs, out);
+  }
+
+  return out;
 }
 
 void BuildPmapSubmodule(py::module& m) {
@@ -624,6 +639,7 @@ void BuildPmapSubmodule(py::module& m) {
                                                                "PmapFunction");
   cfun.def("__call__", &PmapFunction::Call);
   cfun.def_property_readonly("__signature__", &PmapFunction::PythonSignature);
+  cfun.def_property_readonly("_cache_miss", &PmapFunction::cache_miss);
   // All private members are only for testing/debugging purposes
   cfun.def("_cache_size", &PmapFunction::cache_size);
 

@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -314,10 +314,9 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
     return mlir_result;
   }
 
-  LOG_FIRST_N(WARNING, 5)
-      << "Failed second phase of the MLIR bridge. Will "
-         "retry with the old bridge. MLIR bridge compilation status: "
-      << mlir_result;
+  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
+             "retry with the old bridge. MLIR bridge compilation status: "
+          << mlir_result;
   return compile_with_old_bridge();
 }
 

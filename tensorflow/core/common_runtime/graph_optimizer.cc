@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -54,6 +55,9 @@ void GraphOptimizer::Optimize(
       DumpGraph("RemoveListArrayConverter", g);
       changed = true;
     }
+
+    uint64 inlining_start_us = Env::Default()->NowMicros();
+    uint64 inlining_total_us = 0;
     if (opts_.do_function_inlining() && RemoveDeadNodes(g)) {
       DumpGraph("RemoveDeadNodes", g);
       changed = true;
@@ -62,8 +66,12 @@ void GraphOptimizer::Optimize(
       DumpGraph("RemoveIdentityNodes", g);
       changed = true;
     }
+    if (opts_.do_function_inlining()) {
+      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+    }
 
     if (opts_.do_constant_folding()) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       ConstantFoldingOptions cf_opts;
       cf_opts.shape_map = shape_map;
       cf_opts.consider = cf_consider_fn;
@@ -79,18 +87,32 @@ void GraphOptimizer::Optimize(
         DumpGraph("ConstFolding", g);
         changed = true;
       }
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime("constant_folding",
+                                            pass_end_us - pass_start_us);
     }
 
+    inlining_start_us = Env::Default()->NowMicros();
     if (opts_.do_function_inlining() && FixupSourceAndSinkEdges(g)) {
       DumpGraph("FixupSourceAndSinkEdges", g);
       changed = true;
     }
-    if (opts_.do_common_subexpression_elimination() &&
-        OptimizeCSE(g, cse_consider_fn)) {
-      DumpGraph("OptimizeCSE", g);
-      changed = true;
+    if (opts_.do_function_inlining()) {
+      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+    }
+
+    if (opts_.do_common_subexpression_elimination()) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
+      if (OptimizeCSE(g, cse_consider_fn)) {
+        DumpGraph("OptimizeCSE", g);
+        changed = true;
+      }
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime("common_subexpression_elimination",
+                                            pass_end_us - pass_start_us);
     }
     if (opts_.do_function_inlining()) {
+      inlining_start_us = Env::Default()->NowMicros();
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.inlined_function_body_placer =
           InlinedFunctionBodyPlacer::SingleDevice();
@@ -126,6 +148,11 @@ void GraphOptimizer::Optimize(
         DumpGraph("ExpandInlineFunctions", g);
         changed = true;
       }
+
+      const uint64 inlining_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime(
+          "function_inlining",
+          (inlining_end_us - inlining_start_us) + inlining_total_us);
     }
     if (!changed) break;
   }

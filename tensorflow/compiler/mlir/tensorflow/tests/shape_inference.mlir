@@ -1163,23 +1163,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
-  // CHECK-LABEL: call_partitioned_call_const_index() -> (tensor<index>, tensor<?xindex>)
-  func @call_partitioned_call_const_index() -> (tensor<*xindex>, tensor<?xindex>) {
-    %0 = call @partitioned_called_const_index() : () -> tensor<*xindex>
-    // CHECK: tensor.cast{{.*}} : tensor<index> to tensor<*xindex>
-    %1 = shape.shape_of %0 : tensor<*xindex> -> tensor<?xindex>
-    return %0, %1 : tensor<*xindex>, tensor<?xindex>
-  }
-
-  // CHECK-LABEL: func @partitioned_called_const_index
-  // CHECK-SAME: -> tensor<index>
-  func @partitioned_called_const_index() -> (tensor<*xindex>) {
-    %0 = constant dense<5> : tensor<index>
-    // CHECK-NOT: tensor.cast
-    %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
-    return %1 : tensor<*xindex>
-  }
-
   func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
     return
   }
@@ -1282,34 +1265,35 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: passthrough_mapdataset
   func @passthrough_mapdataset(
       %arg0 : tensor<!tf_type.variant>,
-      %arg1 : tensor<!tf_type.string>,
-      %arg2 : tensor<2x!tf_type.string>,
-      %arg3 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
-      %arg4 : tensor<!tf_type.resource<tensor<i64>>>,
-      %arg5 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
-      %arg6 : tensor<!tf_type.resource<tensor<256x640xf32>>>,
-      %arg7 : tensor<!tf_type.resource<tensor<640xf32>>>,
-      %arg8 : tensor<!tf_type.resource<tensor<640xf32>>>,
-      %arg9 : tensor<!tf_type.resource<tensor<640xf32>>>,
-      %arg10 : tensor<!tf_type.resource<tensor<640xf32>>>,
-      %arg11 : tensor<!tf_type.resource<tensor<512x640xf32>>>,
-      %arg12 : tensor<!tf_type.resource<tensor<640x640xf32>>>,
-      %arg13 : tensor<!tf_type.resource<tensor<4096xf32>>>,
-      %arg14 : tensor<!tf_type.resource<tensor<640x4096xf32>>>) {
-    %111 = "tf.MapDataset"(
-      %arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7,
-      %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14)
-      {device = "", f = @__inference_Dataset_map__feature_fn_73870, f._tf_data_function = true,
-       output_shapes = [#tf_type.shape<10>, #tf_type.shape<?x?x512>, #tf_type.shape<?x?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?x?>, #tf_type.shape<?>, #tf_type.shape<?>],
-       output_types = [!tf_type.string, f32, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string], preserve_cardinality = true, use_inter_op_parallelism = true} :
-       (tensor<!tf_type.variant>, tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<i64>>>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<256x640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<512x640xf32>>>, tensor<!tf_type.resource<tensor<640x640xf32>>>, tensor<!tf_type.resource<tensor<4096xf32>>>, tensor<!tf_type.resource<tensor<640x4096xf32>>>) -> tensor<!tf_type.variant>
+      %arg1 : tensor<!tf_type.resource>,
+      %arg2 : tensor<i64>,
+      %arg3 : tensor<10xi32>) {
+    %74 = "tf.ParallelMapDatasetV2"(%arg0, %arg1, %arg2, %arg2) {
+      Targuments = [!tf_type.resource, i64], deterministic = "default",
+      device = "/job:localhost/replica:0/task:0/device:CPU:0",
+      f = @__inference_Dataset_map_classfunctools.partial_95960,
+      f._tf_data_function = true,
+      output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<73>, #tf_type.shape<12>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<64>, #tf_type.shape<64>, #tf_type.shape<>, #tf_type.shape<>],
+      output_types = [i32, i32, i32, i64, i32, i32, f32, i64, i32, i32, i32, f32],
+      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
+    // For this test case the first 12 inputs to the function f below will be
+    // from ParallelMapDataset, while the remaining one is a captured input.
+    %75 = "tf.MapDataset"(%74, %arg3) {
+      device = "/job:localhost/replica:0/task:0/device:CPU:0",
+      f = @__inference_Dataset_map_lambda_96150,
+      f._tf_data_function = true,
+      output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<10>],
+      output_types = [i32, i32, i32],
+      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<*x!tf_type.variant>, tensor<10xi32>) -> tensor<*x!tf_type.variant>
     return
   }
 
-  // CHECK: @__inference_Dataset_map__feature_fn_73870(%arg0: tensor<10x!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.string>, %arg2: tensor<2x!tf_type.string>, %arg3: tensor<!tf_type.resource<tensor<4096x128xf32>>>, %arg4: tensor<!tf_type.resource<tensor<i64>>>, %arg5: tensor<!tf_type.resource<tensor<4096x128xf32>>>, %arg6: tensor<!tf_type.resource<tensor<256x640xf32>>>, %arg7: tensor<!tf_type.resource<tensor<640xf32>>>, %arg8: tensor<!tf_type.resource<tensor<640xf32>>>, %arg9: tensor<!tf_type.resource<tensor<640xf32>>>, %arg10: tensor<!tf_type.resource<tensor<640xf32>>>, %arg11: tensor<!tf_type.resource<tensor<512x640xf32>>>, %arg12: tensor<!tf_type.resource<tensor<640x640xf32>>>, %arg13: tensor<!tf_type.resource<tensor<4096xf32>>>, %arg14: tensor<!tf_type.resource<tensor<640x4096xf32>>>
-  func private @__inference_Dataset_map__feature_fn_73870(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.string>, %arg2: tensor<2x!tf_type.string>, %arg3: tensor<*x!tf_type.resource>, %arg4: tensor<*x!tf_type.resource>, %arg5: tensor<*x!tf_type.resource>, %arg6: tensor<*x!tf_type.resource>, %arg7: tensor<*x!tf_type.resource>, %arg8: tensor<*x!tf_type.resource>, %arg9: tensor<*x!tf_type.resource>, %arg10: tensor<*x!tf_type.resource>, %arg11: tensor<*x!tf_type.resource>, %arg12: tensor<*x!tf_type.resource>, %arg13: tensor<*x!tf_type.resource>, %arg14: tensor<*x!tf_type.resource>) -> (tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
-    %0:10 = "tf.JustPretend"() : () -> (tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
-    return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5, %0#6, %0#7, %0#8, %0#9: tensor<?x!tf_type.string>, tensor<?x?x512xf32>, tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
+  // CHECK: @__inference_Dataset_map_lambda_96150(%arg0: tensor<64xi32>, %arg1: tensor<69xi32>, %arg2: tensor<73xi32>, %arg3: tensor<12xi64>, %arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i64>, %arg8: tensor<64xi32>, %arg9: tensor<64xi32>, %arg10: tensor<i32>, %arg11: tensor<f32>, %arg12: tensor<10xi32>) -> (tensor<64xi32>, tensor<69xi32>, tensor<10xi32>)
+  func private @__inference_Dataset_map_lambda_96150(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>, %arg3: tensor<?xi64>, %arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i64>, %arg8: tensor<?xi32>, %arg9: tensor<?xi32>, %arg10: tensor<i32>, %arg11: tensor<f32>, %arg12: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
+    %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<?xi32>) -> tensor<*xi32>
+    %1 = "tf.Identity"(%arg1) {device = ""} : (tensor<?xi32>) -> tensor<*xi32>
+    %2 = "tf.Identity"(%arg12) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
+    return %0, %1, %2 : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>
   }
 
   // CHECK-LABEL: passthrough_reducedataset

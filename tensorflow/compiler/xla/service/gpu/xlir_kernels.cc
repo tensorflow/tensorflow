@@ -66,16 +66,11 @@ tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
 
   ncclComm_t comm = xccl_ctx->clique.GetCommForDeviceOrdinal(device_ordinal);
   auto ccl_comm = tfrt::gpu::wrapper::CclComm(comm, current->platform());
-  auto num_ranks = tfrt::gpu::wrapper::CclCommCount(ccl_comm);
-  if (!num_ranks) {
-    return tfrt::MakeErrorAsyncValueRef(llvm::toString(num_ranks.takeError()));
-  }
 
   xccl_ctx->ccl_handle =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuCclHandle>(
           context.ValueRef(),
-          tfrt::gpu::wrapper::OwningCclComm({comm, current->platform()}),
-          *num_ranks);
+          tfrt::gpu::wrapper::OwningCclComm({comm, current->platform()}));
   return xccl_ctx->ccl_handle.CopyRef();
 }
 

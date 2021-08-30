@@ -3454,6 +3454,25 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     wrap_function.function_from_graph_def(graph_def, [], ["output"])
 
 
+class DeadlineTest(test_util.TensorFlowTestCase):
+
+  def testNoDeadlineSet(self):
+    with ops.Graph().as_default() as g:
+      get_deadline = test_ops.get_deadline()
+      with self.session(graph=g) as sess:
+        run_options = config_pb2.RunOptions()
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(get_deadline, options=run_options)
+
+  def testDeadlineSetTimesOut(self):
+    with ops.Graph().as_default() as g:
+      sleep_op = test_ops.sleep_op(10)
+      with self.session(graph=g) as sess:
+        run_options = config_pb2.RunOptions(timeout_in_ms=3_000)
+        with self.assertRaises(errors.DeadlineExceededError):
+          sess.run(sleep_op, options=run_options)
+
+
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):
@@ -3521,7 +3540,8 @@ class NameScopeTest(test_util.TensorFlowTestCase):
           with ops.name_scope("_"):
             pass
 
-    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
+    self.assertRaisesRegex(ValueError,
+                           "'_' is not a valid (?:root )?scope name", f)
 
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
@@ -3701,6 +3721,38 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     pre_added_input_shapes = self.setUpInputShapes(pre_add_input_shapes=True)
     post_added_input_shapes = self.setUpInputShapes(pre_add_input_shapes=False)
     self.assertProtoEquals(pre_added_input_shapes, post_added_input_shapes)
+
+
+class TensorTest(test_util.TensorFlowTestCase):
+
+  def testToArrayEagerMode(self):
+
+    with context.eager_mode():
+      a = np.array(constant_op.constant(32), dtype=np.float32)
+      b = np.array(constant_op.constant(32, dtype=dtypes.int64))
+
+      self.assertEqual(a.dtype, np.dtype(np.float32))
+      self.assertEqual(b.dtype, np.dtype(np.int64))
+
+  def testToArrayFunctionMode(self):
+
+    @def_function.function
+    def f():
+      # Raises during trace compilation.
+      return np.array(constant_op.constant(32), dtype=np.int32)
+
+    @def_function.function
+    def g():
+      # Raises during trace compilation.
+      return np.array(constant_op.constant(32))
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                "Cannot convert a symbolic Tensor"):
+      f()
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                "Cannot convert a symbolic Tensor"):
+      g()
 
 
 if __name__ == "__main__":

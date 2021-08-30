@@ -184,6 +184,47 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::ReduceScatterOp srcOp,
   return chain;
 }
 
+FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
+                                        Value stream, Value handle,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  const auto& operands = srcOp.operands();
+  const auto& results = srcOp.results();
+
+  if (srcOp.split_dimension().hasValue()) {
+    // TODO(hanbinyoon): Support the case of split dimension.
+    return rewriter.notifyMatchFailure(
+        srcOp,
+        "Split dimension (splitting inputs and concatenating outputs in that "
+        "dimension) is unimplemented.");
+  } else {
+    for (int i = 0; i < operands.size(); i++) {
+      xla::Shape shape = xla::TypeToShape(operands[i].getType());
+      auto nccl_data_type_or = ToNcclDataType(shape.element_type());
+      if (mlir::failed(nccl_data_type_or)) {
+        return rewriter.notifyMatchFailure(
+            srcOp, "Failed to convert operand data type to ncclDataType_t.");
+      }
+      ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+
+      Value input = mapping.lookup(operands[i]);
+      Value output = mapping.lookup(results[i]);
+      Value peer = rewriter.create<tfrt::compiler::ConstantI32Op>(
+          srcOp.getLoc(), rewriter.getI32Type(), i);
+
+      chain = rewriter
+                  .create<tfrt::gpu::CclSendOp>(srcOp.getLoc(), handle, input,
+                                                peer, nccl_data_type, chain)
+                  .getResult();
+      chain = rewriter
+                  .create<tfrt::gpu::CclRecvOp>(srcOp.getLoc(), handle, output,
+                                                peer, nccl_data_type, chain)
+                  .getResult();
+    }
+  }
+  return chain;
+}
+
 template <class CclOpType>
 struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   using tfrt::gpu::GpuAsyncOpConversionPattern<
@@ -237,8 +278,8 @@ void populateCclConversionPattern(RewritePatternSet& patterns) {
   // TODO(hanbinyoon): Support additional lmhlo collective ops.
   patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
                CclRewritePattern<lmhlo::AllReduceOp>,
-               CclRewritePattern<lmhlo::ReduceScatterOp>>(
-      patterns.getContext());
+               CclRewritePattern<lmhlo::ReduceScatterOp>,
+               CclRewritePattern<lmhlo::AllToAllOp>>(patterns.getContext());
 }
 
 }  // namespace tensorflow

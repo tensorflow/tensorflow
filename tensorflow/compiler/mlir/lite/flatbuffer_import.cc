@@ -1446,6 +1446,11 @@ OwningModuleRef tflite::FlatBufferToMlir(
                     builder.getStringAttr(model->description));
   }
 
+  if (!model->signature_defs.empty()) {
+    module->setAttr("tf_saved_model.semantics",
+                    mlir::UnitAttr::get(builder.getContext()));
+  }
+
   absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>
       subgraph_to_signature_map;
   for (int i = 0; i < model->signature_defs.size(); i++) {

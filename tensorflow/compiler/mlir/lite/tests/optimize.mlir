@@ -1882,6 +1882,21 @@ func @ReorderReshapex2Add(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>
   // CHECK: return %[[VAL_1]]
 }
 
+// CHECK-LABEL: @DontReorderReshapex2Add
+func @DontReorderReshapex2Add(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 3.0>>, %arg1: tensor<1x2x3x4x!quant.uniform<i8:f32, 5.0>>) -> tensor<6x4x!quant.uniform<i8:f32, 7.0>> {
+  %shape = constant dense<[6, 4]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %shape) : (tensor<1x2x3x4x!quant.uniform<i8:f32, 3.0>>, tensor<2xi32>) -> tensor<6x4x!quant.uniform<i8:f32, 3.0>>
+  %1 = "tfl.reshape"(%arg1, %shape) : (tensor<1x2x3x4x!quant.uniform<i8:f32, 5.0>>, tensor<2xi32>) -> tensor<6x4x!quant.uniform<i8:f32, 5.0>>
+  %2 = "tfl.add"(%0, %1) {fused_activation_function = "NONE"} : (tensor<6x4x!quant.uniform<i8:f32, 3.0>>, tensor<6x4x!quant.uniform<i8:f32, 5.0>>) -> tensor<6x4x!quant.uniform<i8:f32, 7.0>>
+  return %2 : tensor<6x4x!quant.uniform<i8:f32, 7.0>>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[6, 4]> : tensor<2xi32>
+  // CHECK-DAG: %[[VAL_0:.*]] = "tfl.reshape"(%arg0, %[[SHAPE]])
+  // CHECK-DAG: %[[VAL_1:.*]] = "tfl.reshape"(%arg1, %[[SHAPE]])
+  // CHECK: %[[ADD:.*]] = "tfl.add"(%[[VAL_0]], %[[VAL_1]])
+  // CHECK: return %[[ADD]]
+}
+
 // CHECK-LABEL: ConvertSliceToIdentityI32
 func @ConvertSliceToIdentityI32(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
   %begin = constant dense<0> : tensor<4xi32>

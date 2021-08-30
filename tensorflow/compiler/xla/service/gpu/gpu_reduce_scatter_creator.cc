@@ -54,10 +54,23 @@ StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
       // that of the result of the dynamic slice.
       const int64_t split_dim = ar_spec->split_dim;
       Shape scatter_shape = ar->shape();
-      TF_RET_CHECK(scatter_shape.dimensions(split_dim) % ar_spec->group_size ==
-                   0);
-      scatter_shape.set_dimensions(
-          split_dim, scatter_shape.dimensions(split_dim) / ar_spec->group_size);
+      const int64_t split_dim_size = scatter_shape.dimensions(split_dim);
+      HloInstruction *rs_input = ar->mutable_operand(0);
+      const int64_t scatter_dim_size = split_dim_size / ar_spec->group_size;
+      TF_RET_CHECK(scatter_dim_size * ar_spec->group_size <= split_dim_size);
+      if (split_dim_size % ar_spec->group_size != 0) {
+        // The dynamic-slice does not evenly split the scatter dim. In that
+        // case, create a reduce-scatter with the relevant slice of the
+        // all-reduce input.
+        scatter_shape.set_dimensions(split_dim,
+                                     scatter_dim_size * ar_spec->group_size);
+        rs_input = computation->AddInstruction(HloInstruction::CreateSlice(
+            scatter_shape, rs_input,
+            std::vector<int64_t>(scatter_shape.rank(), 0),
+            scatter_shape.dimensions(),
+            std::vector<int64_t>(scatter_shape.rank(), 1)));
+      }
+      scatter_shape.set_dimensions(split_dim, scatter_dim_size);
 
       absl::optional<int64_t> channel_id;
       if (ar->channel_id()) {
@@ -67,9 +80,9 @@ StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
 
       HloInstruction *ars =
           computation->AddInstruction(HloInstruction::CreateReduceScatter(
-              scatter_shape, ar->operands(), ar->to_apply(),
-              ar->replica_groups(), ar->constrain_layout(), channel_id,
-              ar->use_global_device_ids(), ar_spec->split_dim));
+              scatter_shape, {rs_input}, ar->to_apply(), ar->replica_groups(),
+              ar->constrain_layout(), channel_id, ar->use_global_device_ids(),
+              ar_spec->split_dim));
 
       // If there was an intervening reshape, reshape the non-split dimensions
       // to match that existing reshape. Basically we can just reshape the ars

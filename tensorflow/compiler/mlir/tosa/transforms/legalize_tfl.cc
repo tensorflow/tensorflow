@@ -2890,10 +2890,16 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
 class QuantTypeConverter : public TypeConverter {
  public:
   static Type convertType(Type type) {
-    if (type.isa<quant::QuantizedType>())
-      return IntegerType::get(
-          type.getContext(),
-          type.cast<quant::QuantizedType>().getStorageTypeIntegralWidth());
+    if (auto qType = type.dyn_cast<quant::QuantizedType>()) {
+      if (qType.isSigned() || qType.getStorageTypeIntegralWidth() != 8) {
+        return IntegerType::get(type.getContext(),
+                                qType.getStorageTypeIntegralWidth());
+      }
+
+      return IntegerType::get(type.getContext(),
+                              qType.getStorageTypeIntegralWidth(),
+                              IntegerType::SignednessSemantics::Unsigned);
+    }
     return type;
   }
   static Type convertTensor(RankedTensorType type) {
@@ -3079,9 +3085,6 @@ void LegalizeTFL::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass() {
   return std::make_unique<LegalizeTFL>();
 }
-
-static PassRegistration<LegalizeTFL> pass(
-    PASS_NAME, "Legalize from TensorFlow Lite to TOSA dialect");
 
 }  // namespace tosa
 }  // namespace mlir

@@ -75,7 +75,7 @@ ConvMapProto ConvMapToProto() {
   return proto;
 }
 
-void PopulateConvMap(const ConvMapProto &m) {
+Status PopulateConvMap(const ConvMapProto &m) {
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -84,6 +84,20 @@ void PopulateConvMap(const ConvMapProto &m) {
   std::unordered_map<string, std::vector<int>> device_identifiers_map;
   for (const ConvMapProto::Entry &kv : m.kv_pairs()) {
     const ConvParametersProto &params_proto = kv.key();
+    // Abort loading process whenever there is an entry whose version number
+    // doesn't match runtime version because the autotune results may be
+    // incorrect.
+    if (params_proto.version() != ConvParameters::kVersion) {
+      VLOG(1) << "ConvParametersProto with the incompatible version:"
+              << params_proto.DebugString();
+      return errors::Aborted(
+          "Aborted because the loaded autotune results for convolution "
+          "operations have a version different "
+          "from runtime's version. Expected version: ",
+          ConvParameters::kVersion,
+          ". Actual version: ", params_proto.version());
+    }
+
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
     auto iter = device_identifiers_map.find(params_proto.device_identifier());
     std::vector<int> device_ids;
@@ -104,6 +118,7 @@ void PopulateConvMap(const ConvMapProto &m) {
           AlgorithmConfig(algorithm_config_proto));
     }
   }
+  return Status::OK();
 }
 
 }  // namespace
@@ -128,7 +143,7 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
     return errors::InvalidArgument(
         "Failed to parse the autotune maps from string.");
   }
-  PopulateConvMap(proto.conv_map());
+  TF_RETURN_IF_ERROR(PopulateConvMap(proto.conv_map()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Status::OK();

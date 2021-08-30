@@ -561,7 +561,8 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
     class Wrapper(object):
 
-      def __array__(self):
+      def __array__(self, dtype=None):
+        del dtype
         return np.array([b"foo", b"bar", b"baz"])
 
     t = tensor_util.make_tensor_proto(Wrapper(), shape=[1, 3])

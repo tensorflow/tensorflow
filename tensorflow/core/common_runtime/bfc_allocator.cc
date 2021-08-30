@@ -29,7 +29,6 @@ limitations under the License.
 #ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/core/platform/stacktrace.h"
 #endif
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
@@ -506,10 +505,6 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
             const auto& annotation =
                 ScopedMemoryDebugAnnotation::CurrentAnnotation();
-            std::string tensor_shape;
-            if (annotation.pending_shape) {
-              tensor_shape = annotation.pending_shape->DebugString();
-            }
             return tensorflow::profiler::TraceMeEncode(
                 traceme_name, {{"allocator_name", name_},
                                {"bytes_reserved", stats_.bytes_reserved},
@@ -524,7 +519,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
                                {"data_type", annotation.pending_data_type},
-                               {"shape", tensor_shape}});
+                               {"shape", annotation.pending_shape_func()}});
           },
       /*level=*/profiler::TraceMeLevel::kInfo);
 }

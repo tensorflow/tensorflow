@@ -118,6 +118,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kScheduleWithEagerSplit,
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,

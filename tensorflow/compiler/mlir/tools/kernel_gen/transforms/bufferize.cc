@@ -117,11 +117,15 @@ class BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
       ConversionPatternRewriter &rewriter) const final {
     TiledLoopOp::Adaptor adaptor(operands, loop->getAttrDictionary());
     if (loop.getNumResults() == 0) return failure();
-
+    // The following code to set distribution_type is due to the following bug
+    // causing distribution_types to return an ArrayAttr instead of an
+    // Optional<ArrayAttr>. https://bugs.llvm.org/show_bug.cgi?id=51622
+    llvm::Optional<ArrayAttr> distribution_types = adaptor.distribution_types();
+    if (!distribution_types.getValue()) distribution_types = llvm::None;
     auto new_loop = rewriter.create<TiledLoopOp>(
         loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
         adaptor.step(), adaptor.inputs(), adaptor.outputs(),
-        adaptor.iterator_types(), adaptor.distribution_types());
+        adaptor.iterator_types(), distribution_types);
 
     // Clone the region.
     BlockAndValueMapping bvm;

@@ -365,9 +365,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   };
 
   // Allocate space for the input, filter, and output of the convolution.
+  const int64_t redzone_size =
+      check_conv ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
   se::RedzoneAllocator input_output_allocator(
       stream, allocator,
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options()));
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/se::RedzoneAllocator::kDefaultMemoryLimit,
+      /*redzone_size=*/redzone_size);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,

@@ -114,11 +114,6 @@ Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
 inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
-### `-tf-ensure-static-shapes`: Performs checks that the whole module does not contain dynamic shapes.
-This pass performs check that none of the ops in the MLIR module
-have dynamic shapes.
-Note, the pass is created temporary to stage the rollout of the second
-phase of the MLIR bridge and will be deleted after the rollout stage is completed.
 ### `-tf-executor-graph-pruning`: Prunes unreachable ops in a tf_executor.graph
 This pass removes ops from a `tf_executor.graph` that are not transitively, via
 data or control dependencies, connected to the associated `tf_executor.fetch`

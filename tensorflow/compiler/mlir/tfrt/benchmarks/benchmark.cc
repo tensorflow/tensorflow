@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -69,6 +70,7 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
   if (lower_from_tensorflow) {
     opts.register_pass_pipeline = tensorflow::CreateTfCpuRtPipeline;
   }
+  opts.type_converter = mlir::BufferizeTypeConverter();
 
   // Cache all jit executables, otherwise different benchmark runs will produce
   // different .so files and the same compiled function will have different

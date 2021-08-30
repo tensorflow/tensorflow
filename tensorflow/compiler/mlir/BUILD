@@ -5,16 +5,38 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "tf_cc_binary",
     "tf_cc_test",
 )
 
 package(
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:__subpackages__",
-        "@llvm-project//mlir:friends",
-    ],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//tensorflow/compiler/jit/...",
+        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/compiler/xla/...",
+        "//tensorflow/tools/...",
+    ] + if_google([
+        "//learning/brain/experimental/dtensor/mlir/...",
+        "//learning/brain/experimental/mlir/...",
+        "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/google/xla/mlir/...",
+        "//learning/brain/mlir/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
+        "//platforms/darwinn/...",
+        "//platforms/xla/...",
+        "//smartass/brain/ops/...",
+        "//third_party/auroraml/...",
+        "//third_party/iree/...",
+        "//waymo/ml/compiler/mlir/...",
+    ]),
 )
 
 package_group(
@@ -83,6 +105,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/tosa:tf_passes",
+        "//tensorflow/compiler/mlir/tosa:tfl_passes",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -192,6 +217,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_reduce_patterns_inc_gen",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -256,6 +282,7 @@ tf_cc_test(
 filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 exports_files(["run_lit.sh"])
