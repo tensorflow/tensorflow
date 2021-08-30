@@ -3755,7 +3755,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {
-    VLOG(10) << "deleting no-op reshape";
+    VLOG(3) << "deleting no-op reshape";
     return ReplaceInstruction(reshape, operand);
   }
 
@@ -5839,8 +5839,6 @@ Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
 }
 
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
-  XLA_VLOG_LINES(2,
-                 "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
   AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations()) {
@@ -5848,8 +5846,6 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2,
-                 "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
   return changed;
 }
 
