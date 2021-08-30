@@ -58,7 +58,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
   MutableGraphView graph(output);
 
-  // Add a const node with value kAutotune
+  // Add a const node with value kAutotune.
   NodeDef* autotune_value =
       graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
 

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/use_private_thread_pool.h"
+#include "tensorflow/core/grappler/optimizers/data/inject_prefetch.h"
 
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -29,16 +30,20 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kPrivateThreadPoolDataset[] = "PrivateThreadPoolDataset";
-constexpr char kModelDataset[] = "ModelDataset";
+constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 }  // namespace
 
-Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
-                                                     const GrapplerItem& item,
-                                                     GraphDef* output,
-                                                     OptimizationStats* stats) {
+Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
+                                               const GrapplerItem& item,
+                                               GraphDef* output,
+                                               OptimizationStats* stats) {
   *output = item.graph;
+  if (!autotune_) {
+    VLOG(1) << "The optimization inject_prefetch is not applied if autotune is "
+               "off.";
+    return Status::OK();
+  }
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
@@ -51,48 +56,35 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
         absl::StrJoin(item.fetch, ", "));
   }
 
-  for (const NodeDef& node : item.graph.node()) {
-    if (node.op() == kPrivateThreadPoolDataset) {
-      // If private thread pool is set by the user, we keep the user setting
-      // instead of rewriting it.
-      return Status::OK();
-    }
-  }
-
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
-  // If the pipeline is autotuned (ModelDataset exists as the last dataset in
-  // the pipeline), we insert PrivateThreadPoolDataset before ModelDataset.
-  // If the pipeline is not autotuned (ModelDataset doesn't exist), we insert
-  // PrivateThreadPoolDataset as the last dataset in the pipeline.
-  //
-  // In general, if exists, ModelDataset should be the last dataset in the
-  // pipeline.
-  if (last_node->op() == kModelDataset) {
-    last_node = graph_utils::GetInputNode(*last_node, graph);
+
+  if (last_node->op() == kPrefetchDataset) {
+    VLOG(1) << "The optimization inject_prefetch is not applied since the last "
+               "dataset is already prefetched.";
+    return Status::OK();
   }
 
-  // Add a const node with value 0 to indicate it is not set by users.
-  NodeDef* num_threads_value =
-      graph_utils::AddScalarConstNode(int64_t{0}, &graph);
-
-  NodeDef insert_node;
-  graph_utils::SetUniqueGraphNodeName("private_thread_pool", graph.graph(),
-                                      &insert_node);
-  insert_node.set_op(kPrivateThreadPoolDataset);
-
+  // Insert `prefetch(AUTOTUNE)` after the last node.
+  NodeDef prefetch_node;
+  graph_utils::SetUniqueGraphNodeName(
+      strings::StrCat("inject/prefetch_", last_node->name()), graph.graph(),
+      &prefetch_node);
+  prefetch_node.set_op(kPrefetchDataset);
   // `input_dataset` input
-  *insert_node.mutable_input()->Add() = last_node->name();
-  // `num_threads` input
-  *insert_node.mutable_input()->Add() = num_threads_value->name();
+  *prefetch_node.mutable_input()->Add() = last_node->name();
+  // `buffer_size` input
+  NodeDef* autotune_value =
+      graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
+  *prefetch_node.mutable_input()->Add() = autotune_value->name();
 
   // Set `output_types` and `output_shapes` attributes by copying the relevant
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
-  if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &insert_node))
+  if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &prefetch_node))
     return Status::OK();
 
-  auto* added_node = graph.AddNode(std::move(insert_node));
+  auto* added_node = graph.AddNode(std::move(prefetch_node));
   TF_RETURN_IF_ERROR(
       graph.UpdateFanouts(last_node->name(), added_node->name()));
 
@@ -100,7 +92,7 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(UsePrivateThreadPool, "use_private_thread_pool");
+REGISTER_GRAPH_OPTIMIZER_AS(InjectPrefetch, "inject_prefetch");
 
 }  // namespace grappler
 }  // namespace tensorflow
