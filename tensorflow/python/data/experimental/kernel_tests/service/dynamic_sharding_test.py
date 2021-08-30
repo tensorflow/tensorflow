@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
