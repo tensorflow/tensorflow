@@ -1344,17 +1344,24 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
       serving_funcs: A list functions of the serving func of the jax module, the
         model params should already be inlined. (e.g., `serving_func =
         functools.partial(model, params=params)`)
-      inputs: Array of input tensor placeholders mapping, like `jnp.zeros`. For
-        example, a map wrapped in an array like
-        "[{'input1' : input1, 'input2' : input2}]".
-    Jax function is polymorphic, for example:  ```python
-    def add(a, b): return a + b ```  Will yield different computations if
-      different input signatures are passed
+      inputs: Array of input tensor placeholders tuple,s like `jnp.zeros`. For
+        example, wrapped in an array like
+        "[('input1', input1), ('input2', input2)]]".
+    Jax function is polymorphic, for example:
+    ```python
+    def add(a, b):
+      return a + b
+    ```
+    Will yield different computations if different input signatures are passed
     in: Pass `add(10.0, 20.0)` will yield a scalar `add` while pass
       `add(np.random((100, 1)), np.random(100, 100))` will yield a broadcasting
       add.  We will need the input information to do tracing for the converter
       to properly convert the model. So it's important to pass in the desired
       `input placeholders` with the correct input shape/type.
+
+    In the converted tflite model:
+    Currently: the function name will be default to main, the output names will
+    be the traced outputs. The output ordering shall match the serving function.
     """
     super(TFLiteJaxConverterV2, self).__init__()
     self._serving_funcs = serving_funcs
@@ -1393,20 +1400,22 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     if not isinstance(self._inputs, (tuple, list)):
       raise ValueError(
-          "Input tensors should be pass in a map wrapped in an array.")
+          "Input tensors should be pass in a tuple list wrapped in an array.")
 
     # TODO(b/197690428): Support multiple functions.
     # Currently only support one serving function.
     if len(self._serving_funcs) > 1:
       raise ValueError("Currently only support single serving function.")
 
-    if not isinstance(self._inputs[0], dict):
+    if not isinstance(self._inputs[0], (tuple, list)):
       raise ValueError("The input placeholders are not a dictionary.")
     try:
       xla_compuation = _xla_computation(self._serving_funcs[0], backend="cpu")
-
+      ordered_inputs = []
+      for input_tuple in self._inputs[0]:
+        ordered_inputs.append(input_tuple[1])
       hlo_proto = xla_compuation(
-          **self._inputs[0]).as_serialized_hlo_module_proto()
+          *ordered_inputs).as_serialized_hlo_module_proto()
     except Exception:  # pylint: disable=broad-except
       raise ValueError("Failed to convert the given Jax function to hlo.")
 
@@ -1483,8 +1492,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   tflite_model = converter.convert()
 
   # Converting a Jax model to a TensorFlow Lite model.
-  converter = tf.lite.TFLiteConverter.experimental_from_jax([func], [{
-      'input1' : input1, 'input2' : input2}])
+  converter = tf.lite.TFLiteConverter.experimental_from_jax([func], [[
+      ('input1', input1), ('input2', input2)])
   tflite_model = converter.convert()
   ```
   """
@@ -1621,9 +1630,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     Args:
       serving_funcs: A array of Jax functions with all the weights applied
         already.
-      inputs: A array of Jax input placeholders mapping, e.g.,
-        jnp.zeros(INPUT_SHAPE). Each mapping should correspond with the serving
-        function.
+      inputs: A array of Jax input placeholders tuples list, e.g.,
+        jnp.zeros(INPUT_SHAPE). Each tuple list should correspond with the
+        serving function.
 
     Returns:
       TFLiteConverter object.

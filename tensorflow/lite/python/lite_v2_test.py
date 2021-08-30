@@ -2179,27 +2179,19 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
         'The truth value of an array with more than one element is ambiguous.'):
       converter.convert()
 
-    # Invalid case: the input tensors are not provided as mapping.
-    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
-                                                             [input_tensor])
-    with self.assertRaisesRegex(ValueError,
-                                'The input placeholders are not a dictionary.'):
-      converter.convert()
-
     # Invalid case: only partial inputs are provided.
-    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model], [{
-        'input1': input_tensor
-    }])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model], [[('input1', input_tensor)]])
     with self.assertRaisesRegex(
         ValueError, 'Failed to convert the given Jax function to hlo.'):
       converter.convert()
 
     # Invalid case: serving functions length does not match input mapping.
     converter = lite.TFLiteConverterV2.experimental_from_jax(
-        [simple_model, simple_model], [{
-            'input1': input_tensor,
-            'input2': input_tensor,
-        }])
+        [simple_model, simple_model], [[
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ]])
     with self.assertRaisesRegex(
         ValueError,
         'Input tensor mapping len 1 does not match serving func len 2.'):
@@ -2207,13 +2199,13 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
     # Invalid case: multiple serving function is provided.
     converter = lite.TFLiteConverterV2.experimental_from_jax(
-        [simple_model, simple_model], [{
-            'input1': input_tensor,
-            'input2': input_tensor,
-        }, {
-            'input1': input_tensor,
-            'input2': input_tensor,
-        }])
+        [simple_model, simple_model], [[
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ], [
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ]])
     with self.assertRaisesRegex(
         ValueError, 'Currently only support single serving function.'):
       converter.convert()
@@ -2228,9 +2220,8 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     input_tensor = jnp.zeros([10, 10])
-    converter = lite.TFLiteConverterV2.experimental_from_jax([single_input], [{
-        'input_tensor': input_tensor
-    }])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [single_input], [[('input_tensor', input_tensor)]])
     tflite_model = converter.convert()
 
     # Check values from converted_model
@@ -2252,10 +2243,7 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
     input1 = jnp.zeros([10, 10])
     input2 = jnp.zeros([10, 1])
     converter = lite.TFLiteConverterV2.experimental_from_jax(
-        [multiple_inputs], [{
-            'input1': input1,
-            'input2': input2
-        }])
+        [multiple_inputs], [[('input1', input1), ('input2', input2)]])
     tflite_model = converter.convert()
 
     # Check values from converted_model
@@ -2280,10 +2268,7 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
     input1 = jnp.zeros([10, 10])
     input2 = jnp.zeros([10, 1])
     converter = lite.TFLiteConverterV2.experimental_from_jax(
-        [multiple_inputs], [{
-            'input1': input1,
-            'input2': input2
-        }])
+        [multiple_inputs], [[('input1', input1), ('input2', input2)]])
     tflite_model = converter.convert()
 
     # Check values from converted_model
@@ -2309,9 +2294,8 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
     # Convert model
     input_tensor = jnp.zeros([10, 10])
-    converter = lite.TFLiteConverterV2.experimental_from_jax([serving_func], [{
-        'inputs': input_tensor
-    }])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [serving_func], [[('inputs', input_tensor)]])
     tflite_model = converter.convert()
 
     # Check values from converted_model
@@ -2338,9 +2322,8 @@ class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     input_tensor = jnp.zeros([3, 3])
-    converter = lite.TFLiteConverterV2.experimental_from_jax([model], [{
-        'x': input_tensor
-    }])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [model], [[('x', input_tensor)]])
     tflite_model = converter.convert()
 
     # Check values from converted_model
