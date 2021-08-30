@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import functools
 import os
 import sys
 
@@ -61,6 +62,14 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
+
+# Only run jax related tests when we can import jax.
+DISABLE_JAX_TEST = False
+try:
+  import jax
+  from jax import numpy as jnp
+except ImportError:
+  DISABLE_JAX_TEST = True
 # pylint: enable=g-import-not-at-top
 
 
@@ -2065,6 +2074,215 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
                           ['tensor_input'])
     self.assertEqual(
         list(signature_defs['serving_default']['outputs']), ['output_tensor'])
+
+
+class FromJaxModelTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testInvalidInputsModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def simple_model(input1, input2):
+      return jnp.sin(input1) + jnp.cos(input2)
+
+    input_tensor = jnp.zeros([10, 10])
+    # Invalid case: not specify serving_func
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        None, [{
+            'input1': input_tensor
+        }])
+    with self.assertRaisesRegex(ValueError, 'No serving func is specified.'):
+      converter.convert()
+
+    # Invalid case: not specify input
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
+                                                             None)
+    with self.assertRaisesRegex(ValueError, 'Input tensors are not specified.'):
+      converter.convert()
+
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model], [])
+    with self.assertRaisesRegex(ValueError, 'Input tensors are not specified.'):
+      converter.convert()
+
+    # Invalid case: not wrap input_tensor in a list.
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
+                                                             input_tensor)
+    with self.assertRaisesRegex(
+        ValueError,
+        'The truth value of an array with more than one element is ambiguous.'):
+      converter.convert()
+
+    # Invalid case: the input tensors are not provided as mapping.
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
+                                                             [input_tensor])
+    with self.assertRaisesRegex(ValueError,
+                                'The input placeholders are not a dictionary.'):
+      converter.convert()
+
+    # Invalid case: only partial inputs are provided.
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model], [{
+        'input1': input_tensor
+    }])
+    with self.assertRaisesRegex(
+        ValueError, 'Failed to convert the given Jax function to hlo.'):
+      converter.convert()
+
+    # Invalid case: serving functions length does not match input mapping.
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model, simple_model], [{
+            'input1': input_tensor,
+            'input2': input_tensor,
+        }])
+    with self.assertRaisesRegex(
+        ValueError,
+        'Input tensor mapping len 1 does not match serving func len 2.'):
+      converter.convert()
+
+    # Invalid case: multiple serving function is provided.
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model, simple_model], [{
+            'input1': input_tensor,
+            'input2': input_tensor,
+        }, {
+            'input1': input_tensor,
+            'input2': input_tensor,
+        }])
+    with self.assertRaisesRegex(
+        ValueError, 'Currently only support single serving function.'):
+      converter.convert()
+
+  @test_util.run_v2_only
+  def testSingleInputModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def single_input(input_tensor):
+      return jnp.sin(input_tensor)
+
+    # Convert model.
+    input_tensor = jnp.zeros([10, 10])
+    converter = lite.TFLiteConverterV2.experimental_from_jax([single_input], [{
+        'input_tensor': input_tensor
+    }])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((10, 10))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = single_input(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testMultipleInputsModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def multiple_inputs(input1, input2):
+      return input1 + input2
+
+    # Convert model.
+    input1 = jnp.zeros([10, 10])
+    input2 = jnp.zeros([10, 1])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [multiple_inputs], [{
+            'input1': input1,
+            'input2': input2
+        }])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input1_data = np.random.random_sample((10, 10))
+    tf_input1_data = tf.constant(input1_data, dtype=np.float32)
+    input2_data = np.random.random_sample((10, 1))
+    tf_input2_data = tf.constant(input2_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [tf_input1_data, tf_input2_data])[0]
+    expected_value = multiple_inputs(input1_data, input2_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testInputSignaturesModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def multiple_inputs(input1, input2):
+      return input1 + input2
+
+    # Convert model.
+    input1 = jnp.zeros([10, 10])
+    input2 = jnp.zeros([10, 1])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [multiple_inputs], [{
+            'input1': input1,
+            'input2': input2
+        }])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input1_data = np.random.random_sample((10, 10))
+    tf_input1_data = tf.constant(input1_data, dtype=np.float32)
+    input2_data = np.random.random_sample((10, 1))
+    tf_input2_data = tf.constant(input2_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [tf_input1_data, tf_input2_data])[0]
+    expected_value = multiple_inputs(input1_data, input2_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testModelWithParams(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def model(inputs, weights):
+      return jnp.matmul(weights, inputs)
+
+    weights = np.random.random_sample((10, 10))
+    serving_func = functools.partial(model, weights=weights)
+
+    # Convert model
+    input_tensor = jnp.zeros([10, 10])
+    converter = lite.TFLiteConverterV2.experimental_from_jax([serving_func], [{
+        'inputs': input_tensor
+    }])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((10, 10))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = serving_func(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testWhileLoop(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def condition(x):
+      return jnp.sum(x, keepdims=False) < 100
+
+    def body(x):
+      return jnp.add(x, 2.0)
+
+    def model(x):
+      result = jax.lax.while_loop(condition, body, x)
+      return result[0]
+
+    # Convert model.
+    input_tensor = jnp.zeros([3, 3])
+    converter = lite.TFLiteConverterV2.experimental_from_jax([model], [{
+        'x': input_tensor
+    }])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((3, 3))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = model(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):

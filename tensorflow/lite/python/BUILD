@@ -237,7 +237,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",
