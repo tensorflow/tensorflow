@@ -48,6 +48,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "choose_from_datasets"
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "concatenate"
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }
