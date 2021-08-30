@@ -170,6 +170,10 @@
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
         endpoint.
+    *   Promoting
+        `tf.data.experimental.choose_from_datasets` API to
+        `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
+        endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:

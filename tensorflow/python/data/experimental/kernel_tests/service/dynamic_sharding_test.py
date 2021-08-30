@@ -252,7 +252,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
     choice_array = np.random.randint(3, size=(15,), dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
-    ds = interleave_ops.choose_from_datasets(datasets, choice_dataset)
+    ds = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
     expected = [words[i] for i in choice_array]
 

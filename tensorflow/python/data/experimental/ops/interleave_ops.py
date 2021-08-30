@@ -20,9 +20,6 @@ from __future__ import print_function
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.data.util import structure
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -172,7 +169,8 @@ def sample_from_datasets_v1(datasets,
 
 sample_from_datasets_v1.__doc__ = sample_from_datasets_v2.__doc__
 
-
+@deprecation.deprecated(None,
+                        "Use `tf.data.Dataset.choose_from_datasets(...)`.")
 @tf_export("data.experimental.choose_from_datasets", v1=[])
 def choose_from_datasets_v2(datasets,
                             choice_dataset,
@@ -189,7 +187,7 @@ def choose_from_datasets_v2(datasets,
   # Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2]`.
   choice_dataset = tf.data.Dataset.range(3).repeat(3)
 
-  result = tf.data.experimental.choose_from_datasets(datasets, choice_dataset)
+  result = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
   ```
 
   The elements of `result` will be:
@@ -218,17 +216,13 @@ def choose_from_datasets_v2(datasets,
     TypeError: If `datasets` or `choice_dataset` has the wrong type.
     ValueError: If `datasets` is empty.
   """
-  if not datasets:
-    raise ValueError("`datasets` must be a non-empty list of datasets.")
-  if choice_dataset is None or not structure.are_compatible(
-      choice_dataset.element_spec, tensor_spec.TensorSpec([], dtypes.int64)):
-    raise TypeError("`choice_dataset` must be a dataset of scalar "
-                    "`tf.int64` tensors.")
-  # pylint: disable=protected-access
-  return dataset_ops._DirectedInterleaveDataset(choice_dataset, datasets,
-                                                stop_on_empty_dataset)
+  return dataset_ops.Dataset.choose_from_datasets(
+      datasets=datasets,
+      choice_dataset=choice_dataset,
+      stop_on_empty_dataset=stop_on_empty_dataset)
 
-
+@deprecation.deprecated(None,
+                        "Use `tf.data.Dataset.choose_from_datasets(...)`.")
 @tf_export(v1=["data.experimental.choose_from_datasets"])
 def choose_from_datasets_v1(datasets,
                             choice_dataset,
