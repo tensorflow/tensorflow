@@ -49,8 +49,7 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
   graph_utils::CopyAttribute("Targuments", parent_map_node, &fused_node);
-  for (auto key : {"output_shapes", "output_types"})
-    graph_utils::CopyAttribute(key, map_node, &fused_node);
+  graph_utils::CopyShapesAndTypesAttrs(map_node, &fused_node);
 
   auto value_or_false = [](const AttrValue* attr) {
     if (!attr) return false;
