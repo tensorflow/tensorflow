@@ -95,10 +95,13 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
 #endif
 }
 
+std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
+
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
     bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())) {
+  ++number_instantiated_;
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
@@ -113,6 +116,13 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   int driverVersion;
   cuDriverGetVersion(&driverVersion);
   VLOG(2) << "DRIVER VERSION: " << driverVersion;
+  if (driverVersion < 11020) {
+    LOG(FATAL)  // Crash OK.
+        << "Disable cuda_malloc_async or update your CUDA driver to a version"
+        << " compitible with CUDA 11.2 or higher."
+        << " We detected a version compatible with: " << driverVersion;
+  }
+
   if (platform_device_id.value() > 0 && driverVersion < 11030) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
@@ -121,13 +131,25 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   }
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+
+  // Check the the CUDA runtime is recent enough.
+  if (auto status2 = cuDriverGetVersion(&driverVersion)) {
+    LOG(FATAL)  // Crash OK.
+        << "Error while fetching driver version: "
+        << GetCudaErrorMessage(status2);
+  }
+
+  // Check that cudaMallocAsync is supported.
   int cuda_malloc_async_supported;
   if (auto status =
           cuDeviceGetAttribute(&cuda_malloc_async_supported,
                                CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
-                               platform_device_id.value()))
-    LOG(FATAL) <<  // Crash OK.
-        "Failed to get device attribute: " << GetCudaErrorMessage(status);
+                               platform_device_id.value())) {
+    LOG(FATAL)  // Crash OK.
+        << "On device: " << platform_device_id.value()
+        << " Current driver: " << driverVersion
+        << ". Failed to get device attribute : " << GetCudaErrorMessage(status);
+  }
   if (!cuda_malloc_async_supported)
     LOG(FATAL)  // Crash OK.
         << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
@@ -311,6 +333,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 }
 void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  if (ptr == nullptr) return;
   if (auto result = cuMemFreeAsync(reinterpret_cast<const CUdeviceptr&>(ptr),
                                    cuda_stream_)) {
     if (result == CUDA_ERROR_DEINITIALIZED) {

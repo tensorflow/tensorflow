@@ -401,7 +401,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 
 BaseGPUDevice::~BaseGPUDevice() {
   delete gpu_device_info_;
-  gpu_allocator_->DeallocateRaw(scratch_);
+  if (scratch_) gpu_allocator_->DeallocateRaw(scratch_);
   device_context_->Unref();
 }
 
