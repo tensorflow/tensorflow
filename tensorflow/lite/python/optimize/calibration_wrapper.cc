@@ -257,8 +257,7 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes,
       return nullptr;
     }
     int input_tensor_idx = subgraph->inputs()[i];
-    if (subgraph->ResizeInputTensor(input_tensor_idx, dims.value()) !=
-        kTfLiteOk) {
+    if (subgraph->ResizeInputTensor(input_tensor_idx, *dims) != kTfLiteOk) {
       PyErr_Format(PyExc_ValueError, "Failed to resize %ld input tensor.", i);
       return nullptr;
     }
@@ -290,8 +289,7 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
       return nullptr;
     }
     int input_tensor_idx = interpreter_->inputs()[i];
-    if (interpreter_->ResizeInputTensor(input_tensor_idx, dims.value()) !=
-        kTfLiteOk) {
+    if (interpreter_->ResizeInputTensor(input_tensor_idx, *dims) != kTfLiteOk) {
       PyErr_Format(PyExc_ValueError, "Failed to resize %ld input tensor.", i);
       return nullptr;
     }
