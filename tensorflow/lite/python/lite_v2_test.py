@@ -1673,6 +1673,72 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(sub_output['output_0'], -2)
 
   @test_util.run_v2_only
+  def testMultipleFunctionQuantizedModel(self):
+    """Convert multiple functions in a multi-functional model."""
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+    add_func = root.add.get_concrete_function(input_data)
+    sub_func = root.sub.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'add': add_func, 'sub': sub_func})
+
+    # Try converting multiple functions.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield ('add', {
+            'x': np.random.uniform(low=0, high=1, size=(1,)).astype(np.float32),
+        })
+      for _ in range(2):
+        yield ('sub', {
+            'x': np.random.uniform(low=0, high=1, size=(1,)).astype(np.float32),
+        })
+
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
+    add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertIsNotNone(add_output['output_0'])
+    input_details = add_signature_runner.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('add_x:0', input_details['x']['name'])
+    self.assertEqual(np.float32, input_details['x']['dtype'])
+    self.assertTrue(([1] == input_details['x']['shape']).all())
+    self.assertEqual((0.0, 0), input_details['x']['quantization'])
+
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertIsNotNone(sub_output['output_0'])
+    output_details = sub_signature_runner.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual('StatefulPartitionedCall:0',
+                     output_details['output_0']['name'])
+    self.assertEqual(np.float32, output_details['output_0']['dtype'])
+    self.assertTrue(([1] == output_details['output_0']['shape']).all())
+    self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
+
+  @test_util.run_v2_only
   def testMultipleFunctionModelWithSharedWeight(self):
     """Convert multiple functions with the shared weight."""
     root = self._getMultiFunctionModelWithSharedWeight()
