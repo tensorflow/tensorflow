@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import numpy
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
@@ -115,6 +115,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     if context.executing_eagerly() or isinstance(concat_dim, ops.EagerTensor):
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
+      if(input_value[0].shape==(1,)):
+        input_values[0]=convert_to_tensor(input_values)
       non_neg_concat_dim = (
           concat_dim._numpy().item(0) % input_values[0]._rank())  # pylint: disable=protected-access
       # All inputs are guaranteed to be EagerTensors in eager mode
