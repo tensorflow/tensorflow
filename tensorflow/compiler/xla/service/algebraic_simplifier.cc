@@ -2809,9 +2809,16 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
                            log->shape(), HloOpcode::kAbs, a));
     auto new_log = computation_->AddInstruction(
         HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, abs_a));
+    auto non_zero_b = computation_->AddInstruction(HloInstruction::CreateBinary(
+        log->shape(), HloOpcode::kMultiply, new_log, b));
+    TF_ASSIGN_OR_RETURN(
+        auto b_is_zero,
+        MakeCompareHlo(Comparison::Direction::kEq, b, MakeScalarLike(b, 0.0)));
+    simplifier_->UpdateLayout(b_is_zero->mutable_shape());
     return ReplaceWithNewInstruction(
-        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
-                                          new_log, b));
+        log, HloInstruction::CreateTernary(log->shape(), HloOpcode::kSelect,
+                                           b_is_zero, MakeScalarLike(log, 0.0),
+                                           non_zero_b));
   }
 
   if (Match(log, m::Log(m::Sqrt(m::Op(&a))))) {
