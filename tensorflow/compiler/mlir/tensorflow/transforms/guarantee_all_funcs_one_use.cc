@@ -105,8 +105,8 @@ class GuaranteeAllFuncsOneUse
           FuncOp new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setPrivate();
-          if (failed(SymbolTable::replaceAllSymbolUses(func, new_func.getName(),
-                                                       user))) {
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  func, new_func.sym_nameAttr(), user))) {
             return func.emitError() << "could not replace symbol use";
           }
         }

@@ -3316,7 +3316,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
               init_value.getDefiningOp())) {
     auto global_memref =
         mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
-            get_global_memref, get_global_memref.name());
+            get_global_memref, get_global_memref.nameAttr());
     if (global_memref.constant() && global_memref.initial_value()) {
       // If the initial value happens to be a constant, generate a specialized
       // thunk.

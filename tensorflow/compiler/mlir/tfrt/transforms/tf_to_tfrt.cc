@@ -912,7 +912,8 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
     }
 
     auto new_op = rewriter.create<tfrt::compiler::CallOp>(
-        op.getLoc(), result_types, callee.getRootReference(), new_operands);
+        op.getLoc(), result_types, callee.getRootReference().getValue(),
+        new_operands);
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
     if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {

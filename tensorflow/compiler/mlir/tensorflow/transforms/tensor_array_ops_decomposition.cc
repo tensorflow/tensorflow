@@ -812,12 +812,14 @@ LogicalResult HandlePartitionedCallOp(
   if (lowered_callee != callee) {
     if (!info.signature_change) {
       // Signature is not modified. We do not need to keep two copies.
-      lowered_callee.setName(callee.getName());
+      lowered_callee.setName(
+          StringAttr::get(callee->getContext(), callee.getName()));
       callee.erase();
     } else {
       // Add the clone with a new name.
-      lowered_callee.setName(
-          llvm::formatv("{0}_tensorarray_decomposed", callee.getName()).str());
+      lowered_callee.setName(StringAttr::get(
+          callee->getContext(),
+          llvm::formatv("{0}_tensorarray_decomposed", callee.getName()).str()));
     }
     SymbolTable(module).insert(lowered_callee);
   }

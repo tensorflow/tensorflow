@@ -296,12 +296,14 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, then_branchAttr());
     }
 
     // Get the else branch function.
     FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, else_branchAttr());
     }
   }];
 }
@@ -411,7 +413,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 }
@@ -568,7 +570,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -631,12 +633,12 @@ body: A function that takes a list of tensors and returns another
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
 
     // Get the body function.
     FuncOp body_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
   }];
 }
@@ -985,7 +987,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
