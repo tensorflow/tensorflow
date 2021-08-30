@@ -36,11 +36,11 @@ TEST_F(InstructionFusionTest,
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
-  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
+  HloInstruction* log1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kLog, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(F32, {1}), exp1, {}));
+          ShapeUtil::MakeShape(F32, {1}), log1, {}));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
