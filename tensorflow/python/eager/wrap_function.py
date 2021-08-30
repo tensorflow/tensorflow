@@ -633,7 +633,7 @@ def wrap_function(fn, signature, name=None):
       signature=signature)
 
 
-def function_from_graph_def(graph_def, inputs, outputs):
+def function_from_graph_def(graph_def, inputs, outputs, captures=None):
   """Creates a ConcreteFunction from a GraphDef.
 
   Args:
@@ -642,6 +642,9 @@ def function_from_graph_def(graph_def, inputs, outputs):
       should be inputs to the function.
     outputs: A Tensor name or nested structure of names in `graph_def` which
       should be outputs of the function.
+    captures: (Optional) A dictionary mapping node names in `graph_def` that
+      should be captured as inputs to tensors containing the value of the
+      captured inputs.
 
   Returns:
     A ConcreteFunction.
@@ -649,6 +652,10 @@ def function_from_graph_def(graph_def, inputs, outputs):
 
   def _imports_graph_def():
     importer.import_graph_def(graph_def, name="")
+    graph = ops.get_default_graph()
+    if captures is not None:
+      for c in captures:
+        graph.add_capture(captures[c], graph.get_tensor_by_name(str(c) + ":0"))
 
   wrapped_import = wrap_function(_imports_graph_def, [])
   import_graph = wrapped_import.graph

@@ -48,6 +48,16 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
 
+# Jax functions used by TFLite
+# pylint: disable=g-import-not-at-top
+# pylint: disable=unused-import
+try:
+  from jax import xla_computation as _xla_computation
+except ImportError:
+  _xla_computation = None
+# pylint: enable=g-import-not-at-top
+# pylint: enable=unused-import
+
 # Defined as per TFLite schema
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     0: dtypes.float32,

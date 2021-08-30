@@ -820,9 +820,13 @@ GENERATE_DEFAULT_TESTS(MulNoNan,
 template <typename T>
 T baseline_nextafter(T from, T to) {
   T res = std::nextafter(from, to);
+<<<<<<< HEAD
 #if (!defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) ||           \
      !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)) && \
     !defined(TENSORFLOW_USE_ROCM)
+=======
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+>>>>>>> google_upstream/master
   // The Eigen GPU kernel returns the next normal value if ftz is set.
   // The above applies to CUDA Eigen kernels only
   if (!std::isnormal(res)) {

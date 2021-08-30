@@ -69,6 +69,8 @@ class XlaOpKernelContext {
   // Returns the XLA XlaBuilder containing the output of compilation.
   xla::XlaBuilder* builder() const;
 
+  xla::ValueInference& value_inference();
+
   // Inputs
 
   // Returns the number of inputs to the operator.
@@ -127,6 +129,17 @@ class XlaOpKernelContext {
   // predicates.
   Status ResolveInputDynamismIntoPredVector(int index, std::vector<bool>* out);
   Status ResolveInputDynamismIntoPred(int index, bool* out);
+  Status ResolveInputDynamismIntoPredVector(absl::string_view name,
+                                            std::vector<bool>* out);
+  Status ResolveInputDynamismIntoPred(absl::string_view name, bool* out);
+
+  Status ResolveInputDynamism(int index, xla::Literal* dynamism_literal);
+  Status ResolveInputDynamism(absl::string_view name,
+                              xla::Literal* dynamism_literal);
+
+  Status ResolveInputDynamismReshaped(int index,
+                                      absl::Span<const int64_t> new_dims,
+                                      xla::Literal* dynamism_literal);
   // Helper methods for constant inputs.
 
   // Evaluates input `index` and stores it in `*constant_literal`. If the
@@ -329,7 +342,6 @@ class XlaOpKernelContext {
  private:
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
-
   // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
   // InputShape(index), and stores it in `*constant_literal`. If the input
   // cannot be evaluated, e.g., because it depends on unbound parameters,
@@ -342,6 +354,7 @@ class XlaOpKernelContext {
 
   OpKernelContext* const context_;
   bool dynamic_dimension_is_minus_one_;
+  xla::ValueInference value_inference_;
 };
 
 }  // namespace tensorflow

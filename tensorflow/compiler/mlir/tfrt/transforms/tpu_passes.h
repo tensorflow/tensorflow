@@ -23,10 +23,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace tensorflow {
 
 class CoreRTConverter;
+
+struct TfrtTpuCompileOptions
+    : mlir::PassPipelineOptions<TfrtTpuCompileOptions> {
+  Option<bool> move_resource_gather_to_host{
+      *this, "move-resource-gather-to-host",
+      llvm::cl::desc("Move resource gather ops to host"),
+      llvm::cl::init(false)};
+};
 
 struct TfrtTpuExecuteOpConversionOptions {
   bool use_core_selector;
@@ -46,7 +55,7 @@ inline void AddTPUTargetDialectAndPatterns(
 
 // Rewrites specific TF TPU ops to equivalent TF ops in a module.
 inline mlir::LogicalResult RunTPUBackwardCompatConversion(
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, const TfrtTpuCompileOptions &options) {
   return mlir::failure();
 }
 

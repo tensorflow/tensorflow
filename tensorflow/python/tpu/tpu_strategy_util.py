@@ -100,8 +100,11 @@ def initialize_tpu_system(cluster_resolver=None):
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
       # used, so user can recover from TPU compilation failures more smoothly.
+      # Same for the cancellation of a TPU excution.
       return tpu.initialize_system(
-          job=job, compilation_failure_closes_chips=False)
+          job=job,
+          compilation_failure_closes_chips=False,
+          tpu_cancellation_closes_chips=False)
 
     # The TPU_SYSTEM device must match the device used in tpu.initialize_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM

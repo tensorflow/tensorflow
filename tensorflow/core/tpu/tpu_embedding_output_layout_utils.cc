@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/protobuf/tpu/tpu_embedding_output_layout.pb.h"
 
 namespace tensorflow {
 namespace tpu {

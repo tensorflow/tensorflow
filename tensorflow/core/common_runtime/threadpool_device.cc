@@ -61,6 +61,17 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
+  auto s = NodeFileWriter::GetNodeFileWriterIfEnabled(name, env());
+  if (!s.ok()) {
+    LOG(ERROR) << s.status();
+  } else {
+    node_file_writer_ = *s;
+    if (node_file_writer_) {
+      LOG(INFO) << "Writing NodeDefs to file: "
+                << node_file_writer_->filename();
+    }
+  }
+
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
   // Early return when MKL is disabled
   if (!IsMKLEnabled()) return;
@@ -167,6 +178,14 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 
   op_kernel->Compute(context);
+
+  if (context->status().ok() && node_file_writer_) {
+    Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+    if (!s.ok()) {
+      LOG(ERROR) << s;
+      context->SetStatus(s);
+    }
+  }
 
   if (should_log_inputs_and_outputs) {
     LogOutputs(op_kernel, context);

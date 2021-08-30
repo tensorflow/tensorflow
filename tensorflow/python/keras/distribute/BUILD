@@ -2,10 +2,6 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
-
 package(
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
@@ -63,13 +59,7 @@ py_library(
     name = "distribute_test_lib_pip",
     srcs_version = "PY3",
     deps = [
-        ":distribute_strategy_test_lib",
-        ":keras_correctness_test_lib",
-        ":keras_test_lib",
-        ":model_combinations",
         ":multi_worker_testing_utils",
-        ":saved_model_test_base",
-        ":test_example",
     ],
 )
 
@@ -105,6 +95,7 @@ py_library(
 )
 
 py_library(
+<<<<<<< HEAD
     name = "model_collection_base",
     srcs = ["model_collection_base.py"],
     srcs_version = "PY3",
@@ -793,6 +784,8 @@ tf_py_test(
 )
 
 py_library(
+=======
+>>>>>>> google_upstream/master
     name = "multi_worker_testing_utils",
     srcs = [
         "multi_worker_testing_utils.py",
@@ -821,6 +814,7 @@ py_library(
     ],
 )
 
+<<<<<<< HEAD
 distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
@@ -977,6 +971,8 @@ distribute_py_test(
     ],
 )
 
+=======
+>>>>>>> google_upstream/master
 py_library(
     name = "distributed_file_utils",
     srcs = [
@@ -986,17 +982,6 @@ py_library(
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python/distribute:distribute_lib",
-    ],
-)
-
-tf_py_test(
-    name = "distributed_file_utils_test",
-    srcs = ["distributed_file_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":distributed_file_utils",
-        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -1016,40 +1001,12 @@ py_library(
     ],
 )
 
-tf_py_test(
-    name = "sidecar_evaluator_test",
-    size = "medium",
-    srcs = ["sidecar_evaluator_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":sidecar_evaluator",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/distribute:strategy_combinations",
-    ],
-)
-
-py_library(
-    name = "test_example",
-    srcs = ["test_example.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -1066,32 +1023,5 @@ py_library(
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:multi_worker_util",
-    ],
-)
-
-py_library(
-    name = "dataset_creator_model_fit_test_base",
-    srcs = [
-        "dataset_creator_model_fit_test_base.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":multi_worker_testing_utils",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:callbacks",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/layers:core",
-        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
-        "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/utils:dataset_creator",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

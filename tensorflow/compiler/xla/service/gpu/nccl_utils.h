@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 #if BEF_THUNKS
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #endif  // BEF_THUNKS
 
 #if TENSORFLOW_USE_ROCM

@@ -91,9 +91,6 @@ class PjRtDevice {
   // process_index as the client.
   virtual int process_index() const = 0;
 
-  // Deprecated; please switch to process_index().
-  int task_id() const { return process_index(); }
-
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
   // be dense, and -1 if undefined.
@@ -162,9 +159,6 @@ class PjRtClient {
   // Return the process index of this client. Always 0 in single-process
   // settings.
   virtual int process_index() const = 0;
-
-  // Deprecated; please switch to process_index().
-  int task_id() const { return process_index(); }
 
   // Return the number of devices in the entire computation. In multi-headed
   // client setting, some are addressable by this client, some are not. In a

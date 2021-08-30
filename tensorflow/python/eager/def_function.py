@@ -781,8 +781,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
@@ -1393,7 +1396,7 @@ def function(func=None,
   thought of as compile-time constants), and builds a separate `tf.Graph` for
   each set of Python arguments that it encounters.
   For more information, see the
-  [tf.function guide](https://www.tensorflow.org/guide/function?hl=en#rules_of_tracing)
+  [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
   Executing a `GenericFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.

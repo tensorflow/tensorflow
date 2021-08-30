@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
@@ -37,7 +39,13 @@ namespace serving {
 namespace {
 
 const char* GetCostMeasurementType() {
-  return std::getenv("TF_COST_MEASUREMENT_TYPE");
+  static const char* type = std::getenv("TF_COST_MEASUREMENT_TYPE");
+  return type;
+}
+
+const char* GetRequestCostAccessorType() {
+  static const char* accessor = std::getenv("TF_REQUEST_COST_ACCESSOR_TYPE");
+  return accessor;
 }
 
 // TODO(b/181883417): Replace with RecordPaddingSizeV2.
@@ -285,6 +293,16 @@ Status BatchResourceBase::RegisterInput(
   batch_components->output = std::make_shared<TensorMatrix>();
   batch_components->status = std::make_shared<ThreadSafeStatus>();
 
+  const char* request_cost_accessor_type = GetRequestCostAccessorType();
+  std::unique_ptr<RequestCostAccessor> request_cost_accessor =
+      request_cost_accessor_type
+          ? RequestCostAccessorRegistry::CreateByNameOrNull(
+                request_cost_accessor_type)
+          : nullptr;
+  if (request_cost_accessor) {
+    batch_components->request_cost = request_cost_accessor->GetRequestCost();
+  }
+
   BatcherQueueT* batcher_queue;
   TF_RETURN_IF_ERROR(
       LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
@@ -455,7 +473,7 @@ Status BatchResourceBase::ConcatInputTensors(
   BatchTask& input_task = *(*input_task_ptr);
   const int64_t input_task_size = input_task.size();
 
-  DCHECK_GT(input_task_size, open_batch_remaining_slot);
+  DCHECK_GT(input_task_size, 0);
 
   std::shared_ptr<ThreadSafeStatus> shared_status = input_task.status;
 
@@ -490,27 +508,24 @@ Status BatchResourceBase::ConcatInputTensors(
       };
   IncrementalBarrier barrier(split_task_done_callback);
 
+  const internal::InputSplitMetadata input_split_metadata(
+      input_task_size, open_batch_remaining_slot, max_batch_size);
+
+  const absl::FixedArray<int>& task_sizes = input_split_metadata.task_sizes();
+  const int num_batches = task_sizes.size();
   std::vector<int64_t> output_task_sizes;
-
-  if (open_batch_remaining_slot > 0) {
-    output_task_sizes.push_back(open_batch_remaining_slot);
+  output_task_sizes.resize(num_batches);
+  for (int i = 0; i < num_batches; i++) {
+    output_task_sizes[i] = task_sizes[i];
   }
 
-  for (int left_task_size = input_task_size - open_batch_remaining_slot;
-       left_task_size > 0; left_task_size -= max_batch_size) {
-    int next_task_size = std::min(left_task_size, max_batch_size);
-    output_task_sizes.push_back(next_task_size);
-  }
-
-  const int output_task_num = output_task_sizes.size();
-  input_task.output->resize(output_task_num);
-
-  for (int i = 0; i < output_task_num; ++i) {
+  input_task.output->resize(num_batches);
+  for (int i = 0; i < num_batches; ++i) {
     (*input_task.output)[i].resize(input_task.context->num_outputs());
   }
 
-  output_tasks->reserve(output_task_num);
-  for (int i = 0; i < output_task_num; i++) {
+  output_tasks->reserve(num_batches);
+  for (int i = 0; i < num_batches; i++) {
     output_tasks->push_back(input_task.CreateSplitTask(i, barrier.Inc()));
   }
 
@@ -625,16 +640,17 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  // We use the 'propagated_context' from one of the threads which setup one
+  // of the tasks. This will propagate any common context over all the threads
+  // which are running this Session, of which this BatchOp is a part.
+  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
+  // Creates the CostMeasurement within the same context that runs the Session.
   const char* cost_measurement_type = GetCostMeasurementType();
   auto batch_cost_measurement =
       cost_measurement_type
           ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
           : nullptr;
-
-  // We use the 'propagated_context' from one of the threads which setup one
-  // of the tasks. This will propagate any common context over all the threads
-  // which are running this Session, of which this BatchOp is a part.
-  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -722,6 +738,12 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     return;
   }
 
+  // We use the 'propagated_context' from one of the threads which setup one
+  // of the tasks. This will propagate any common context over all the threads
+  // which are running this Session, of which this BatchOp is a part.
+  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
+  // Creates the CostMeasurement within the same context that runs the Session.
   const char* cost_measurement_type = GetCostMeasurementType();
   auto batch_cost_measurement =
       cost_measurement_type
@@ -731,8 +753,6 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
     SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
   });
-
-  WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   OpKernelContext* last_task_context =
       batch->task(batch->num_tasks() - 1).context;

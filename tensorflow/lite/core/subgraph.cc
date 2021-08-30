@@ -105,13 +105,13 @@ void SetForbiddenContextFunction(FunctionType* func) {
 template <typename TensorIntArray>
 bool HasDynamicTensorImpl(const TfLiteContext& context,
                           const TensorIntArray& int_array,
-                          int* dynamic_tensor_index_) {
+                          int* dynamic_tensor_index) {
   for (int i : int_array) {
     if (i == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& tensor = context.tensors[i];
     if (tensor.allocation_type == kTfLiteDynamic) {
-      if (dynamic_tensor_index_) {
-        *dynamic_tensor_index_ = i;
+      if (dynamic_tensor_index) {
+        *dynamic_tensor_index = i;
       }
       return true;
     }
@@ -121,9 +121,9 @@ bool HasDynamicTensorImpl(const TfLiteContext& context,
 
 bool HasDynamicTensor(const TfLiteContext& context,
                       const TfLiteIntArray* int_array,
-                      int* dynamic_tensor_index_) {
+                      int* dynamic_tensor_index) {
   return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array},
-                              dynamic_tensor_index_);
+                              dynamic_tensor_index);
 }
 
 // Gets the legacy TfLiteQuantizationParams from the current TfLiteQuantization.

@@ -152,19 +152,6 @@ Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
-  // The calling convention for JITed functions is:
-  //
-  //  void function(void* result, const void* run_options, void** args_array,
-  //                void** buffer_table)
-  //
-  // result: Points at the result.
-  // run_options: the ExecutableRunOptions object.
-  // args_array: null
-  // buffer_table: An array of pointers, containing pointers to temporary
-  //   buffers required by the executable adn pointers to entry computation
-  //   parameters.
-  //
-
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
@@ -179,28 +166,30 @@ Status CpuExecutable::ExecuteComputeFunction(
           ? hlo_execution_profile->mutable_profile_counters()->data()
           : nullptr;
 
-  // Call the computation function following the calling convention.
+  // Call the computation function following the calling convention. See the
+  // definition of 'ComputeFunctionType' for the details of the calling
+  // convention of JITed functions.
   std::vector<void*> buffer_pointers;
   for (auto& buffer : buffers) {
     buffer_pointers.push_back(
         const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
   }
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << "Executing compute function:";
-    VLOG(3) << absl::StrFormat(
-        "  func(void* result, void* params[null], void* buffer_table[%u], "
-        "uint64 profile_counters[%u])",
-        buffer_pointers.size(), profile_counters_size);
-    auto ptr_printer = [](string* out, const void* p) {
-      absl::StrAppend(out, absl::StrFormat("%p", p));
-    };
-    VLOG(3) << "    params = nullptr";
-    VLOG(3) << absl::StrFormat(
-        "    buffer_table = [%s]",
-        absl::StrJoin(buffer_pointers, ", ", ptr_printer));
-    VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
-  }
 
+  VLOG(3) << "Executing compute function:";
+  VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
+                             buffer_pointers.size());
+  auto ptr_printer = [](string* out, const void* p) {
+    absl::StrAppend(out, absl::StrFormat("%p", p));
+  };
+  VLOG(3) << absl::StrFormat("  Buffer table: [%s]",
+                             absl::StrJoin(buffer_pointers, ", ", ptr_printer));
+  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                             profile_counters_size);
+  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+
+  // For the entry computation (like all global computations), all inputs and
+  // outputs are in the buffer table, and both the result pointer and args array
+  // pointers are unused (so we set them to 'nullptr').
   compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
                     profile_counters);
 

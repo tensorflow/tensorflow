@@ -1919,15 +1919,11 @@ an identity of the reduction function (for example, `0` for addition) or
 undefined behavior will occur. The applied `computation` is always passed the
 `init_value` on the left-hand side.
 
-The evaluation order of the reduction function is arbitrary and may be
-non-deterministic. Therefore, the reduction function should not be overly
-sensitive to reassociation.
-
-Some reduction functions like addition are not strictly associative for floats.
+Different backends are allowed to reassociate the reduction computation.  This
+can lead to numerical differences, as some reduction functions like addition are
+not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
-enough to being associative for most practical uses. It is possible to conceive
-of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA.
+enough to being associative for most practical uses.
 
 As an example, when reducing across one dimension in a single 1D array with
 values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
@@ -2097,15 +2093,19 @@ shard.
 <b> `ReduceScatter(operand, computation, scatter_dim, shard_count,
 replica_group_ids, channel_id)` </b>
 
-| Arguments        | Type                 | Semantics                         |
-| ---------------- | -------------------- | --------------------------------- |
-| `operand`        | `XlaOp`              | Array or a non-empty tuple of     |
-:                  :                      : arrays to reduce across replicas. :
-| `computation`    | `XlaComputation`     | Reduction computation             |
-| `replica_groups` | vector of vectors of | Groups between which the          |
-:                  : `int64`              : reductions are performed          :
-| `channel_id`     | optional `int64`     | Optional channel ID for           |
-:                  :                      : cross-module communication        :
+| Arguments           | Type                 | Semantics                     |
+| ------------------- | -------------------- | ----------------------------- |
+| `operand`           | `XlaOp`              | Array or a non-empty tuple of |
+:                     :                      : arrays to reduce across       :
+:                     :                      : replicas.                     :
+| `computation`       | `XlaComputation`     | Reduction computation         |
+| `scatter_dimension` | `int64`              | Dimension to scatter.         |
+| `shard_count`       | `int64`              | Number of blocks to split     |
+:                     :                      : `scatter_dimension`           :
+| `replica_groups`    | vector of vectors of | Groups between which the      |
+:                     : `int64`              : reductions are performed      :
+| `channel_id`        | optional `int64`     | Optional channel ID for       |
+:                     :                      : cross-module communication    :
 
 -   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
     element of the tuple.
@@ -2124,11 +2124,11 @@ replica_group_ids, channel_id)` </b>
 -   `channel_id` is used for cross-module communication: only `reduce-scatter`
     operations with the same `channel_id` can communicate with each other.
 
-The output shape is the input shape with the `scatter_dim` made `shard_count`
-times smaller. For example, if there are two replicas and the operand has the
-value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two replicas, then the
-output value from this op where `scatter_dim` is `0` will be `[4.0]` for the
-first replica and `[7.5]` for the second replica.
+The output shape is the input shape with the `scatter_dimension` made
+`shard_count` times smaller. For example, if there are two replicas and the
+operand has the value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two
+replicas, then the output value from this op where `scatter_dim` is `0` will be
+`[4.0]` for the first replica and `[7.5]` for the second replica.
 
 ## ReduceWindow
 

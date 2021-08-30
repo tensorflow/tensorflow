@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import imp
+import importlib
 import inspect
 import os
 import sys
@@ -204,7 +204,8 @@ class PyToTF(transpiler.PyToPy):
       # TODO(mdan): Move into core or replace with an actual importable module.
       # Craft a module that exposes the external API as well as certain
       # internal modules.
-      ag_internal = imp.new_module('autograph')
+      module_spec = importlib.machinery.ModuleSpec('autograph', None)
+      ag_internal = importlib.util.module_from_spec(module_spec)
       ag_internal.__dict__.update(inspect.getmodule(PyToTF).__dict__)
       ag_internal.ConversionOptions = converter.ConversionOptions
       ag_internal.STD = converter.STANDARD_OPTIONS

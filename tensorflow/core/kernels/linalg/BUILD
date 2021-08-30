@@ -59,6 +59,11 @@ exports_files([
     "matrix_triangular_solve_op_complex.cc",
     "matrix_triangular_solve_op_impl.h",
     "matrix_triangular_solve_op_real.cc",
+    "qr_op_complex128.cc",
+    "qr_op_complex64.cc",
+    "qr_op_double.cc",
+    "qr_op_float.cc",
+    "qr_op_impl.h",
 ])
 
 # Public support libraries ----------------------------------------------------

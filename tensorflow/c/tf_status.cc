@@ -35,6 +35,10 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
 }
 
+void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
+  s->status.SetPayload(key, value);
+}
+
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
   // TODO(mihaimaruseac): Handle windows when changing its filesystem

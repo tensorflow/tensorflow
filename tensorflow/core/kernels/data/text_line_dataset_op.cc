@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"

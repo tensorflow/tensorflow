@@ -126,6 +126,52 @@ library {
         }
       }
     }
+    node_def {
+      name: "variable_node"
+      op: "Variable"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "shape"
+        value {
+          shape {
+          }
+        }
+      }
+      attr {
+        key: "shared_name"
+        value {
+          s: ""
+        }
+      }
+    }
+    node_def {
+      name: "variable_v2_node"
+      op: "VariableV2"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "shape"
+        value {
+          shape {
+          }
+        }
+      }
+      attr {
+        key: "shared_name"
+        value {
+          s: ""
+        }
+      }
+    }
     ret {
       key: "handle"
       value: "hash_table_node:table_handle:0"
@@ -144,3 +190,7 @@ library {
 # CHECK: func private @create_resource
 # CHECK: tf.HashTableV2
 # CHECK-SAME: shared_name = "hash_table_node@create_resource"
+# CHECK: "tf.Variable"
+# CHECK-SAME: shared_name = "variable_node"
+# CHECK: "tf.VariableV2"
+# CHECK-SAME: shared_name = "variable_v2_node"

@@ -111,7 +111,7 @@ tfrt::StatusOr<OpKernelRunner> OpKernelRunner::Create(
   // Fall back to host device if it fails to find the specified device.
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find device " << device_name
-               << " when creating OpKernel: " << s;
+               << " when creating OpKernel: " << op_name << ". Error: " << s;
     LOG(ERROR) << "Fallback to host device instead";
     device = fallback_request_state.device_manager().HostCPU();
   }

@@ -51,6 +51,8 @@ class TfrtContext {
 
   const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName() const;
 
+  bool IsAsync() const;
+
  private:
   ResourceContext resource_context_;
   std::unique_ptr<CoreRuntime> corert_;

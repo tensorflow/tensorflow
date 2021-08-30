@@ -15,10 +15,10 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"

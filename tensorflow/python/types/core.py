@@ -28,10 +28,14 @@ import numpy as np
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.util.tf_export import tf_export
 
+# pylint:disable=g-import-not-at-top
 if sys.version_info >= (3, 8):
-  from typing import Protocol  # pylint:disable=g-import-not-at-top
+  from typing import Protocol
+  from typing import runtime_checkable
 else:
-  from typing_extensions import Protocol  # pylint:disable=g-import-not-at-top
+  from typing_extensions import Protocol
+  from typing_extensions import runtime_checkable
+# pylint:enable=g-import-not-at-top
 
 # TODO(mdan): Consider adding ABC once the dependence on isinstance is reduced.
 # TODO(mdan): Add type annotations.
@@ -237,6 +241,7 @@ class GenericFunction(Callable):
     pass
 
 
+@runtime_checkable
 class TensorProtocol(Protocol):
   """Protocol type for objects that can be converted to Tensor."""
 

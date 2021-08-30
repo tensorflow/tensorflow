@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
@@ -62,13 +63,18 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-  if (options.target_tpu) {
+  if (options.tpu_target == TfrtTpuInfraTarget::kTpurt) {
+    VLOG(1) << "Running MLIR TPU bridge for tpurt";
     if (VLOG_IS_ON(1)) {
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
     }
 
+    TfrtTpuCompileOptions tpu_compile_options;
+    tpu_compile_options.move_resource_gather_to_host =
+        options.tpu_move_resource_gather_to_host;
+
     auto backward_compat_result =
-        tensorflow::RunTPUBackwardCompatConversion(module);
+        tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
     if (mlir::failed(backward_compat_result)) {
       return diag_handler.Combine(
           tensorflow::errors::Internal("Failed to handle legacy TPU Ops"));
@@ -102,7 +108,9 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.decompose_resource_ops = true;
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.enable_native_ops = options.enable_native_ops;
-  pass_options.target_tpu = options.target_tpu;
+  pass_options.target_tpurt =
+      (options.tpu_target == TfrtTpuInfraTarget::kTpurt);
+  pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;

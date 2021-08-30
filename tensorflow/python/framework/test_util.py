@@ -1710,6 +1710,16 @@ def force_cpu():
     yield
 
 
+@contextlib.contextmanager
+def deterministic_ops():
+  """Enables deterministic ops."""
+  try:
+    config.enable_deterministic_ops(True)
+    yield
+  finally:
+    config.enable_deterministic_ops(False)
+
+
 class CapturedWrites(object):
   """A utility class to load the captured writes made to a stream."""
 

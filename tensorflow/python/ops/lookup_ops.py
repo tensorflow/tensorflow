@@ -452,7 +452,7 @@ class TableInitializerBase(trackable_base.Trackable):
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious
       # sharing issues.
-      # TODO(rohanj): Use context.shared_name() instead.
+      # TODO(rohanj): Use context.anonymous_name() instead.
       shared_name += str(ops.uid())
     return shared_name
 
@@ -497,7 +497,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious
       # sharing issues.
-      # TODO(rohanj): Use context.shared_name() instead.
+      # TODO(rohanj): Use context.anonymous_name() instead.
       self._name += str(ops.uid())
 
     super(KeyValueTensorInitializer, self).__init__(self._keys.dtype,
@@ -1787,7 +1787,7 @@ class MutableHashTable(LookupInterface):
       # shared_name attribute value (but is better than the alternative of
       # sharing everything by default when executing eagerly; hopefully creating
       # tables in a loop is uncommon).
-      # TODO(rohanj): Use context.shared_name() instead.
+      # TODO(rohanj): Use context.anonymous_name() instead.
       self._shared_name = "table_%d" % (ops.uid(),)
     super(MutableHashTable, self).__init__(key_dtype, value_dtype)
 
@@ -2074,7 +2074,7 @@ class DenseHashTable(LookupInterface):
       # shared_name attribute value (but is better than the alternative of
       # sharing everything by default when executing eagerly; hopefully creating
       # tables in a loop is uncommon).
-      # TODO(rohanj): Use context.shared_name() instead.
+      # TODO(rohanj): Use context.anonymous_name() instead.
       self._shared_name = "table_%d" % (ops.uid(),)
     super(DenseHashTable, self).__init__(key_dtype, value_dtype)
 

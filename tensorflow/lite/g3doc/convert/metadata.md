@@ -109,7 +109,7 @@ Python library. The new TensorFlow Lite model becomes a zip file that contains
 both the model and the associated files. It can be unpacked with common zip
 tools. This new model format keeps using the same file extension, `.tflite`. It
 is compatible with existing TFLite framework and Interpreter. See
-[Pack mtadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
+[Pack metadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
 for more details.
 
 The associated file information can be recorded in the metadata. Depending on
@@ -406,7 +406,7 @@ added after version `1.0.0`.
 
 Semantic versioning guarantees the compatibility if following the rules, but it
 does not imply the true incompatibility. When bumping up the MAJOR number, it
-does not necessarily mean the backwards compatibility is broken. Therefore, we
+does not necessarily mean the backward compatibility is broken. Therefore, we
 use the
 [Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
 [file_identifier](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
@@ -476,7 +476,7 @@ identifier of the model metadata does not match that of the metadata parser. See
 
 With matching file identifiers, the metadata extractor will successfully read
 metadata generated from all past and future schema due to the Flatbuffers'
-forwards and backwards compatibility mechanism. However, fields from future
+forwards and backward compatibility mechanism. However, fields from future
 schemas cannot be extracted by older metadata extractors. The
 [minimum necessary parser version](#the-minimum-necessary-metadata-parser-version)
 of the metadata indicates the minimum version of metadata parser that can read

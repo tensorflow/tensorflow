@@ -444,7 +444,6 @@ tensorflow::ServerDef GetServerDef(int num_tasks) {
 
 tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
                                               int num_tasks,
-                                              bool fetch_remote_devices,
                                               int num_virtual_gpus) {
   tensorflow::ServerDef server_def;
   server_def.set_protocol("grpc");
@@ -459,8 +458,6 @@ tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
         {i, tensorflow::strings::StrCat("localhost:", port)});
   }
   auto* config = server_def.mutable_default_session_config();
-  config->mutable_experimental()->set_fetch_remote_devices_in_multi_client(
-      fetch_remote_devices);
   config->mutable_experimental()->set_collective_group_leader(
       tensorflow::strings::StrCat("/job:", job_name, "/replica:0/task:", 0));
   auto* rewrite_options =

@@ -106,7 +106,8 @@ void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
                                    PyObject* dispatch_target) {
   DCheckPyGilState();
   Py_INCREF(dispatch_target);
-  targets_.emplace_back(std::move(signature_checker), dispatch_target);
+  targets_.emplace_back(std::move(signature_checker),
+                        Safe_PyObjectPtr(dispatch_target));
 }
 
 Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,

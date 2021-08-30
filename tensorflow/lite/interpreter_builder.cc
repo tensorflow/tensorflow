@@ -143,6 +143,14 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
   return result;
 }
 
+inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
+#ifdef TFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS
+  return true;
+#else
+  return num_fp32_tensors > 0;
+#endif
+}
+
 }  // namespace
 
 const char* kEmptyTensorName = "";
@@ -805,7 +813,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
-  if (num_fp32_tensors_ > 0) {
+  if (ShouldCreateLazyDelegateProviders(num_fp32_tensors_)) {
     (*interpreter)->lazy_delegate_providers_ =
         op_resolver_.GetDelegates(num_threads_);
   }

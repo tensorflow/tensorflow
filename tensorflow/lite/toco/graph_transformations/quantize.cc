@@ -413,7 +413,9 @@ bool ChooseQuantizationForOperatorOutput(
       op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
       op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu ||
       op.type == OperatorType::kUnpack || op.type == OperatorType::kSlice ||
-      op.type == OperatorType::kStridedSlice) {
+      op.type == OperatorType::kStridedSlice ||
+      op.type == OperatorType::kAveragePool ||
+      op.type == OperatorType::kMaxPool) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;

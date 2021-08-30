@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -2369,13 +2369,13 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
@@ -3736,7 +3736,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           case kTfLiteFloat32: {
             const size_t dense_size = context->tensors[t].bytes / sizeof(float);
             float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<float> converter(
+            tflite::internal::sparsity::FormatConverter<float> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const float*>(input_tensor.data.data), dense_size,
@@ -3748,7 +3748,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                 context->tensors[t].bytes / sizeof(Eigen::half);
             Eigen::half* unpacked_fp16_data =
                 reinterpret_cast<Eigen::half*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+            tflite::internal::sparsity::FormatConverter<Eigen::half> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const Eigen::half*>(input_tensor.data.data),
@@ -3764,7 +3764,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                 context->tensors[t].bytes / sizeof(int8_t);
             int8_t* unpacked_int8_data =
                 reinterpret_cast<int8_t*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+            tflite::internal::sparsity::FormatConverter<int8_t> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const int8_t*>(input_tensor.data.data), dense_size,

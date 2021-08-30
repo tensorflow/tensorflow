@@ -72,7 +72,9 @@ class ErrorMetadataBaseTest(test.TestCase):
         converter_filename=None)
     self.assertRegex(
         em.get_message(),
-        re.compile('test_fn_1.*test_fn_2.*Test message', re.DOTALL))
+        re.compile(('"/path/one.py", line 11, in test_fn_1.*'
+                    '"/path/two.py", line 171, in test_fn_2.*'
+                    'Test message'), re.DOTALL))
 
   def test_get_message_converted_code(self):
     callsite_tb = [
@@ -98,7 +100,9 @@ class ErrorMetadataBaseTest(test.TestCase):
     result = em.get_message()
     self.assertRegex(
         result,
-        re.compile(r'converted_fn  \*.*test_fn_3.*Test message', re.DOTALL))
+        re.compile((r'converted_fn  \*.*'
+                    r'"/path/three.py", line 171, in test_fn_3.*'
+                    r'Test message'), re.DOTALL))
     self.assertNotRegex(result, re.compile('test_fn_1'))
 
   def test_get_message_call_overload(self):
@@ -106,7 +110,7 @@ class ErrorMetadataBaseTest(test.TestCase):
     callsite_tb = [
         ('/path/one.py', 11, 'test_fn_1', 'test code 1'),
         ('/path/two.py', 0, 'test_fn_2', 'test code 2'),
-        ('/path/three.py', 0, 'test_fn_3', 'test code 3'),
+        ('/path/three.py', 171, 'test_fn_3', 'test code 3'),
     ]
     cause_message = 'Test message'
     em = error_utils.ErrorMetadataBase(
@@ -117,7 +121,9 @@ class ErrorMetadataBaseTest(test.TestCase):
         converter_filename='/path/two.py')
     self.assertRegex(
         em.get_message(),
-        re.compile(r'test_fn_1.*test_fn_3  \*\*.*Test message', re.DOTALL))
+        re.compile((r'"/path/one.py", line 11, in test_fn_1.*'
+                    r'"/path/three.py", line 171, in test_fn_3  \*\*.*'
+                    r'Test message'), re.DOTALL))
 
 
 if __name__ == '__main__':

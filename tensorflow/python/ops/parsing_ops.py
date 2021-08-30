@@ -1235,3 +1235,7 @@ def decode_json_example(json_examples, name=None):
      `tf.Example`
   """
   return gen_parsing_ops.decode_json_example(json_examples, name=name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_parsing_ops.decode_compressed)

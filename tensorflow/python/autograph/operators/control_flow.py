@@ -83,7 +83,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
@@ -1014,45 +1013,86 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
 LEGAL_LOOP_TYPES = 'Tensor, int, float, bool or a list, tuple or dict thereof'
 
 
-def _placeholder_value(like, original=None):
-  """Constructs a (dummy) placeholder value for a loop-initialized variable."""
+def _placeholder_value(like, shape_invariant, original=None):
+  """Constructs a (dummy) placeholder value for a loop-initialized variable.
+
+  Args:
+    like: Any object. The value created by the first iteration of the loop.
+      If a Python scalar, the placeholder will be the zero value of that type.
+      If a Tensor, the placeholder will be a zero tensor of matching shape and
+      dtype. If a list, dict or tuple, the placeholder will be an identical
+      structure of placeholders.
+    shape_invariant: The shape invariant specified by the user (or None, if
+      nothing was specified) for the respective variable.
+    original: Any object. The value of the variable prior to entering the loop.
+      Typically, this is one of the special "Undefined" value, because that's
+      when a placeholder is needed.
+  Returns:
+    Either a zero value of structure, shape and dtype mathing 'like', or
+    'original', if no such zero value could be created.
+  """
   if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
-    return original
+    return original, None
 
   elif isinstance(like, (int, float, bool)):
-    return type(like)(0)
+    return type(like)(0), None
 
   elif tensor_util.is_tf_type(like):
 
-    # To avoid while_loop complaining about shape invariants, the placeholder's
-    # shape must be identical to the corresponding loop var's shape. This means
-    # dynamic dimensions where the like value had dynamic dimensions. We
-    # simulate that by passing a tensor that is deterministically 0, but is
-    # obtained by means which most constant folders can't see through.
-    # TODO(mdan): Just use 0 once while_loop is smarter about shape invariants.
-    dynamic_zero = random_ops.random_uniform(minval=0, maxval=1, shape=())
+    like_shape = shape_invariant if shape_invariant is not None else like.shape
+    if like_shape is None or like_shape.rank is None:
+      return array_ops.zeros((), like.dtype), like_shape
+
+    # If the shape contains dynamic values, set the corresponding starting
+    # dimension to either zero or what the shape invariant specified.
     placeholder_shape = []
-    for s in like.shape:
+    has_dynamic_dims = False
+    for s, i in zip(like.shape, like_shape):
+      if i is None:
+        like_dim = 0
+      elif isinstance(i, tensor_shape.Dimension):
+        if i.value is None:
+          like_dim = 0
+        else:
+          like_dim = i.value
+      else:
+        like_dim = i
+
       if s is None:
-        placeholder_shape.append(dynamic_zero)
+        placeholder_shape.append(like_dim)
+        has_dynamic_dims = True
       elif isinstance(s, tensor_shape.Dimension):
         if s.value is None:
-          placeholder_shape.append(dynamic_zero)
+          placeholder_shape.append(like_dim)
+          has_dynamic_dims = True
         else:
           placeholder_shape.append(s.value)
       else:
         placeholder_shape.append(s)
 
-    return array_ops.zeros(placeholder_shape, like.dtype)
+    if has_dynamic_dims:
+      invariant = like_shape
+    else:
+      invariant = None
+
+    return array_ops.zeros(placeholder_shape, like.dtype), invariant
 
   elif isinstance(like, (list, tuple, dict)):
-    return nest.map_structure(_placeholder_value, like)
+    if shape_invariant is None:
+      zipped = nest.map_structure(lambda v: _placeholder_value(v, None),
+                                  nest.flatten(like))
+    else:
+      zipped = nest.map_structure(_placeholder_value, nest.flatten(like),
+                                  nest.flatten(shape_invariant))
+    vals, invars = zip(*zipped)
+    return (nest.pack_sequence_as(like,
+                                  vals), nest.pack_sequence_as(like, invars))
 
-  return original
+  return original, None
 
 
-def _try_handling_undefineds(
-    body, get_state, set_state, init_vars, nulls, symbol_names):
+def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
+                             shape_invariants, symbol_names):
   """Makes a best-effort attempt to substitute undefineds with placeholders.
 
   Note: this substitution requires two things to happen:
@@ -1068,6 +1108,7 @@ def _try_handling_undefineds(
     init_vars: loop variables before entering the loop. See while_stmt.
     nulls: list of boolean flags indicating whether the corresponding loop
         var is None or undefined.
+    shape_invariants: user-specified shape invariant for each loop variable.
     symbol_names: list of loop variable names. See while_stmt.
   Returns:
     A tuple (success, new_init_vars). success is a boolean flag indicating
@@ -1082,7 +1123,17 @@ def _try_handling_undefineds(
     with func_graph.FuncGraph('tmp').as_default():
       # This call to set_state helps report nicer error messages when symbols
       # are inconsistently used.
-      set_state(init_vars)
+      # Another complication is that non_tensor values will be autocast to
+      # Tensor by while_loop, and their static value lost. So we need to account
+      # that here.
+      def autocast_to_tensor(v):
+        if isinstance(
+            v, (int, float, bool, str, list, tuple, np.ndarray, np.generic)):
+          init_val = ops.convert_to_tensor_v2(v)
+          return array_ops.placeholder(init_val.dtype, init_val.shape)
+        return v
+      autocast_init_vars = nest.map_structure(autocast_to_tensor, init_vars)
+      set_state(autocast_init_vars)
       state_modified = True
 
       body()
@@ -1099,9 +1150,11 @@ def _try_handling_undefineds(
   if first_iter_vars is not None:
     # Note: the actual placeholder value doesn't matter, because as the staging
     # proved, it will be replaced by an actual value before being read.
-    init_vars = tuple(
-        (_placeholder_value(iv, v) if n else v)
-        for v, n, iv in zip(init_vars, nulls, first_iter_vars))
+    inits_and_invariants = tuple(
+        (_placeholder_value(iv, i, v) if n else (v, None))
+        for v, n, iv, i in zip(init_vars, nulls, first_iter_vars,
+                               shape_invariants))
+    init_vars, extra_shape_invariants = zip(*inits_and_invariants)
     success = True
   else:
     success = False
@@ -1109,7 +1162,7 @@ def _try_handling_undefineds(
   # This check runs regardless, in case we captured non-Tensor inputs.
   _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars)
 
-  return success, init_vars
+  return success, init_vars, extra_shape_invariants
 
 
 def _runtime_zero_iterations_errmsg(symbol_names, nulls, init_vars):
@@ -1133,10 +1186,35 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
 
   nulls = tuple(_is_none_or_undef(v) for v in init_vars)
   if any(nulls):
-    require_one_iteration, init_vars = _try_handling_undefineds(
-        body, get_state, set_state, init_vars, nulls, symbol_names)
+    shape_invars_by_init_vals = {
+        id(v): i for v, i in opts.get('shape_invariants', ())
+    }
+    shape_invariants = tuple(
+        shape_invars_by_init_vals.get(id(v), None) for v in orig_init_vars)
+    (require_one_iteration, init_vars,
+     extra_shape_invariants) = _try_handling_undefineds(body, get_state,
+                                                        set_state, init_vars,
+                                                        nulls, shape_invariants,
+                                                        symbol_names)
   else:
     require_one_iteration = False
+
+  if require_one_iteration:
+    merged_shape_invariants = dict(shape_invars_by_init_vals)
+    # This has two roles:
+    #  1. Shape invariants are remapped from the old init vars to the new ones.
+    #  2. Any new shape invariants created by the init vars are kept, but only
+    #     if the user didn't already specified some.
+    for v, nv, ni in zip(orig_init_vars, init_vars, extra_shape_invariants):
+      merged_invariant = merged_shape_invariants.get(id(v), ni)
+      if merged_invariant is not None:
+        merged_shape_invariants[id(nv)] = merged_invariant
+    merged_shape_invariants = tuple((nv, merged_shape_invariants[id(nv)])
+                                    for nv in init_vars
+                                    if id(nv) in merged_shape_invariants)
+    if merged_shape_invariants:
+      opts = dict(**opts)
+      opts['shape_invariants'] = merged_shape_invariants
 
   def aug_test(*loop_vars):
     if require_one_iteration:
@@ -1173,6 +1251,9 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
 
   if require_one_iteration:
     aug_init_vars = (False,) + init_vars
+    if 'shape_invariants' in while_loop_opts:
+      while_loop_opts['shape_invariants'] = (
+          (None,) + while_loop_opts['shape_invariants'])
   else:
     aug_init_vars = init_vars
 

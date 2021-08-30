@@ -24,6 +24,7 @@ package_group(
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//platforms/xla/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
         "//third_party/py/mlir/...",
@@ -406,35 +407,35 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "infer_fusibility_op_interface_gen",
+    name = "infer_shape_equality_op_interface_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.cpp.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td",
     deps = [":hlo_ops_td_files"],
 )
 
 cc_library(
-    name = "infer_fusibility_op_interface",
+    name = "infer_shape_equality_op_interface",
     srcs = [
-        "lib/Dialect/mhlo/IR/infer_fusibility_op_interface.cc",
+        "lib/Dialect/mhlo/IR/infer_shape_equality_op_interface.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h.inc",
     ],
     includes = ["include"],
     deps = [
-        ":infer_fusibility_op_interface_gen",
+        ":infer_shape_equality_op_interface_gen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -548,7 +549,7 @@ cc_library(
         ":hlo_ops_common",
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
-        ":infer_fusibility_op_interface",
+        ":infer_shape_equality_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -621,7 +622,7 @@ cc_library(
         ":hlo_ops_base_enums",
         ":hlo_ops_base_structs",
         ":hlo_ops_common",
-        ":infer_fusibility_op_interface",
+        ":infer_shape_equality_op_interface",
         ":lhlo",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",
@@ -971,7 +972,6 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
@@ -1016,7 +1016,6 @@ cc_library(
         ":lhlo_elemental_utils",
         ":map_lmhlo_to_scalar_op",
         ":placement_utils",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
@@ -1040,7 +1039,6 @@ cc_library(
         ":lhlo",
         ":lhlo_elemental_utils",
         ":map_lmhlo_to_scalar_op",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -1588,7 +1586,6 @@ cc_library(
     deps = [
         ":hlo",
         ":pass_details",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

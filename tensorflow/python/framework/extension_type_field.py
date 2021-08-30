@@ -55,6 +55,8 @@ RESERVED_FIELD_NAMES = [
     '_to_legacy_output_types',
     '_to_legacy_output_shapes',
     '_to_legacy_output_classes',
+    # Used by Keras
+    '_keras_mask'
 ]
 
 

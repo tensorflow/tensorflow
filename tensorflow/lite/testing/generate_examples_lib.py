@@ -218,6 +218,8 @@ class Options(object):
     self.run_with_flex = False
     # Whether to generate test cases for edgetpu.
     self.make_edgetpu_tests = False
+    # Whether to generate test cases for TF PTQ.
+    self.make_tf_ptq_tests = False
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
     self.tflite_convert_function = None

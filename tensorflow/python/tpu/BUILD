@@ -236,7 +236,6 @@ pytype_library(
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:batch_ops",
         "//tensorflow/python:control_flow_ops",

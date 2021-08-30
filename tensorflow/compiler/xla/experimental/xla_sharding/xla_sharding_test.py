@@ -18,6 +18,7 @@ from absl.testing import absltest
 import numpy as np
 
 from google.protobuf.message import DecodeError
+from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -55,6 +56,12 @@ class ShardingTest(test_util.TensorFlowTestCase):
         xla_sharding.Sharding.split(
             array_ops.ones([3, 8, 7], dtype=dtypes.int32), 1, 2),
         xla_sharding.Sharding)
+    self.assertIsInstance(
+        xla_sharding.Sharding.subgroup_tile(
+            np.ones([2, 3, 3], dtype=int), [
+                xla_data_pb2.OpSharding.REPLICATED,
+                xla_data_pb2.OpSharding.MANUAL
+            ]), xla_sharding.Sharding)
 
 
 class XlaShardingTest(test_util.TensorFlowTestCase):

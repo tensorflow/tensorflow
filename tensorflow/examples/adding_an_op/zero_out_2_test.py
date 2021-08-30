@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 
 
@@ -37,35 +36,17 @@ class ZeroOut2Test(tf.test.TestCase):
     result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
     self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
 
-  def _compute_error(self, theoretical, numerical):
-    """Computes max error between theoretical Jacobian and numerical Jacobian.
-
-    Args:
-      theoretical: A list of theoretical Jacobian
-      numerical: A list of numerical Jacobian
-
-    Returns:
-      The maximum error in between the two Jacobians.
-    """
-    error = 0.0
-    for j_t, j_n in zip(theoretical, numerical):
-      if (j_t.size > 0) and (j_n.size > 0):
-        error = np.maximum(error, np.fabs(j_t - j_n).max())
-    return error
-
   def test_grad(self):
     x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
     theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
                                                       tuple([x]))
-    err = self._compute_error(theoretical, numerical)
-    self.assertLess(err, 1e-4)
+    self.assertAllClose(theoretical, numerical)
 
   def test_grad_2d(self):
     x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
     theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
                                                       tuple([x]))
-    err = self._compute_error(theoretical, numerical)
-    self.assertLess(err, 1e-4)
+    self.assertAllClose(theoretical, numerical)
 
 
 if __name__ == '__main__':

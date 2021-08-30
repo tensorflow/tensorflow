@@ -218,3 +218,15 @@ def add_dispatch_support(target):
 
   add_dispatch_list(op_dispatch_handler)
   return tf_decorator.make_decorator(target, op_dispatch_handler)
+
+
+# Placeholder to make rollback work -- will be restored in roll forward.
+def register_unary_elementwise_api(fn):
+  return fn
+
+
+# Placeholder to make rollback work -- will be restored in roll forward.
+def register_binary_elementwise_api(fn):
+  return fn
+
+

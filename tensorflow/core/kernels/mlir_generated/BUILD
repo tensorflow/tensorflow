@@ -392,11 +392,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_nextafter_op",
-    srcs = if_mlir_generated_experimental_kernels_enabled([
+    srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_next_after.cc",
     ]),
     tags = ["manual"],
-    deps = if_mlir_generated_experimental_kernels_enabled([
+    deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_next_after_kernels",
     ]),
@@ -854,9 +854,6 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
-    test_tags = [
-        "notsan",  # Frequently times-out. See b/191888012.
-    ],
     tile_size = "256",
     types = [
         "f32",

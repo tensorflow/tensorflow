@@ -93,6 +93,8 @@ const tensorflow::DeviceNameUtils::ParsedName& TfrtContext::HostCPUParsedName()
   return eager_context_->HostCPU()->parsed_name();
 }
 
+bool TfrtContext::IsAsync() const { return eager_context_->Executor().Async(); }
+
 TfrtContext::~TfrtContext() {}
 
 }  // namespace tf

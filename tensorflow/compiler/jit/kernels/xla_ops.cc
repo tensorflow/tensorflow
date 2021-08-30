@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -273,14 +274,13 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
-  StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
-      ResolveDeviceAssignment(ctx, compilation_result->collective_reduce_info);
-  OP_REQUIRES_OK(ctx, device_assignment.status());
-
+  xla::gpu::GpuExecutableRunOptions gpu_options;
+  xla::DeviceAssignment device_assignment;
   xla::ExecutableRunOptions run_options;
-  if (*device_assignment) {
-    run_options.set_device_assignment(&**device_assignment);
-  }
+  OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
+                          ctx, compilation_result->collective_reduce_info,
+                          run_options, device_assignment, gpu_options));
+
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

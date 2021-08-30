@@ -2,7 +2,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    default_visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+        "//third_party/cloud_tpu/inference_converter:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -182,6 +185,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -349,6 +353,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

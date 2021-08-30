@@ -981,7 +981,7 @@ class DatasetBase : public core::RefCounted {
 
   // Return the element at a particular index for a randomly accessible dataset.
   virtual Status Get(OpKernelContext* ctx, int64 index,
-                     std::vector<Tensor>* out_tensors);
+                     std::vector<Tensor>* out_tensors) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
@@ -993,6 +993,9 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
     Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
                               Node** output);
+    Status AddIdentity(SerializationContext* ctx,
+                       const std::string& name_prefix, Node** input,
+                       Node** output);
 
    private:
     Status AddDatasetOrTensorHelper(SerializationContext* ctx,

@@ -65,18 +65,19 @@ class MultiProcessCluster(object):
                num_local_workers,
                num_remote_workers,
                worker_addresses=None):
+    self._work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._start_dispatcher(worker_addresses)
     self._start_local_workers(num_local_workers)
     self._start_remote_workers(num_remote_workers)
 
-  def _start_dispatcher(self, worker_addresses):
-    work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+  def _start_dispatcher(self, worker_addresses, port=0):
     self._dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
-            port=0,
-            work_dir=work_dir,
+            port=port,
+            work_dir=self._work_dir,
             protocol="grpc",
-            worker_addresses=worker_addresses),
+            worker_addresses=worker_addresses,
+            fault_tolerant_mode=True),
         start=True)
 
   def _start_local_workers(self, num_workers):
@@ -99,11 +100,25 @@ class MultiProcessCluster(object):
   def start_remote_worker(self):
     pipe_reader, pipe_writer = multi_process_lib.multiprocessing.Pipe(
         duplex=False)
-    worker_process = _RemoteWorkerProcess(
-        self.dispatcher_address(), pipe_writer)
+    worker_process = _RemoteWorkerProcess(self.dispatcher_address(),
+                                          pipe_writer)
     worker_process.start()
     worker_address = pipe_reader.recv()
     self._remote_workers.append((worker_address, worker_process))
+
+  def restart_dispatcher(self):
+    port = int(self.dispatcher_address().split(":")[1])
+    self._dispatcher._stop()
+    self._start_dispatcher(
+        worker_addresses=(self.local_worker_addresses() +
+                          self.remote_worker_addresses()),
+        port=port)
+
+  def restart_local_workers(self):
+    num_workers = len(self._local_workers)
+    for worker in self._local_workers:
+      worker.stop()
+    self._start_local_workers(num_workers)
 
   def dispatcher_address(self):
     return self._dispatcher._address
