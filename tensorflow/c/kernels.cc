@@ -455,6 +455,20 @@ TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
 }
 
+bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(i, 0);
+  CHECK_LT(i, cc_ctx->num_inputs());
+  return cc_ctx->input_memory_type(i) == tensorflow::HOST_MEMORY;
+}
+
+bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(i, 0);
+  CHECK_LT(i, cc_ctx->num_outputs());
+  return cc_ctx->output_memory_type(i) == tensorflow::HOST_MEMORY;
+}
+
 int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }

@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -667,10 +667,20 @@ TEST(TestKernel, TestHostMemory) {
       .Input("input1: double")
       .Input("input2: uint8")
       .Output("output1: uint8")
+      .Output("output2: uint8")
       .Attr("T: type");
 
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    MyComputeFunc(kernel, ctx);
+
+    EXPECT_EQ(false, TF_IsHostMemoryInput(ctx, 0));
+    EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1));
+    EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0));
+    EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1));
+  };
+
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+      op_name, device_name, &MyCreateFunc, my_compute_func, &MyDeleteFunc);
   TF_KernelBuilder_HostMemory(builder, "input2");
   TF_KernelBuilder_HostMemory(builder, "output1");
   TF_Status* status = TF_NewStatus();
