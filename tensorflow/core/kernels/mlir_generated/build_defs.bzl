@@ -71,6 +71,7 @@ def _gen_mlir_op_impl(ctx):
                 ctx.outputs.out.path,
             )
         ),
+        use_default_shell_env = True,
     )
 
 _gen_mlir_op_rule = rule(
@@ -163,6 +164,7 @@ def _gen_kernel_bin_impl(ctx):
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
             "--jit=%s" % ctx.attr.jit,
         ],
+        use_default_shell_env = True,
         mnemonic = "compile",
         progress_message = "Generating kernel '%{label}'",
     )
