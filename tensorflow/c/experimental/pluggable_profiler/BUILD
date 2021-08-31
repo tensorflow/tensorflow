@@ -1,4 +1,4 @@
-#Description
+# Description:
 # Profiler C API
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
