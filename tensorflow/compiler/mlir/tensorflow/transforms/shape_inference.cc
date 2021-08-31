@@ -793,7 +793,10 @@ ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
     : tf_dialect_(module->getContext()->getLoadedDialect<TensorFlowDialect>()),
       symbol_users_(symbol_table_, module),
       graph_version_(graph_version),
-      propagate_caller_callee_constants_(propagate_caller_callee_constants) {}
+      propagate_caller_callee_constants_(propagate_caller_callee_constants) {
+  // Create symbol table for module.
+  symbol_table_.getSymbolTable(module);
+}
 
 ArrayRef<Operation*> ShapeInference::GetCallers(FuncOp fn) {
   return symbol_users_.getUsers(fn);
@@ -842,7 +845,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
 // called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  FuncOp func = dyn_cast_or_null<FuncOp>(call_op.resolveCallable());
+  FuncOp func =
+      dyn_cast_or_null<FuncOp>(call_op.resolveCallable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -1704,7 +1708,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
         module, while_op.input().getTypes(),
         {while_op.cond_function(), while_op.body_function()}, max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
+    if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);

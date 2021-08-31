@@ -796,6 +796,7 @@ def sign(x, name=None):
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
+@dispatch.add_dispatch_support
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -831,6 +832,7 @@ def real(input, name=None):
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
+@dispatch.add_dispatch_support
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -865,6 +867,7 @@ def imag(input, name=None):
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
+@dispatch.add_dispatch_support
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -1601,6 +1604,7 @@ def div(x, y, name=None):
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
+@dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes a safe divide which returns 0 if `y` (denominator) is zero.
 
@@ -1627,6 +1631,7 @@ def div_no_nan(x, y, name=None):
 
 
 @tf_export("math.multiply_no_nan")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
@@ -3422,6 +3427,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("trace")
+@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -3982,7 +3988,7 @@ def add(x, y, name=None):
 
 
 @tf_export("math.add_n", "add_n")
-@dispatch.add_dispatch_support(iterable_parameters=["inputs"])
+@dispatch.add_dispatch_support
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
@@ -4527,6 +4533,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
+@dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
@@ -4572,6 +4579,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
+@dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
@@ -5311,6 +5319,7 @@ def erfcinv(x, name=None):
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
+@dispatch.add_dispatch_support
 def ceil(x, name=None):
   """Return the ceiling of the input, element-wise.
 
@@ -5456,6 +5465,7 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
+@dispatch.add_dispatch_support
 def rsqrt(x, name=None):
   """Computes reciprocal of square root of x element-wise.
 

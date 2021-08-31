@@ -79,8 +79,9 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
         builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
     std::string global_name =
         llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+    mlir::StringAttr global_name_attr = builder.getStringAttr(global_name);
     Operation *global_constant =
-        SymbolTable::lookupNearestSymbolFrom(module, global_name);
+        SymbolTable::lookupNearestSymbolFrom(module, global_name_attr);
     if (global_constant) {
       Value global_ptr = builder.create<LLVM::AddressOfOp>(
           loc, cast<LLVM::GlobalOp>(global_constant));

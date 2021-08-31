@@ -243,7 +243,6 @@ def fill(dims, value, name=None):
 
 
 @tf_export("identity")
-@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a Tensor with the same shape and contents as input.

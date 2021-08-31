@@ -1040,7 +1040,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto name = name_base;
   callee = callee.clone();
   callee.setPrivate();
-  callee.setName(name);
+  callee.setName(mlir::StringAttr::get(callee->getContext(), name));
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
 

@@ -1754,7 +1754,7 @@ bool UpdateEntryFunction(ModuleOp module) {
 
   if (entry_func_count == 1) {
     // Update the entry func to main when the entry func is only & one.
-    entry_func.setName("main");
+    entry_func.setName(StringAttr::get(module.getContext(), "main"));
   }
   return true;
 }

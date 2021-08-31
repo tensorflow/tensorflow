@@ -352,9 +352,6 @@ std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 
-static PassRegistration<ConvertUint8ToInt8> pass(
-    PASS_NAME, "Convert uint8 graph to int8.");
-
 }  // namespace tosa
 
 }  // namespace mlir

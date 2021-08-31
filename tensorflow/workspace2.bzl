@@ -33,6 +33,7 @@ load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
@@ -71,6 +72,7 @@ def _initialize_third_party():
     icu()
     jpeg()
     kissfft()
+    libprotobuf_mutator()
     nasm()
     opencl_headers()
     pasta()
@@ -608,12 +610,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
-        strip_prefix = "curl-7.77.0",
+        sha256 = "ed936c0b02c06d42cf84b39dd12bb14b62d77c7c4e875ade022280df5dcc81d7",
+        strip_prefix = "curl-7.78.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.77.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.78.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.78.0.tar.gz",
         ],
     )
 

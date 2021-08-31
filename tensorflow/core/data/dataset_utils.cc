@@ -80,6 +80,7 @@ constexpr char kMakeSloppyOpt[] = "make_sloppy";
 constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
+constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
@@ -821,9 +822,12 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
-      kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
-      kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
-      kMapParallelizationOpt};
+      kAutotuneBufferSizesOpt,
+      kBatchParallelizationOpt,
+      kDisablePrefetchLegacyAutotuneOpt,
+      kEnableGradientDescentOpt,
+      kMapParallelizationOpt,
+      kInjectPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -891,10 +895,9 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
 REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
-REGISTER_DATASET_EXPERIMENT("tune_cpu_budget", 0);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

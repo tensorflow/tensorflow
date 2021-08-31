@@ -2,7 +2,7 @@
 # Prefer pinning to the same version as in setup.py for now.
 # This will change in the future.
 
-absl-py ~= 0.12.0
+absl-py ~= 0.13.0
 astunparse ~= 1.6.3
 flatbuffers ~= 2.0
 google_pasta ~= 0.2
@@ -32,3 +32,5 @@ tf-estimator-nightly ~= 2.6.0.dev
 grpcio ~= 1.38.1
 portpicker ~= 1.4.0
 scipy ~= 1.5.4  # NOTE: not the latest version due to py3.6
+jax ~= 0.2.18
+jaxlib ~= 0.1.70

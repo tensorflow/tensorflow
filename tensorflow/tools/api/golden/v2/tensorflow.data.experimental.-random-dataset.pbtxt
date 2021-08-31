@@ -118,6 +118,10 @@ tf_class {
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "sample_from_datasets"
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
     name: "scan"
     argspec: "args=[\'self\', \'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
   }

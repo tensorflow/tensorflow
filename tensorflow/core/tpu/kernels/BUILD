@@ -732,6 +732,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_execute_op_options",
+    srcs = ["tpu_execute_op_options.cc"],
+    hdrs = ["tpu_execute_op_options.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "cross_replica_ops",
     srcs = ["cross_replica_ops.cc"],
     deps = [

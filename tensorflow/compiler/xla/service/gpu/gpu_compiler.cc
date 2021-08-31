@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dot_merger.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
@@ -156,11 +158,11 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
-#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 
 #if BEF_EXECUTABLE
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
 
 namespace xla {
@@ -227,6 +229,7 @@ class GpuBfloat16Support : public BFloat16Support {
 }  // end anonymous namespace
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
+using OwnedBefBuffer = GpuExecutable::OwnedBefBuffer;
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -342,6 +345,8 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pipeline.AddPass<DotDecomposer>();
+      // Only merge "small" dots.  This threshold was not set carefully.
+      pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{1} << 20);
       pipeline.AddPass<SortSimplifier>();
       pipeline.AddPass<TupleSimplifier>();
       pipeline.AddPass<WhileLoopConstantSinking>();
@@ -350,22 +355,21 @@ Status GpuCompiler::OptimizeHloModule(
       // TODO(b/134075051): Re-enable after b/134075051 is fixed.
       // pipeline.AddPass<SliceSinker>();
 
-      pipeline.AddPass<HloDCE>();
       pipeline.AddPass<ReshapeMover>();
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-    }();
 
-    pipeline.AddPass<TransposeFolding>(
-        [](const HloInstruction& dot,
-           const TransposeFolding::OperandIndices& candidate_operands) {
-          return IsMatrixMultiplication(dot)
-                     ? candidate_operands
-                     : TransposeFolding::OperandIndices{};
-        });
-    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
-    pipeline.AddPass<HloDCE>();
+      pipeline.AddPass<TransposeFolding>(
+          [](const HloInstruction& dot,
+             const TransposeFolding::OperandIndices& candidate_operands) {
+            return IsMatrixMultiplication(dot)
+                       ? candidate_operands
+                       : TransposeFolding::OperandIndices{};
+          });
+      pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+      pipeline.AddPass<HloDCE>();
+    }();
 
     // Run WhileLoopTripCountAnnotator at the end of the simplification
     // pipeline, before layout assignment and fusion.  This pass does some
@@ -464,6 +468,9 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    // FusionBitcastLift must be after InstructionFusion, as it undoes
+    // part of it.
+    horizontal_fusion.AddPass<FusionBitcastLift>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -688,7 +695,7 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
 }
 
 #if BEF_EXECUTABLE
-static StatusOr<tfrt::BefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   if (!mlir_module) {
     return tensorflow::errors::FailedPrecondition(
         "No mlir module to lower to BEF.");
@@ -718,7 +725,10 @@ static StatusOr<tfrt::BefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
     return InternalError("Failed to lower TFRT Dialect to BEF.");
   }
 
-  return tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
+  auto ptr = static_cast<uint8_t*>(
+      tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
+  std::copy(bef.begin(), bef.end(), ptr);
+  return OwnedBefBuffer(ptr, {bef.size()});
 }
 #endif  // BEF_EXECUTABLE
 
@@ -733,7 +743,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  absl::variant<OwnedThunkSchedule, tfrt::BefBuffer> thunks_or_bef;
+  absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
   Shape output_shape;

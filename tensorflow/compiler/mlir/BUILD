@@ -25,6 +25,7 @@ package_group(
         "//tensorflow/tools/...",
     ] + if_google([
         "//learning/brain/experimental/dtensor/mlir/...",
+        "//learning/brain/experimental/mlir/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/google/xla/mlir/...",
         "//learning/brain/mlir/...",
@@ -104,6 +105,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/tosa:tf_passes",
+        "//tensorflow/compiler/mlir/tosa:tfl_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",

@@ -265,6 +265,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",

@@ -796,7 +796,7 @@ def map_structure(func, *structure, **kwargs):
   >>> tf.nest.map_structure(lambda x: x + 1, ())
   ()
 
-  *. Check the types of iterables:
+  * Check the types of iterables:
 
   >>> s1 = (((1, 2), 3), 4, (5, 6))
   >>> s1_list = [[[1, 2], 3], 4, [5, 6]]

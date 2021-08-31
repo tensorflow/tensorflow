@@ -298,7 +298,10 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   for (auto& result : result_storage) {
     if (result->IsError())
       throw std::runtime_error(StrCat("result error: ", result->GetError()));
-    ret_values.emplace_back(result->get<py::array>());
+    py::array& result_array = result->get<py::array>();
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
+                                      result_array.nbytes());
+    ret_values.emplace_back(result_array);
   }
 
   return ret_values;

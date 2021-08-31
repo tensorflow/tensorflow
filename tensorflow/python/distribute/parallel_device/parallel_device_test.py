@@ -171,10 +171,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
         y = constant_op.constant(2)
     self.assertAllEqual([1], device.unpack(y))
 
-  def test_string_representation(self):
+  @parameterized.named_parameters(
+      ("variable", variables.Variable),
+      ("tensor", lambda x: x))
+  def test_string_representation(self, transform):
     x = self.device.pack(
         [constant_op.constant([5., 6.]),
          constant_op.constant([6., 7.])])
+    with self.device:
+      x = transform(x)
     parallel_str = str(x)
     self.assertIn("5", parallel_str)
     self.assertIn("7", parallel_str)

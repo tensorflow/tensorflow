@@ -88,7 +88,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -137,7 +136,6 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -187,5 +185,4 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )

@@ -31,16 +31,17 @@ namespace {
 
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
-// Returns the variable ops.
-const llvm::StringSet<>& GetVariableOps() {
-  static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
+// Returns the ops that should use node name if shared_name is empty.
+const llvm::StringSet<>& GetOpsUsingNodeName() {
+  static auto* const ops =
+      new llvm::StringSet<>({"VariableV2", "Variable", "BatchFunction"});
   return *ops;
 }
 
 // Returns the set of ops that we want to generate shared_names for them if
 // empty.
 const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
-  return GetVariableOps();
+  return GetOpsUsingNodeName();
 }
 
 }  // namespace
@@ -93,7 +94,7 @@ Status GenerateResourceSharedNameIfEmpty(
             is_resource_op_with_empty_shared_name(node_def, *op_def)) {
           // TODO(b/197144710): improve the shared_name attr, each op may use
           // the shared_name differently.
-          if (GetVariableOps().contains(op_def->name())) {
+          if (GetOpsUsingNodeName().contains(op_def->name())) {
             // Use the node name for such ops as the shared_name according to
             // the document of variable ops.
             (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());

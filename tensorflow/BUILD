@@ -820,8 +820,9 @@ package_group(name = "types_whitelist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
-# If this is modified, then copy.bara.sky must also be modified.
+# LINT.IfChange
 package_group(name = "structured_tensor_whitelist")
+# LINT.ThenChange(copy.bara.sky)
 
 filegroup(
     name = "intel_binary_blob",

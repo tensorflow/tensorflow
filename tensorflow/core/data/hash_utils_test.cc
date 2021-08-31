@@ -1279,6 +1279,79 @@ static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
 }
 BENCHMARK(BM_ChainedFunctionCallsGraph);
 
+// Benchmark that simulates many nested function calls.
+static void BM_ComposedFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  // AddAndMul will be the last function, all others will be calls up to this.
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 99; ++i) {
+    // Get the name fo the previous function
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+
+    FunctionDef* fd = fl->add_function();
+    *fd = FunctionDefHelper::Create(
+        /*function_name=*/absl::StrCat("F_", i),
+        /*in_def=*/{"i: float"},
+        /*out_def=*/{"o: float"},
+        /*attr_def=*/{},
+        /*node_def=*/
+        {
+            {
+                {"inner_call"},
+                "PartitionedCall",
+                {"i"},
+                {{"Ti", DT_FLOAT},
+                 {"Tout", DT_FLOAT},
+                 {"config", ""},
+                 {"config_proto", config_pb.SerializeAsString()},
+                 {"f", func}},
+            },
+        },
+        /*ret_def=*/{{"o", "inner_call:o:0"}},
+        /*control_ret_def=*/{{"must_execute", "inner_call"}});
+  }
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Create call to the outer most function.
+  NodeDef* node = graph_def.add_node();
+  node->set_name("PartitionedCall_start");
+  node->set_op("PartitionedCall");
+  *node->add_input() = input->name();
+  AddNodeAttr("Tin", DT_FLOAT, node);
+  AddNodeAttr("Tout", DT_FLOAT, node);
+  AddNodeAttr("config", "", node);
+  AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+  NameAttrList func;
+  func.set_name(fd->signature().name());
+  AddNodeAttr("f", func, node);
+
+  const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ComposedFunctionCallsGraph);
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

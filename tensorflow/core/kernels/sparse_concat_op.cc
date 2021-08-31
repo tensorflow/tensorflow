@@ -221,4 +221,21 @@ class SparseConcatOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+#define REGISTER_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")            \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("shapes")       \
+                              .HostMemory("output_shape") \
+                              .TypeConstraint<type>("T"), \
+                          SparseConcatOp<GPUDevice, type>)
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

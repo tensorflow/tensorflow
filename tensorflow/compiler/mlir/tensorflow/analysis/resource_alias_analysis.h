@@ -43,7 +43,8 @@ class ResourceAliasAnalysisInfo {
  public:
   // Constructs analysis info by analyzing the given function.
   ResourceAliasAnalysisInfo(FuncOp func,
-                            const BacktrackAnalysis& backtrack_analysis);
+                            const BacktrackAnalysis& backtrack_analysis,
+                            SymbolTableCollection& symbol_table_collection);
 
   ResourceAliasAnalysisInfo(ResourceAliasAnalysisInfo&&) = default;
 

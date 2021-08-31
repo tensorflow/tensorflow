@@ -236,6 +236,32 @@ def numpy_text(tensor, is_repr=False):
   return text
 
 
+def value_text(tensor, is_repr=False):
+  """Either the NumPy value or a custom TensorFlow formatting of `tensor`.
+
+  Custom formatting is used for custom device tensors, e.g. parallel tensors
+  with multiple components on different devices.
+
+  Args:
+    tensor: The tensor to format.
+    is_repr: Controls the style/verbosity of formatting.
+
+  Returns:
+    The formatted tensor.
+  """
+  # pylint: disable=protected-access  # friend access
+  if tensor._prefer_custom_summarizer():
+    text = tensor._summarize_value()
+    # pylint: enable=protected-access
+    if is_repr:
+      text = "value=" + text
+  else:
+    text = numpy_text(tensor, is_repr=is_repr)
+    if is_repr:
+      text = "numpy=" + text
+  return text
+
+
 @tf_export(v1=["enable_tensor_equality"])
 def enable_tensor_equality():
   """Compare Tensors with element-wise comparison and thus be unhashable.
@@ -1033,20 +1059,12 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    if self._prefer_custom_summarizer():
-      value_text = self._summarize_value()
-    else:
-      value_text = numpy_text(self)
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (value_text, self.shape,
-                                                  self.dtype.name)
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
+        value_text(self, is_repr=False), self.shape, self.dtype.name)
 
   def __repr__(self):
-    if self._prefer_custom_summarizer():
-      value_text = "value=" + self._summarize_value()
-    else:
-      value_text = "numpy=" + numpy_text(self, is_repr=True)
-    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (self.shape, self.dtype.name,
-                                                    value_text)
+    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
+        self.shape, self.dtype.name, value_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""

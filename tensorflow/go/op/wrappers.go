@@ -33039,12 +33039,26 @@ func ResourceScatterSub(scope *Scope, resource tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// TensorSliceDatasetAttr is an optional argument to TensorSliceDataset.
+type TensorSliceDatasetAttr func(optionalAttr)
+
+// TensorSliceDatasetIsFiles sets the optional is_files attribute to value.
+// If not specified, defaults to false
+func TensorSliceDatasetIsFiles(value bool) TensorSliceDatasetAttr {
+	return func(m optionalAttr) {
+		m["is_files"] = value
+	}
+}
+
 // Creates a dataset that emits each dim-0 slice of `components` once.
-func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape, optional ...TensorSliceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "TensorSliceDataset",
 		Input: []tf.Input{
@@ -49103,6 +49117,14 @@ func ConfigureDistributedTPUEnableWholeMeshCompilations(value bool) ConfigureDis
 func ConfigureDistributedTPUCompilationFailureClosesChips(value bool) ConfigureDistributedTPUAttr {
 	return func(m optionalAttr) {
 		m["compilation_failure_closes_chips"] = value
+	}
+}
+
+// ConfigureDistributedTPUTpuCancellationClosesChips sets the optional tpu_cancellation_closes_chips attribute to value.
+// If not specified, defaults to 0
+func ConfigureDistributedTPUTpuCancellationClosesChips(value int64) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["tpu_cancellation_closes_chips"] = value
 	}
 }
 

@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -61,6 +62,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -90,13 +92,11 @@ autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
     "tensorflow.python.autograph.impl.api")
 # Loaded lazily due to a circular dependency
-# dataset_ops->interleave_ops->dataset_ops
-# TODO(aaudibert): Switch to the core sample_from_datasets after it is migrated
-# out of experimental. Then we can remove this lazy loading.
-interleave_ops = lazy_loader.LazyLoader(
-    "interleave_ops", globals(),
-    "tensorflow.python.data.experimental.ops.interleave_ops"
-)
+# dataset_ops->parsing_ops->dataset_ops
+# TODO(varshaan): Use a regular import.
+parsing_ops = lazy_loader.LazyLoader(
+    "parsing_ops", globals(),
+    "tensorflow.python.ops.parsing_ops")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -290,6 +290,37 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return gen_dataset_ops.dataset_to_graph(
         self._variant_tensor, allow_stateful=allow_stateful)
 
+  def _maybe_track_assets(self, graph_def):
+    """Finds and tracks nodes in `graph_def` that refer to asset files.
+
+    Args:
+      graph_def: Serialized graph representation of this dataset.
+
+    Returns:
+      A dictionary mapping the node name of an asset constant to a tracked
+      `tracking.Asset` object.
+    """
+    asset_tracker = {}
+    for node in graph_def.node:
+      if node.name.startswith("FileIdentity"):
+        asset_tracker[node.input[0]] = None
+
+    if not asset_tracker:
+      return {}
+
+    for node in graph_def.node:
+      if node.name in asset_tracker:
+        tensor_proto = node.attr["value"].tensor
+        with context.eager_mode(), ops.device("CPU"):
+          node_value = parsing_ops.parse_tensor(
+              tensor_proto.SerializeToString(), dtypes.string).numpy()
+        asset_tracker[node.name] = ([
+            self._track_trackable(
+                tracking.Asset(n), name=node.name + "_" + str(i))
+            for i, n in enumerate(node_value)
+        ])
+    return asset_tracker
+
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
 
@@ -319,11 +350,28 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         output_node_name, = node.input
     if output_node_name is None:
       raise AssertionError("Could not find the dataset's output node.")
+
+    file_path_nodes = {}
+    # TODO(b/188455028): Remove this check when
+    # `CapturableResource._map_resources` take an argument to provide the
+    # re-mapped asset tensor object instead of the original eager one.
+    if ops.get_default_graph().building_function:
+      asset_tracker = self._maybe_track_assets(graph_def)
+      for key in asset_tracker:
+        assets_list = [
+            array_ops.expand_dims(asset.asset_path, axis=0)
+            for asset in asset_tracker[key]
+        ]
+        file_path_nodes[key] = array_ops.concat(assets_list, axis=0)
+
     # Add functions used in this Dataset to the function's graph, since they
     # need to follow it around (and for example be added to a SavedModel which
     # references the dataset).
     variant_function = wrap_function.function_from_graph_def(
-        graph_def, inputs=[], outputs=output_node_name + ":0")
+        graph_def,
+        inputs=[],
+        outputs=output_node_name + ":0",
+        captures=file_path_nodes)
     for used_function in self._functions():
       used_function.function.add_to_graph(variant_function.graph)
     return variant_function
@@ -1237,7 +1285,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = Dataset.from_tensor_slices(matching_files)
+      dataset = TensorSliceDataset(matching_files, is_files=True)
+      if issubclass(Dataset, DatasetV1):
+        dataset = DatasetV1Adapter(dataset)
       if shuffle:
         # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
         # list of files might be empty.
@@ -3038,11 +3088,146 @@ name=None))
     elif prob_original_static == 0:
       return filtered_ds
     else:
-      return interleave_ops.sample_from_datasets(
+      return Dataset.sample_from_datasets(
           [self.map(add_class_value), filtered_ds],
           weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
           seed=seed,
           stop_on_empty_dataset=True)
+
+  @staticmethod
+  def sample_from_datasets(datasets,
+                           weights=None,
+                           seed=None,
+                           stop_on_empty_dataset=False):
+    """Samples elements at random from the datasets in `datasets`.
+
+    Creates a dataset by interleaving elements of `datasets` with `weight[i]`
+    probability of picking an element from dataset `i`. Sampling is done without
+    replacement. For example, suppose we have 2 datasets:
+
+    ```python
+    dataset1 = tf.data.Dataset.range(0, 3)
+    dataset2 = tf.data.Dataset.range(100, 103)
+    ```
+
+    Suppose that we sample from these 2 datasets with the following weights:
+
+    ```python
+    sample_dataset = tf.data.Dataset.sample_from_datasets(
+        [dataset1, dataset2], weights=[0.5, 0.5])
+    ```
+
+    One possible outcome of elements in sample_dataset is:
+
+    ```
+    print(list(sample_dataset.as_numpy_iterator()))
+    # [100, 0, 1, 101, 2, 102]
+    ```
+
+    Args:
+      datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+        structure.
+      weights: (Optional.) A list or Tensor of `len(datasets)` floating-point
+        values where `weights[i]` represents the probability to sample from
+        `datasets[i]`, or a `tf.data.Dataset` object where each element is such
+        a list. Defaults to a uniform distribution across `datasets`.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
+        seed that will be used to create the distribution. See
+        `tf.random.set_seed` for behavior.
+      stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
+        dataset. If `False`, it skips empty datasets. It is recommended to set
+        it to `True`. Otherwise, the distribution of samples starts off as the
+        user intends, but may change as input datasets become empty. This can be
+        difficult to detect since the dataset starts off looking correct.
+        Default to `False` for backward compatibility.
+
+    Returns:
+      A dataset that interleaves elements from `datasets` at random, according
+      to `weights` if provided, otherwise with uniform probability.
+
+    Raises:
+      TypeError: If the `datasets` or `weights` arguments have the wrong type.
+      ValueError:
+        - If `datasets` is empty, or
+        - If `weights` is specified and does not match the length of `datasets`.
+    """
+
+    def _shapes_are_compatible(datasets, weights):
+      if isinstance(weights, ops.Tensor):
+        return weights.shape.is_compatible_with([len(datasets)])
+      return len(datasets) == len(weights)
+
+    def _skip_datasets_with_zero_weight(datasets, weights):
+      datasets_and_weights = [(dataset, weight)
+                              for (dataset, weight) in zip(datasets, weights)
+                              if weight > 0]
+      return (zip(*datasets_and_weights) if datasets_and_weights else
+              ([datasets[0].take(0)], [1.]))
+
+    if not datasets:
+      raise ValueError("`datasets` must be a non-empty list of datasets.")
+
+    if not isinstance(weights, DatasetV2):
+      if weights is None:
+        # Select inputs with uniform probability.
+        logits = [[1.0] * len(datasets)]
+
+      else:
+        if not _shapes_are_compatible(datasets, weights):
+          raise ValueError("`weights` must have the same length as `datasets`.")
+
+        # Use the given `weights` as the probability of choosing the respective
+        # input.
+        if not isinstance(weights, ops.Tensor):
+          datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
+        weights = ops.convert_to_tensor(weights, name="weights")
+        if weights.dtype not in (dtypes.float32, dtypes.float64):
+          raise TypeError("`weights` must be convertible to a tensor of "
+                          "`tf.float32` or `tf.float64` elements.")
+
+        # The `stateless_multinomial()` op expects log-probabilities, as opposed
+        # to weights.
+        logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
+
+      # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When
+      # it is a `Dataset`, it is possible that evaluating it has a side effect
+      # the user depends on.
+      if len(datasets) == 1:
+        return datasets[0]
+
+      def select_dataset_constant_logits(seed):
+        return array_ops.squeeze(
+            gen_stateless_random_ops.stateless_multinomial(
+                logits, 1, seed=seed),
+            axis=[0, 1])
+
+      selector_input = MapDataset(
+          RandomDataset(seed).batch(2),
+          select_dataset_constant_logits,
+          use_inter_op_parallelism=False)
+
+    else:
+      # Use each element of the given `weights` dataset as the probability of
+      # choosing the respective input.
+      #
+      # The `stateless_multinomial()` op expects log-probabilities, as opposed
+      # to weights.
+      logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
+
+      def select_dataset_varying_logits(logits, seed):
+        return array_ops.squeeze(
+            gen_stateless_random_ops.stateless_multinomial(
+                logits, 1, seed=seed),
+            axis=[0, 1])
+
+      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
+      selector_input = MapDataset(
+          logits_and_seeds,
+          select_dataset_varying_logits,
+          use_inter_op_parallelism=False)
+
+    return _DirectedInterleaveDataset(selector_input, datasets,
+                                      stop_on_empty_dataset)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -3801,7 +3986,7 @@ class TensorDataset(DatasetSource):
 class TensorSliceDataset(DatasetSource):
   """A `Dataset` of slices from a dataset element."""
 
-  def __init__(self, element):
+  def __init__(self, element, is_files=False):
     """See `Dataset.from_tensor_slices()` for details."""
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
@@ -3815,9 +4000,13 @@ class TensorSliceDataset(DatasetSource):
       batch_dim.assert_is_compatible_with(tensor_shape.Dimension(
           tensor_shape.dimension_value(t.get_shape()[0])))
 
+    compat_kwargs = {
+        "output_shapes": structure.get_flat_tensor_shapes(self._structure)
+    }
+    if compat.forward_compatible(2021, 9, 20):
+      compat_kwargs["is_files"] = is_files
     variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure))
+        self._tensors, **compat_kwargs)
     super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
@@ -5915,6 +6104,53 @@ class _ScanDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.scan()"
+
+
+class _DirectedInterleaveDataset(DatasetV2):
+  """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
+
+  def __init__(self, selector_input, data_inputs, stop_on_empty_dataset=False):
+    self._selector_input = selector_input
+    self._data_inputs = list(data_inputs)
+    self._stop_on_empty_dataset = stop_on_empty_dataset
+
+    first_output_types = get_legacy_output_types(data_inputs[0])
+    first_output_classes = get_legacy_output_classes(data_inputs[0])
+
+    for i, data_input in enumerate(data_inputs[1:]):
+      if (get_legacy_output_types(data_input) != first_output_types or
+          get_legacy_output_classes(data_input) != first_output_classes):
+        raise TypeError(
+            "All datasets must have the same type and class.\n"
+            "dataset 0 vs dataset %s types: %s ; %s\n"
+            "classes: %s ; %s" %
+            (i + 1, first_output_types, get_legacy_output_types(data_input),
+             first_output_classes, get_legacy_output_classes(data_input)))
+
+    spec = self._data_inputs[0].element_spec
+    for data_input in self._data_inputs[1:]:
+      spec = nest.pack_sequence_as(spec, [
+          x.most_specific_compatible_type(y) for (x, y) in zip(
+              nest.flatten(spec), nest.flatten(data_input.element_spec))
+      ])
+    self._element_spec = spec
+
+    # pylint: disable=protected-access
+    variant_tensor = (
+        ged_ops.directed_interleave_dataset(
+            self._selector_input._variant_tensor,
+            [data_input._variant_tensor for data_input in self._data_inputs],
+            stop_on_empty_dataset=self._stop_on_empty_dataset,
+            **self._flat_structure))
+
+    super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
+
+  def _inputs(self):
+    return [self._selector_input] + self._data_inputs
+
+  @property
+  def element_spec(self):
+    return self._element_spec
 
 
 @auto_control_deps.register_acd_resource_resolver

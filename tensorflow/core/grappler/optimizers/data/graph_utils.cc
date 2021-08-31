@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
+#include <cstddef>
+
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -28,6 +30,10 @@ namespace {
 
 constexpr char kConstOpName[] = "Const";
 constexpr char kRetValOp[] = "_Retval";
+
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kToutputTypes[] = "Toutput_types";
 
 template <typename Predicate, typename Collection>
 std::vector<int> GetElementIndicesWithPredicate(const Predicate& predicate,
@@ -378,6 +384,19 @@ bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
     }
   }
   // All fetch nodes are `Retval` ops (or we don't have any fetch nodes).
+  return true;
+}
+
+bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
+  auto* attr = gtl::FindOrNull(from.attr(), kOutputTypes);
+  attr = (attr == nullptr ? gtl::FindOrNull(from.attr(), kToutputTypes) : attr);
+
+  if (attr == nullptr) return false;
+  (*to_node->mutable_attr())[kOutputTypes] = *attr;
+
+  attr = gtl::FindOrNull(from.attr(), kOutputShapes);
+  if (attr == nullptr) return false;
+  (*to_node->mutable_attr())[kOutputShapes] = *attr;
   return true;
 }
 

@@ -47,6 +47,7 @@ all_test_basenames = [py[:-3] for py in glob(
     data = [":test_utilities"],
     tags = [
         "no_mac",  # b/191167848
+        "no_oss",  # b/191167848
         "no_pip",
     ],
 ) for name in all_test_basenames]

@@ -108,12 +108,11 @@ constexpr char kGpuDeviceName[] = "GPU";
 constexpr char kEnableNativeOpsAttr[] = "TFRT_TEST_enable_native_ops";
 constexpr char kEnableGrapplerAttr[] = "TFRT_TEST_enable_grappler";
 
-TensorMetadata CreateMetadata(DType dtype,
-                              absl::Span<const ssize_t> dim_sizes) {
-  return TensorMetadata(DType(dtype),
-                        TensorShape(llvm::ArrayRef<ssize_t>(
-                            reinterpret_cast<const ssize_t*>(dim_sizes.data()),
-                            dim_sizes.size())));
+TensorMetadata CreateMetadata(DType dtype, absl::Span<const Index> dim_sizes) {
+  return TensorMetadata(
+      DType(dtype),
+      TensorShape(llvm::ArrayRef<Index>(
+          reinterpret_cast<const Index*>(dim_sizes.data()), dim_sizes.size())));
 }
 
 tensorflow::DataType ConvertDType(DType kind) {
@@ -439,7 +438,7 @@ tensorflow::Status TensorHandleInterface::Shape(
   if (num_dims == -1) {
     return tensorflow::Status::OK();
   }
-  SmallVector<ssize_t, 8> dims;
+  SmallVector<Index, 8> dims;
   metadata.getValue()->shape.GetDimensions(&dims);
   TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
   return tensorflow::Status::OK();
@@ -686,7 +685,7 @@ tensorflow::AbstractTensorInterface* ContextInterface::CreateBoolScalar(
 
 tensorflow::AbstractTensorInterface* ContextInterface::CreateTensor(
     tensorflow::DataType dtype, absl::Span<const int64_t> dim_sizes) {
-  std::vector<ssize_t> dimvec(dim_sizes.size());
+  std::vector<Index> dimvec(dim_sizes.size());
   for (int i = 0; i < dim_sizes.size(); ++i) {
     dimvec[i] = static_cast<int64_t>(dim_sizes[i]);
   }

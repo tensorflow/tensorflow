@@ -23,6 +23,7 @@ cc_library(
         ":disable_prefetch_legacy_autotune",
         ":enable_gradient_descent",
         ":filter_fusion",
+        ":inject_prefetch",
         ":make_sloppy",
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",
@@ -690,6 +691,43 @@ tf_cc_test(
         ":graph_test_utils",
         ":graph_utils",
         ":parallel_batch",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "inject_prefetch",
+    srcs = ["inject_prefetch.cc"],
+    hdrs = ["inject_prefetch.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "inject_prefetch_test",
+    size = "small",
+    srcs = ["inject_prefetch_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":inject_prefetch",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

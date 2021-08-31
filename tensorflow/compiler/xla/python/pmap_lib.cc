@@ -219,7 +219,7 @@ class PmapFunction {
   }
 
   int cache_size() const { return executables_.size(); }
-  const pybind11::function& cache_miss() const { return cache_miss_; }
+  const py::function& cache_miss() const { return cache_miss_; }
 
  private:
   void PopulateCacheEntry(PmapCacheEntry* cache_entry,
@@ -354,7 +354,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   std::unique_ptr<PmapCacheEntry>& cache_entry = it->second;
 
   if (!cache_entry->compilation_complete.HasBeenNotified()) {
-    std::cout << "inserted: " << inserted << std::endl;
     // In case of several threads attempting to compile the executable, only
     // the one that inserted the item will perform the compilation.
     if (inserted) {
@@ -430,7 +429,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   // This is a simpler version of:
   // cache_entry->executable->ExecuteShardedOnLocalDevices().
 
-  // A vector of [num_outputs, num_devices].
+  // A vector of [num_devices, num_outputs].
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
@@ -604,8 +603,8 @@ void BuildPmapSubmodule(py::module& m) {
       .def_property_readonly("indices", &ShardedDeviceArray::indices)
       .def_property_readonly("sharding_spec",
                              &ShardedDeviceArray::GetShardingSpec)
-      .def_property("device_buffers", &ShardedDeviceArray::device_buffers,
-                    &ShardedDeviceArray::set_device_buffers)
+      .def_property_readonly("device_buffers",
+                             &ShardedDeviceArray::device_buffers)
       .def_property("_npy_value", &ShardedDeviceArray::npy_value,
                     &ShardedDeviceArray::set_npy_value)
       .def_property("_one_replica_buffer_indices",

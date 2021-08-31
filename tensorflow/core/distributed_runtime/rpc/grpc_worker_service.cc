@@ -671,7 +671,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           cpu_attr.set_nic_compatible(true);
           ScopedMemoryDebugAnnotation op_annotation(
               "GrpcWorker::RecvBufAsync::consumer_callback", request->step_id(),
-              "dynamic", hook->prod_value->dtype(), &hook->prod_value->shape());
+              "dynamic", hook->prod_value->dtype(),
+              [hook]() { return hook->prod_value->shape().DebugString(); });
           Tensor* cpu_tensor =
               new Tensor(cpu_dev->GetAllocator(cpu_attr),
                          hook->prod_value->dtype(), hook->prod_value->shape());

@@ -173,9 +173,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   void AddEagerAttrs(const string& indentation);
   void AddEagerExecute(const string& indentation,
                        const string& num_outputs_expr);
-  void AddFallbackDispatch(const string& prefix);
-  void AddTypeBasedDispatch(const string& prefix);
-  void AddTypeBasedDispatcherAlias();
+  void AddDispatch(const string& prefix);
 
   void AddRawOpExport(const string& parameters);
 
@@ -527,10 +525,6 @@ void GenEagerPythonOp::AddReturnTypeAnnotation(
 
 void GenEagerPythonOp::HandleGraphMode(
     const string& function_setup, const std::vector<string>& output_sizes) {
-  if (api_def_.visibility() == ApiDef::VISIBLE) {
-    strings::StrAppend(&result_, "  else:\n");
-    AddTypeBasedDispatch("    ");
-  }
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
   strings::StrAppend(&result_, function_setup);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
@@ -539,7 +533,7 @@ void GenEagerPythonOp::HandleGraphMode(
   strings::StrAppend(
       &result_, "  _, _, _op, _outputs = _op_def_library._apply_op_helper(\n");
   AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
-  AddFallbackDispatch("  ");
+  AddDispatch("  ");
 
   if (num_outs_ > 0) {
     strings::StrAppend(&result_, "  _result = _outputs[:]\n");
@@ -857,8 +851,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     GenerateTypeVars(type_annotations);
   }
   if (api_def_.visibility() == ApiDef::VISIBLE) {
-    strings::StrAppend(&result_, "@_dispatch.add_fallback_dispatch_list\n");
-    strings::StrAppend(&result_, "@_dispatch.add_type_based_api_dispatcher\n");
+    strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
   }
 
   AddExport();
@@ -894,7 +887,6 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   HandleGraphMode(function_setup, output_sizes);
 
   AddRawOpExport(parameters);
-  AddTypeBasedDispatcherAlias();
   strings::StrAppend(&result_, "\n\n");
   return true;
 }
@@ -990,7 +982,6 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
   strings::StrAppend(&result_, "      pass\n");
   strings::StrAppend(&result_, "    try:\n");
-  AddTypeBasedDispatch("      ");
   strings::StrAppend(
       &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
       "(\n",
@@ -1000,7 +991,7 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "    except _core._SymbolicException:\n");
   strings::StrAppend(&result_,
                      "      pass  # Add nodes to the TensorFlow graph.\n");
-  AddFallbackDispatch("    ");
+  AddDispatch("    ");
 }
 
 void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
@@ -1138,46 +1129,20 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
 }
 
-void GenEagerPythonOp::AddFallbackDispatch(const string& prefix) {
+void GenEagerPythonOp::AddDispatch(const string& prefix) {
   if (api_def_.visibility() != ApiDef::VISIBLE) return;
 
   strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
-  strings::StrAppend(&result_, prefix, "  _result = _dispatch.dispatch(\n");
+  strings::StrAppend(&result_, prefix, "  result = _dispatch.dispatch(\n");
   AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_,
                                   ", "
                                   "(), dict("));
   strings::StrAppend(&result_, prefix, "      )\n");
   strings::StrAppend(&result_, prefix,
-                     "  if _result is not "
+                     "  if result is not "
                      "_dispatch.OpDispatcher.NOT_SUPPORTED:\n");
-  strings::StrAppend(&result_, prefix, "    return _result\n");
+  strings::StrAppend(&result_, prefix, "    return result\n");
   strings::StrAppend(&result_, prefix, "  raise\n");
-}
-
-void GenEagerPythonOp::AddTypeBasedDispatcherAlias() {
-  // It's possible for the name of a parameter to be the same as the name of
-  // an op, in which case the parameter shadows the op's function.  To avoid
-  // this, we add a private variable with the dispatcher, and access that
-  // directly.
-  if (api_def_.visibility() == ApiDef::VISIBLE) {
-    strings::StrAppend(&result_, "_dispatcher_for_", function_name_,
-                       " = ", function_name_,
-                       "._tf_type_based_dispatcher.Dispatch\n");
-  }
-}
-void GenEagerPythonOp::AddTypeBasedDispatch(const string& prefix) {
-  if (api_def_.visibility() != ApiDef::VISIBLE) return;
-  std::string args("(");
-  for (const auto& name : param_names_) {
-    strings::StrAppend(&args, name.GetRenameTo(), ", ");
-  }
-  strings::StrAppend(&args, "name,), None");
-
-  strings::StrAppend(
-      &result_, prefix, "_result = ", "_dispatcher_for_", function_name_, "(\n",
-      WordWrap(strings::StrCat(prefix, "    "), args, kRightMargin), ")\n");
-  strings::StrAppend(&result_, prefix, "if _result is not NotImplemented:\n",
-                     prefix, "  return _result\n");
 }
 
 void GenEagerPythonOp::AddRawOpExport(const string& parameters) {

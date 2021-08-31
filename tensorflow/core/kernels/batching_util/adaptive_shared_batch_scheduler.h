@@ -149,6 +149,8 @@ class AdaptiveSharedBatchScheduler
     //
     // If specified, it should be larger than or equal to 'max_batch_size'.
     absl::optional<int> max_input_task_size = absl::nullopt;
+    // Maximum number of tasks to add to a specific batch.
+    absl::optional<int> max_tasks_per_batch = absl::nullopt;
     // Maximum number of enqueued (i.e. non-scheduled) batches.
     int max_enqueued_batches = 10;
     // Amount of time non-full batches must wait before becoming schedulable.
@@ -772,7 +774,11 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
       current_batch_->AddTask(std::move(task));
       num_enqueued_tasks_++;
       // If current_batch_ is now full, allow it to be processed immediately.
-      if (current_batch_->size() == options_.max_batch_size) {
+      bool reached_max_tasks =
+          (options_.max_tasks_per_batch.has_value() &&
+           current_batch_->num_tasks() >= options_.max_tasks_per_batch.value());
+      if (current_batch_->size() == options_.max_batch_size ||
+          reached_max_tasks) {
         current_batch_->Close();
         closed_batch = true;
         current_batch_ = nullptr;

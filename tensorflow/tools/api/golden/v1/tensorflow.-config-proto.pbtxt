@@ -242,12 +242,6 @@ tf_proto {
         type: TYPE_STRING
       }
       field {
-        name: "fetch_remote_devices_in_multi_client"
-        number: 20
-        label: LABEL_OPTIONAL
-        type: TYPE_BOOL
-      }
-      field {
         name: "disable_functional_ops_lowering"
         number: 21
         label: LABEL_OPTIONAL
@@ -279,6 +273,10 @@ tf_proto {
       reserved_range {
         start: 2
         end: 3
+      }
+      reserved_range {
+        start: 20
+        end: 21
       }
     }
   }

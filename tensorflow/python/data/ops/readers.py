@@ -67,7 +67,7 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
           " Got {}".format(filenames.dtype))
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
-    filenames = dataset_ops.DatasetV2.from_tensor_slices(filenames)
+    filenames = dataset_ops.TensorSliceDataset(filenames, is_files=True)
 
   return filenames
 

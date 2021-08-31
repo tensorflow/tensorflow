@@ -4968,7 +4968,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
     std::vector<int> expected_output_dims;
     std::vector<float> expected_output;
     Status conversion_status;
-    bool unknown_channel;
+    // For dynamic shape mode, we must use the partial_input_dims for
+    // creating the test tensor if any of the input_dims are -1.
+    std::vector<int> partial_input_dims;
   };
 
   // Ok.
@@ -5048,7 +5050,48 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
         /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
         errors::InvalidArgument(
             "Channel dimension must be static, at my_conv2d_backprop_input"),
-        1});
+        /*partial input dims=*/{1, -1, 2, 2}});
+    // Test dynamic  batch dimension.
+    params.push_back(
+        TestParams{/*input_dims=*/{2, 1, 2, 2},
+                   /*input=*/
+                   // clang-format off
+                      {0, 1, 2, 3,
+                       3, 2, 1, 0},
+                   // clang-format on
+                   /*filter_dims=*/{1, 2, 1, 1},
+                   /*filter=*/{-1, 1},
+                   /*strides=*/{1, 1, 1, 2},
+                   /*padding=*/"SAME",
+                   /*data_format=*/"NCHW",
+                   /*dilations=*/{1, 1, 1, 1},
+                   /*expected_output_dims=*/{2, 1, 2, 4},
+                   /*expected_output=*/
+                   // clang-format off
+                   { 0, 0, -1, 1, -2, 2, -3, 3,
+                    -3, 3, -2, 2, -1, 1, 0, 0},
+                   // clang-format on
+                   /*conversion_status=*/Status::OK(),
+                   /*partial input dims=*/{-1, 1, 2, 2}});
+
+    // Test dynamic height and width.
+    params.push_back(TestParams{
+        /*input_dims=*/{1, 1, 2, 2},
+        /*input=*/{0, 1, 2, 3},
+        /*filter_dims=*/{1, 2, 1, 1},
+        /*filter=*/{-1, 1},
+        /*strides=*/{1, 1, 1, 2},
+        /*padding=*/"SAME",
+        /*data_format=*/"NCHW",
+        /*dilations=*/{1, 1, 1, 1},
+        /*expected_output_dims=*/{1, 1, 2, 4},
+        /*expected_output=*/
+        {0, 0, -1, 1, -2, 2, -3, 3},
+        /*conversion_status=*/
+        errors::Unimplemented(
+            "Conv2dBackpropInput does not support input with unknown spatial "
+            "shape"),
+        /*partial input dims=*/{1, 1, -1, -1}});
   }
   for (auto p : params) {
     for (int input_sizes_length : {2, 4}) {
@@ -5056,21 +5099,26 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
       NodeDef node_def = get_conv2d_backprop_input_nodedef(
           tf_type_, p.strides, p.padding, p.data_format, p.dilations);
 
-      std::vector<int> partial_input_shape;
-      if (trt_mode_ == TrtTestMode::kDynamicShape && !p.unknown_channel) {
-        // In dynamic shape mode, AddTestTensor will replace the input tensor
-        // dims with -1, unless we give a non-empty partial_input_shape_tensor.
-        // Having -1 channel dimension is invalid for TRT. We have a single
-        // test to check the converter in that case (p.unknown_channel==true).
-        // For all the other tests, we define here an input with known channel
-        // dimension.
-        partial_input_shape.resize(p.input_dims.size(), -1);
-        int channel_id = (p.data_format == "NCHW") ? 1 : 3;
-        partial_input_shape[channel_id] = p.input_dims[channel_id];
+      switch (trt_mode_) {
+        case TrtTestMode::kImplicitBatch: {
+          AddTestTensor("input", p.input_dims, p.input);
+          break;
+        }
+        case TrtTestMode::kExplicitBatch: {
+          AddTestTensor("input", p.input_dims, p.input);
+          break;
+        }
+        case TrtTestMode::kDynamicShape: {
+          AddTestTensor("input", p.input_dims, tf_type_, p.input,
+                        p.partial_input_dims.size() > 0 ? p.partial_input_dims
+                                                        : p.input_dims);
+          break;
+        }
+        default: {
+          ASSERT_TRUE(false) << "unknown test mode";
+        }
       }
 
-      AddTestTensor("input", p.input_dims, tf_type_, p.input,
-                    partial_input_shape);
       AddTestWeights<float>("weights", p.filter_dims, p.filter, tf_type_);
 
       if (input_sizes_length == 4) {
@@ -5088,15 +5136,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
         QCHECK_EQ(2, tf_input_sizes.size());
         AddTestWeights<int>("input_sizes", {2}, tf_input_sizes);
       }
-      Status conv_status =
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? errors::Unimplemented(
-                    "Conv2dBackpropInput does not support input with unknown "
-                    "shape, at my_conv2d_backprop_input")
-              : p.conversion_status;
 
       TestOpConverter("my_conv2d_backprop_input", node_def,
-                      p.expected_output_dims, conv_status, Status::OK(),
+                      p.expected_output_dims, p.conversion_status, Status::OK(),
                       ElementsAreArray(p.expected_output));
     }
   }

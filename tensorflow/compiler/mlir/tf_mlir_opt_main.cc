@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/platform/init_main.h"
 
@@ -43,6 +46,9 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();
+  mlir::tosa::registerLegalizeTosaPasses();
+  mlir::tosa::registerTFtoTOSALegalizationPipeline();
+  mlir::tosa::registerTFLtoTOSALegalizationPipeline();
   mlir::tf_test::registerTensorFlowTestPasses();
 
   mlir::DialectRegistry registry;

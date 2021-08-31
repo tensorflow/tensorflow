@@ -490,7 +490,8 @@ LogicalResult HandlePartitionedCallOp(
     // Signature is not modified. We do not need to keep two copies.
     info.signature_change = false;
     if (lowered_callee != callee) {
-      lowered_callee.setName(callee.getName());
+      lowered_callee.setName(
+          StringAttr::get(callee->getContext(), callee.getName()));
       callee.erase();
       SymbolTable(module).insert(lowered_callee);
     }
@@ -504,8 +505,9 @@ LogicalResult HandlePartitionedCallOp(
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
-      lowered_callee.setName(
-          llvm::formatv("{0}_tensorlist_decomposed", callee.getName()).str());
+      lowered_callee.setName(StringAttr::get(
+          callee->getContext(),
+          llvm::formatv("{0}_tensorlist_decomposed", callee.getName()).str()));
       SymbolTable(module).insert(lowered_callee);
       callee = lowered_callee;
     }

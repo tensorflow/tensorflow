@@ -63,9 +63,9 @@ RuntimeFallbackTensor::RuntimeFallbackTensor(const TensorShape& shape,
   assert(IsValid(dtype) && "Invalid dtype");
 }
 
-llvm::SmallVector<ssize_t, 4> GetShape(
+llvm::SmallVector<tfrt::Index, 4> GetShape(
     AbstractTensorInterface* tensor_interface) {
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   int64_t num_dims = tensor_interface->NumDims();
   dims.reserve(num_dims);
   for (int i = 0; i < num_dims; ++i) {
@@ -105,7 +105,7 @@ void RuntimeFallbackTensor::Print(tfrt::raw_ostream& os) const {
 
   int rank = tensor_interface->NumDims();
 
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
     dims.push_back(tensor_interface->Dim(i));
   }
@@ -152,7 +152,7 @@ CreateRuntimeFallbackTensorFromTfTensorHandle(OwnedTensorHandle owned_th,
     return tfrt::MakeStringError(tfrt::StrCat(
         "error getting rank from TF tensor handle: ", status.error_message()));
 
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
     int64_t dim;
     status = owned_th->Dim(i, &dim);

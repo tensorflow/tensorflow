@@ -81,7 +81,7 @@ struct LmhloGpuAsyncConversionPass
     wrap_target
         .addLegalDialect<lmhlo_gpu::LmhloGpuDialect, mlir::gpu::GPUDialect>();
     wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
-                           lmhlo::ReduceScatterOp>();
+                           lmhlo::ReduceScatterOp, lmhlo::AllToAllOp>();
     tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                   wrap_target);
 
@@ -102,7 +102,8 @@ struct AsyncGpuTfrtConversionPass
                            xla::gpu::XlirDialect>();
 
     RewritePatternSet patterns(context);
-    tfrt::gpu::populateTfrtConversionPatterns(patterns, target);
+    TypeConverter converter;
+    tfrt::gpu::populateTfrtConversionPatterns(patterns, converter, target);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

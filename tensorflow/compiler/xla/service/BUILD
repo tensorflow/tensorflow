@@ -3070,6 +3070,35 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "dot_merger",
+    srcs = ["dot_merger.cc"],
+    hdrs = ["dot_merger.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla/service/graphcycles",
+    ],
+)
+
+tf_cc_test(
+    name = "dot_merger_test",
+    srcs = ["dot_merger_test.cc"],
+    deps = [
+        ":algebraic_simplifier",
+        ":dot_merger",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "all_to_all_decomposer",
     srcs = ["all_to_all_decomposer.cc"],
     hdrs = ["all_to_all_decomposer.h"],

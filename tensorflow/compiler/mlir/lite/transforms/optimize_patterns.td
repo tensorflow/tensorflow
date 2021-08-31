@@ -470,7 +470,8 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
      (IsTailOfShape $rhs, $input),
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
-     (HasRankAtMost<4> $rhs)]>;
+     (HasRankAtMost<4> $rhs),
+     (SameElementType $input, $rhs)]>;
 
     // Move binary op before reshape:
     // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
@@ -484,7 +485,8 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
       [(IsTailOfShape $rhs, $lhs),
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
-       (IsTailOfShape $input2, $input1)]>;
+       (IsTailOfShape $input2, $input1),
+       (SameElementType $input1, $input2)]>;
 
     // Move binary op before reshape:
     // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
@@ -539,7 +541,8 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
      (IsTailOfShape $rhs, $input),
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
-     (HasRankAtMost<4> $rhs)]>;
+     (HasRankAtMost<4> $rhs),
+     (SameElementType $input, $rhs)]>;
 
     // Move binary op before reshape:
     // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
@@ -552,7 +555,8 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
       [(IsTailOfShape $rhs, $lhs),
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
-       (IsTailOfShape $input2, $input1)]>;
+       (IsTailOfShape $input2, $input1),
+       (SameElementType $input1, $input2)]>;
 
     // Move binary op before reshape:
     // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))

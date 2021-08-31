@@ -43,94 +43,94 @@ namespace host {
 // See stream_executor.h for description of the below operations.
 class HostExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit HostExecutor(const PluginConfig &plugin_config);
+  explicit HostExecutor(const PluginConfig& plugin_config);
   ~HostExecutor() override;
 
   // The stack size used for host streams can be set via
   // device_options.non_portable_tags["host_stack_size"].
   port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  port::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                         KernelBase *kernel) override {
+  port::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                         KernelBase* kernel) override {
     return port::UnimplementedError("Not Implemented");
   }
-  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims, const KernelBase &kernel,
-                      const KernelArgsArrayBase &args) override {
+  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                      const BlockDim& block_dims, const KernelBase& kernel,
+                      const KernelArgsArrayBase& args) override {
     return port::UnimplementedError("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
+  void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset_bytes,
                      uint64_t size_bytes) override;
-  void Deallocate(DeviceMemoryBase *mem) override;
+  void Deallocate(DeviceMemoryBase* mem) override;
 
-  void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
-  void HostMemoryDeallocate(void *mem) override {
-    delete[] static_cast<char *>(mem);
+  void* HostMemoryAllocate(uint64_t size) override { return new char[size]; }
+  void HostMemoryDeallocate(void* mem) override {
+    delete[] static_cast<char*>(mem);
   }
-  bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
-  bool HostMemoryUnregister(void *mem) override { return true; }
+  bool HostMemoryRegister(void* mem, uint64_t size) override { return true; }
+  bool HostMemoryUnregister(void* mem) override { return true; }
 
-  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &gpu_src,
+  bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
               uint64_t size) override;
-  bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst, const void *host_src,
+  bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
               uint64_t size) override;
-  bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                            const DeviceMemoryBase &gpu_src,
+  bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
+                            const DeviceMemoryBase& gpu_src,
                             uint64_t size) override;
 
-  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+  port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64_t size) override;
-  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+  port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
                       uint64_t size) override;
-  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+  port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                         uint32 pattern, uint64_t size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+  port::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override;
 
-  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+  port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                  uint64_t size) override;
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64_t size) override;
-  port::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
+  port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                 const void* host_src, uint64_t size) override;
+  port::Status SynchronousMemcpy(void* host_dst,
+                                 const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
-  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
+  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
+                                               const DeviceMemoryBase& gpu_src,
                                                uint64_t size) override;
 
-  bool HostCallback(Stream *stream,
+  bool HostCallback(Stream* stream,
                     std::function<port::Status()> callback) override;
 
-  port::Status AllocateEvent(Event *event) override;
-  port::Status DeallocateEvent(Event *event) override;
-  port::Status RecordEvent(Stream *stream, Event *event) override;
-  port::Status WaitForEvent(Stream *stream, Event *event) override;
-  Event::Status PollForEventStatus(Event *event) override;
+  port::Status AllocateEvent(Event* event) override;
+  port::Status DeallocateEvent(Event* event) override;
+  port::Status RecordEvent(Stream* stream, Event* event) override;
+  port::Status WaitForEvent(Stream* stream, Event* event) override;
+  Event::Status PollForEventStatus(Event* event) override;
 
-  bool AllocateStream(Stream *stream) override;
-  void DeallocateStream(Stream *stream) override;
-  bool CreateStreamDependency(Stream *dependent, Stream *other) override;
+  bool AllocateStream(Stream* stream) override;
+  void DeallocateStream(Stream* stream) override;
+  bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
   // No special initialization is necessary for host timers.
-  bool AllocateTimer(Timer *timer) override { return true; }
+  bool AllocateTimer(Timer* timer) override { return true; }
 
-  void DeallocateTimer(Timer *timer) override {}
+  void DeallocateTimer(Timer* timer) override {}
 
-  bool StartTimer(Stream *stream, Timer *timer) override;
+  bool StartTimer(Stream* stream, Timer* timer) override;
 
-  bool StopTimer(Stream *stream, Timer *timer) override;
+  bool StopTimer(Stream* stream, Timer* timer) override;
 
-  port::Status BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream* stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override;
+  bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
@@ -140,25 +140,25 @@ class HostExecutor : public internal::StreamExecutorInterface {
   static port::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
+  port::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return port::Status::OK();
   }
 
-  bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
+  bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
     return true;
   }
 
   bool SupportsBlas() const override;
-  blas::BlasSupport *CreateBlas() override;
+  blas::BlasSupport* CreateBlas() override;
 
   bool SupportsDnn() const override { return false; }
-  dnn::DnnSupport *CreateDnn() override { return nullptr; }
+  dnn::DnnSupport* CreateDnn() override { return nullptr; }
 
   bool SupportsFft() const override;
-  fft::FftSupport *CreateFft() override;
+  fft::FftSupport* CreateFft() override;
 
   bool SupportsRng() const override;
-  rng::RngSupport *CreateRng() override;
+  rng::RngSupport* CreateRng() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
@@ -174,7 +174,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new HostTimer());
   }
 
-  void *GpuContextHack() override { return nullptr; }
+  void* GpuContextHack() override { return nullptr; }
 
  private:
   const PluginConfig plugin_config_;

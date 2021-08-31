@@ -178,7 +178,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
                                binary_attr.getValue(), LLVM::Linkage::Internal);
 
   // Make sure the trailing zero is included in the constant.
-  auto kernel_name = launch_op.getKernelName();
+  auto kernel_name = launch_op.getKernelName().getValue();
   SmallString<128> kernel_name_buffer(kernel_name);
   kernel_name_buffer.push_back('\0');
 
@@ -200,8 +200,10 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
       launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
   auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
 
+  auto libraryLaunchNameAttr =
+      mlir::StringAttr::get(loc.getContext(), kTfWrapperLibaryLaunchHelperName);
   auto function = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
-      launch_op, kTfWrapperLibaryLaunchHelperName);
+      launch_op, libraryLaunchNameAttr);
   if (!function) {
     PatternRewriter::InsertionGuard guard(rewriter);
     auto function_type = LLVM::LLVMFunctionType::get(

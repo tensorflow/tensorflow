@@ -90,9 +90,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
   for (auto key : {"f", "Targuments"}) {
     graph_utils::CopyAttribute(key, map_node, &new_node);
   }
-  for (auto key : {"output_shapes", "output_types"}) {
-    graph_utils::CopyAttribute(key, batch_node, &new_node);
-  }
+  graph_utils::CopyShapesAndTypesAttrs(batch_node, &new_node);
 
   // Optional attributes.
   // TODO(jsimsa): Support `use_inter_op_parallelism` and `sloppy`.

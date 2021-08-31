@@ -232,6 +232,8 @@ upper_tabs:
         path: /lite/examples/style_transfer/overview
       - title: "Super resolution"
         path: /lite/examples/super_resolution/overview
+      - title: "Optical character recognition"
+        path: /lite/examples/optical_character_recognition/overview
       - heading: "Text"
       - title: "BERT Question Answer"
         path: /lite/examples/bert_qa/overview

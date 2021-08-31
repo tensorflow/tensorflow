@@ -3215,6 +3215,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",

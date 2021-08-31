@@ -3086,8 +3086,5 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass() {
   return std::make_unique<LegalizeTFL>();
 }
 
-static PassRegistration<LegalizeTFL> pass(
-    PASS_NAME, "Legalize from TensorFlow Lite to TOSA dialect");
-
 }  // namespace tosa
 }  // namespace mlir

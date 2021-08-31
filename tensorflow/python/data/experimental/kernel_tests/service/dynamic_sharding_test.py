@@ -230,7 +230,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
 
     # Create a dataset that samples each integer in `[0, num_datasets)`
     # with probability given by `weights[i]`.
-    ds = interleave_ops.sample_from_datasets(
+    ds = dataset_ops.Dataset.sample_from_datasets(
         [dataset_ops.Dataset.from_tensors(i).repeat() for i in range(classes)],
         weights)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
