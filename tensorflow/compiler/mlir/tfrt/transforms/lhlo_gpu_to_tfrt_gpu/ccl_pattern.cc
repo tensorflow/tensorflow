@@ -191,24 +191,25 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
 
-  if (srcOp.split_dimension().hasValue()) {
-    // TODO(hanbinyoon): Support the case of split dimension.
-    return rewriter.notifyMatchFailure(
-        srcOp,
-        "Split dimension (splitting inputs and concatenating outputs in that "
-        "dimension) is unimplemented.");
-  } else {
-    for (int i = 0; i < operands.size(); i++) {
-      xla::Shape shape = xla::TypeToShape(operands[i].getType());
-      auto nccl_data_type_or = ToNcclDataType(shape.element_type());
-      if (mlir::failed(nccl_data_type_or)) {
-        return rewriter.notifyMatchFailure(
-            srcOp, "Failed to convert operand data type to ncclDataType_t.");
-      }
-      ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+  for (int i = 0; i < operands.size(); i++) {
+    xla::Shape shape = xla::TypeToShape(operands[i].getType());
+    auto nccl_data_type_or = ToNcclDataType(shape.element_type());
+    if (mlir::failed(nccl_data_type_or)) {
+      return rewriter.notifyMatchFailure(
+          srcOp, "Failed to convert operand data type to ncclDataType_t.");
+    }
+    ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
 
-      Value input = mapping.lookup(operands[i]);
-      Value output = mapping.lookup(results[i]);
+    Value input = mapping.lookup(operands[i]);
+    Value output = mapping.lookup(results[i]);
+
+    if (srcOp.split_dimension().hasValue()) {
+      chain =
+          rewriter
+              .create<tfrt::gpu::CclAllToAllOp>(srcOp.getLoc(), handle, input,
+                                                output, nccl_data_type, chain)
+              .getResult();
+    } else {
       Value peer = rewriter.create<tfrt::compiler::ConstantI32Op>(
           srcOp.getLoc(), rewriter.getI32Type(), i);
 
