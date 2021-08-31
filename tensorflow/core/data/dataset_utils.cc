@@ -730,7 +730,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   return Status::OK();
 }
 
-Status CopyBatch(IteratorContext* ctx,
+Status CopyBatch(CopyBatchParams params,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  bool parallel_copy,
                  std::function<Status()> allocation_callback,
@@ -746,7 +746,7 @@ Status CopyBatch(IteratorContext* ctx,
     TensorShape first_element_shape(first_element.shape());
     TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
-    out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+    out_tensors->emplace_back(params.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
       return errors::ResourceExhausted(
@@ -785,7 +785,7 @@ Status CopyBatch(IteratorContext* ctx,
       Status status;
       mutex status_mu;
       BlockingCounter counter(num_batch_elements);
-      const auto num_threads = ctx->runner_threadpool_size();
+      const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
       for (size_t i = 0; i < num_threads; ++i) {
@@ -794,7 +794,7 @@ Status CopyBatch(IteratorContext* ctx,
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
         if (i < num_batch_elements % num_threads) ++length;
-        (*ctx->runner())([offset, length, &status, &status_mu, &counter,
+        (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
           for (size_t j = offset; j < offset + length; ++j) {
             {

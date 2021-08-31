@@ -404,9 +404,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                     RecordBufferEnqueue(ctx.get(), result->output);
                     return Status::OK();
                   };
-          status =
-              CopyBatch(ctx.get(), *batch_elements, dataset()->parallel_copy_,
-                        std::move(allocation_callback), &result->output);
+          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
+                             dataset()->parallel_copy_,
+                             std::move(allocation_callback), &result->output);
           result->status.Update(status);
         }
         CallCompleted(ctx, result);

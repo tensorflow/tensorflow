@@ -375,6 +375,17 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx) {
+  thread::ThreadPool* thread_pool =
+      ctx->device()->tensorflow_device_thread_pool();
+  if (thread_pool) {
+    return thread_pool->NumThreads();
+  } else {
+    static const int32_t kDefaultRunnerThreadpoolSize = port::MaxParallelism();
+    return kDefaultRunnerThreadpoolSize;
+  }
+}
+
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                     const IteratorBase* parent) {
   parent_ = parent;
