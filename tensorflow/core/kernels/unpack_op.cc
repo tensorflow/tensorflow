@@ -17,7 +17,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,12 +25,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
 
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
@@ -143,23 +142,22 @@ TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
-// A special GPU kernel for int32.
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("T"),
                         UnpackOp<CPUDevice, int64>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow
