@@ -1,4 +1,4 @@
-#Description
+# Description:
 # PluggableDevice Utils
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
