@@ -1882,7 +1882,7 @@ ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
   constant.2 = s32[] constant(64)
   tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
-  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,128]{0,1}, u32[], u32[], s32[]) collective-permute-start(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32}}
+  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,128]{0,1}, u32[], u32[]) collective-permute-start(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32}}
   ROOT collective-permute-done.1 = f32[128,128]{0,1} collective-permute-done(collective-permute-start.1)
 }
 
