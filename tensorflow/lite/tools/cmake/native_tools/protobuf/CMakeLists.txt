@@ -1,5 +1,5 @@
 #
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Builds the flatc compiler separately (e.g. for the purposes of TF Lite kernel tests cross-compilation
+# Builds the flatc compiler separately (e.g. for the purposes of TensorFlow Lite kernel tests cross-compilation
 # during which a natively compiled 'flatc' binary is required.
 
 cmake_minimum_required(VERSION 3.16)
-project(flatc C CXX)
+project(protoc C CXX)
 
-include(OverridableFetchContent)
-
-set(FLATC_EXCLUDE_FROM_ALL FALSE)
+set(PROTOC_EXCLUDE_FROM_ALL FALSE)
 
 # Install location of a (native) flatc compiler might be determined using the CMAKE_INSTALL_PREFIX variable.
 # If the user provides such location, the path gets cached during the first CMake run and used later
-# (for details see flatbuffers.cmake configuration).
+# (for details see protobuf.cmake configuration).
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(FLATC_INSTALL_PREFIX <INSTALL_DIR> CACHE PATH "Flatc installation directory")
+  set(PROTOC_INSTALL_PREFIX <INSTALL_DIR> CACHE PATH "Protoc installation directory")
 else()
-  set(FLATC_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} CACHE PATH "Flatc installation directory")
+  set(PROTOC_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} CACHE PATH "Protoc installation directory")
 endif()
 
-find_package(flatbuffers)
+set(protobuf_BUILD_TESTS OFF CACHE BOOL "Turn off protobuf unit tests")
+find_package(protobuf)
