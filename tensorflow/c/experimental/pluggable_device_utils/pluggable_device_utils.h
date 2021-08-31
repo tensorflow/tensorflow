@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_DEVICE_UTILS_PLUGGABLE_DEVICE_UTILS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_DEVICE_UTILS_PLUGGABLE_DEVICE_UTILS_H_
+
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/status.h"
+
+namespace pluggable_device {
 
 #define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME)    \
   do {                                                                    \
@@ -41,4 +44,5 @@ struct TFStatusDeleter {
   void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
 };
 
+}  // namespace pluggable_device
 #endif  // TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_DEVICE_UTILS_PLUGGABLE_DEVICE_UTILS_H_

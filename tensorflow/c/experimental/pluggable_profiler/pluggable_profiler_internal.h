@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+
 namespace tensorflow {
 namespace profiler {
 
@@ -27,6 +28,7 @@ using TFInitProfilerFn = void (*)(TF_ProfilerRegistrationParams* const,
                                   TF_Status* const);
 
 Status InitPluginProfiler(TFInitProfilerFn init_fn);
+
 }  // namespace profiler
 }  // namespace tensorflow
 #endif  // TENSORFLOW_C_EXPERIMENTAL_PLUGGABLE_PROFILER_PLUGGABLE_PROFILER_INTERNAL_H_

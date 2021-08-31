@@ -41,7 +41,7 @@ Status ValidateTPProfilerRegistrationParams(
 Status ValidateTPProfiler(const TP_Profiler& profiler) {
   VALIDATE_STRUCT_SIZE(TP_Profiler, profiler, TP_PROFILER_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_Profiler, profiler, type);
-  TF_RETURN_IF_ERROR(ValidateDeviceType(profiler.type));
+  TF_RETURN_IF_ERROR(pluggable_device::ValidateDeviceType(profiler.type));
   return Status::OK();
 }
 
@@ -71,19 +71,22 @@ class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
   }
 
   Status Start() override {
-    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    std::unique_ptr<TF_Status, pluggable_device::TFStatusDeleter> status(
+        TF_NewStatus());
     profiler_fns_.start(&profiler_, status.get());
     return tensorflow::StatusFromTF_Status(status.get());
   }
 
   Status Stop() override {
-    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    std::unique_ptr<TF_Status, pluggable_device::TFStatusDeleter> status(
+        TF_NewStatus());
     profiler_fns_.stop(&profiler_, status.get());
     return tensorflow::StatusFromTF_Status(status.get());
   }
 
   Status CollectData(XSpace* space) override {
-    std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+    std::unique_ptr<TF_Status, pluggable_device::TFStatusDeleter> status(
+        TF_NewStatus());
     // Get size of buffer required for Plugin to serialize XSpace into it.
     size_t size_in_bytes;
     profiler_fns_.collect_data_xspace(&profiler_, /*buffer=*/nullptr,
@@ -153,7 +156,8 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
   params.patch_version = TP_PATCH;
   params.profiler = &profiler;
   params.profiler_fns = &profiler_fns;
-  std::unique_ptr<TF_Status, TFStatusDeleter> status(TF_NewStatus());
+  std::unique_ptr<TF_Status, pluggable_device::TFStatusDeleter> status(
+      TF_NewStatus());
   init_fn(&params, status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(status.get()));
   TF_RETURN_IF_ERROR(ValidateTPProfilerRegistrationParams(params));

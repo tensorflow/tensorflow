@@ -17,6 +17,9 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
+
+namespace pluggable_device {
+
 tensorflow::Status ValidateDeviceType(tensorflow::StringPiece type) {
   // Validate device type. Device type must start with a capital letter and
   // consist of capital letters and underscores. Reasoning behind this decision:
@@ -40,3 +43,5 @@ tensorflow::Status ValidateDeviceType(tensorflow::StringPiece type) {
   }
   return tensorflow::Status::OK();
 }
+
+}  // namespace pluggable_device

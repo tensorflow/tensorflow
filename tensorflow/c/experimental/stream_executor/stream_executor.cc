@@ -49,8 +49,8 @@ port::Status ValidateSPPlatform(const SP_Platform& platform) {
   VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
   VALIDATE_MEMBER(SP_Platform, platform, name);
   VALIDATE_MEMBER(SP_Platform, platform, type);
-  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.name));
-  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.type));
+  TF_RETURN_IF_ERROR(pluggable_device::ValidateDeviceType(platform.name));
+  TF_RETURN_IF_ERROR(pluggable_device::ValidateDeviceType(platform.type));
   // `visible_device_count` could be 0 at initialization time.
   return port::Status::OK();
 }
