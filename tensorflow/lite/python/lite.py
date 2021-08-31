@@ -708,7 +708,6 @@ class TFLiteConverterBase(object):
     """Apply optimizations on a TFLite model."""
 
     if quant_mode.is_integer_quantize():
-
       in_type, out_type = self.inference_input_type, self.inference_output_type
 
       if quant_mode.is_post_training_integer_quantize():
@@ -721,7 +720,12 @@ class TFLiteConverterBase(object):
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
-      model = _modify_model_io_type(model, m_in_type, m_out_type)
+      # Skip updating model io types if MLIR quantizer already takes care of it
+      if not (quant_mode.is_post_training_integer_quantize() and
+              self.experimental_new_quantizer and quant_io and
+              (m_in_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32]) and
+              (m_out_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32])):
+        model = _modify_model_io_type(model, m_in_type, m_out_type)
 
     if self._sparsify_model():
       model = _mlir_sparsify(model)
@@ -1884,7 +1888,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           **converter_kwargs)
 
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=not self.experimental_new_converter)
+        result, quant_mode, quant_io=self.experimental_new_quantizer)
 
   def get_input_arrays(self):
     """Returns a list of the names of the input tensors.

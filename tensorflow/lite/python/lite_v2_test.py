@@ -1672,8 +1672,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
 
+  @parameterized.named_parameters(
+      ('_DefaultFLOAT32InputOutput', dtypes.float32),
+      ('_INT8InputOutput', dtypes.int8), ('_UINT8InputOutput', dtypes.uint8))
   @test_util.run_v2_only
-  def testMultipleFunctionQuantizedModel(self):
+  def testMultipleFunctionQuantizedModel(self, inference_input_output_type):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
     input_data = tf.constant(1., shape=[1])
@@ -1699,6 +1702,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.inference_input_type = inference_input_output_type
+    converter.inference_output_type = inference_input_output_type
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
@@ -1717,15 +1722,20 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
 
     # Verify the Signature runner executions.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1,)).astype(
+            inference_input_output_type.as_numpy_dtype))
     add_signature_runner = interpreter.get_signature_runner('add')
     add_output = add_signature_runner(x=input_data)
     self.assertIsNotNone(add_output['output_0'])
     input_details = add_signature_runner.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual('add_x:0', input_details['x']['name'])
-    self.assertEqual(np.float32, input_details['x']['dtype'])
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details['x']['dtype'])
     self.assertTrue(([1] == input_details['x']['shape']).all())
-    self.assertEqual((0.0, 0), input_details['x']['quantization'])
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), input_details['x']['quantization'])
 
     sub_signature_runner = interpreter.get_signature_runner('sub')
     sub_output = sub_signature_runner(x=input_data)
@@ -1734,9 +1744,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertLen(output_details, 1)
     self.assertEqual('StatefulPartitionedCall:0',
                      output_details['output_0']['name'])
-    self.assertEqual(np.float32, output_details['output_0']['dtype'])
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details['output_0']['dtype'])
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
-    self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
 
   @test_util.run_v2_only
   def testMultipleFunctionModelWithSharedWeight(self):
