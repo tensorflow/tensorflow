@@ -835,6 +835,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/coordinator:coordinator_context",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
     ],
@@ -2022,6 +2023,7 @@ distribute_py_test(
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
+        ":combinations",
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",

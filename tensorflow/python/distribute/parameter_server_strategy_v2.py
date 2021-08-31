@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
 
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
@@ -45,9 +46,15 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
+
+cluster_coordinator = LazyLoader(
+    "cluster_coordinator", globals(),
+    "tensorflow.python.distribute.coordinator.cluster_coordinator"
+)
 
 
 @tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
@@ -564,6 +571,7 @@ class ParameterServerStrategyV2Extended(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
     self._allow_run_without_coordinator = False
+    self._coordinator_creation_lock = threading.Lock()
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -778,6 +786,29 @@ class ParameterServerStrategyV2Extended(
             var.name, var.shape, (self._variable_count % self._num_ps))
         self._variable_count += 1
         return var
+
+  def _resource_creator_scope(self):
+
+    with self._coordinator_creation_lock:
+      if not self._container_strategy()._cluster_coordinator:  # pylint: disable=protected-access
+        cluster_coordinator.ClusterCoordinator(
+            strategy=self._container_strategy())
+
+    # TODO(wxinyi): We should warn the user of the inefficiency of creating
+    # `StaticHashTable` inside a `@tf.function`-wrapped `dataset_fn` to be
+    # distributed with `distribute_datasets_from_function` and
+    # `create_per_worker_dataset`. This is because the `dataset_fn` does not
+    # use the same `default_graph` as `scope` to which the
+    # `resource_creator_stack` belongs. Thus, `StaticHashTable` creation inside
+    # `dataset_fn` is not intercepted. And since its resource creation under a
+    # `tf.function` is lifted out, all workers will share the same resource on
+    # the coordinator which incurs worker-coordinator communication overhead.
+
+    def lookup_creator(next_creator, *args, **kwargs):
+      return ps_values.DistributedTable(self._container_strategy(),
+                                        lambda: next_creator(*args, **kwargs))  # pylint: disable=protected-access
+
+    return ops.resource_creator_scope("StaticHashTable", lookup_creator)
 
   def _assert_used_with_cluster_coordinator(self):
     if (not self._used_with_coordinator and
