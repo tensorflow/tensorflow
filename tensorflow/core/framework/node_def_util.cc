@@ -137,8 +137,9 @@ string FormatNodeDefForError(
   return !has_experimental_debug_info ||
                  experimental_debug_info.original_node_names().empty()
              ? errors::FormatNodeNameForError(string(node_name))
-             : errors::FormatNodeNamesForError(
-                   experimental_debug_info.original_node_names());
+             : errors::FormatOriginalNodeLocationForError(
+                   experimental_debug_info.original_node_names(),
+                   experimental_debug_info.original_func_names());
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {

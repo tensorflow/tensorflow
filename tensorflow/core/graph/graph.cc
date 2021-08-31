@@ -246,6 +246,16 @@ void Node::set_original_node_names(const std::vector<std::string>& names) {
   }
 }
 
+void Node::set_original_func_names(const std::vector<std::string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_func_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_func_names() = {names.begin(), names.end()};
+  }
+}
+
 Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
     return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
@@ -334,11 +344,12 @@ NodeDebugInfo::NodeDebugInfo(
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
     : name(node_name) {
   if (has_experimental_debug_info) {
-    const auto& names = experimental_debug_info.original_node_names();
-    original_node_names.assign(names.begin(), names.end());
+    const auto& node_names = experimental_debug_info.original_node_names();
+    original_node_names.assign(node_names.begin(), node_names.end());
+    const auto& func_names = experimental_debug_info.original_func_names();
+    original_func_names.assign(func_names.begin(), func_names.end());
   }
 }
-
 // InputTensor
 
 bool InputTensor::operator==(const InputTensor& other) const {

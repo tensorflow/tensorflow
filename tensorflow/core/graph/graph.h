@@ -139,6 +139,7 @@ class Node {
   // Sets 'original_node_names' field of this node's DebugInfo proto to
   // 'names'.
   void set_original_node_names(const std::vector<string>& names);
+  void set_original_func_names(const std::vector<string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
@@ -363,6 +364,7 @@ class Node {
 struct NodeDebugInfo {
   const std::string name;
   std::vector<string> original_node_names;
+  std::vector<string> original_func_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);

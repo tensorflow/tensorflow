@@ -23,6 +23,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import os
+import re
 import sys
 import time
 import weakref
@@ -76,6 +77,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -4778,6 +4780,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return v_plus_one
 
       self.assertAllEqual(get_v_plus_one(), 2.0)
+
+  def testOpExpandErrorMessage(self):
+
+    @def_function.function
+    def test_fn():
+      if array_ops.constant(False):
+        return array_ops.constant(1)
+      else:
+        return script_ops.eager_py_func(
+            func=lambda: array_ops.constant([2.]), inp=(), Tout=dtypes.int32)
+
+    error_pattern = re.compile(r'originated from.*func=lambda', re.DOTALL)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, error_pattern):
+      test_fn()
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
