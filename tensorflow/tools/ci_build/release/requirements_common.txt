@@ -32,5 +32,3 @@ tf-estimator-nightly ~= 2.6.0.dev
 grpcio ~= 1.38.1
 portpicker ~= 1.4.0
 scipy ~= 1.5.4  # NOTE: not the latest version due to py3.6
-jax ~= 0.2.18
-jaxlib ~= 0.1.70
