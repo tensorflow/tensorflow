@@ -677,6 +677,22 @@ TEST(TestKernel, TestHostMemory) {
     EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1));
     EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0));
     EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1));
+
+    EXPECT_DEATH({
+      TF_IsHostMemoryInput(ctx, -1);
+    }, "Check failed: i >= 0");
+
+    EXPECT_DEATH({
+      TF_IsHostMemoryInput(ctx, 2);
+    }, "Check failed: i < cc_ctx->num_inputs()");
+
+    EXPECT_DEATH({
+      TF_IsHostMemoryOutput(ctx, -1);
+    }, "Check failed: i >= 0");
+
+    EXPECT_DEATH({
+      TF_IsHostMemoryOutput(ctx, 2);
+    }, "Check failed: i < cc_ctx->num_outputs()");
   };
 
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
