@@ -12,6 +12,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_copts",
@@ -51,6 +52,48 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow/compiler/xla:friends",
+    ],
+)
+
+# This target checks that we are not accidentally adding TFRT dependencies.
+# It captures the current state of dependencies and might need to get updated
+# from time to time.
+check_deps(
+    name = "tfrt_deps_check",
+    disallowed_deps = select({
+        ":is_bef_thunk_enabled": [],
+        ":is_bef_executable_enabled": [],
+        "//conditions:default": [
+            "@tf_runtime//:basic_kernels_alwayslink",
+            "@tf_runtime//:basic_kernels_opdefs",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
+            "@tf_runtime//:tensor_opdefs",
+            "@tf_runtime//:OpBaseTdFiles",
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_opdefs",
+            "@tf_runtime//backends/gpu:gpu_types",
+            "@tf_runtime//backends/gpu:gpu_wrapper",
+            "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
+        ],
+    }),
+    deps = [
+        # Targets that are included in CPU builds should not depend on TFRT.
+        ":gpu_device_info",
+        ":gpu_executable_run_options",
+        ":ir_emission_utils",
+        ":launch_dimensions",
+        ":parallel_loop_emitter",
+        ":target_util",
+        # XLIR targets should only depend on TFRT if BEF thunk/executable is
+        # enabled.
+        ":gpu_compiler",
+        ":gpu_executable",
+        ":xlir_kernels",
+        ":nccl_utils",
     ],
 )
 
