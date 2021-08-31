@@ -129,16 +129,16 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 StatusOr<RCReference<RequestContext>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
     const ModelMetadata& model_metadata,
-    const tensorflow::tfrt_stub::Runtime* runtime,
+    const tensorflow::tfrt_stub::Runtime& runtime,
     ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
-  auto* host = runtime->core_runtime()->GetHostContext();
+  auto* host = runtime.core_runtime()->GetHostContext();
   // Create request context and prepare deadline tracker.
   RequestContextBuilder request_context_builder(host, resource_context,
                                                 GetNextStepId());
 
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  auto status = runtime->work_queue()->InitializeRequest(
+  auto status = runtime.work_queue()->InitializeRequest(
       &request_context_builder, &intra_op_threadpool);
   if (!status.ok()) return status;
 
@@ -233,7 +233,7 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
 tensorflow::Status RunInitializers(
     const InitializersAndSignatures& initializers_and_signatures,
     const ModelMetadata& model_metadata, tfrt::BEFFile* bef_file,
-    const tensorflow::tfrt_stub::Runtime* runtime,
+    const tensorflow::tfrt_stub::Runtime& runtime,
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(
@@ -448,7 +448,7 @@ tensorflow::Status InitSavedModel(
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
   TF_RETURN_IF_ERROR(RunInitializers(
       initializers_and_signatures, options.model_metadata, bef_file,
-      options.runtime, resource_context, fallback_state));
+      *options.runtime, resource_context, fallback_state));
 
   return tensorflow::Status::OK();
 }
@@ -594,7 +594,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
 
     auto resource_context = CreateResourceContext(
-        options.runtime, options.compile_options.tpu_target);
+        *options.runtime, options.compile_options.tpu_target);
     TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
                                       bef_file.get(), options,
                                       resource_context.get(), *fallback_state));
@@ -882,10 +882,10 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 }
 
 std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
-    const tensorflow::tfrt_stub::Runtime* runtime,
+    const tensorflow::tfrt_stub::Runtime& runtime,
     tensorflow::TfrtTpuInfraTarget tpu_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
-  runtime->CreateRuntimeResources(resource_context.get());
+  runtime.CreateRuntimeResources(resource_context.get());
 
   // TODO(b/178227859): We should make TPU resource init code pluggable, as
   // opposed to linking it in. We can do this by adding a callback with
@@ -1095,7 +1095,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
                       OpenBefFile(options_, loading_result->bef));
   TF_RETURN_IF_ERROR(RunInitializers(
       /*initializers_and_signatures=*/{}, options_.model_metadata,
-      loading_result->bef_file.get(), options_.runtime,
+      loading_result->bef_file.get(), *options_.runtime,
       loading_result->resource_context.get(), *fallback_state_));
 
   // Store loading_result in cache.
@@ -1166,7 +1166,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
     absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context) {
-  auto* host = runtime()->core_runtime()->GetHostContext();
+  auto* host = runtime().core_runtime()->GetHostContext();
 
   TF_ASSIGN_OR_RETURN(
       auto req_ctx,

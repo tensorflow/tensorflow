@@ -163,7 +163,10 @@ class SavedModel {
   }
   virtual ~SavedModel();
 
-  const tensorflow::tfrt_stub::Runtime* runtime() const { return runtime_; }
+  const tensorflow::tfrt_stub::Runtime& runtime() const {
+    DCHECK(runtime_);
+    return *runtime_;
+  }
   HostContext* GetHostContext() const;
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
@@ -290,7 +293,7 @@ class SavedModelImpl final : public SavedModel {
   //
   // TODO(b/178227859): Remove the need for the special handling for TPU here.
   static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-      const tensorflow::tfrt_stub::Runtime* runtime,
+      const tensorflow::tfrt_stub::Runtime& runtime,
       tensorflow::TfrtTpuInfraTarget tpu_target);
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
