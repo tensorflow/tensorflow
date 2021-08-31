@@ -20,9 +20,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -33,7 +35,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
+#include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
@@ -586,6 +590,108 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
                                            output_type.getShape(), &rewriter);
   rewriter.replaceOp(concat_op, output_reshape_op.getResult());
 
+  return success();
+}
+
+// ================== mean ========================
+
+// Currently NNAPI does not support mean op with different scales (quantization
+// cases), and in TFLite avg_pool will ensure the input & output has the same
+// scales.
+LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
+    TFL::MeanOp mean_op, PatternRewriter& rewriter) const {
+  auto input = mean_op.input();
+  auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+  // Only 4d is supported here.
+  if (!input_type || input_type.getRank() != 4) return failure();
+
+  // The axes has to be [1, 2].
+  DenseElementsAttr axis_const;
+  if (!matchPattern(mean_op.axis(), m_Constant(&axis_const))) return failure();
+  if (axis_const.size() != 2) return failure();
+  auto axis_values = axis_const.getIntValues();
+  int i = 1;
+  for (auto axis_value : axis_values) {
+    if (axis_value != i++) return failure();
+  }
+
+  auto output = mean_op.output();
+  auto output_type = output.getType().dyn_cast_or_null<RankedTensorType>();
+  if (!output_type) return failure();
+
+  auto input_quantized_type =
+      quant::QuantizedType::getQuantizedElementType(input_type);
+  auto output_quantized_type =
+      quant::QuantizedType::getQuantizedElementType(output_type);
+  // If both the input & output types are non-quantized, they will be both
+  // nullptrs.
+  if (input_quantized_type != output_quantized_type) {
+    return failure();
+  }
+
+  int batch = input_type.getDimSize(0);
+  int height = input_type.getDimSize(1);
+  int width = input_type.getDimSize(2);
+  int channel = input_type.getDimSize(3);
+
+  auto avg_pool_output_type = RankedTensorType::get(
+      {batch, 1, 1, channel}, input_type.getElementType());
+  auto avg_pool = rewriter.create<TFL::AveragePool2DOp>(
+      mean_op.getLoc(), avg_pool_output_type, input,
+      rewriter.getI32IntegerAttr(height), rewriter.getI32IntegerAttr(width),
+      rewriter.getStringAttr("VALID"), rewriter.getI32IntegerAttr(1),
+      rewriter.getI32IntegerAttr(1), rewriter.getStringAttr("NONE"));
+
+  auto value_to_replace = avg_pool.getResult();
+
+  // If it's not keep dim, we need to insert a reshape after the average
+  // pool.
+  if (!mean_op.keep_dims()) {
+    // Insert the reshape.
+    SmallVector<int64_t, 2> new_shape({batch, channel});
+    auto reshape_op =
+        InsertReshapeOp(mean_op.getLoc(), avg_pool.getResult(),
+                        input_type.getElementType(), new_shape, &rewriter);
+    value_to_replace = reshape_op.getResult();
+  }
+
+  rewriter.replaceOp(mean_op, value_to_replace);
+  return success();
+}
+
+// Insert a "requant" op after the mean op if the mean has different scales for
+// input & output.
+// Please note: THIS IS NOT a mathmetically-equivalent transformation and it may
+// loose accuracy, so we need to use this very very carefully.
+LogicalResult InsertRequantForReduceMean::matchAndRewrite(
+    TFL::MeanOp mean_op, PatternRewriter& rewriter) const {
+  auto input = mean_op.input();
+  auto input_type = input.getType().dyn_cast_or_null<ShapedType>();
+  if (!input_type) return failure();
+
+  // Only need to do this for quantized input.
+  auto input_quantized_type =
+      quant::QuantizedType::getQuantizedElementType(input_type);
+  if (!input_quantized_type) return failure();
+
+  auto output = mean_op.output();
+  auto output_type = output.getType().dyn_cast_or_null<ShapedType>();
+  if (!output_type) return failure();
+  auto output_quantized_type =
+      quant::QuantizedType::getQuantizedElementType(output_type);
+
+  // If the quantized type is the same, we don't need to do anything.
+  if (input_quantized_type == output_quantized_type) return failure();
+
+  auto new_output_type =
+      RankedTensorType::get(output_type.getShape(), input_quantized_type);
+  auto new_mean_op =
+      rewriter.create<TFL::MeanOp>(mean_op->getLoc(), new_output_type, input,
+                                   mean_op.axis(), mean_op.keep_dims());
+
+  // Insert a requant op.
+  rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(
+      mean_op, output_type, new_mean_op, mlir::TypeAttr::get(output_type));
   return success();
 }
 
