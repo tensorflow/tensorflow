@@ -135,13 +135,13 @@ class Capsule(Layer):
         config = super(Capsule, self).get_config()
         config = {
             'num_capsule':
-                num_capsule.serialize(self.num_capsule)
+                num_capsule.serialize(self.num_capsule),
             'dim_capsule':
-                num_capsule.serialize(self.dim_capsule)
+                num_capsule.serialize(self.dim_capsule),
             'routings':
-                num_capsule.serialize(self.routings)
+                num_capsule.serialize(self.routings),
             'share_weights':
-                num_capsule.serialize(self.share_weights)
+                num_capsule.serialize(self.share_weights),
             'activation':
                 activations.serialize(self.activation),
             'kernel_initializer':
