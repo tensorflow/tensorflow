@@ -233,7 +233,7 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
 tensorflow::Status RunInitializers(
     const InitializersAndSignatures& initializers_and_signatures,
     const ModelMetadata& model_metadata, tfrt::BEFFile* bef_file,
-    tensorflow::tfrt_stub::Runtime* runtime,
+    const tensorflow::tfrt_stub::Runtime* runtime,
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(
@@ -882,7 +882,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 }
 
 std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
-    tensorflow::tfrt_stub::Runtime* runtime,
+    const tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtTpuInfraTarget tpu_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime->CreateRuntimeResources(resource_context.get());
