@@ -1164,8 +1164,260 @@ HloSharding InferDotOperandSharding(
   return sharding;
 }
 
+// Tries to update the sharding of the specified instruction based on its users
+// and returns true if the sharding of the instruction have been changed and
+// false otherwise.
+bool InferShardingFromUsers(HloInstruction* instruction,
+                            const ComputationMap& computation_map,
+                            int64_t aggressiveness, bool is_spmd) {
+  if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
+    return false;
+  }
+  // Do not change manual sharding.
+  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
+    return false;
+  }
+  // Propagate manual sharding.
+  if (!instruction->has_sharding() && instruction->shape().IsArray()) {
+    for (const HloInstruction* user : instruction->users()) {
+      if (!user->has_sharding() || !user->sharding().IsManual() ||
+          user->IsCustomCall("SPMDFullToShardShape"))
+        continue;
+      instruction->set_sharding(
+          HloSharding::Manual(user->sharding().metadata()));
+      return true;
+    }
+  }
+  if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
+    return false;
+  }
+  bool improved_sharding = false;
+  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
+  for (const HloInstruction* user : instruction->users()) {
+    absl::optional<HloSharding> user_sharding =
+        ShardingPropagation::GetShardingFromUser(*instruction, *user,
+                                                 aggressiveness, is_spmd);
+    if (user_sharding) {
+      improved_sharding |= MaybeImproveInstructionSharding(
+          std::move(*user_sharding), instruction, may_combine_partial_sharding);
+    }
+  }
+  return improved_sharding;
+}
+
+// Checks if two HloShardings have the same metadata attached.
+bool SameShardingMetadata(const HloSharding& a, const HloSharding& b) {
+  DCHECK_EQ(a, b);
+
+  auto same_metadata = [](absl::Span<const OpMetadata> a,
+                          absl::Span<const OpMetadata> b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0, e = a.size(); i < e; ++i) {
+      if (!protobuf_util::ProtobufEquals(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if (a.IsTuple()) {
+    for (int i = 0, e = a.tuple_elements().size(); i < e; ++i) {
+      if (!same_metadata(a.tuple_elements()[i].metadata(),
+                         b.tuple_elements()[i].metadata())) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return same_metadata(a.metadata(), b.metadata());
+  }
+}
+
+// Assigns metadata to optional sharding on instructions if instructions have
+// metadata. If sharding already has some metadata, no new metadata will be
+// added.
+bool AssignShardingMetadata(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      const auto& metadata = instruction->metadata();
+      if (!instruction->has_sharding() || metadata.ByteSizeLong() == 0) {
+        continue;
+      }
+
+      HloSharding sharding_with_metadata =
+          instruction->sharding().WithMetadata({metadata}, /*overwrite=*/false);
+      if (!SameShardingMetadata(instruction->sharding(),
+                                sharding_with_metadata)) {
+        instruction->set_sharding(std::move(sharding_with_metadata));
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+// Removes all sharding metadata from shardings on instructions.
+bool RemoveShardingMetadata(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (!instruction->has_sharding()) {
+        continue;
+      }
+      HloSharding sharding_no_metadata =
+          instruction->sharding().WithoutMetadata();
+      if (!SameShardingMetadata(instruction->sharding(),
+                                sharding_no_metadata)) {
+        instruction->set_sharding(std::move(sharding_no_metadata));
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+// Remove Sharding custom-call instruction by folding the sharding attribute
+// to its operand. If the operand already has a different sharding, insert a
+// copy node for reshard.
+StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
+  bool changed = false;
+
+  for (HloComputation* computation : module->computations()) {
+    auto instructions = computation->MakeInstructionPostOrder();
+    std::reverse(instructions.begin(), instructions.end());
+    for (HloInstruction* instruction : instructions) {
+      if (!instruction->IsCustomCall("Sharding")) {
+        continue;
+      }
+      TF_RET_CHECK(instruction->has_sharding())
+          << "Sharding instruction must have a sharding attribute";
+      const HloSharding& sharding = instruction->sharding();
+
+      // If the operand has a different sharding from the current sharding
+      // instruction, create a copy node. Otherwise, just remove the sharding
+      // instruction and set the operand sharding.
+      if (instruction->operand(0)->has_sharding() &&
+          instruction->operand(0)->sharding() != sharding) {
+        auto copy = computation->AddInstruction(
+            HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
+                                        instruction->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
+        copy->set_sharding(sharding);
+      } else {
+        instruction->mutable_operand(0)->set_sharding(sharding);
+        TF_RETURN_IF_ERROR(
+            instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+      }
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// If a while contains a channel instruction on device D, check that any other
+// instructions with a device assignment are on D. Further, annotate the root
+// instruction of the while body to ensure that HLO partitioning will keep the
+// entire while instruction on D.
+Status CheckAndUpdateDeviceAssignmentsInWhileBody(
+    HloInstruction* while_instruction) {
+  auto bad_status = [](HloInstruction* instruction, int64_t device,
+                       HloInstruction* channel_instruction,
+                       int64_t correct_device) {
+    return FailedPrecondition(
+        "Instruction: %s is on device: %d, which conflicts with device: %d "
+        "of channel instruction: %s",
+        instruction->name(), device, correct_device,
+        channel_instruction->name());
+  };
+
+  CHECK_EQ(while_instruction->opcode(), HloOpcode::kWhile);
+  HloComputation* while_body = while_instruction->while_body();
+  // Maps a device number to an instruction in the while_body with that
+  // device assignment.
+  std::map<int64_t, HloInstruction*> devices_to_instructions;
+  absl::optional<int64_t> unique_device = absl::nullopt;
+  HloInstruction* channel_instruction = nullptr;
+
+  for (HloInstruction* instruction : while_body->instructions()) {
+    if (instruction->sharding_unique_device()) {
+      auto opcode = instruction->opcode();
+      int64_t device = *instruction->sharding_unique_device();
+      if (unique_device.has_value()) {
+        if (*unique_device != device) {
+          return bad_status(instruction, device, channel_instruction,
+                            *unique_device);
+        }
+      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+                 // Cross-replica AllReduces don't have a channel_id, and we
+                 // don't enforce any invariant about their device assignment.
+                 ((opcode == HloOpcode::kAllReduce ||
+                   opcode == HloOpcode::kReduceScatter) &&
+                  instruction->channel_id())) {
+        channel_instruction = instruction;
+        unique_device = device;
+        if (!devices_to_instructions.empty()) {
+          for (auto it = devices_to_instructions.begin();
+               it != devices_to_instructions.end(); ++it) {
+            if (*unique_device != it->first) {
+              return bad_status(it->second, it->first, channel_instruction,
+                                *unique_device);
+            }
+          }
+        }
+      } else {
+        devices_to_instructions[device] = instruction;
+      }
+    }
+  }
+
+  if (unique_device.has_value()) {
+    auto while_device = while_instruction->sharding_unique_device();
+    if (while_device.has_value() && *unique_device != *while_device) {
+      return bad_status(while_instruction, *while_device, channel_instruction,
+                        *unique_device);
+    }
+    auto body_root = while_body->root_instruction();
+    auto root_device = body_root->sharding_unique_device();
+    if (!root_device.has_value()) {
+      body_root->set_device_sharding(*unique_device);
+    } else if (*unique_device != *root_device) {
+      return bad_status(body_root, *root_device, channel_instruction,
+                        *unique_device);
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+/*static*/ Status ShardingPropagation::NormalizeDomain(
+    const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
+  if (metadata != nullptr) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
+                        ShardingMetadata::ToShardingMetadata(metadata));
+    const auto& sharding = sharding_metadata->sharding();
+    if (sharding != nullptr) {
+      bool is_spatially_partitioned = !sharding->HasUniqueDevice();
+      if (sharding->IsTuple()) {
+        is_spatially_partitioned = absl::c_any_of(
+            sharding->tuple_elements(),
+            [](const HloSharding& s) { return !s.HasUniqueDevice(); });
+      }
+      if (is_spatially_partitioned) {
+        for (HloInstruction* d : domain.exit_domains) {
+          d->mutable_operand(0)->set_sharding(*sharding);
+        }
+        return Status::OK();
+      }
+    }
+  }
+  return ShardingMetadata::NormalizeShardingDomain(domain, metadata);
+}
+
 // Return the sharding that should be propagated from user to instruction.
-absl::optional<HloSharding> GetShardingFromUser(
+absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
     int64_t aggressiveness, bool is_spmd) {
   if (!CanPropagateThroughAtAgressiveLevel(user, aggressiveness)) {
@@ -1467,257 +1719,6 @@ absl::optional<HloSharding> GetShardingFromUser(
       return absl::nullopt;
     }
   }
-}
-
-// Tries to update the sharding of the specified instruction based on its users
-// and returns true if the sharding of the instruction have been changed and
-// false otherwise.
-bool InferShardingFromUsers(HloInstruction* instruction,
-                            const ComputationMap& computation_map,
-                            int64_t aggressiveness, bool is_spmd) {
-  if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
-    return false;
-  }
-  // Do not change manual sharding.
-  if (instruction->has_sharding() && instruction->sharding().IsManual()) {
-    return false;
-  }
-  // Propagate manual sharding.
-  if (!instruction->has_sharding() && instruction->shape().IsArray()) {
-    for (const HloInstruction* user : instruction->users()) {
-      if (!user->has_sharding() || !user->sharding().IsManual() ||
-          user->IsCustomCall("SPMDFullToShardShape"))
-        continue;
-      instruction->set_sharding(
-          HloSharding::Manual(user->sharding().metadata()));
-      return true;
-    }
-  }
-  if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
-    return false;
-  }
-  bool improved_sharding = false;
-  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
-  for (const HloInstruction* user : instruction->users()) {
-    absl::optional<HloSharding> user_sharding =
-        GetShardingFromUser(*instruction, *user, aggressiveness, is_spmd);
-    if (user_sharding) {
-      improved_sharding |= MaybeImproveInstructionSharding(
-          std::move(*user_sharding), instruction, may_combine_partial_sharding);
-    }
-  }
-  return improved_sharding;
-}
-
-// Checks if two HloShardings have the same metadata attached.
-bool SameShardingMetadata(const HloSharding& a, const HloSharding& b) {
-  DCHECK_EQ(a, b);
-
-  auto same_metadata = [](absl::Span<const OpMetadata> a,
-                          absl::Span<const OpMetadata> b) {
-    if (a.size() != b.size()) return false;
-    for (int i = 0, e = a.size(); i < e; ++i) {
-      if (!protobuf_util::ProtobufEquals(a[i], b[i])) {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  if (a.IsTuple()) {
-    for (int i = 0, e = a.tuple_elements().size(); i < e; ++i) {
-      if (!same_metadata(a.tuple_elements()[i].metadata(),
-                         b.tuple_elements()[i].metadata())) {
-        return false;
-      }
-    }
-    return true;
-  } else {
-    return same_metadata(a.metadata(), b.metadata());
-  }
-}
-
-// Assigns metadata to optional sharding on instructions if instructions have
-// metadata. If sharding already has some metadata, no new metadata will be
-// added.
-bool AssignShardingMetadata(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      const auto& metadata = instruction->metadata();
-      if (!instruction->has_sharding() || metadata.ByteSizeLong() == 0) {
-        continue;
-      }
-
-      HloSharding sharding_with_metadata =
-          instruction->sharding().WithMetadata({metadata}, /*overwrite=*/false);
-      if (!SameShardingMetadata(instruction->sharding(),
-                                sharding_with_metadata)) {
-        instruction->set_sharding(std::move(sharding_with_metadata));
-        changed = true;
-      }
-    }
-  }
-  return changed;
-}
-
-// Removes all sharding metadata from shardings on instructions.
-bool RemoveShardingMetadata(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (!instruction->has_sharding()) {
-        continue;
-      }
-      HloSharding sharding_no_metadata =
-          instruction->sharding().WithoutMetadata();
-      if (!SameShardingMetadata(instruction->sharding(),
-                                sharding_no_metadata)) {
-        instruction->set_sharding(std::move(sharding_no_metadata));
-        changed = true;
-      }
-    }
-  }
-  return changed;
-}
-
-// Remove Sharding custom-call instruction by folding the sharding attribute
-// to its operand. If the operand already has a different sharding, insert a
-// copy node for reshard.
-StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
-  bool changed = false;
-
-  for (HloComputation* computation : module->computations()) {
-    auto instructions = computation->MakeInstructionPostOrder();
-    std::reverse(instructions.begin(), instructions.end());
-    for (HloInstruction* instruction : instructions) {
-      if (!instruction->IsCustomCall("Sharding")) {
-        continue;
-      }
-      TF_RET_CHECK(instruction->has_sharding())
-          << "Sharding instruction must have a sharding attribute";
-      const HloSharding& sharding = instruction->sharding();
-
-      // If the operand has a different sharding from the current sharding
-      // instruction, create a copy node. Otherwise, just remove the sharding
-      // instruction and set the operand sharding.
-      if (instruction->operand(0)->has_sharding() &&
-          instruction->operand(0)->sharding() != sharding) {
-        auto copy = computation->AddInstruction(
-            HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
-                                        instruction->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
-        copy->set_sharding(sharding);
-      } else {
-        instruction->mutable_operand(0)->set_sharding(sharding);
-        TF_RETURN_IF_ERROR(
-            instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
-      }
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-// If a while contains a channel instruction on device D, check that any other
-// instructions with a device assignment are on D. Further, annotate the root
-// instruction of the while body to ensure that HLO partitioning will keep the
-// entire while instruction on D.
-Status CheckAndUpdateDeviceAssignmentsInWhileBody(
-    HloInstruction* while_instruction) {
-  auto bad_status = [](HloInstruction* instruction, int64_t device,
-                       HloInstruction* channel_instruction,
-                       int64_t correct_device) {
-    return FailedPrecondition(
-        "Instruction: %s is on device: %d, which conflicts with device: %d "
-        "of channel instruction: %s",
-        instruction->name(), device, correct_device,
-        channel_instruction->name());
-  };
-
-  CHECK_EQ(while_instruction->opcode(), HloOpcode::kWhile);
-  HloComputation* while_body = while_instruction->while_body();
-  // Maps a device number to an instruction in the while_body with that
-  // device assignment.
-  std::map<int64_t, HloInstruction*> devices_to_instructions;
-  absl::optional<int64_t> unique_device = absl::nullopt;
-  HloInstruction* channel_instruction = nullptr;
-
-  for (HloInstruction* instruction : while_body->instructions()) {
-    if (instruction->sharding_unique_device()) {
-      auto opcode = instruction->opcode();
-      int64_t device = *instruction->sharding_unique_device();
-      if (unique_device.has_value()) {
-        if (*unique_device != device) {
-          return bad_status(instruction, device, channel_instruction,
-                            *unique_device);
-        }
-      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
-                 // Cross-replica AllReduces don't have a channel_id, and we
-                 // don't enforce any invariant about their device assignment.
-                 ((opcode == HloOpcode::kAllReduce ||
-                   opcode == HloOpcode::kReduceScatter) &&
-                  instruction->channel_id())) {
-        channel_instruction = instruction;
-        unique_device = device;
-        if (!devices_to_instructions.empty()) {
-          for (auto it = devices_to_instructions.begin();
-               it != devices_to_instructions.end(); ++it) {
-            if (*unique_device != it->first) {
-              return bad_status(it->second, it->first, channel_instruction,
-                                *unique_device);
-            }
-          }
-        }
-      } else {
-        devices_to_instructions[device] = instruction;
-      }
-    }
-  }
-
-  if (unique_device.has_value()) {
-    auto while_device = while_instruction->sharding_unique_device();
-    if (while_device.has_value() && *unique_device != *while_device) {
-      return bad_status(while_instruction, *while_device, channel_instruction,
-                        *unique_device);
-    }
-    auto body_root = while_body->root_instruction();
-    auto root_device = body_root->sharding_unique_device();
-    if (!root_device.has_value()) {
-      body_root->set_device_sharding(*unique_device);
-    } else if (*unique_device != *root_device) {
-      return bad_status(body_root, *root_device, channel_instruction,
-                        *unique_device);
-    }
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
-/*static*/ Status ShardingPropagation::NormalizeDomain(
-    const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
-  if (metadata != nullptr) {
-    TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
-                        ShardingMetadata::ToShardingMetadata(metadata));
-    const auto& sharding = sharding_metadata->sharding();
-    if (sharding != nullptr) {
-      bool is_spatially_partitioned = !sharding->HasUniqueDevice();
-      if (sharding->IsTuple()) {
-        is_spatially_partitioned = absl::c_any_of(
-            sharding->tuple_elements(),
-            [](const HloSharding& s) { return !s.HasUniqueDevice(); });
-      }
-      if (is_spatially_partitioned) {
-        for (HloInstruction* d : domain.exit_domains) {
-          d->mutable_operand(0)->set_sharding(*sharding);
-        }
-        return Status::OK();
-      }
-    }
-  }
-  return ShardingMetadata::NormalizeShardingDomain(domain, metadata);
 }
 
 StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
