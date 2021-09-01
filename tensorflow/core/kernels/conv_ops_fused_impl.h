@@ -646,6 +646,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     se::DeviceMemory<T> side_input_ptr =
         AsDeviceMemory(static_cast<T*>(nullptr), 0);
 
+    constexpr double kConvScale = 1.0;
+    constexpr double kSideInputScale = 0.0;
+
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
@@ -667,13 +670,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         dtype,                         // tensor datatype
         device_id,                     // device_id
         conv_desc.group_count(),
-        ConvParameters::FusionInfo{
-            /*has_side_input=*/false,  // this op doesn't support side inputs.
-            dnn_activation_mode,       // activation_mode
-            /*is_contrib=*/false}};
+        ConvParameters::FusionInfo{kConvScale, kSideInputScale,
+                                   dnn_activation_mode,  // activation_mode
+                                   /*is_contrib=*/false}};
 
-    constexpr double kConvInputScale = 1.0;
-    constexpr double kSideInputScale = 0.0;
     // Launch fused convolution with given parameters and scratch allocator.
     // Record profile result into `profile_result` if it's not nullptr.
     const auto launch = [&](se::dnn::AlgorithmConfig algorithm_config,
@@ -683,7 +683,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       if (CudnnUseFrontend()) {
         return stream->FusedConvolveWithExecutionPlan(
             input_desc, input_ptr,            // input
-            kConvInputScale,                  // input_scale
+            kConvScale,                       // input_scale
             filter_desc, filter_ptr,          // filter
             conv_desc,                        // conv
             side_input_ptr, kSideInputScale,  // side_input
@@ -694,7 +694,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       } else {
         return stream->FusedConvolveWithAlgorithm(
             input_desc, input_ptr,            // input
-            kConvInputScale,                  // input_scale
+            kConvScale,                       // input_scale
             filter_desc, filter_ptr,          // filter
             conv_desc,                        // conv
             side_input_ptr, kSideInputScale,  // side_input
@@ -709,13 +709,13 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, input_desc, filter_desc, bias_desc, output_desc,
-          conv_desc, dnn_activation_mode, kConvInputScale, kSideInputScale,
-          launch, context, stream, output_ptr,
+          conv_desc, dnn_activation_mode, kConvScale, kSideInputScale, launch,
+          context, stream, output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
                 output_ptr, bias_ptr, side_input_ptr, input_desc, filter_desc,
-                output_desc, conv_desc, kConvInputScale, kSideInputScale,
+                output_desc, conv_desc, kConvScale, kSideInputScale,
                 dnn_activation_mode, stream->parent(), results);
           },
           &algorithm_config);

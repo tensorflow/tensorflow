@@ -118,7 +118,7 @@ class FunctionMetadata {
 class SavedModel {
  public:
   struct Options {
-    explicit Options(tensorflow::tfrt_stub::Runtime* rt) : runtime(rt) {
+    explicit Options(const tensorflow::tfrt_stub::Runtime* rt) : runtime(rt) {
       DCHECK(runtime);
     }
 
@@ -129,7 +129,7 @@ class SavedModel {
 
     // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
     // more details. It must not be nullptr;
-    tensorflow::tfrt_stub::Runtime* runtime = nullptr;
+    const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
 
     // Model metadata used for monitoring and tracing.
     ModelMetadata model_metadata;
@@ -157,13 +157,16 @@ class SavedModel {
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
   };
 
-  explicit SavedModel(tensorflow::tfrt_stub::Runtime* runtime)
+  explicit SavedModel(const tensorflow::tfrt_stub::Runtime* runtime)
       : runtime_(runtime) {
     DCHECK(runtime_);
   }
   virtual ~SavedModel();
 
-  tensorflow::tfrt_stub::Runtime* runtime() const { return runtime_; }
+  const tensorflow::tfrt_stub::Runtime& runtime() const {
+    DCHECK(runtime_);
+    return *runtime_;
+  }
   HostContext* GetHostContext() const;
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
@@ -213,7 +216,7 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  private:
-  tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
+  const tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
 };
 
 class SavedModelImpl final : public SavedModel {
@@ -284,6 +287,15 @@ class SavedModelImpl final : public SavedModel {
     std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
+  // Create a ResourceContext and populate it with per model resource from
+  // Runtime. If `tpu_target` is set to kTpurt, also call a special
+  // `AddTpuResources` function to populate TPU related resources for tpurt.
+  //
+  // TODO(b/178227859): Remove the need for the special handling for TPU here.
+  static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
+      const tensorflow::tfrt_stub::Runtime& runtime,
+      tensorflow::TfrtTpuInfraTarget tpu_target);
+
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   StatusOr<mlir::OwningModuleRef> ImportSubgraph(
@@ -306,7 +318,8 @@ class SavedModelImpl final : public SavedModel {
   // target_node_names.
   StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(
-      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_node_names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);

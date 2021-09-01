@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -57,6 +58,7 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
+// These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
 
@@ -306,7 +308,8 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
     // an opportunity to delete it.
     (void)env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
                            [env]() { ExitCountdown(env); });
-  } else if (tpu_cancellation_closes_chips) {
+  } else if (internal::TpuCancellationClosesChipsGetOrDefault(
+                 tpu_cancellation_closes_chips)) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();
     LOG(INFO) << "TPUCancelExecution CloseTPUHost done: " << status

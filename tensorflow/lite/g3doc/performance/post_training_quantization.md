@@ -77,6 +77,30 @@ def representative_dataset():
     }
 </pre>
 
+If there are more than one signature in the given TensorFlow model, you can
+specify the multiple dataset by specifying the signature keys:
+
+<pre>
+def representative_dataset():
+  # Feed data set for the "encode" signature.
+  for data in encode_signature_dataset:
+    yield (
+      "encode", {
+        "image": data.image,
+        "bias": data.bias,
+      }
+    )
+
+  # Feed data set for the "decode" signature.
+  for data in decode_signature_dataset:
+    yield (
+      "decode", {
+        "image": data.image,
+        "hint": data.hint,
+      },
+    )
+</pre>
+
 You can generate the representative dataset by providing an input tensor list:
 
 <pre>

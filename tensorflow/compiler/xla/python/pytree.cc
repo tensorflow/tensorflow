@@ -32,7 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -654,7 +654,8 @@ std::string PyTreeDef::ToString() const {
         if (py::len(node.node_data) != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
-        std::string separator = "{";
+        representation = "{";
+        std::string separator;
         auto child_iter = agenda.end() - node.arity;
         for (const py::handle& key : node.node_data) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,

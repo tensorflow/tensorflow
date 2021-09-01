@@ -162,7 +162,7 @@ void DataServiceWorkerImpl::Stop() {
 
 Status DataServiceWorkerImpl::GetElementResult(
     const GetElementRequest* request, struct GetElementResult* result) {
-  Task* task;
+  Task* task = nullptr;
   {
     mutex_lock l(mu_);
     if (cancelled_) {
@@ -177,16 +177,23 @@ Status DataServiceWorkerImpl::GetElementResult(
     }
     auto it = tasks_.find(request->task_id());
     if (it == tasks_.end()) {
+      if (deleted_tasks_.contains(request->task_id())) {
+        return errors::FailedPrecondition(
+            "Got request for local task ", request->task_id(), " of worker ",
+            worker_address_, ", which has been deleted. You may be creating ",
+            "a duplicate job which has already finished. To fix this, make "
+            "sure to create your dataset only once, as opposed to re-creating "
+            "it repeatedly inside a loop.");
+      }
       if (finished_tasks_.contains(request->task_id())) {
         VLOG(3) << "Task is already finished";
         result->end_of_sequence = true;
         result->skip = false;
         return Status::OK();
-      } else {
-        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
-        // Return Unavailable so that the client knows to continue retrying.
-        return errors::Unavailable("Task ", request->task_id(), " not found");
       }
+      // Perhaps the worker hasn't gotten the task from the dispatcher yet.
+      // Return Unavailable so that the client knows to continue retrying.
+      return errors::Unavailable("Task ", request->task_id(), " not found");
     }
     task = it->second.get();
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
@@ -458,6 +465,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     for (const auto& task : new_tasks) {
       VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
+      if (deleted_tasks_.contains(task.task_id())) {
+        continue;
+      }
       Status s = ProcessTaskInternal(task);
       if (!s.ok() && !errors::IsAlreadyExists(s)) {
         LOG(WARNING) << "Failed to start processing task " << task.task_id()
@@ -468,6 +478,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (int64_t task_id : task_ids_to_delete) {
       VLOG(3) << "Deleting task " << task_id
               << " at the request of the dispatcher";
+      if (!tasks_.contains(task_id)) {
+        continue;
+      }
       tasks_to_delete.push_back(std::move(tasks_[task_id]));
       tasks_.erase(task_id);
       finished_tasks_.insert(task_id);
@@ -477,6 +490,26 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     StopTask(*task);
   }
   return Status::OK();
+}
+
+void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
+    TF_LOCKS_EXCLUDED(mu_) {
+  std::shared_ptr<Task> task;
+  {
+    mutex_lock l(mu_);
+    auto it = tasks_.find(task_info.task_id());
+    if (it == tasks_.end() || !it->second) {
+      return;
+    }
+    task = std::move(it->second);
+    tasks_.erase(task_info.task_id());
+    pending_completed_tasks_.insert(task_info.task_id());
+    deleted_tasks_.insert(task_info.task_id());
+  }
+
+  VLOG(2) << "Delete local task " << task_info.task_id() << " from worker "
+          << worker_address_ << " at the request of the client.";
+  StopTask(*task);
 }
 
 void LocalWorkers::Add(absl::string_view worker_address,

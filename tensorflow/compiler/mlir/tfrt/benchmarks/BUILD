@@ -24,6 +24,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",

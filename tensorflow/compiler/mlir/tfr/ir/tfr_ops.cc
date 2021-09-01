@@ -418,6 +418,12 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   }
 };
 
+inline bool isQuantizedType(Type type) {
+  auto tensor_type = type.dyn_cast<TensorType>();
+  return (tensor_type &&
+          tensor_type.getElementType().isa<quant::QuantizedType>());
+}
+
 class RemoveRedundantCast : public OpRewritePattern<CastOp> {
   using OpRewritePattern<CastOp>::OpRewritePattern;
 
@@ -434,9 +440,8 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     Type output_type = cast_op.getType();
 
     // Preserve quantization information for intermediate tensors.
-    auto intermediate_type = preceding_cast.getType().dyn_cast<TensorType>();
-    if (intermediate_type &&
-        intermediate_type.getElementType().isa<quant::QuantizedType>()) {
+    auto intermediate_type = preceding_cast.getType();
+    if (isQuantizedType(intermediate_type) || isQuantizedType(output_type)) {
       return failure();
     }
 
@@ -559,23 +564,53 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
  public:
   LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
                                 PatternRewriter &rewriter) const override {
-    auto preceding_cast = dyn_cast<CastOp>(raw_data_op.input().getDefiningOp());
-    if (!getQuantizedElementType(preceding_cast)) {
+    auto preceding_op = raw_data_op.input().getDefiningOp();
+    if (isa<BuildListOp>(preceding_op)) {
+      return rewritePrecedingListOp(raw_data_op, rewriter);
+    }
+
+    auto preceding_cast = dyn_cast_or_null<CastOp>(preceding_op);
+    if (!preceding_cast || !getQuantizedElementType(preceding_cast)) {
       return failure();
     }
     // If there are redundant casts, hoist output of raw data op originating op.
-    if (auto redundant_cast = preceding_cast.arg().getDefiningOp()) {
-      if (!isa<CastOp>(redundant_cast) ||
-          cast<CastOp>(redundant_cast).arg().getType() !=
-              preceding_cast.out().getType()) {
+    if (preceding_cast.arg().getDefiningOp()) {
+      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
+      if (!redundant_cast ||
+          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
         return failure();
       }
-      raw_data_op.output().replaceAllUsesWith(
-          cast<CastOp>(redundant_cast).arg());
+      raw_data_op.output().replaceAllUsesWith(redundant_cast.arg());
     } else {
       // If the argument of cast op is input, then simply remove the RawData op.
       raw_data_op.output().replaceAllUsesWith(preceding_cast.out());
     }
+    return success();
+  }
+
+  LogicalResult rewritePrecedingListOp(TFRQuantRawDataOp raw_data_op,
+                                       PatternRewriter &rewriter) const {
+    llvm::SmallVector<Value> new_list_values;
+    auto preceding_list = raw_data_op.input().getDefiningOp<BuildListOp>();
+    for (Value operand : preceding_list.tensors()) {
+      auto preceding_cast = operand.getDefiningOp<CastOp>();
+      if (!preceding_cast || !getQuantizedElementType(preceding_cast)) {
+        return failure();
+      }
+
+      // This function currently only supports the case with redundant casts.
+      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
+      if (!redundant_cast ||
+          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
+        return failure();
+      }
+
+      new_list_values.push_back(redundant_cast.arg());
+    }
+
+    auto new_list = rewriter.create<BuildListOp>(
+        raw_data_op.getLoc(), preceding_list.getType(), new_list_values);
+    raw_data_op.output().replaceAllUsesWith(new_list.out());
     return success();
   }
 };
@@ -749,23 +784,27 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
 
     rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{input, constant_f32_op, c_false});
     auto input_x_scale_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__mul"),
+        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__mul"),
         ArrayRef<Value>{cast_input_to_float_op.getResult(0), scale});
     auto round_rescaled_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__round"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__round"),
         ArrayRef<Value>{input_x_scale_op->getResult(0)});
     auto cast_zp_to_float_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{zp_cast, constant_f32_op, c_false});
     auto recentered_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__add"),
+        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__add"),
         ArrayRef<Value>{round_rescaled_op->getResult(0),
                         cast_zp_to_float_op->getResult(0)});
     auto cast_output_to_i32 = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false});
     rescale_op.output().replaceAllUsesWith(cast_output_to_i32.getResult(0));
     return success();

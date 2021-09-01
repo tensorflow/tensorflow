@@ -496,8 +496,7 @@ class LowerTFSavedModelPass
           func_op->removeAttr("tf_saved_model.exported_names");
           for (auto exported_name : exported_names) {
             auto exported_func_op = func_op.clone();
-            exported_func_op.setName(
-                exported_name.cast<mlir::StringAttr>().getValue());
+            exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
 
             // If it is a session initializer, we want to maximize parallelism
             // and do not perform any stream merge, to minimize latency.

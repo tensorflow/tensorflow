@@ -764,6 +764,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(
@@ -1582,6 +1583,23 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "node_file_writer_test",
+    size = "small",
+    srcs = ["node_file_writer_test.py"],
+    python_version = "PY3",
+    # On Windows, fails in tempfile.TemporaryDirectory.cleanup() with error: "The directory is not
+    # empty", so test is disabled on Windows.
+    # TODO(reedwm): Debug this.
+    tags = ["no_windows"],
+    deps = [
+        ":test_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 tf_py_test(
     name = "traceable_stack_test",
     size = "small",
@@ -1608,6 +1626,7 @@ cc_library(
     srcs = ["test_ops.cc"],
     linkstatic = 1,
     deps = [
+        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1980,7 +1999,6 @@ tf_python_pybind_extension(
     srcs = ["errors_test_helper.cc"],
     module_name = "_errors_test_helper",
     deps = [
-        "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],

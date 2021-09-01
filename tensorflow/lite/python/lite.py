@@ -37,6 +37,7 @@ from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
@@ -58,6 +59,7 @@ from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: 
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
+from tensorflow.lite.python.util import _xla_computation
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
 from tensorflow.lite.python.util import convert_debug_info_func as _convert_debug_info_func
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
@@ -203,12 +205,16 @@ class TargetSpec(object):
       that may not be linked in by default with the TF ops that are provided
       when using the SELECT_TF_OPS path. The client is responsible for linking
       these ops into the target runtime.
+    experimental_supported_backends: Experimental flag, subject to change.
+      Set containing names of supported backends. Currently only "GPU" is
+      supported, more options will be available later.
   """
 
   def __init__(self,
                supported_ops=None,
                supported_types=None,
-               experimental_select_user_tf_ops=None):
+               experimental_select_user_tf_ops=None,
+               experimental_supported_backends=None):
     if supported_ops is None:
       supported_ops = {OpsSet.TFLITE_BUILTINS}
     self.supported_ops = supported_ops
@@ -218,6 +224,7 @@ class TargetSpec(object):
     if experimental_select_user_tf_ops is None:
       experimental_select_user_tf_ops = set()
     self.experimental_select_user_tf_ops = experimental_select_user_tf_ops
+    self.experimental_supported_backends = experimental_supported_backends
     self._experimental_custom_op_registerers = []
     # Hint for the supported accumulation type used for inference. Typically
     # used for fp16 post-training quantization, where some models can use fp16
@@ -468,8 +475,6 @@ class TFLiteConverterBase(object):
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
-    # TODO(b/195611245): Use tf.lite.TargetSpec.supported_backends instead.
-    self._experimental_supported_backends = []
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -562,7 +567,7 @@ class TFLiteConverterBase(object):
         "select_user_tf_ops":
             self.target_spec.experimental_select_user_tf_ops,
         "supported_backends":
-            self._experimental_supported_backends,
+            self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul":
             not self._experimental_disable_batchmatmul_unfold,
         "lower_tensor_list_ops":
@@ -703,7 +708,6 @@ class TFLiteConverterBase(object):
     """Apply optimizations on a TFLite model."""
 
     if quant_mode.is_integer_quantize():
-
       in_type, out_type = self.inference_input_type, self.inference_output_type
 
       if quant_mode.is_post_training_integer_quantize():
@@ -716,7 +720,12 @@ class TFLiteConverterBase(object):
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
-      model = _modify_model_io_type(model, m_in_type, m_out_type)
+      # Skip updating model io types if MLIR quantizer already takes care of it
+      if not (quant_mode.is_post_training_integer_quantize() and
+              self.experimental_new_quantizer and quant_io and
+              (m_in_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32]) and
+              (m_out_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32])):
+        model = _modify_model_io_type(model, m_in_type, m_out_type)
 
     if self._sparsify_model():
       model = _mlir_sparsify(model)
@@ -1329,13 +1338,122 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
                  self).convert(graph_def, input_tensors, output_tensors)
 
 
+class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
+  """Converts the given jax model into TensorFlow Lite model."""
+
+  def __init__(self, serving_funcs, inputs):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      serving_funcs: A list functions of the serving func of the jax module, the
+        model params should already be inlined. (e.g., `serving_func =
+        functools.partial(model, params=params)`)
+      inputs: Array of input tensor placeholders tuple,s like `jnp.zeros`. For
+        example, wrapped in an array like
+        "[('input1', input1), ('input2', input2)]]".
+    Jax function is polymorphic, for example:
+    ```python
+    def add(a, b):
+      return a + b
+    ```
+    Will yield different computations if different input signatures are passed
+    in: Pass `add(10.0, 20.0)` will yield a scalar `add` while pass
+      `add(np.random((100, 1)), np.random(100, 100))` will yield a broadcasting
+      add.  We will need the input information to do tracing for the converter
+      to properly convert the model. So it's important to pass in the desired
+      `input placeholders` with the correct input shape/type.
+
+    In the converted tflite model:
+    Currently: the function name will be default to main, the output names will
+    be the traced outputs. The output ordering shall match the serving function.
+    """
+    super(TFLiteJaxConverterV2, self).__init__()
+    self._serving_funcs = serving_funcs
+    self._inputs = inputs
+
+  @_export_metrics
+  def convert(self):
+    """Converts a Jax serving func based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ImportError:
+        If cannot import the xla_computation from jax.
+      ValueError:
+        No serving function is specified.
+        Input tensors are not specified.
+        The truth value of an array with more than one element is ambiguous.
+        Failed to convert the given Jax function to hlo.
+
+    """
+    if not _xla_computation:
+      raise ImportError("Cannot import xla_computation from jax.")
+
+    if not self._serving_funcs:
+      raise ValueError("No serving func is specified.")
+
+    if not self._inputs:
+      raise ValueError("Input tensors are not specified.")
+
+    if len(self._inputs) != len(self._serving_funcs):
+      msg = ("Input tensor mapping len {} does not match serving func len {}."
+             .format(len(self._inputs), len(self._serving_funcs)))
+      raise ValueError(msg)
+
+    if not isinstance(self._inputs, (tuple, list)):
+      raise ValueError(
+          "Input tensors should be pass in a tuple list wrapped in an array.")
+
+    # TODO(b/197690428): Support multiple functions.
+    # Currently only support one serving function.
+    if len(self._serving_funcs) > 1:
+      raise ValueError("Currently only support single serving function.")
+
+    if not isinstance(self._inputs[0], (tuple, list)):
+      raise ValueError("The input placeholders are not a dictionary.")
+
+    input_names = []
+    ordered_inputs = []
+    for input_name, tensor in self._inputs[0]:
+      input_names.append(input_name)
+      ordered_inputs.append(tensor)
+
+    try:
+      xla_compuation = _xla_computation(self._serving_funcs[0], backend="cpu")
+      hlo_proto = xla_compuation(
+          *ordered_inputs).as_serialized_hlo_module_proto()
+    except Exception:  # pylint: disable=broad-except
+      raise ValueError("Failed to convert the given Jax function to hlo.")
+
+    # We need to set the hlo proto, and here we use serialized proto format
+    # since it's more compact.
+    converter_kwargs = {
+        "input_content": hlo_proto,
+        "input_names": input_names,
+        "is_proto_format": True
+    }
+    converter_kwargs.update(self._get_base_converter_args())
+
+    # Get quantization options and do some checks.
+    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                  self.representative_dataset, None)
+    self._validate_inference_input_output_types(quant_mode)
+    converter_kwargs.update(quant_mode.converter_flags())
+    result = _convert_jax_hlo(**converter_kwargs)
+
+    return self._optimize_tflite_model(
+        result, quant_mode, quant_io=self.experimental_new_quantizer)
+
+
 @_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   """Converts a TensorFlow model into TensorFlow Lite model.
 
   Attributes:
-    optimizations: Experimental flag, subject to change. Set of optimizations
-      to apply. e.g {tf.lite.Optimize.DEFAULT}. (default None, must be None or a
+    optimizations: Experimental flag, subject to change. Set of optimizations to
+      apply. e.g {tf.lite.Optimize.DEFAULT}. (default None, must be None or a
       set of values of type `tf.lite.Optimize`)
     representative_dataset: A generator function used for integer quantization
       where each generated sample has the same order, type and shape as the
@@ -1367,25 +1485,29 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
     experimental_enable_resource_variables: Experimental flag, subject to
-      change. Enables resource variables to be converted by this converter.
-      This is only allowed if from_saved_model interface is used.
-      (default False)
+      change. Enables resource variables to be converted by this converter. This
+      is only allowed if from_saved_model interface is used. (default False)
 
   Example usage:
 
-    ```python
-    # Converting a SavedModel to a TensorFlow Lite model.
+  ```python
+  # Converting a SavedModel to a TensorFlow Lite model.
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
 
-    # Converting a tf.Keras model to a TensorFlow Lite model.
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    tflite_model = converter.convert()
+  # Converting a tf.Keras model to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.from_keras_model(model)
+  tflite_model = converter.convert()
 
-    # Converting ConcreteFunctions to a TensorFlow Lite model.
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
-    tflite_model = converter.convert()
-    ```
+  # Converting ConcreteFunctions to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
+  tflite_model = converter.convert()
+
+  # Converting a Jax model to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.experimental_from_jax([func], [[
+      ('input1', input1), ('input2', input2)])
+  tflite_model = converter.convert()
+  ```
   """
 
   # pylint: disable=useless-super-delegation
@@ -1510,6 +1632,24 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       TFLiteConverter object.
     """
     return TFLiteKerasModelConverterV2(model)
+
+  @classmethod
+  def experimental_from_jax(cls, serving_funcs, inputs):
+    # Experimental API, subject to changes.
+    # TODO(b/197690428): Currently only support single function.
+    """Creates a TFLiteConverter object from a Jax model with its inputs.
+
+    Args:
+      serving_funcs: A array of Jax functions with all the weights applied
+        already.
+      inputs: A array of Jax input placeholders tuples list, e.g.,
+        jnp.zeros(INPUT_SHAPE). Each tuple list should correspond with the
+        serving function.
+
+    Returns:
+      TFLiteConverter object.
+    """
+    return TFLiteJaxConverterV2(serving_funcs, inputs)
 
   # pylint: disable=useless-super-delegation
   def convert(self):
@@ -1756,7 +1896,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           **converter_kwargs)
 
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=not self.experimental_new_converter)
+        result, quant_mode, quant_io=self.experimental_new_quantizer)
 
   def get_input_arrays(self):
     """Returns a list of the names of the input tensors.

@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -404,9 +404,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                     RecordBufferEnqueue(ctx.get(), result->output);
                     return Status::OK();
                   };
-          status =
-              CopyBatch(ctx.get(), *batch_elements, dataset()->parallel_copy_,
-                        std::move(allocation_callback), &result->output);
+          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
+                             dataset()->parallel_copy_,
+                             std::move(allocation_callback), &result->output);
           result->status.Update(status);
         }
         CallCompleted(ctx, result);

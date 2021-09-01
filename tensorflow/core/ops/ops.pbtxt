@@ -8562,6 +8562,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "tpu_cancellation_closes_chips"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -55869,6 +55876,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "is_files"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   is_stateful: true
 }

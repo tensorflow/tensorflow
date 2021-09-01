@@ -720,6 +720,11 @@ int TFE_TensorHandleDeviceID(TFE_TensorHandle* h, TF_Status* status) {
   return tensorflow::unwrap(h)->DeviceId(&status->status);
 }
 
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status) {
+  status->status = tensorflow::unwrap(h)->TensorHandleStatus();
+}
+
 void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
                             TF_Status* status) {
   const std::vector<std::string>& op_names =

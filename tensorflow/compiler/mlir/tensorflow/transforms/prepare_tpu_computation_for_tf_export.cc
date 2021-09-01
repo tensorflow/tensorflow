@@ -116,7 +116,7 @@ class RewriteXlaHostComputeMlir
         /*ancestors=*/rewriter.getArrayAttr({}),
         rewriter.getArrayAttr(shape_attrs),
         /*shape_inference_graph=*/
-        cloned_func ? rewriter.getSymbolRefAttr(cloned_func) : SymbolRefAttr(),
+        cloned_func ? SymbolRefAttr::get(cloned_func) : SymbolRefAttr(),
         /*key=*/rewriter.getStringAttr(""), op.send_keyAttr(),
         op.recv_keyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),

@@ -2335,6 +2335,7 @@ def TestFactory(xla_backend,
 
     def testPlatformVersion(self):
       version = self.backend.platform_version
+      logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
@@ -2345,6 +2346,9 @@ def TestFactory(xla_backend,
               msg=f"Expected CUDA version string; got {repr(version)}")
         else:
           self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "tpu" and not cloud_tpu:
+        self.assertIn("tpu", version.lower())
+        self.assertIn("cl/", version)
 
     @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     def testExecutableSerialization(self):

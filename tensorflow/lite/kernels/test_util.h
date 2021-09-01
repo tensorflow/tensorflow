@@ -41,12 +41,12 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -222,7 +222,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<int8_t> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+    tflite::internal::sparsity::FormatConverter<int8_t> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
@@ -294,7 +294,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<T> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<T> converter(
+    tflite::internal::sparsity::FormatConverter<T> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 

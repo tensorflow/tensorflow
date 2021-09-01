@@ -188,10 +188,10 @@ class BatchResourceBase : public ResourceBase {
   // The request_cost in each batch task will be updated. This function will use
   // two approaches to split the batch cost (if it's non-zero), thus two costs
   // will be output.
-  // 1) smeared cost: batch cost are split proportionally to each task's size,
-  //    but paddings do not share any cost;
-  // 2) non-smeared cost: batch cost are split proportionally to each task or
-  //    padding's size. Here paddings cost are not assigned to any tasks.
+  // 1) smeared cost: batch cost is split proportionally to each task's size,
+  //    and paddings do not share any cost;
+  // 2) non-smeared cost: batch cost is split proportionally to each task or
+  //    padding's size. Here padding's cost is not assigned to any tasks.
   static void SplitBatchCost(CostMeasurement* batch_cost_measurement,
                              const int64_t processed_size, BatchT& batch);
 

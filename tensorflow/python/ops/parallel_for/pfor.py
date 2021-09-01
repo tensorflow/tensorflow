@@ -2490,15 +2490,15 @@ def _convert_gather(pfor_input):
         param, indices, validate_indices=validate_indices, axis=axis,
         batch_dims=batch_dims)
     if axis != 0:
-      axis = control_flow_ops.cond(axis < 0,
+      axis = smart_cond.smart_cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
-                                   lambda: axis)
+                                   lambda: ops.convert_to_tensor(axis))
       order = array_ops.concat(
           [[axis],
            math_ops.range(axis),
            math_ops.range(axis + 1, array_ops.rank(output))],
           axis=0)
-      output = control_flow_ops.cond(
+      output = smart_cond.smart_cond(
           math_ops.equal(axis, 0), lambda: output,
           lambda: array_ops.transpose(output, order))
     return wrap(output, True)
@@ -2580,7 +2580,9 @@ def _convert_strided_slice_grad(pfor_input):
   new_axis_mask = pfor_input.get_attr("new_axis_mask")
   shrink_axis_mask = pfor_input.get_attr("shrink_axis_mask")
 
-  shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  shape = array_ops.concat(
+      [math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype), shape],
+      axis=0)
   begin = array_ops.concat([[0], begin], axis=0)
   end = array_ops.concat([[0], end], axis=0)
   strides = array_ops.concat([[1], strides], axis=0)

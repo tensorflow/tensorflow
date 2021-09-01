@@ -79,13 +79,13 @@ REGISTER_KERNEL_BUILDER(
     InvertPermutationOp<int64>);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("T")
                             .HostMemory("x")
                             .HostMemory("y"),

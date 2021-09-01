@@ -234,7 +234,7 @@ tf_py_test(
 
 tf_py_test(
     name = "io_test",
-    size = "small",
+    size = "medium",
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -320,7 +320,7 @@ tf_py_test(
 
 tf_py_test(
     name = "make_tf_record_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["make_tf_record_dataset_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",

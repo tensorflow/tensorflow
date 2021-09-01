@@ -94,16 +94,16 @@ TEST(SplitBatchCostTest, Basic) {
 
   TestCostMeasurement test_cost_measurement;
   BatchResourceBase::SplitBatchCost(&test_cost_measurement,
-                                    /*processed_size=*/16, batch);
+                                    /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
       UnorderedElementsAre(Pair("test_with_smear", absl::Milliseconds(10)),
-                           Pair("test_no_smear", absl::Milliseconds(6.25))));
+                           Pair("test_no_smear", absl::Milliseconds(5))));
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
       UnorderedElementsAre(Pair("test_with_smear", absl::Milliseconds(90)),
-                           Pair("test_no_smear", absl::Milliseconds(56.25))));
+                           Pair("test_no_smear", absl::Milliseconds(45))));
 }
 
 }  // namespace

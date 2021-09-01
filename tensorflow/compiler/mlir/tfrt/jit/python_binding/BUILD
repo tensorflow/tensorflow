@@ -41,6 +41,7 @@ pybind_extension(
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@pybind11",
         "@tf_runtime//:dtype",

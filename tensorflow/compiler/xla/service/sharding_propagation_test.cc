@@ -2351,6 +2351,42 @@ ENTRY %conv {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, BackwardDotFromContractingWithManual) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %dot {
+  %p0 = f32[8,512] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual} metadata={op_name="a"}}
+  %p1 = f32[512,128] parameter(1)
+  %copy1 = f32[512,128] copy(%p1)
+  %dot = f32[8,128] dot(%p0, %copy1),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dims={replicated, manual} metadata={op_name="b"}}
+  ROOT %copy = f32[8,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "copy1");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dims={manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, ConvAsDotOnTrivialDims) {
   const char* const hlo_string = R"(
 HloModule module

@@ -48,6 +48,12 @@ class TensorSlice {
   explicit TensorSlice(
       std::initializer_list<std::pair<int64_t, int64_t>> extents);
 
+  // This factory methods should be used instead of the constructor that takes a
+  // `TensorSliceProto` if calling code cannot validate that the sizes specify a
+  // valid `TensorSlice`.
+  static Status BuildTensorSlice(const TensorSliceProto& proto,
+                                 TensorSlice* output);
+
   static Status Parse(const string& str, TensorSlice* output);
   static TensorSlice ParseOrDie(const string& str) {
     TensorSlice ret;

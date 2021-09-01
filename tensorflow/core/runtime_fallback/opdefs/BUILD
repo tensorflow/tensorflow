@@ -14,6 +14,7 @@ cc_library(
     hdrs = ["tfrt_fallback.h"],
     visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
+        "//learning/brain/tfrt/tpu/compiler:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/runtime_fallback:internal",
     ],
@@ -104,7 +105,10 @@ td_library(
         "tfrt_fallback_sync.td",
     ],
     includes = ["."],
-    visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
+    visibility = [
+        "//learning/brain/tfrt/tpu/compiler:__subpackages__",
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+    ],
     deps = [
         "@llvm-project//mlir:SideEffectTdFiles",
         "@tf_runtime//:CoreRTTdFiles",

@@ -266,6 +266,10 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     func(tf.ones(shape=(4, 4), dtype=tf.float32))
     log_messages = func.get_compatibility_log()
     self.assertIn(
+        "'tfl.slice' op is not GPU compatible: SLICE supports for 3 or 4"
+        " dimensional tensors only, but node has 2 dimensional tensors.",
+        log_messages)
+    self.assertIn(
         "COMPATIBILITY WARNING: op 'tf.Cosh, tfl.slice' aren't compatible with "
         "TensorFlow Lite GPU delegate. "
         "https://www.tensorflow.org/lite/performance/gpu", log_messages)

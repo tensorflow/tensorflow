@@ -192,7 +192,6 @@ filegroup(
         "graph_runner.h",
         "inline_function_utils.h",
         "lower_function_call_inline_policy.h",
-        "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
         "scoped_allocator_mgr.h",
@@ -274,6 +273,7 @@ filegroup(
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
         "mkl_tfconversion_pass.h",
+        "node_file_writer.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
@@ -635,6 +635,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -1206,6 +1208,21 @@ cc_library(
 )
 
 cc_library(
+    name = "node_file_writer",
+    srcs = ["node_file_writer.cc"],
+    hdrs = ["node_file_writer.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "optimization_registry",
     srcs = ["optimization_registry.cc"],
     hdrs = ["optimization_registry.h"],
@@ -1671,6 +1688,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        ":node_file_writer",
         "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -1933,6 +1951,42 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
+)
+
+cc_library(
+    name = "request_cost_accessor",
+    hdrs = ["request_cost_accessor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":request_cost",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "request_cost_accessor_registry",
+    srcs = ["request_cost_accessor_registry.cc"],
+    hdrs = ["request_cost_accessor_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":request_cost_accessor",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "null_request_cost_accessor",
+    srcs = ["null_request_cost_accessor.cc"],
+    hdrs = ["null_request_cost_accessor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":request_cost_accessor_registry",
+    ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------
@@ -2969,5 +3023,27 @@ tf_cc_test(
         ":request_cost",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "request_cost_accessor_registry_test",
+    srcs = ["request_cost_accessor_registry_test.cc"],
+    deps = [
+        ":request_cost_accessor",
+        ":request_cost_accessor_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "null_request_cost_accessor_test",
+    srcs = ["null_request_cost_accessor_test.cc"],
+    deps = [
+        ":null_request_cost_accessor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

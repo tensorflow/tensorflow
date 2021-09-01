@@ -50,6 +50,7 @@ The following development boards are supported:
 *   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
 *   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
 *   [Synopsys DesignWare ARC EM Software Development Platform](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+*   [Sony Spresense](https://developer.sony.com/develop/spresense/)
 
 ## Explore the examples
 

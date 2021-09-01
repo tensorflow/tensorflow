@@ -32,8 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class TensorShape;
-
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
@@ -74,7 +72,10 @@ struct MemoryDebugAnnotation {
   int64_t pending_step_id = 0;
   const char* pending_region_type = nullptr;
   int32 pending_data_type = 0;
-  const TensorShape* pending_shape = nullptr;
+  // A lambda function, when invoked, it will generate the string that describe
+  // the shape of the pending tensor. By default, the TensorShape string is an
+  // empty string.
+  std::function<string()> pending_shape_func = []() { return ""; };
 };
 
 // Wrapper class of MemoryDebugAnnotation for RAII.
@@ -99,29 +100,27 @@ class ScopedMemoryDebugAnnotation {
 
   // This constructor keeps the pending_op_name and pending_step_id from parent
   // (if any).  Otherwise it overwrites with op_name.
-  explicit ScopedMemoryDebugAnnotation(const char* op_name,
-                                       const char* region_type,
-                                       int32_t data_type,
-                                       const TensorShape* shape) {
+  explicit ScopedMemoryDebugAnnotation(
+      const char* op_name, const char* region_type, int32_t data_type,
+      const std::function<string()>& pending_shape_func) {
     last_annotation_ = annotation_;
     if (!annotation_.pending_op_name) {
       annotation_.pending_op_name = op_name;
     }
     annotation_.pending_region_type = region_type;
     annotation_.pending_data_type = data_type;
-    annotation_.pending_shape = shape;
+    annotation_.pending_shape_func = pending_shape_func;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id,
-                                       const char* region_type,
-                                       int32_t data_type,
-                                       const TensorShape* shape) {
+  explicit ScopedMemoryDebugAnnotation(
+      const char* op_name, int64_t step_id, const char* region_type,
+      int32_t data_type, const std::function<string()>& pending_shape_func) {
     last_annotation_ = annotation_;
     annotation_.pending_op_name = op_name;
     annotation_.pending_step_id = step_id;
     annotation_.pending_region_type = region_type;
     annotation_.pending_data_type = data_type;
-    annotation_.pending_shape = shape;
+    annotation_.pending_shape_func = pending_shape_func;
   }
 
   ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
@@ -132,7 +131,7 @@ class ScopedMemoryDebugAnnotation {
     annotation_.pending_step_id = 0;
     annotation_.pending_region_type = nullptr;
     annotation_.pending_data_type = 0;
-    annotation_.pending_shape = nullptr;
+    annotation_.pending_shape_func = []() { return ""; };
   }
 
   // Stores the current annotations.

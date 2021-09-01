@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -50,6 +51,8 @@ constexpr char kShutdownOp[] = "ShutdownDistributedTPU";
 constexpr char kInternalShutdownOp[] = "_ShutdownDistributedTPU";
 constexpr char kHostDisconnectOp[] = "_DisconnectHostFromDistributedTPUSystem";
 constexpr char kEmbeddingConfigurationAttr[] = "embedding_config";
+constexpr char kTpuCancellationClosesChipsAttr[] =
+    "tpu_cancellation_closes_chips";
 constexpr int kDefaultStartupTimeout = 20;
 
 Status AddConfigurationNode(const string& configuration_device_name,
@@ -287,6 +290,13 @@ Status DistributedTPUConfigurationRewritePass::Run(
                                            &compilation_failure_closes_chips));
             internal::SetTpuCompilationFailureClosesChips(
                 compilation_failure_closes_chips);
+
+            int tpu_cancellation_closes_chips;
+            TF_RETURN_IF_ERROR(GetNodeAttr(configuration_node_def,
+                                           kTpuCancellationClosesChipsAttr,
+                                           &tpu_cancellation_closes_chips));
+            TF_RETURN_IF_ERROR(internal::SetTpuCancellationClosesChips(
+                tpu_cancellation_closes_chips));
 
             // Add the global TPU system configuration node.
             Node* configuration_node;

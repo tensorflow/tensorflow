@@ -4826,7 +4826,7 @@ ENTRY entry {
   const1 = s32[] constant(1)
   tuple0 = (s32[]) tuple(const0)
   tuple1 = (s32[]) tuple(const1)
-  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0, negate1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
   negate2 = bf16[4]{0} negate(param)
   negate3 = bf16[4]{0} negate(negate2)
   negate4 = bf16[4]{0} negate(negate3)
@@ -4867,7 +4867,7 @@ ENTRY entry {
   const1 = s32[] constant(1)
   tuple0 = (s32[]) tuple(const0)
   tuple1 = (s32[]) tuple(const1)
-  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
   negate2 = bf16[4]{0} negate(param)
   negate3 = bf16[4]{0} negate(negate2)
   negate4 = bf16[4]{0} negate(negate3)
@@ -4909,12 +4909,12 @@ ENTRY entry {
   const1 = s32[] constant(1)
   tuple0 = (s32[]) tuple(const0)
   tuple1 = (s32[]) tuple(const1)
-  collective-permute-start.1 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  collective-permute-start.1 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
   negate2 = bf16[4]{0} negate(param)
   negate3 = bf16[4]{0} negate(negate2)
   negate4 = bf16[4]{0} negate(negate3)
   collective-permute-done.1 = bf16[4]{0} collective-permute-done(collective-permute-start.1)
-  collective-permute-start.2 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(collective-permute-done.1, collective-permute-done.1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  collective-permute-start.2 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(collective-permute-done.1, collective-permute-done.1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
   negate5 = bf16[4]{0} negate(negate4)
   negate6 = bf16[4]{0} negate(negate5)
   negate7 = bf16[4]{0} negate(negate6)

@@ -123,6 +123,7 @@ tf_kernel_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
@@ -130,6 +131,7 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
@@ -725,6 +727,18 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_execute_op_options",
+    srcs = ["tpu_execute_op_options.cc"],
+    hdrs = ["tpu_execute_op_options.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
 )

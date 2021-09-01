@@ -460,6 +460,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:register_types_traits.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework:resource_mgr.h",
+        "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
         "//tensorflow/core/framework:rng_alg.h",
         "//tensorflow/core/framework/registration:registration.h",
@@ -762,6 +763,7 @@ cc_library(
     deps = [
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
     ],
 )
 
@@ -1219,7 +1221,6 @@ alias(
 filegroup(
     name = "lib_internal_private_headers",
     srcs = [
-        "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
@@ -1694,6 +1695,7 @@ tf_cuda_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core/util:tensor_format",
         "//tensorflow/compiler/jit:common",
+        "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(

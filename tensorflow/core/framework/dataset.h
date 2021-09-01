@@ -363,6 +363,9 @@ class SplitProvider {
                          IteratorStateReader* reader) = 0;
 };
 
+// Returns the runner threadpool size from an OpKernelContext.
+int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx);
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -405,15 +408,7 @@ class IteratorContext {
         return device->GetAllocator(attrs);
       };
 
-      thread::ThreadPool* thread_pool =
-          ctx->device()->tensorflow_device_thread_pool();
-      if (thread_pool) {
-        runner_threadpool_size = thread_pool->NumThreads();
-      } else {
-        static const int32_t kDefaultRunnerThreadpoolSize =
-            port::MaxParallelism();
-        runner_threadpool_size = kDefaultRunnerThreadpoolSize;
-      }
+      runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
       // that a symbol in the tensorflow::data namespace is always on the stack
@@ -981,7 +976,7 @@ class DatasetBase : public core::RefCounted {
 
   // Return the element at a particular index for a randomly accessible dataset.
   virtual Status Get(OpKernelContext* ctx, int64 index,
-                     std::vector<Tensor>* out_tensors);
+                     std::vector<Tensor>* out_tensors) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
@@ -993,6 +988,9 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
     Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
                               Node** output);
+    Status AddIdentity(SerializationContext* ctx,
+                       const std::string& name_prefix, Node** input,
+                       Node** output);
 
    private:
     Status AddDatasetOrTensorHelper(SerializationContext* ctx,

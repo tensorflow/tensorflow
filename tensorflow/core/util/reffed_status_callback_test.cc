@@ -58,8 +58,8 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
   // Equal to the first error.
   EXPECT_EQ(status.code(), error::INTERNAL);
   // Both errors are reported.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Invalid argument: 2"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "2"));
 }
 
 TEST(TestReffedStatusCallback, RefMulti) {
@@ -80,8 +80,8 @@ TEST(TestReffedStatusCallback, RefMulti) {
   cb->Unref();  // Created by constructor.
   EXPECT_TRUE(called);
   // Both errors are reported.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 2"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "2"));
 }
 
 TEST(TestReffedStatusCallback, MultiThreaded) {
@@ -113,8 +113,7 @@ TEST(TestReffedStatusCallback, MultiThreaded) {
 
   EXPECT_EQ(num_called.load(), 1);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Invalid argument: err"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "err"));
 }
 
 }  // namespace

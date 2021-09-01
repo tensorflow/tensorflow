@@ -23,6 +23,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import os
+import re
 import sys
 import time
 import weakref
@@ -33,6 +34,7 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
@@ -75,6 +77,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -4778,6 +4781,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(get_v_plus_one(), 2.0)
 
+  def testOpExpandErrorMessage(self):
+
+    @def_function.function
+    def test_fn():
+      if array_ops.constant(False):
+        return array_ops.constant(1)
+      else:
+        return script_ops.eager_py_func(
+            func=lambda: array_ops.constant([2.]), inp=(), Tout=dtypes.int32)
+
+    error_pattern = re.compile(r'originated from.*func=lambda', re.DOTALL)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, error_pattern):
+      test_fn()
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -5143,6 +5160,54 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     # different result.
     value = 2.0
     self.assertAllEqual(lazy_capture(2.0), 4.0)
+
+  def testNestedDeferredCapture(self):
+    value = 1.0
+
+    @def_function.function
+    def inner(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    @def_function.function
+    def outer(x):
+      return inner(x)
+
+    self.assertAllEqual(outer(2.0), 3.0)
+    # After changing the value of `value` the function call should return a
+    # different result.
+    value = 2.0
+    self.assertAllEqual(outer(2.0), 4.0)
+
+  def testNestedDeferredCaptureInTFWhileLoop(self):
+
+    value = 1.
+
+    @def_function.function
+    def inner(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    @def_function.function
+    def outer():
+      dummy = constant_op.constant(True)
+      sums = constant_op.constant(0.)
+      while dummy:
+        directives.set_loop_options(
+            shape_invariants=[(sums, tensor_shape.TensorShape(None))])
+        sums += inner(2.)
+        dummy = constant_op.constant(False)
+      return sums
+
+    self.assertAllEqual(outer(), 3.)
+
+    value = constant_op.constant(2.)
+    self.assertAllEqual(outer(), 4.)
+
+    value = constant_op.constant(3.)
+    self.assertAllEqual(outer(), 5.)
 
   def testDeferredCaptureWithKey(self):
     value0 = 1.0

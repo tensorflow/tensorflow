@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
@@ -164,12 +165,15 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
+  const uint64 graph_analysis_us = Env::Default()->NowMicros();
   // Capture stats on graph properties analyzed before running the MLIR bridge.
   // We set `uses_uninitialized_resource_args` to false here because function
   // optimization is not affected by uninitialized resource args.
   GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
                              /*uses_uninitialized_resource_args=*/false,
                              /*record_stats=*/true);
+  metrics::UpdateMlirGraphOptimizationPassTime(
+      "graph_analysis", Env::Default()->NowMicros() - graph_analysis_us);
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
     if (VLOG_IS_ON(1)) {
@@ -203,8 +207,13 @@ Status MlirFunctionOptimizationPass::Run(
   // during import is not necessary.
   import_config.enable_shape_inference = false;
 
+  const uint64 convert_graph_mlir_us = Env::Default()->NowMicros();
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
+  metrics::UpdateMlirGraphOptimizationPassTime(
+      "convert_graph_to_mlir",
+      Env::Default()->NowMicros() - convert_graph_mlir_us);
+
   if (!module_ref_status.ok()) {
     // If at least one pass is enabled, return failure to the caller
     // immediately.
@@ -231,14 +240,25 @@ Status MlirFunctionOptimizationPass::Run(
     Status pass_status = Status::OK();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(name.str(),
+                                                   pass_end_us - pass_start_us);
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
                                                 **graph, *flib_def);
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateMlirGraphOptimizationPassTime(
+          formatv("{0}{1}", name, pass_status.ok() ? "" : "_fallback_failed")
+              .str(),
+          pass_end_us - pass_start_us);
+
       if (pass_status.ok())
         module_ref = module_ref_clone;
       else
@@ -272,12 +292,20 @@ Status MlirFunctionOptimizationPass::Run(
   GraphExportConfig export_config;
   absl::flat_hash_set<Node*> control_ret_nodes;
 
+  const uint64 convert_mlir_graph_us = Env::Default()->NowMicros();
   // Some or all passes are enabled. Convert MLIR module and return back
   // resulted graph.
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,
-                         &control_ret_nodes),
-      "Error converting MLIR module back to graph");
+  Status convert_mlir_to_graph_status = ConvertMlirToGraph(
+      *module_ref, export_config, graph, flib_def, &control_ret_nodes);
+  metrics::UpdateMlirGraphOptimizationPassTime(
+      "convert_mlir_to_graph",
+      Env::Default()->NowMicros() - convert_mlir_graph_us);
+  if (!convert_mlir_to_graph_status.ok()) {
+    ::tensorflow::errors::AppendToMessage(
+        &convert_mlir_to_graph_status,
+        "Error converting MLIR module back to graph");
+    return convert_mlir_to_graph_status;
+  }
 
   control_ret_node_names->clear();
   control_ret_node_names->reserve(control_ret_nodes.size());

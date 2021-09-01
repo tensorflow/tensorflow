@@ -91,7 +91,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
     if (arg_size > 0) {
-      function->addDereferenceableAttr(arg_no + 1, arg_size);
+      function->addDereferenceableParamAttr(arg_no, arg_size);
     }
   }
 

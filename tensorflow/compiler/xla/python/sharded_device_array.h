@@ -245,9 +245,6 @@ class ShardedDeviceArray : public ShardedDeviceArrayBase {
   absl::optional<pybind11::list> device_buffers() const {
     return device_buffers_;
   }
-  void set_device_buffers(absl::optional<pybind11::list> device_buffers) {
-    device_buffers_ = device_buffers;
-  }
   pybind11::object aval() const { return aval_; }
   pybind11::object indices() const { return indices_; }
 

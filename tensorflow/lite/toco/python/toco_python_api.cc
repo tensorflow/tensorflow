@@ -22,6 +22,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
@@ -453,6 +454,11 @@ const std::vector<std::string> RetrieveCollectedErrors() {
   }
   collector->Clear();
   return collected_errors;
+}
+
+std::string FlatBufferFileToMlir(const std::string& model,
+                                 bool input_is_filepath) {
+  return ::tensorflow::FlatBufferFileToMlir(model, input_is_filepath);
 }
 
 }  // namespace toco

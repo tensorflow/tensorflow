@@ -197,7 +197,7 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
 // MLIR variant that relies on the shape layouts from fusion layout analysis.
 bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis);
+    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
@@ -231,7 +231,6 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
 std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
-    int smallest_input_dtype_bits,
     se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
@@ -260,10 +259,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 // `first_reduce`.
 bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
                                       const HloInstruction* first_reduce);
-bool IsFusedReductionOutputConsistent(
-    mlir::mhlo::ReduceOp inst, mlir::mhlo::ReduceOp first_reduce,
-    const FusionLayoutAnalysis& layout_analysis);
-
 inline bool AreFusedReductionOutputsConsistent(
     absl::Span<const HloInstruction* const> output_instructions,
     const HloInstruction* first_reduce) {

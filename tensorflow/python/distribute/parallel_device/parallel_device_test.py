@@ -42,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as tracking
 from tensorflow.python.util import nest
@@ -101,6 +102,7 @@ class _VirtualDeviceTestCase(test.TestCase):
     ctx = context.context()
     if ctx.list_physical_devices("TPU"):
       self.device_type = "TPU"
+      tpu_strategy_util.initialize_tpu_system()
     elif ctx.list_physical_devices("GPU"):
       self.device_type = "GPU"
       gpus = ctx.list_physical_devices(self.device_type)
@@ -169,10 +171,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
         y = constant_op.constant(2)
     self.assertAllEqual([1], device.unpack(y))
 
-  def test_string_representation(self):
+  @parameterized.named_parameters(
+      ("variable", variables.Variable),
+      ("tensor", lambda x: x))
+  def test_string_representation(self, transform):
     x = self.device.pack(
         [constant_op.constant([5., 6.]),
          constant_op.constant([6., 7.])])
+    with self.device:
+      x = transform(x)
     parallel_str = str(x)
     self.assertIn("5", parallel_str)
     self.assertIn("7", parallel_str)

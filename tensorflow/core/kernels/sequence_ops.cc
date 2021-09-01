@@ -71,13 +71,17 @@ class RangeOp : public OpKernel {
           errors::InvalidArgument(
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
-    int64_t size = (std::is_integral<T>::value
-                        ? ((std::abs(limit - start) + std::abs(delta) - 1) /
-                           std::abs(delta))
-                        : std::ceil(std::abs((limit - start) / delta)));
+    int64_t size = 0;
+    if (std::is_integral<T>::value) {
+      size = static_cast<int64>(
+          (std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta));
+    } else {
+      size = static_cast<int64>(std::ceil(std::abs((limit - start) / delta)));
+    }
+    TensorShape shape;
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({size}), &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     auto flat = out->flat<T>();
     T val = start;
     for (int64_t i = 0; i < size; ++i) {

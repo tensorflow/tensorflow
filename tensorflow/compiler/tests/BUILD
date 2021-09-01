@@ -487,6 +487,9 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -1762,7 +1765,8 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "randomized_tests",
-    size = "large",
+    size = "medium",
+    shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

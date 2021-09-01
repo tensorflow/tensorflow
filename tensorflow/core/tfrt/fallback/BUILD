@@ -36,11 +36,11 @@ tf_cc_test(
     srcs = ["fallback_state_test.cc"],
     deps = [
         ":fallback_state",
-        # copybara:uncomment "//learning/brain/google/util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/platform/random.h"
@@ -149,11 +150,6 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
       : AsyncOpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
     OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
-    // If shared_name is not supplied, use name instead (prevent collisions by
-    // default).
-    if (shared_name_.empty()) {
-      shared_name_ = name();
-    }
     OP_REQUIRES_OK(c, c->GetAttr("batching_queue", &batcher_queue_));
     OP_REQUIRES_OK(c, c->GetAttr("num_batch_threads", &num_batch_threads_));
     OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
@@ -170,6 +166,12 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
       bef_func_ =
           tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
     }
+
+    DCHECK(!shared_name_.empty());
+    VLOG(1) << "BatchFunctionFallbackKernel(" << this
+            << ") container attribute: \"" << container_
+            << "\", shared_name attribute: \"" << shared_name_
+            << "\", batching_queue attribute: \"" << batcher_queue_ << "\"";
 
     if (c->HasAttr("enable_large_batch_splitting")) {
       OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",

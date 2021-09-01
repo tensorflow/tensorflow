@@ -90,13 +90,29 @@ bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
   return lhs_value < rhs_value;
 }
 
+bool IsMhlo(Operation* op) {
+  Dialect* dialect = op->getDialect();
+  return dialect && isa<MhloDialect>(dialect);
+}
+
+bool IsFusibleWithOperand(Operation* op) {
+  return IsMhlo(op) &&
+         (op->hasTrait<::mlir::OpTrait::Elementwise>() || isa<ReduceOp>(op));
+}
+
+bool IsFusibleWithConsumer(Operation* op) {
+  return IsMhlo(op) && (op->hasTrait<::mlir::OpTrait::Elementwise>() ||
+                        matchPattern(op, m_Constant()));
+}
+
+Value InferEffectiveWorkloadShape(Value v) {
+  Operation* op = v.getDefiningOp();
+  return op && isa<ReduceOp>(op) ? op->getOperand(0) : v;
+}
+
 bool IsFusible(Operation* op) {
-  if (matchPattern(op, m_Constant())) {
-    return true;
-  }
-  auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
-  return op_fusibility && (op_fusibility.isFusibleWithOperand() ||
-                           op_fusibility.isFusibleWithConsumer());
+  return matchPattern(op, m_Constant()) || IsFusibleWithConsumer(op) ||
+         IsFusibleWithOperand(op);
 }
 
 SmallVector<Value, 4> GetInputsOfFusionPattern(const FusionPattern& pattern) {
@@ -189,7 +205,7 @@ class ShapeConstraintAnalysis {
         }
       };
       for (Operation* op : op_list) {
-        auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
+        auto op_fusibility = dyn_cast<InferShapeEqualityOpInterface>(op);
         if (!op_fusibility) continue;
         int numInput = op->getNumOperands();
         int numOutput = op->getNumResults();
@@ -416,16 +432,12 @@ class FusionPlanner {
       return false;
     }
 
-    auto op_from_fusibility =
-        dyn_cast<InferFusibilityOpInterface>(op_list_[node_from]);
-    if (op_from_fusibility && !op_from_fusibility.isFusibleWithConsumer()) {
+    if (!IsFusibleWithConsumer(op_list_[node_from])) {
       // This op cannot be fused with its consumers.
       return false;
     }
 
-    auto op_to_fusibility =
-        dyn_cast<InferFusibilityOpInterface>(op_list_[node_to]);
-    if (op_to_fusibility && !op_to_fusibility.isFusibleWithOperand()) {
+    if (!IsFusibleWithOperand(op_list_[node_to])) {
       // This op cannot be fused with its operands.
       return false;
     }
@@ -433,21 +445,10 @@ class FusionPlanner {
     // Output shapes of a fusion pattern should be compatible as described in
     // the document of this class.
     SmallVector<Value, 4> results = GetResultsOfFusedPattern(from, to);
-    auto get_workload_shape = [](Value v) {
-      Operation* op = v.getDefiningOp();
-      // Block argument
-      if (!op) return v;
-      auto op_fusibility = dyn_cast<InferFusibilityOpInterface>(op);
-      // Const value
-      if (!op_fusibility) return v;
-      llvm::Optional<Value> workload =
-          op_fusibility.inferEffectiveWorkloadShape();
-      return workload.hasValue() ? *workload : v;
-    };
 
-    Value ref = get_workload_shape(results[0]);
+    Value ref = InferEffectiveWorkloadShape(results[0]);
     if (!llvm::all_of(results, [&](Value result) {
-          Value val = get_workload_shape(result);
+          Value val = InferEffectiveWorkloadShape(result);
           return shape_analysis_.HasSameShape(ref, val);
         })) {
       return false;
@@ -515,8 +516,8 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
     bool is_target_func = false;
     // We only process the function having enough candidates
     func.walk([&](Operation* op) {
-      num_fusible_ops +=
-          static_cast<int>(dyn_cast<InferFusibilityOpInterface>(op) != nullptr);
+      num_fusible_ops += static_cast<int>(
+          dyn_cast<InferShapeEqualityOpInterface>(op) != nullptr);
       is_target_func = (num_fusible_ops > 1);
       // early stop
       if (is_target_func) return WalkResult::interrupt();

@@ -130,6 +130,7 @@ tf_py_test(
     deps = [
         ":multi_process_cluster",
         ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:combinations",

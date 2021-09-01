@@ -1134,6 +1134,21 @@ class ConvertReduceOpToTfMin
   }
 };
 
+class ConvertReduceOpToTfAll
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+ public:
+  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || !init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
+
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
@@ -1160,13 +1175,7 @@ class ConvertReduceOpToTfArgMinMax
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
     Value iota = reduce_op.inputs().back();
-    mhlo::BroadcastInDimOp iota_broadcast =
-        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
-    if (!iota_broadcast ||
-        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
-      return failure();
-    if (!llvm::isa<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
-      return failure();
+    if (!MatchIota(reduce_op, iota)) return failure();
 
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
@@ -1181,17 +1190,15 @@ class ConvertReduceOpToTfArgMinMax
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    auto result_type = reduce_op.getType(0).cast<TupleType>();
     auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), result_type.getType(0), input, reduction_indices,
+        reduce_op.getLoc(), reduce_op->getResult(0).getType(), input,
+        reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), result_type.getType(1), input, reduction_indices);
+        reduce_op.getLoc(), reduce_op->getResult(1).getType(), input,
+        reduction_indices);
 
-    // Pack the result into a TupleOp to match return type. The Tuple will be
-    // optimised out by a subsequent pass.
-    SmallVector<Value, 2> result{tf_reduce_op, tf_argreduce_op};
-    rewriter.replaceOpWithNewOp<mhlo::TupleOp>(reduce_op, result);
+    rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
     return success();
   }
 
@@ -1280,6 +1287,58 @@ class ConvertReduceOpToTfArgMinMax
   virtual const char *CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
+
+ private:
+  // It's possible the iota is passed as a constant or a `mhlo.iota` followed
+  // by a `mhlo.broadcast_in_dim`, we should match for both.
+  bool MatchIota(mhlo::ReduceOp reduce_op, Value iota) const {
+    Operation *iota_op = iota.getDefiningOp();
+    if (!iota_op) return false;
+
+    // Try to match for const first.
+    DenseElementsAttr iota_const_attr;
+    if (matchPattern(iota, m_Constant(&iota_const_attr))) {
+      // The inner most dimension must match the reduce dimension.
+      auto iota_type = iota_const_attr.getType();
+      auto reduce_dim = *reduce_op.dimensions().getIntValues().begin();
+      if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
+      if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
+          (iota_type.getRank() - 1) != reduce_dim) {
+        return false;
+      }
+
+      // The inner dimension must match [0, 1, ...., size];
+      // TODO(renjieliu): Support non-inner dimension as well.
+      const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
+      if (inner_dim < 1) return false;
+
+      int64_t index = 0;
+      // We are checking whether the iota_const values are having the pattern
+      // like:
+      // 0 1 2 ... n - 1    <= inner most.   -------
+      // 0 1 2 ... n - 1                       |
+      //  ....                             outer_loop
+      //  ....                                |
+      // 0 1 2 ... n - 1                    ---------
+      for (auto value : iota_const_attr.getIntValues()) {
+        if (value != index) return false;
+        index = (index + 1) % inner_dim;
+      }
+      return true;
+    }
+
+    // Continue to try to match for `mhlo.iota` -> `mhlo.broadcast_in_dim`.
+    mhlo::BroadcastInDimOp iota_broadcast =
+        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
+    if (!iota_broadcast ||
+        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
+      return false;
+    if (!isa_and_nonnull<mhlo::IotaOp>(
+            iota_broadcast.operand().getDefiningOp()))
+      return false;
+
+    return true;
+  }
 };
 
 class ConvertReduceOpToTfArgmax
@@ -2058,15 +2117,15 @@ static PassRegistration<LegalizeHloToTf> pass;
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
-               ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
-               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<
+      ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+      ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+      ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 

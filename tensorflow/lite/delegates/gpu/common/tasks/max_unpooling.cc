@@ -112,7 +112,8 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
   const std::string channels[] = {".x", ".y", ".z", ".w"};
   for (int i = 0; i < 4; ++i) {
     const auto& s = channels[i];
-    c += "  result" + s + "= t_index == ind" + s + "? src" + s + ": 0.0f;\n";
+    c += "  result" + s + "= t_index == ind" + s + "? src" + s +
+         ": INIT_FLT(0.0f);\n";
   }
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
     c += "  args.dst_tensor.Write(result, X, Y, Z, S);\n";

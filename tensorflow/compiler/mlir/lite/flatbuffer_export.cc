@@ -1754,7 +1754,7 @@ bool UpdateEntryFunction(ModuleOp module) {
 
   if (entry_func_count == 1) {
     // Update the entry func to main when the entry func is only & one.
-    entry_func.setName("main");
+    entry_func.setName(StringAttr::get(module.getContext(), "main"));
   }
   return true;
 }
@@ -1792,7 +1792,7 @@ bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
         auto inst = subgraph_op_inst_map_[i][j];
         tfl::AttachErrorCode(
             inst->emitOpError()
-                << "is not GPU compatible: " << status.message(),
+                << "is not GPU compatible: " << std::string(status.message()),
             tflite::metrics::ConverterErrorData::ERROR_GPU_NOT_COMPATIBLE);
       }
     }

@@ -131,56 +131,56 @@ string error_name(error::Code code) {
       return "OK";
       break;
     case tensorflow::error::CANCELLED:
-      return "Cancelled";
+      return "CANCELLED";
       break;
     case tensorflow::error::UNKNOWN:
-      return "Unknown";
+      return "UNKNOWN";
       break;
     case tensorflow::error::INVALID_ARGUMENT:
-      return "Invalid argument";
+      return "INVALID_ARGUMENT";
       break;
     case tensorflow::error::DEADLINE_EXCEEDED:
-      return "Deadline exceeded";
+      return "DEADLINE_EXCEEDED";
       break;
     case tensorflow::error::NOT_FOUND:
-      return "Not found";
+      return "NOT_FOUND";
       break;
     case tensorflow::error::ALREADY_EXISTS:
-      return "Already exists";
+      return "ALREADY_EXISTS";
       break;
     case tensorflow::error::PERMISSION_DENIED:
-      return "Permission denied";
+      return "PERMISSION_DENIED";
       break;
     case tensorflow::error::UNAUTHENTICATED:
-      return "Unauthenticated";
+      return "UNAUTHENTICATED";
       break;
     case tensorflow::error::RESOURCE_EXHAUSTED:
-      return "Resource exhausted";
+      return "RESOURCE_EXHAUSTED";
       break;
     case tensorflow::error::FAILED_PRECONDITION:
-      return "Failed precondition";
+      return "FAILED_PRECONDITION";
       break;
     case tensorflow::error::ABORTED:
-      return "Aborted";
+      return "ABORTED";
       break;
     case tensorflow::error::OUT_OF_RANGE:
-      return "Out of range";
+      return "OUT_OF_RANGE";
       break;
     case tensorflow::error::UNIMPLEMENTED:
-      return "Unimplemented";
+      return "UNIMPLEMENTED";
       break;
     case tensorflow::error::INTERNAL:
-      return "Internal";
+      return "INTERNAL";
       break;
     case tensorflow::error::UNAVAILABLE:
-      return "Unavailable";
+      return "UNAVAILABLE";
       break;
     case tensorflow::error::DATA_LOSS:
-      return "Data loss";
+      return "DATA_LOSS";
       break;
     default:
       char tmp[30];
-      snprintf(tmp, sizeof(tmp), "Unknown code(%d)", static_cast<int>(code));
+      snprintf(tmp, sizeof(tmp), "UNKNOWN_CODE(%d)", static_cast<int>(code));
       return tmp;
       break;
   }

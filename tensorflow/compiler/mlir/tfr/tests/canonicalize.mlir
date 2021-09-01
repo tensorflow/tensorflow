@@ -81,6 +81,48 @@ func @quant_raw_data(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:1>>) -> tenso
 
 // -----
 
+// CHECK-LABEL:  quant_raw_data_with_list
+func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.tensor {
+  %cst_1 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  %1 = "tfr.cast"(%arg0) : (!tfr.tensor) -> tensor<1x4x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>
+  %2 = "tfr.cast"(%arg1) : (!tfr.tensor) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>
+  %3 = "tfr.cast"(%2) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>) -> !tfr.tensor
+  %4 = "tfr.cast"(%1) : (tensor<1x4x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>) -> !tfr.tensor
+  %5 = "tfr.build_list"(%3, %4) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+  %6 = tfr.quant_raw_data(%5) : (!tfr.tensor_list) -> !tfr.tensor_list
+  %7 = "tfr.cast"(%cst_1) : (tensor<i64>) -> !tfr.tensor
+  %8 = tfr.call @tf__concat(%7, %6) : (!tfr.tensor, !tfr.tensor_list) -> !tfr.tensor
+  return %8 : !tfr.tensor
+
+// CHECK:          %[[CONST_0:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+// CHECK:          %[[BUILD_LIST_0:.*]] = "tfr.build_list"(%arg1, %arg0) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+// CHECK:          %[[CAST_0:.*]] = "tfr.cast"(%[[CONST_0]]) : (tensor<i64>) -> !tfr.tensor
+// CHECK:          %[[CONCAT_O:.*]] = tfr.call @tf__concat(%[[CAST_0]], %[[BUILD_LIST_0]]) : (!tfr.tensor, !tfr.tensor_list) -> !tfr.tensor
+// CHECK:          return %[[CONCAT_O]] : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL:  cast_with_unranked_quant
+func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tensor<*xf32> {
+  %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  %1 = "tfr.cast"(%0) : (tensor<*xi8>) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+  %3 = "tf.DequantizeFloat"(%2) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+  return %3 : tensor<*xf32>
+  // The cast ops should not be removed in this case or it will result in an
+  // invalid DequantizeFloat op as following:
+  // %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  // %1 = "tf.DequantizeFloat"(%0) : (tensor<*xi8>) -> tensor<*xf32>
+// CHECK:          %[[MAXIMUMFLOAT_0:.*]] = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+// CHECK:          %[[CAST_0:.*]] = "tfr.cast"(%[[MAXIMUMFLOAT_0]]) : (tensor<*xi8>) -> !tfr.tensor
+// CHECK:          %[[CAST_1:.*]] = "tfr.cast"(%[[CAST_0]]) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+// CHECK:          %[[DEQUANTIZEFLOAT_0:.*]] = "tf.DequantizeFloat"(%[[CAST_1]]) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+// CHECK:          return %[[DEQUANTIZEFLOAT_0]] : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: quant_qparam
 func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tensor<f32>, tensor<i32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> !tfr.tensor

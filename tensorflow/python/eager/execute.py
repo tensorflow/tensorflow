@@ -36,9 +36,8 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   Args:
     op_name: Name of the TensorFlow operation (see REGISTER_OP in C++ code) to
       execute.
-    num_outputs: The number of outputs of the operation to fetch.
-                 (Explicitly provided instead of being inferred for performance
-                 reasons).
+    num_outputs: The number of outputs of the operation to fetch. (Explicitly
+      provided instead of being inferred for performance reasons).
     inputs: A list of inputs to the operation. Each entry should be a Tensor, or
       a value which can be passed to the Tensor constructor to create one.
     attrs: A tuple with alternating string attr names and attr values for this
@@ -60,10 +59,8 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
                                         inputs, attrs, num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
-      message = e.message + " name: " + name
-    else:
-      message = e.message
-    raise core._status_to_exception(e.code, message) from None
+      e.message += " name: " + name
+    raise core._status_to_exception(e) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)
@@ -116,10 +113,8 @@ def execute_with_cancellation(op_name,
                                                   num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
-      message = e.message + " name: " + name
-    else:
-      message = e.message
-    raise core._status_to_exception(e.code, message) from None
+      e.message += " name: " + name
+    raise core._status_to_exception(e) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)
@@ -212,8 +207,8 @@ def make_shape(v, arg_name):
   except TypeError as e:
     raise TypeError("Error converting %s to a TensorShape: %s." % (arg_name, e))
   except ValueError as e:
-    raise ValueError("Error converting %s to a TensorShape: %s." % (arg_name,
-                                                                    e))
+    raise ValueError("Error converting %s to a TensorShape: %s." %
+                     (arg_name, e))
   if shape.ndims is None:
     return None
   else:
@@ -281,8 +276,7 @@ def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
 
   # TODO(slebedev): consider removing this as it leaks a Keras concept.
   # pylint: disable=protected-access
-  keras_symbolic_tensors = [x for x in ret if
-                            ops._is_keras_symbolic_tensor(x)]
+  keras_symbolic_tensors = [x for x in ret if ops._is_keras_symbolic_tensor(x)]
   if keras_symbolic_tensors:
     raise core._SymbolicException(
         "Using symbolic output of a Keras layer during eager execution "

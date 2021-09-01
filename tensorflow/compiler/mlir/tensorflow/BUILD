@@ -16,6 +16,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/darwinn/tools/mlir_fuzzer/...",
+        "//third_party/auroraml/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/runtime_fallback/test/...",
         "//tensorflow/core/tfrt/saved_model/...",
@@ -23,6 +24,7 @@ package_group(
         "//tensorflow/cc/...",
         "//tensorflow/python/...",
         "//tensorflow/tools/pip_package/...",
+        "//tensorflow/tools/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/dtensor/...",
@@ -36,6 +38,7 @@ package_group(
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
         "//waymo/ml/compiler/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
     ]),
 )
 
@@ -1072,7 +1075,6 @@ cc_library(
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
-        "transforms/ensure_static_shapes_pass.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",
@@ -1901,6 +1903,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:xla_passes",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
+    "//tensorflow/compiler/mlir/xla:adjust_layout",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
     "//tensorflow/compiler/tf2xla:common",

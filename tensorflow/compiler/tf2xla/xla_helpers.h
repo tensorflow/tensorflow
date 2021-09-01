@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -183,10 +184,17 @@ struct XlaCompilationResult {
 // Resolves the device assignment based on CollectiveReduceV2OpInfo.
 // CollectiveReduceV2OpInfo records collective ops in the cluster. Note that
 // this relies on a rendezvous and blocks until all replicas are there.
-StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
+//
+// Takes several extra configuration objects by reference since
+// xla::ExecutableRunOptions does not take ownership; these are configured and
+// bundled into `run_options` if applicable.
+Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info);
+        collective_reduce_info,
+    xla::ExecutableRunOptions& run_options,
+    xla::DeviceAssignment& device_assignment,
+    xla::gpu::GpuExecutableRunOptions& gpu_options);
 
 // Generate a message with a definition location based on a provided stack
 // trace, or an empty one if the stack trace is empty.

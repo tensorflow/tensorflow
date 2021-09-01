@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/container/fixed_array.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -149,54 +150,23 @@ class SharedBatchSchedulerTest
 
   SplitFunc get_split_func() const {
     if (enable_input_batch_split()) {
-      // TODO(b/194294263)
-      // Add a common split_metadata function, and share the duplicated code.
       return
           [](std::unique_ptr<FakeTask>* input_task,
              int open_batch_remaining_slot, int max_batch_size,
              std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
             std::unique_ptr<FakeTask> owned_input_task = std::move(*input_task);
             const int input_task_size = owned_input_task->size();
-            const int task_size_from_open_batch =
-                (open_batch_remaining_slot > 0)
-                    ? (input_task_size + max_batch_size -
-                       open_batch_remaining_slot)
-                    : input_task_size;
 
-            int num_batches = (task_size_from_open_batch + max_batch_size - 1) /
-                              max_batch_size;
+            const internal::InputSplitMetadata input_split_metadata(
+                input_task_size, open_batch_remaining_slot, max_batch_size);
 
-            int head_batch_task_size, tail_batch_task_size;
-            if (open_batch_remaining_slot == 0) {
-              head_batch_task_size = std::min(input_task_size, max_batch_size);
-            } else {
-              head_batch_task_size =
-                  std::min(open_batch_remaining_slot, input_task_size);
-            }
-            if (input_task_size <= open_batch_remaining_slot) {
-              tail_batch_task_size = input_task_size;
-            } else {
-              tail_batch_task_size = task_size_from_open_batch % max_batch_size;
-              if (tail_batch_task_size == 0) {
-                tail_batch_task_size = max_batch_size;
-              }
-            }
-
-            auto get_task_size = [head_batch_task_size, tail_batch_task_size,
-                                  max_batch_size,
-                                  num_batches](int batch_id) -> int {
-              if (batch_id == 0) {
-                return head_batch_task_size;
-              }
-              if (batch_id == num_batches - 1) {
-                return tail_batch_task_size;
-              }
-              return max_batch_size;
-            };
+            const absl::FixedArray<int> task_sizes =
+                input_split_metadata.task_sizes();
+            const int num_batches = task_sizes.size();
 
             output_tasks->resize(num_batches);
             for (int i = 0; i < num_batches; i++) {
-              (*output_tasks)[i] = std::make_unique<FakeTask>(get_task_size(i));
+              (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
             }
 
             return Status::OK();

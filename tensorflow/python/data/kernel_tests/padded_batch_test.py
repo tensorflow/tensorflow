@@ -103,6 +103,26 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[[[], [], [], []]])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchWithDifferetElementTypes(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ([0, 1, 2, 3], ['a', 'b', 'c', 'd']))
+    dataset = dataset.padded_batch(2)
+    self.assertDatasetProduces(dataset, [([0, 1], ['a', 'b']),
+                                         ([2, 3], ['c', 'd'])])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchWithEmptyTuple(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(([0, 1, 2, 3], ()))
+    dataset = dataset.padded_batch(2)
+    self.assertDatasetProduces(dataset, [([0, 1], ()), ([2, 3], ())])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchWithNoneElement(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(([0, 1, 2, 3], None))
+    with self.assertRaises(TypeError):
+      dataset = dataset.padded_batch(2)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testDefaultPaddedShapes(self):
 
     def fill(x):

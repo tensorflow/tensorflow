@@ -26,10 +26,22 @@
     and their `experimental` endpoints
     (`tf.keras.experimental.models.LinearModel` and
     `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
+  * RNG behavior change for all `tf.keras.initializers` classes. For any class
+    constructed with a fixed seed, it will no longer generate same value
+    when invoked multiple times. Instead, it will return different value, but a
+    determinisitic sequence. This change will make the initialize behavior align
+    between v1 and v2.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with
     TF SavedModel's Signature concept.
+  * Deprecate Makefile builds. Makefile users need to migrate their builds to
+    CMake or Bazel. Please refer to the
+    [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
+    and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
+    for the migration.
+  * Add experimental API `experimental_from_jax` to support conversion from Jax
+    models to TensorFlow Lite.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -125,6 +137,8 @@
       ```
   * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in
     distributed computations.
+  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
+    to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
 
 ## Bug Fixes and Other Changes
 
@@ -136,6 +150,11 @@
         *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
         *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
         *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.ParameterServerStrategy` and `tf.distribute.experimental.CentralStorageStrategy`.
+    * Added an experimental session config
+      `tf.experimental.disable_functional_ops_lowering` which disables
+      functional control flow op lowering optimization. This is useful when
+      executing within a portable runtime where control flow op kernels may not 
+      be loaded due to selective registration.
 *   `tf.data`:
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
@@ -144,12 +163,22 @@
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
+    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
+        that are files. This will enable creating hermetic SavedModels when
+        using datasets created from files.
+    *   Promoting
+        `tf.data.experimental.sample_from_datasets` API to
+        `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
+        endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
       https://www.tensorflow.org/xla/custom_call for details.
+    * XLA:GPU reductions are deterministic by default (reductions within
+      `jit_compile=True` are now deterministic).
+    * XLA:GPU works with Horovod (OSS contribution by Trent Lo from NVidia)
 *   `tf.saved_model.save`:
     *   When saving a model, not specifying a namespace whitelist for custom
         ops with a namespace will now default to allowing rather than rejecting
@@ -263,6 +292,16 @@ This release contains contributions from many people at Google, as well as:
             coming soon.
         *   Old Converter (TOCO) is getting removed from next release. It's been
             deprecated for few releases already.
+    *   lite.experimental.authoring.compatible API:
+        *   A Python decorator to provide a way to check TFLite compatibility
+            issue of `tf.function`. This returns a callable object which
+            validates TFLite compatibility. If an incompatible operation is
+            encountered during execution, an exception will be raised with
+            information about the incompatible ops.
+    *   lite.experimental.Analyzer API:
+        *   An experimental tool to analyze TFLite flatbuffer models. This API
+            can be used to investigate TFLite model structure and check
+            compatibility with GPU delegate.
 
 *   `tf.saved_model`:
 
@@ -3656,7 +3695,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
   * Support added for global sync `BatchNormalization` by using the newly added `tf.keras.layers.experimental.SyncBatchNormalization` layer. This layer will sync `BatchNormalization` statistics every step across all replicas taking part in sync training.
   * Performance improvements for GPU multi-worker distributed training using `tf.distribute.experimental.MultiWorkerMirroredStrategy`
     * Update NVIDIA `NCCL` to `2.5.7-1` for better performance and performance tuning. Please see [nccl developer guide](https://docs.nvidia.com/deeplearning/sdk/nccl-developer-guide/docs/env.html) for more information on this.
-    * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/staging/training/grad_utils.py) usage.
+    * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/modeling/grad_utils.py) usage.
     * Experimental support of [all reduce gradient packing](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/CollectiveHints) to allow overlapping gradient aggregation with backward path computation.
     * Deprecated `experimental_run_v2` method for distribution strategies and renamed the method `run` as it is no longer experimental.
     * Add CompositeTensor support for DistributedIterators. This should help prevent unnecessary function retracing and memory leaks.

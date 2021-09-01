@@ -621,6 +621,21 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
       raise AssertionError("Executing a function after PS fails, should "
                            "result in a PS failure.")
 
+  def testAsyncWaitIsNoOp(self):
+    if self.num_workers < 2:
+      self.skipTest("Worker number is less than 2.")
+    model = self._create_model_and_run_indefinitely()
+
+    self.assertFalse(self.cluster_coord.done())
+    self._cluster.kill_task("worker", 0)
+    time.sleep(2)
+    self.assertFalse(context.check_alive("/job:worker/replica:0/task:0"))
+    # Should pass without exception even with failed remote workers
+    context.async_wait()
+
+    model.join_training_functions()
+    self.assertGreaterEqual(model.iterations.numpy(), 10)
+
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):
   """Multi worker fault tolerance tests.

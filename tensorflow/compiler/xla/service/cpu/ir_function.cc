@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
-
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+
+#include <iterator>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -169,7 +169,7 @@ void IrFunction::Initialize(const string& function_name,
     if (&argument == retval) {
       continue;
     }
-    function_->addAttribute(argument.getArgNo() + 1, llvm::Attribute::NoAlias);
+    function_->addParamAttr(argument.getArgNo(), llvm::Attribute::NoAlias);
   }
 
   b_->SetInsertPoint(llvm::BasicBlock::Create(

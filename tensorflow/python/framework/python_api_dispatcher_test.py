@@ -32,7 +32,7 @@ from tensorflow.python.platform import googletest
 # PyTypeChecker::MatchType enum values.
 NO_MATCH = dispatch.MatchType.NO_MATCH
 MATCH = dispatch.MatchType.MATCH
-MATCH_COMPOSITE = dispatch.MatchType.MATCH_COMPOSITE
+MATCH_DISPATCHABLE = dispatch.MatchType.MATCH_DISPATCHABLE
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -60,7 +60,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
 
     with self.subTest('ragged checker'):
       ragged_checker = dispatch.MakeInstanceChecker(ragged_tensor.RaggedTensor)
-      self.assertEqual(ragged_checker.Check(rt), MATCH_COMPOSITE)
+      self.assertEqual(ragged_checker.Check(rt), MATCH_DISPATCHABLE)
       self.assertEqual(ragged_checker.Check(3), NO_MATCH)
       self.assertEqual(ragged_checker.Check(t), NO_MATCH)
       self.assertEqual(ragged_checker.cost(), 1)
@@ -148,7 +148,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(checker.Check(3.0), NO_MATCH)
       self.assertEqual(checker.Check(None), NO_MATCH)
       self.assertEqual(checker.Check(t), MATCH)
-      self.assertEqual(checker.Check(rt), MATCH_COMPOSITE)
+      self.assertEqual(checker.Check(rt), MATCH_DISPATCHABLE)
       self.assertEqual(checker.cost(), 3)
       self.assertEqual(
           repr(checker), '<PyTypeChecker Union[Tensor, RaggedTensor]>')
@@ -199,10 +199,10 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(checker.Check(a), NO_MATCH)
       self.assertEqual(checker.Check(b), NO_MATCH)
       self.assertEqual(checker.Check(c), MATCH)
-      self.assertEqual(checker.Check(d), MATCH_COMPOSITE)
+      self.assertEqual(checker.Check(d), MATCH_DISPATCHABLE)
       self.assertEqual(checker.Check(e), MATCH)
       self.assertEqual(checker.Check(f), NO_MATCH)
-      self.assertEqual(checker.Check(g), MATCH_COMPOSITE)
+      self.assertEqual(checker.Check(g), MATCH_DISPATCHABLE)
       self.assertEqual(checker.cost(), 30)
       self.assertEqual(
           repr(checker), '<PyTypeChecker List[Union[Tensor, RaggedTensor]]>')
@@ -214,6 +214,23 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(checker.Check(a), MATCH)
       self.assertEqual(checker.Check(np.array(a)), MATCH)
       self.assertEqual(checker.Check(np.array(a) * 1.5), NO_MATCH)
+
+  def testRegisterDispatchableType(self):
+
+    @dispatch.register_dispatchable_type
+    class A(object):
+      pass
+
+    checker = dispatch.MakeInstanceChecker(A)
+    self.assertEqual(checker.Check(A()), MATCH_DISPATCHABLE)
+
+  def testRegisterDispatchableTypeError(self):
+
+    with self.assertRaisesRegex(ValueError, 'Expected a type object'):
+      dispatch.register_dispatchable_type(3)
+    with self.assertRaisesRegex(ValueError,
+                                'Type .* has already been registered'):
+      dispatch.register_dispatchable_type(ragged_tensor.RaggedTensor)
 
 
 @test_util.run_all_in_graph_and_eager_modes

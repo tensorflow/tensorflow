@@ -18,7 +18,6 @@ limitations under the License.
 // the --benchmark_filter flag which specifies which benchmarks to run,
 // we will either run benchmarks or run the gtest tests in the program.
 
-#include <iostream>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -28,8 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 GTEST_API_ int main(int argc, char** argv) {
-  std::cout << "Running main() from test_main.cc\n";
-
   tensorflow::testing::InstallStacktraceHandler();
 
   for (int i = 1; i < argc; i++) {
