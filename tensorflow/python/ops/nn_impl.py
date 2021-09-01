@@ -95,7 +95,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
           "log_input and targets must have the same shape (%s vs %s)" %
           (log_input.get_shape(), targets.get_shape()))
      
-    result = math_ops.exp(log_input) - log_input * target
+    result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
       # need to create constant tensors here so that their dtypes can be matched
       # to that of the targets.
@@ -108,10 +108,8 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       ones = array_ops.ones_like(targets, dtype=targets.dtype)
       cond = math_ops.logical_and(targets >= zeros, targets <= ones)
       result += array_ops.where(cond, zeros, stirling_approx)
-    if(!result.is_nan()):
-      raise ValueError(
-          "Input contains NaN, infinity or a value too large for dtype('float64') (%s vs %s)" % 
-          (log_input.get_shape(), targets.get_shape()))
+    if(result.is_nan):
+      raise ValueError("Input contains NaN, infinity or a value too large for dtype('float64')")
     return result
 
 
