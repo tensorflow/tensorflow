@@ -144,6 +144,36 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_folder",
+    srcs = ["all_reduce_folder.cc"],
+    hdrs = ["all_reduce_folder.h"],
+    deps = [
+        ":all_reduce_key",
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_folder_test",
+    srcs = ["all_reduce_folder_test.cc"],
+    deps = [
+        ":all_reduce_folder",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "bfloat16_support",
     srcs = ["bfloat16_support.cc"],
     hdrs = ["bfloat16_support.h"],
