@@ -778,23 +778,27 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
 
     rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{input, constant_f32_op, c_false});
     auto input_x_scale_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__mul"),
+        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__mul"),
         ArrayRef<Value>{cast_input_to_float_op.getResult(0), scale});
     auto round_rescaled_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__round"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__round"),
         ArrayRef<Value>{input_x_scale_op->getResult(0)});
     auto cast_zp_to_float_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{zp_cast, constant_f32_op, c_false});
     auto recentered_op = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__add"),
+        loc, result_types, SymbolRefAttr::get(rewriter.getContext(), "tf__add"),
         ArrayRef<Value>{round_rescaled_op->getResult(0),
                         cast_zp_to_float_op->getResult(0)});
     auto cast_output_to_i32 = rewriter.create<CallOp>(
-        loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
+        loc, result_types,
+        SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false});
     rescale_op.output().replaceAllUsesWith(cast_output_to_i32.getResult(0));
     return success();

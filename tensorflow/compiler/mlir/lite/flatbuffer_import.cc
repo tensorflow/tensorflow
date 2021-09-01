@@ -709,9 +709,11 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
   }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
-    auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
+    auto then_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
-    auto else_attr = builder.getSymbolRefAttr(func_names.at(else_idx));
+    auto else_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
 
     return {builder.getNamedAttr("then_branch", then_attr),
             builder.getNamedAttr("else_branch", else_attr),
@@ -720,9 +722,11 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
   }
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
-    auto cond_attr = builder.getSymbolRefAttr(func_names.at(cond_idx));
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
-    auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
     return {builder.getNamedAttr("cond", cond_attr),
             builder.getNamedAttr("body", body_attr)};
