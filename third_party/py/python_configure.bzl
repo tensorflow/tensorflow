@@ -155,8 +155,8 @@ def _get_python_include(repository_ctx, python_bin):
             python_bin,
             "-c",
             "from __future__ import print_function;" +
-            "from distutils import sysconfig;" +
-            "print(sysconfig.get_python_inc())",
+            "import sysconfig;" +
+            "print(sysconfig.get_path('include'))",
         ],
         error_msg = "Problem getting python include path.",
         error_details = ("Is the Python binary path set up right? " +
