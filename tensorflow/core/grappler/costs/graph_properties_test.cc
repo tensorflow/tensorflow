@@ -218,6 +218,21 @@ TEST_F(GraphPropertiesTest, ClearProperties) {
   }
 }
 
+TEST_F(GraphPropertiesTest, Clear) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
+                                          cluster_->GetDeviceNames());
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  GraphProperties properties(item);
+  Status s = properties.InferStatically(true);
+  TF_ASSERT_OK(s);
+
+  EXPECT_TRUE(properties.has_properties());
+  properties.Clear();
+  EXPECT_FALSE(properties.has_properties());
+}
+
 TEST_F(GraphPropertiesTest, DynamicProperties) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
                                           cluster_->GetDeviceNames());
