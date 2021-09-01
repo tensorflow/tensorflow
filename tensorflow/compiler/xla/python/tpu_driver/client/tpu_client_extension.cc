@@ -175,6 +175,11 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
       .def("xla_shape", &PyTpuBuffer::on_host_shape)
+      .def(
+          "dtype",
+          [](PyTpuBuffer* buffer) {
+            return PrimitiveTypeToDtype(buffer->on_host_shape().element_type());
+          })
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",
