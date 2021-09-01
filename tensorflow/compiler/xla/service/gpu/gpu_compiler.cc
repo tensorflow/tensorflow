@@ -344,8 +344,9 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pipeline.AddPass<DotDecomposer>();
-      // Only merge "small" dots.  This threshold was not set carefully.
-      pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{1} << 20);
+      // Only merge "smallish" dots.  This threshold was not set carefully, but
+      // so far we know that 1mb is too small.
+      pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{16} << 20);
       pipeline.AddPass<SortSimplifier>();
       pipeline.AddPass<TupleSimplifier>();
       pipeline.AddPass<WhileLoopConstantSinking>();
