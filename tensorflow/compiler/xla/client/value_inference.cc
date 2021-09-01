@@ -1470,6 +1470,7 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
 
       // Gather dependencies and transform them into literals.
       std::vector<Literal> literals;
+      literals.reserve(item.dependencies.size());
       for (CacheKey& dep_key : item.dependencies) {
         TF_RET_CHECK(evaluated.contains(dep_key));
         literals.emplace_back(evaluated.at(dep_key).Clone());

@@ -174,7 +174,9 @@ HloSharding HloSharding::Subgroup(
     Array<int64_t> new_tiles(transposed_shape);
     new_tiles.Each([&](absl::Span<const int64_t> indices, int64_t* value) {
       std::vector<int64_t> src_indices(tile_assignment.num_dimensions(), 0);
-      for (int64_t i = 0; i < indices.size(); ++i) {
+      const int64_t indices_size = indices.size();
+      src_indices.reserve(indices_size);
+      for (int64_t i = 0; i < indices_size; ++i) {
         src_indices[perm[i]] = indices[i];
       }
       *value = tile_assignment(src_indices);

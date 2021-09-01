@@ -173,6 +173,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
       std::vector<int64_t> index_broadcast_dims;
       std::vector<int64_t> input_broadcast_dims;
       std::vector<int64_t> sizes;
+      sizes.reserve(index_shape.rank());
       for (int64_t i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
           input_broadcast_dims.push_back(i);

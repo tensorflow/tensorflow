@@ -784,7 +784,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
           proto.gather_dimension_numbers());
       std::vector<int64_t> gather_slice_sizes;
-      for (int64_t bound : proto.gather_slice_sizes()) {
+      auto slice_sizes = proto.gather_slice_sizes();
+      gather_slice_sizes.reserve(slice_sizes);
+      for (int64_t bound : slice_sizes) {
         gather_slice_sizes.push_back(bound);
       }
       instruction = CreateGather(shape, operands(0), operands(1),

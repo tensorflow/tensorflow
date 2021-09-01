@@ -3214,6 +3214,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       inferred_shape.set_dynamic_dimension(output_dynamic_dimension, true);
     } else {
       std::vector<int64_t> output_non_degenerated;
+      output_non_degenerated.reserve(output_dim_end);
       for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
         if (new_sizes[i] != 1) {
           output_non_degenerated.push_back(i);
