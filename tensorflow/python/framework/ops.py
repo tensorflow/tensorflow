@@ -346,11 +346,12 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   Caution: when constructing a tensor from a numpy array or pandas dataframe
   the underlying buffer may be re-used:
 
-  >>> a = np.array([1, 2, 3])
-  >>> b = tf.constant(a)
-  >>> a[0] = 4
-  >>> print(b)
-  tf.Tensor([4 2 3], shape=(3,), dtype=int64)
+  ```python
+  a = np.array([1, 2, 3])
+  b = tf.constant(a)
+  a[0] = 4
+  print(b)  # tf.Tensor([4 2 3], shape=(3,), dtype=int64)
+  ```
 
   Note: this is an implementation detail that is subject to change and users
   should not rely on this behaviour.
