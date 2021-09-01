@@ -285,7 +285,8 @@ absl::flat_hash_set<string> GetExperiments(
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
-// given options.
+// given options. An optimization must be a graph optimizer name that has been
+// registered with Grappler.
 void GetOptimizations(const Options& options,
                       absl::flat_hash_set<tstring>* optimizations_enabled,
                       absl::flat_hash_set<tstring>* optimizations_disabled,
@@ -298,7 +299,11 @@ absl::flat_hash_set<tstring> SelectOptimizations(
     const absl::flat_hash_set<tstring>& optimizations_disabled,
     const absl::flat_hash_set<tstring>& optimizations_default);
 
-// Creates graph rewrite configs based on the given options.
+// Creates graph rewrite configs based on the given options. The configs will
+// only be used if their corresponding optimizers registered with Grappler are
+// enabled.
+// A config is a string with the following format:
+//   <optimizer name>:<attribute name>:<attribute value>
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options);
 
 // Determines whether max intra-op parallelism should be configured.
