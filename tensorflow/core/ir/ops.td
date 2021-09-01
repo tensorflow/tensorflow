@@ -159,7 +159,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
 
   // Use the dialect printer/parser like other unregistered op in this dialect.
   let parser = [{ return parseCustomTfOp(parser, result); }];
-  let printer = [{ (void)(*this)->getDialect()->printOperation(*this, p); }];
+  let printer = [{ (void)(*this)->getDialect()->getOperationPrinter(*this)(*this, p); }];
 }
 
 

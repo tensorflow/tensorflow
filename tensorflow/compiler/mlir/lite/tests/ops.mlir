@@ -318,8 +318,8 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testAddWithI64Broadcasting
 func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
 ^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
-  // CHECK: "tfl.add"(%arg0, %arg1)
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  // CHECK: tfl.add(%arg0, %arg1)
+  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
   return %0#0 : tensor<2x3xi64>
 }
 
@@ -373,7 +373,7 @@ func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
-  // CHECK: "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>>
   return %0#0 : tensor<? x !quant.any<i16:f32>>
 }
@@ -409,7 +409,7 @@ func @testDiv(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testLess
 func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // CHECK: "tfl.less"(%arg0, %arg1)
+  // CHECK: tfl.less(%arg0, %arg1)
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
   return %0#0 : tensor<? x i1>
 }

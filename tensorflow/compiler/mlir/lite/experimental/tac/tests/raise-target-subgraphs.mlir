@@ -82,7 +82,7 @@ func @norm1(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 // CHECK:         }
 
 // CHECK:   func private @func_0_GPU_FLOAT(%[[VAL_0:.*]]: tensor<1x128x128xf32>, %[[VAL_1:.*]]: tensor<128xf32>, %[[VAL_2:.*]]: tensor<2xi32>, %[[VAL_3:.*]]: tensor<3xi32>) -> tensor<1x128x128xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
-// CHECK:           %[[VAL_4:.*]] = "tfl.add"(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
+// CHECK:           %[[VAL_4:.*]] = tfl.add(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.reshape"(%[[VAL_4]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<2xi32>) -> tensor<128x128xf32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.relu"(%[[VAL_5]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<128x128xf32>) -> tensor<128x128xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.reshape"(%[[VAL_6]], %[[VAL_3]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<128x128xf32>, tensor<3xi32>) -> tensor<1x128x128xf32>
@@ -123,7 +123,7 @@ func @norm2(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 // CHECK:         }
 
 // CHECK:   func private @func_0_GPU_FLOAT(%[[VAL_0:.*]]: tensor<1x128x128xf32>, %[[VAL_1:.*]]: tensor<128xf32>, %[[VAL_2:.*]]: tensor<2xi32>) -> (tensor<1x128x128xf32>, tensor<128x128xf32>) attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
-// CHECK:           %[[VAL_3:.*]] = "tfl.add"(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
+// CHECK:           %[[VAL_3:.*]] = tfl.add(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
 // CHECK:           %[[VAL_4:.*]] = "tfl.reshape"(%[[VAL_3]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x128x128xf32>, tensor<2xi32>) -> tensor<128x128xf32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.relu"(%[[VAL_4]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<128x128xf32>) -> tensor<128x128xf32>
 // CHECK:           return %[[VAL_3]], %[[VAL_5]] : tensor<1x128x128xf32>, tensor<128x128xf32>
@@ -199,12 +199,12 @@ func @quantizationWithFloat(%arg0: tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-
 // CHECK:         }
 
 // CHECK:   func private @func_0_CPU_QUANTIZED_INT8(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> attributes {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_0"} {
-// CHECK:           %[[VAL_2:.*]] = "tfl.mul"(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK:           %[[VAL_2:.*]] = tfl.mul(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:           return %[[VAL_2]] : tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:         }
 
 // CHECK:   func private @func_2_CPU_QUANTIZED_INT8(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> attributes {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_2"} {
-// CHECK:           %[[VAL_2:.*]] = "tfl.mul"(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK:           %[[VAL_2:.*]] = tfl.mul(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:           return %[[VAL_2]] : tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:         }
 
