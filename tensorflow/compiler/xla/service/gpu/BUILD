@@ -164,6 +164,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "custom_call_thunk",
+    srcs = ["custom_call_thunk.cc"],
+    hdrs = ["custom_call_thunk.h"],
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]),
+    deps = [
+        ":buffer_allocations",
+        ":thunk",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
 tf_cc_test(
     name = "custom_call_test",
     srcs = if_cuda_or_rocm(["custom_call_test.cc"]),
@@ -687,7 +707,6 @@ cc_library(
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "cudnn_batchnorm_thunk.cc",
-        "custom_call_thunk.cc",
         "fft_thunk.cc",
         "for_thunk.cc",
         "gpu_executable.cc",
@@ -740,6 +759,7 @@ cc_library(
         ":buffer_allocations",
         ":cusolver_context",
         ":cudnn_batchnorm_runner",
+        ":custom_call_thunk",
         ":gemm_thunk",
         ":gpu_constants",
         ":gpu_conv_runner",
