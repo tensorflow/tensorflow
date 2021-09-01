@@ -95,3 +95,27 @@ func @reduce_2(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> (tensor<?x?xf3
   %4 = "mhlo.add"(%3, %3) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   return %1, %4 : tensor<?x?xf32>, tensor<?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @fused_unfused_mix
+func @fused_unfused_mix(%arg0: tensor<4x16xi32>, %arg1: tensor<4x16xi32>) -> tensor<16x4xi32> {
+  // This case use to fail the verifier by breaking dominance, we
+  // just verify that we generate a fusion and don't crash.
+  // CHECK: mhlo.fusion
+  // CHECK-NEXT: mhlo.add
+  // CHECK-NEXT: mhlo.subtract
+  // CHECK-NEXT: mhlo.multiply
+  // CHECK: mhlo.broadcast_in_dim
+  // CHECK-NEXT: mhlo.copy
+  // CHECK-NEXT: mhlo.slice
+  // CHECK-NEXT: mhlo.transpose
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<4x16xi32>, tensor<4x16xi32>) -> tensor<4x16xi32>
+  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x16xi32>) -> tensor<4x16x16xi32>
+  %2 = "mhlo.copy"(%1) : (tensor<4x16x16xi32>) -> tensor<4x16x16xi32>
+  %3 = "mhlo.subtract"(%0, %arg0) : (tensor<4x16xi32>, tensor<4x16xi32>) -> tensor<4x16xi32>
+  %4 = "mhlo.slice"(%3) {limit_indices = dense<[2, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x16xi32>) -> tensor<2x8xi32>
+  %5 = "mhlo.multiply"(%0, %3) : (tensor<4x16xi32>, tensor<4x16xi32>) -> tensor<4x16xi32>
+  %6 = "mhlo.transpose"(%5) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<4x16xi32>) -> tensor<16x4xi32>
+  return %6 : tensor<16x4xi32>
+}
