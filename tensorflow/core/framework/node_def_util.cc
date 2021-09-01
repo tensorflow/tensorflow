@@ -732,6 +732,17 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
   }
 }
 
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def) {
+  AttrSlice attrs(*node_def);
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value()) {
+      const AttrValue* attr = attrs.Find(attr_def.name());
+      if (attr && AreAttrValuesEqual(*attr, attr_def.default_value()))
+        node_def->mutable_attr()->erase(attr_def.name());
+    }
+  }
+}
+
 namespace {
 
 using ::tensorflow::tstring;

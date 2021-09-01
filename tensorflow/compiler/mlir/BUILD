@@ -150,6 +150,10 @@ cc_library(
     name = "init_mlir",
     srcs = ["init_mlir.cc"],
     hdrs = ["init_mlir.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
