@@ -447,12 +447,20 @@ cc_library(
             # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
             # could be specified simultaneously, use two selects here.
             select({
+                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
                 "@XNNPACK//:xnn_enable_qs8_explicit_true": [
+                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+                ],
+                "//tensorflow:emscripten": [
                     "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
                 ],
                 "//conditions:default": [],
             }) + select({
+        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
         "@XNNPACK//:xnn_enable_qu8_explicit_true": [
+            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+        ],
+        "//tensorflow:emscripten": [
             "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
         ],
         "//conditions:default": [],
