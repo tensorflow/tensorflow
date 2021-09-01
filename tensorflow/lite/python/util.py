@@ -601,8 +601,10 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
   if not remove_tensors_idxs:
     return
   if len(model.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model.subgraphs)))
+    logging.info("Skipping the removal of dangled tensors since the model has "
+                 "multiple subgraphs and tensors can be used in the different "
+                 "subgraph(s)")
+    return
   subgraph = model.subgraphs[0]
   tensors = subgraph.tensors
   operators = subgraph.operators
@@ -934,10 +936,6 @@ def modify_model_io_type(
     return model
 
   model_object = _convert_model_from_bytearray_to_object(model)
-
-  if len(model_object.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model_object.subgraphs)))
 
   _modify_model_input_type(model_object, inference_input_type)
 
