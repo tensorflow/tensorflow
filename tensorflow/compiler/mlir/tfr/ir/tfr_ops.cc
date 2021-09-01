@@ -418,6 +418,12 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   }
 };
 
+inline bool isQuantizedType(Type type) {
+  auto tensor_type = type.dyn_cast<TensorType>();
+  return (tensor_type &&
+          tensor_type.getElementType().isa<quant::QuantizedType>());
+}
+
 class RemoveRedundantCast : public OpRewritePattern<CastOp> {
   using OpRewritePattern<CastOp>::OpRewritePattern;
 
@@ -434,9 +440,8 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     Type output_type = cast_op.getType();
 
     // Preserve quantization information for intermediate tensors.
-    auto intermediate_type = preceding_cast.getType().dyn_cast<TensorType>();
-    if (intermediate_type &&
-        intermediate_type.getElementType().isa<quant::QuantizedType>()) {
+    auto intermediate_type = preceding_cast.getType();
+    if (isQuantizedType(intermediate_type) || isQuantizedType(output_type)) {
       return failure();
     }
 
@@ -569,7 +574,8 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
       return failure();
     }
     // If there are redundant casts, hoist output of raw data op originating op.
-    if (auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>()) {
+    if (preceding_cast.arg().getDefiningOp()) {
+      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
       if (!redundant_cast ||
           redundant_cast.arg().getType() != preceding_cast.out().getType()) {
         return failure();
