@@ -169,8 +169,8 @@ Status TestRoundTrip(GraphDef& graphdef) {
   }
   NormalizeTensorData(new_graph);
   NormalizeTensorData(original_graph);
-  if (!proto2::util::MessageDifferencer::Equivalent(original_graph,
-                                                    new_graph)) {
+  if (!tensorflow::protobuf::util::MessageDifferencer::Equivalent(
+          original_graph, new_graph)) {
     LOG(ERROR) << "GraphDef didn't Roundtrip:";
     llvm::errs()
         << "\n=========\n\n"
