@@ -136,6 +136,7 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -151,6 +152,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:variant",
+        "@com_google_absl//absl/utility",
     ],
     alwayslink = 1,
 )
@@ -171,6 +174,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/utility",
     ],
 )
 

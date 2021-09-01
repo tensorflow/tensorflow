@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/clock.h"
+#include "absl/types/variant.h"
+#include "absl/utility/utility.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -109,6 +111,11 @@ template <typename TaskType>
 class SharedBatchScheduler
     : public std::enable_shared_from_this<SharedBatchScheduler<TaskType>> {
  public:
+  using BatchTaskHandleUniquePtr =
+      std::unique_ptr<Batch<internal::BatchInputTaskHandle<TaskType>>>;
+  using BatchTaskUniqueptr = std::unique_ptr<Batch<TaskType>>;
+  using BatchUniquePtr =
+      absl::variant<BatchTaskUniqueptr, BatchTaskHandleUniquePtr>;
   // TODO(b/25089730): Tune defaults based on best practices as they develop.
   struct Options {
     // The name to use for the pool of batch threads.
@@ -220,9 +227,8 @@ class SharedBatchScheduler
  private:
   explicit SharedBatchScheduler(const Options& options);
 
-  void GetNextWorkItem_Locked(
-      internal::Queue<TaskType>** queue_for_batch_out,
-      std::unique_ptr<Batch<TaskType>>* batch_to_process_out)
+  void GetNextWorkItem_Locked(internal::Queue<TaskType>** queue_for_batch_out,
+                              BatchUniquePtr* batch_to_process_out)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The code executed in 'batch_threads_'. Obtains a batch to process from the
@@ -237,6 +243,8 @@ class SharedBatchScheduler
       std::function<void(std::unique_ptr<Batch<TaskType>>)>
           process_batch_callback,
       std::unique_ptr<BatchScheduler<TaskType>>* queue);
+
+  static bool BatchExists(const BatchUniquePtr& batch_to_process);
 
   const Options options_;
 
@@ -340,7 +348,7 @@ class Queue {
   // this queue. Either returns a batch that is ready to be processed, or
   // nullptr if the queue declines to schedule a batch at this time. If it
   // returns a batch, the batch is guaranteed to be closed.
-  std::unique_ptr<Batch<TaskType>> ScheduleBatch();
+  typename SharedBatchScheduler<TaskType>::BatchUniquePtr ScheduleBatch();
 
   // A variant of `ScheduleBatch`.
   // Batches are guaranteed to form at task enqueue time.
@@ -643,14 +651,23 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
 }
 
 template <typename TaskType>
+bool SharedBatchScheduler<TaskType>::BatchExists(
+    const BatchUniquePtr& batch_to_process) {
+  if (absl::holds_alternative<BatchTaskUniqueptr>(batch_to_process)) {
+    return absl::get<BatchTaskUniqueptr>(batch_to_process) == nullptr;
+  }
+  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) == nullptr;
+}
+
+template <typename TaskType>
 void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
     internal::Queue<TaskType>** queue_for_batch_out,
-    std::unique_ptr<Batch<TaskType>>* batch_to_process_out) {
-  std::unique_ptr<Batch<TaskType>> batch_to_process;
+    BatchUniquePtr* batch_to_process_out) {
+  BatchUniquePtr batch_to_process;
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   const int num_queues = queues_.size();
   for (int num_queues_tried = 0;
-       batch_to_process == nullptr && num_queues_tried < num_queues;
+       (BatchExists(batch_to_process)) && num_queues_tried < num_queues;
        ++num_queues_tried) {
     DCHECK(next_queue_to_schedule_ != queues_.end());
 
@@ -662,13 +679,14 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
 
     // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
     batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
-    if (batch_to_process != nullptr) {
+
+    if (!BatchExists(batch_to_process)) {
       queue_for_batch = next_queue_to_schedule_->get();
     }
 
     // Advance 'next_queue_to_schedule_'.
     if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
-        batch_to_process == nullptr) {
+        (BatchExists(batch_to_process))) {
       // We've encountered a closed queue with no work to do. Drop it.
       DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
       next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
@@ -687,14 +705,16 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
 template <typename TaskType>
 void SharedBatchScheduler<TaskType>::ThreadLogic() {
   // A batch to process next (or nullptr if no work to do).
-  std::unique_ptr<Batch<TaskType>> batch_to_process;
+  BatchUniquePtr batch_to_process;
   // The queue with which 'batch_to_process' is associated.
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
     mutex_lock l(mu_);
     while (true) {
       GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
-      if (batch_to_process != nullptr) break;
+      if (!BatchExists(batch_to_process)) {
+        break;
+      }
       if (queues_.empty()) return;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
@@ -704,7 +724,32 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     }
   }
 
-  queue_for_batch->ProcessBatch(std::move(batch_to_process));
+  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
+  if (absl::holds_alternative<BatchTaskHandleUniquePtr>(batch_to_process)) {
+    // The corresponding `queue_for_batch` must be created with
+    // `enable_lazy_split=true`.
+    BatchTaskHandleUniquePtr ptr =
+        std::move(absl::get<BatchTaskHandleUniquePtr>(batch_to_process));
+    batch_to_schedule = std::make_unique<Batch<TaskType>>();
+    std::vector<std::unique_ptr<internal::BatchInputTaskHandle<TaskType>>>
+        task_handles = ptr->RemoveAllTasks();
+
+    // TODO(b/194294263):
+    // Handle the batch-kernel callback properly when lazy split returns
+    // error.
+    for (int i = 0; i < task_handles.size(); i++) {
+      batch_to_schedule->AddTask(std::move(task_handles[i]->GetSplitTask()));
+    }
+    batch_to_schedule->Close();
+
+  } else {
+    // The corresponding `queue_for_batch` must be created with
+    // `enable_lazy_split=false`.
+    batch_to_schedule =
+        std::move(absl::get<BatchTaskUniqueptr>(batch_to_process));
+  }
+
+  queue_for_batch->ProcessBatch(std::move(batch_to_schedule));
 }
 
 namespace internal {
@@ -995,7 +1040,8 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
 }
 
 template <typename TaskType>
-std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
+typename SharedBatchScheduler<TaskType>::BatchUniquePtr
+Queue<TaskType>::ScheduleBatch() {
   if (!options_.enable_lazy_split) {
     return ScheduleBatchWithEagerSplit();
   }
@@ -1022,20 +1068,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
     }
   }
 
-  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
-  if (task_handles_to_schedule != nullptr) {
-    batch_to_schedule = std::make_unique<Batch<TaskType>>();
-    std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> task_handles =
-        task_handles_to_schedule->RemoveAllTasks();
-
-    // TODO(b/194294263):
-    // Handle the batch-kernel callback properly when lazy split returns error.
-    for (int i = 0; i < task_handles.size(); i++) {
-      batch_to_schedule->AddTask(std::move(task_handles[i]->GetSplitTask()));
-    }
-    batch_to_schedule->Close();
-  }
-  return batch_to_schedule;
+  return std::move(task_handles_to_schedule);
 }
 
 template <typename TaskType>
