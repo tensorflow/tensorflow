@@ -108,7 +108,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // a remote file) with other computation.
 constexpr double kDefaultCyclePrefetchFactor = 2.0L;
 
-// `kPerIteratorPrefetchFactor * block_length + 1` is the defualt number of
+// `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
 // match the behavior of the original implementation.
 constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;

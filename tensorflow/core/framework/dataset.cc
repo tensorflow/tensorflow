@@ -914,7 +914,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     // autotuning.
     // Here we only call RecordElement in the default implementation of
     // SkipInternal (which trivially calls GetNextInternal) and assume
-    // that the overriden SkipInternal in the derived class will have
+    // that the overridden SkipInternal in the derived class will have
     // negligible cost compare to its GetNextInternal.
     RecordElement(ctx, &out_tensors);
     (*num_skipped)++;

@@ -557,7 +557,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
 }
 
 // Recursively walk the dataset graph from sink to source, searching for
-// the first (i.e. closest to the sink) occurence of a ReaderDataset, such as
+// the first (i.e. closest to the sink) occurrence of a ReaderDataset, such as
 // CSVDataset, TFRecordDataset, etc. We then insert a ShardDataset op before
 // that nodes input, so that each worker only reads a subset of files.
 // Additionally, we remove sources of randomness (e.g. ShuffleDataset) that
@@ -640,7 +640,7 @@ Status ShardByData(const NodeDef& sink_node, int64_t num_workers, int64_t index,
   return AddShardNode(graph, *shard_before, num_workers, index);
 }
 
-// Searches the dataset graph replacing any occurence of `shard(1, 0)` with
+// Searches the dataset graph replacing any occurrence of `shard(1, 0)` with
 // `shard(num_workers, index)`.
 Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
                    int64_t num_replicas, MutableGraphView* graph) {

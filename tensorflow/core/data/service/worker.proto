@@ -14,7 +14,7 @@ message ProcessTaskResponse {}
 message GetElementRequest {
   // The task to fetch an element from.
   int64 task_id = 1;
-  // Optional index to indentify the consumer.
+  // Optional index to identify the consumer.
   oneof optional_consumer_index {
     int64 consumer_index = 2;
   }

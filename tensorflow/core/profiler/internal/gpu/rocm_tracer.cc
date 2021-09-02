@@ -1491,7 +1491,7 @@ Status RocmTracer::EnableActivityTracing() {
   activity_tracing_enabled_ = true;
 
   if (!options_->activity_tracing.empty()) {
-    // Creat the memory pool to store activity records in
+    // Create the memory pool to store activity records in
     if (wrap::roctracer_default_pool_expl(nullptr) == NULL) {
       roctracer_properties_t properties{};
       properties.buffer_size = 0x1000;
@@ -1558,7 +1558,7 @@ Status RocmTracer::DisableActivityTracing() {
   RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_flush_activity_expl(nullptr));
   // roctracer_flush_buf();
 
-  // Explicitly wait for (almost) all pending acitivity records
+  // Explicitly wait for (almost) all pending activity records
   // The choice of all of the following is based what seemed to work
   // best when enabling tracing on a large testcase (BERT)
   // * 100 ms as the initial sleep duration AND

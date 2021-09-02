@@ -633,7 +633,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   // child.
   EXPECT_EQ(group_metadata_map.at(1).children.size(), 1);
   EXPECT_EQ(group_metadata_map.at(2).children.size(), 1);
-  // Chech that the events have the selected_group_ids stat set.
+  // Check that the events have the selected_group_ids stat set.
   uint64 num_checked = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {

@@ -143,7 +143,7 @@ Status UpdatePlaceholderShape(
                             ": ", make_shape_status, ", skipping this input");
   }
 
-  // Some placeholder nodes have a mis-match between the node
+  // Some placeholder nodes have a mismatch between the node
   // attribute "shape" and a different node attribute "_output_shapes".
   // Specifically, a shape with shape.dims() == 0 could indicate either
   // a scalar or an unknown shape. In those cases, we check _output_shapes
