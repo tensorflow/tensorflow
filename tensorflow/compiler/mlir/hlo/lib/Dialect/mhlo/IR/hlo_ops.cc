@@ -550,12 +550,52 @@ void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<IotaBroadcast>(context);
 }
 
+// Returns a DensElementsAttr of values [0, 1, 2, ..., n_ele].
+// It only supports ui32, i32, ui64, i64, f32, f64.
+// The type T should strictly consist with result_ty even for sign/signess.
+template <typename T>
+OpFoldResult getRangeConst(int64_t n, ShapedType result_ty) {
+  std::vector<T> range_vector;
+  range_vector.reserve(n);
+  for (int64_t i = 0; i < n; i++) {
+    range_vector.push_back(static_cast<T>(i));
+  }
+  if (std::is_integral<T>::value)
+    return DenseIntElementsAttr::get(result_ty, range_vector);
+  return DenseFPElementsAttr::get(result_ty, range_vector);
+}
+
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
   auto dimension = iota_dimension();
   auto result_ty = getResult().getType().cast<ShapedType>();
   if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
     Builder builder(getContext());
     return builder.getZeroAttr(result_ty);
+  }
+
+  // Fold 1d IotaOp.
+  if (result_ty.hasStaticShape() && result_ty.hasRank() &&
+      result_ty.getRank() == 1 && dimension == 0) {
+    auto n_ele = result_ty.getDimSize(dimension);
+    // Only fold for size < 1024.
+    if (n_ele > 1 << 10) return {};
+    Type ele_type = result_ty.getElementType();
+    if (ele_type.isInteger(32)) {
+      return ele_type.isSignedInteger()
+                 ? getRangeConst<int32_t>(n_ele, result_ty)
+                 : getRangeConst<uint32_t>(n_ele, result_ty);
+    }
+    if (ele_type.isInteger(64)) {
+      return ele_type.isSignedInteger()
+                 ? getRangeConst<int64_t>(n_ele, result_ty)
+                 : getRangeConst<uint64_t>(n_ele, result_ty);
+    }
+    if (ele_type.isF32()) {
+      return getRangeConst<float>(n_ele, result_ty);
+    }
+    if (ele_type.isF64()) {
+      return getRangeConst<double>(n_ele, result_ty);
+    }
   }
 
   return {};
@@ -1084,13 +1124,53 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   }
 
   // Constant fold when an operand is a splat tensor attribute.
-  if (!attrs[0] || !type.hasStaticShape()) return {};
-  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
-  if (!splatOperandAttr) return {};
-  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
-  // attribute iterator not implemented for complex element types.
-  if (type.getElementType().isa<ComplexType>()) return {};
-  return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
+  if (attrs[0] && type.hasStaticShape()) {
+    auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+    if (splatOperandAttr) {
+      // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense
+      // element attribute iterator not implemented for complex element types.
+      if (type.getElementType().isa<ComplexType>()) return {};
+      return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
+    }
+  }
+
+  // Constant fold when an operand is a rank1 (int or float) vector const.
+  // Moreover, the broadcast_dimension has to be the last dimension.
+  auto operand = getOperand();
+  DenseElementsAttr operand_cst;
+  auto operand_ty = getOperand().getType().cast<ShapedType>();
+  auto ele_ty = type.getElementType();
+  if (!type.hasStaticShape() || !operand_ty.hasStaticShape() ||
+      !(operand_ty.getRank() == 1))
+    return {};
+  if (!ele_ty.isInteger(32) && !ele_ty.isInteger(64) && !ele_ty.isF32() &&
+      !ele_ty.isF64())
+    return {};
+  if (broadcast_dimensions().getNumElements() != 1 ||
+      !matchPattern(operand, m_Constant(&operand_cst)))
+    return {};
+
+  const int64_t broadcast_dim =
+      *(broadcast_dimensions().getValues<int64_t>().begin());
+  auto n_out = type.getNumElements();
+  // Only fold for size < 1024.
+  if (n_out > 1 << 10) return {};
+  auto n_operand = operand_ty.getNumElements();
+  if (broadcast_dim == type.getRank() - 1 && n_operand >= 1) {
+    std::vector<Attribute> new_result;
+    new_result.reserve(n_out);
+    auto n_repeat = n_out / n_operand;
+    while (n_repeat-- > 0) {
+      for (size_t i = 0; i < n_operand; ++i)
+        new_result.push_back(operand_cst.getValue({i}));
+    }
+    auto flat_result_type =
+        RankedTensorType::get({n_out}, operand_ty.getElementType());
+    auto new_result_dense =
+        DenseElementsAttr::get(flat_result_type, new_result);
+    return new_result_dense.reshape(type);
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
