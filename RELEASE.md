@@ -117,6 +117,9 @@
         Static sharding (auto-sharding) requires the number of tf.data service
         workers be fixed. Users need to specify the worker addresses in
         `tensorflow.data.experimental.DispatcherConfig`.
+    *   `tf.data.experimental.service.register_dataset` now accepts optional
+        `compression` argument.
+
 *  Keras:
   *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
       This method can be used to simplify the implementation of Conv subclasses.

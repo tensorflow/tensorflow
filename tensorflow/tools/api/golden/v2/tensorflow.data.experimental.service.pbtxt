@@ -30,6 +30,6 @@ tf_module {
   }
   member_method {
     name: "register_dataset"
-    argspec: "args=[\'service\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'service\', \'dataset\', \'compression\'], varargs=None, keywords=None, defaults=[\'AUTO\'], "
   }
 }
