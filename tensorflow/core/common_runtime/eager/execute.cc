@@ -95,7 +95,7 @@ const string& DeviceNameOrUnspecified(Device* device) {
 
 // Returns whether a kernel should be cached.
 bool KernelCacheEnabled(const OpDef& op_def) {
-  if (data::DatasetOpKernel::IsDatasetOp(&op_def)) {
+  if (data::DatasetOpKernel::IsDatasetOp(op_def)) {
     return false;
   }
   // TODO(b/162540360): Revisit a way to mark kernels as uncachable once we have

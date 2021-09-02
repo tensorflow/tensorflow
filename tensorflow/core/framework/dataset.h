@@ -1272,9 +1272,12 @@ class DatasetOpKernel : public OpKernel {
 
   void Compute(OpKernelContext* ctx) final;
 
-  // Indicates whether the given op corresponds to an op whose kernels subclass
-  // the `DatasetOpKernel` class.
-  static bool IsDatasetOp(const OpDef* op_def);
+  // Checks whether the given op is a tf.data operation.
+  //
+  // NOTE: The check uses a heuristic and can produce both false positives and
+  // false negatives. In particular, tf.data operations are expected to use
+  // names that end with "Dataset" or "DatasetV[0-9]+".
+  static bool IsDatasetOp(const OpDef& op_def);
 
   string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 

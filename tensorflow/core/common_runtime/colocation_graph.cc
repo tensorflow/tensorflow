@@ -740,8 +740,8 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
     // This is needed to get around the issue in b/135705778.
     if (input_type == DT_VARIANT &&
-        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
-        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+        data::DatasetOpKernel::IsDatasetOp(src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(dst->op_def())) {
       TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
       continue;
     }
