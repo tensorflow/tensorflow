@@ -334,7 +334,7 @@ static int64_t SharedMemoryUsage(const HloInstruction& instr) {
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
-         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+         instr.fused_instructions_computation()->instructions()) {
       sum += SharedMemoryUsage(*hlo);
     }
     return sum;
@@ -355,7 +355,7 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
-         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+         instr.fused_instructions_computation()->instructions()) {
       sum += NumUnnestedReductions(*hlo);
     }
     return sum;
