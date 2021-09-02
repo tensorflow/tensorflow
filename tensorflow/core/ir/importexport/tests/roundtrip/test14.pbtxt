@@ -1,0 +1,23 @@
+node {
+  name: "matrix_exponential/Const_23"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_COMPLEX64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_COMPLEX64
+        tensor_shape {
+        }
+        scomplex_val: nan
+        scomplex_val: 0
+      }
+    }
+  }
+}

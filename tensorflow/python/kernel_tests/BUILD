@@ -702,6 +702,7 @@ tf_py_test(
     size = "small",
     srcs = ["logging_ops_logging_level_test.py"],
     tags = [
+        "no_oss",  # b/198486357
         "no_windows",
     ],
     deps = [
@@ -1938,6 +1939,25 @@ tf_py_test(
     ],
 )
 
+CONV_TEST_BASENAMES = [
+    ":atrous_conv2d_test",
+    ":conv1d_test",
+    ":conv1d_transpose_test",
+    ":conv2d_backprop_filter_grad_test",
+    ":conv3d_transpose_test",
+    ":conv3d_backprop_filter_v2_grad_test",
+    ":conv_ops_3d_test",
+    ":conv_ops_test",
+    ":depthwise_conv_op_test",
+    ":conv2d_transpose_test",
+]
+
+test_suite(
+    name = "conv_tests",
+    tests = [basename for basename in CONV_TEST_BASENAMES] +
+            [basename + "_gpu" for basename in CONV_TEST_BASENAMES],
+)
+
 cuda_py_test(
     name = "conv1d_test",
     size = "small",
@@ -2146,6 +2166,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "//third_party/py/numpy",
     ],
 )
@@ -3093,8 +3116,10 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 3,
-    # TODO(b/118842098): Re-enable this test in Kokoro.
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TOOD(b/195753631): Re-enable when not flaky
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

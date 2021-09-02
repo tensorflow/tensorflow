@@ -16,6 +16,15 @@ func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   return
 }
 
+// CHECK-LABEL: testGatherToV2
+// Ensures that axis param and batch_dims attr use their default values of 0.
+func @testGatherToV2(%params: tensor<4x3xf32>, %indices: tensor<1x2xi32>) -> tensor<2x3xf32> {
+  // CHECK: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: "tf.GatherV2"(%arg0, %arg1, %[[AXIS]]) {batch_dims = 0 : i64} : (tensor<4x3xf32>, tensor<1x2xi32>, tensor<i32>) -> tensor<2x3xf32>
+  %0 = "tf.Gather"(%params, %indices) : (tensor<4x3xf32>, tensor<1x2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
 // CHECK-LABEL: testBatchMatMulToV2
 func @testBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2x5x7xf32>) -> tensor<2x3x7xf32> {
   // CHECK: tf.BatchMatMulV2

@@ -140,6 +140,7 @@ struct ComputeOpAndFuncBufferizePass
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
     linalg::populateLinalgBufferizePatterns(converter, patterns);
+    populateTiledLoopBufferizePattern(&getContext(), &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,

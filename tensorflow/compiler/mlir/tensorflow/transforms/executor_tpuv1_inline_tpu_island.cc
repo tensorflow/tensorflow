@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -54,7 +55,7 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
 
   InlinerInterface inliner(&getContext());
   auto walk_result = getOperation().walk([&](TF::PartitionedCallOp call_op) {
-    if (!call_op.f().getRootReference().startswith(kNestedModule))
+    if (!call_op.f().getRootReference().getValue().startswith(kNestedModule))
       return WalkResult::advance();
     // This is a call we need to inline!
     LLVM_DEBUG(llvm::dbgs()

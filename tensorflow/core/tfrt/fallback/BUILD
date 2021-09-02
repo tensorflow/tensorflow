@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],
@@ -26,5 +28,19 @@ cc_library(
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/tfrt/utils:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "fallback_state_test",
+    srcs = ["fallback_state_test.cc"],
+    deps = [
+        ":fallback_state",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )

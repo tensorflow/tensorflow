@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,8 +46,9 @@ class BCastArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> shape;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &shape));
+      std::vector<int64_t> shape;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
+                              i, &shape, xla::ValueInferenceMode::kUpperBound));
       shapes.push_back(BCast::Vec(shape.begin(), shape.end()));
     }
     BCast bcast(shapes[0], shapes[1]);
@@ -94,8 +96,12 @@ class BCastGradArgsOp : public XlaOpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      std::vector<int64> vec;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
+      std::vector<int64_t> vec;
+      // Technically we don't need to infer the upper-bound here. However the
+      // forward path uses the upperbound as bounded shape so we need backward
+      // path to use the same shape to decide the reduction indices.
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
+                              i, &vec, xla::ValueInferenceMode::kUpperBound));
 
       shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
     }

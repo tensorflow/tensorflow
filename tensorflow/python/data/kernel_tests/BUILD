@@ -335,6 +335,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
@@ -535,7 +536,6 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
-    tags = ["notsan"],  # TODO(b/183962015)
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -592,7 +592,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
     shard_count = 2,
     tags = [
@@ -612,6 +612,9 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:executor",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -761,6 +764,27 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "rejection_resample_test",
+    size = "medium",
+    srcs = ["rejection_resample_test.py"],
+    shard_count = 10,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
     name = "repeat_test",
     size = "small",
     srcs = ["repeat_test.py"],
@@ -816,7 +840,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     shard_count = 4,
     deps = [
@@ -829,6 +853,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",

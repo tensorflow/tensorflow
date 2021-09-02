@@ -78,7 +78,8 @@ struct Costs {
 
   struct MilliSeconds : std::chrono::milliseconds {
     MilliSeconds() : std::chrono::milliseconds(0) {}
-    MilliSeconds(double d) : std::chrono::milliseconds(static_cast<int64>(d)) {}
+    MilliSeconds(double d)
+        : std::chrono::milliseconds(static_cast<int64_t>(d)) {}
     MilliSeconds(const std::chrono::milliseconds& d)
         : std::chrono::milliseconds(d) {}
     MilliSeconds& operator=(const std::chrono::milliseconds& d) {
@@ -88,7 +89,8 @@ struct Costs {
   };
   struct MicroSeconds : std::chrono::microseconds {
     MicroSeconds() : std::chrono::microseconds(0) {}
-    MicroSeconds(double d) : std::chrono::microseconds(static_cast<int64>(d)) {}
+    MicroSeconds(double d)
+        : std::chrono::microseconds(static_cast<int64_t>(d)) {}
     MicroSeconds(const std::chrono::microseconds& d)
         : std::chrono::microseconds(d) {}
     MicroSeconds& operator=(const std::chrono::microseconds& d) {
@@ -101,7 +103,7 @@ struct Costs {
   };
   struct NanoSeconds : std::chrono::nanoseconds {
     NanoSeconds() : std::chrono::nanoseconds(0) {}
-    NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64>(d)) {}
+    NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64_t>(d)) {}
     NanoSeconds(const std::chrono::nanoseconds& d)
         : std::chrono::nanoseconds(d) {}
     NanoSeconds& operator=(const std::chrono::nanoseconds& d) {
@@ -140,24 +142,24 @@ struct Costs {
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
-  int64 max_memory;  // Maximum main memory requirement in bytes over all ops.
-  int64 persistent_memory;
-  int64 temporary_memory;
+  int64_t max_memory;  // Maximum main memory requirement in bytes over all ops.
+  int64_t persistent_memory;
+  int64_t temporary_memory;
 
   // These fields are used for TPU-related estimations. They are per-op
   // maximums, so each op is evaluated independently, but we want the maximum of
   // the value over all ops.
-  int64 max_per_op_buffers;    // Sum of all buffers used by the ops.
-  int64 max_per_op_streaming;  // Ignore largest input buffer, assuming it
-                               // streams from main memory.
+  int64_t max_per_op_buffers;    // Sum of all buffers used by the ops.
+  int64_t max_per_op_streaming;  // Ignore largest input buffer, assuming it
+                                 // streams from main memory.
 
   // Number of ops included in this Costs in total.
   // Default initialized to be one.
-  int64 num_ops_total = 1;
+  int64_t num_ops_total = 1;
   // If the time estimation is inaccurate.
   bool inaccurate = false;
   // Number of ops that are estimated with unknown shapes.
-  int64 num_ops_with_unknown_shapes = 0;
+  int64_t num_ops_with_unknown_shapes = 0;
   // TODO(pcma): include a counter for total inaccurate ops and counters for
   // other reasons causing the inaccuracy
 

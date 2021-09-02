@@ -55,7 +55,8 @@ limitations under the License.
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_command_line_options.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -490,7 +491,8 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // Using div.approx produces incorrect result for float32(max)/float32(max).
   FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
-  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
+  llvm_ir::InitializeLLVMCommandLineOptions(
+      hlo_module_config.debug_options().xla_backend_extra_options());
 
   // Initialize the NVPTX target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
@@ -876,7 +878,8 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
-  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
+  llvm_ir::InitializeLLVMCommandLineOptions(
+      hlo_module_config.debug_options().xla_backend_extra_options());
 
   // Initialize the AMDGPU target; it's the only target we link with, so call
   // its specific initialization functions instead of the catch-all

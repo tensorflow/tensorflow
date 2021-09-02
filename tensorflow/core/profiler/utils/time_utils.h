@@ -38,7 +38,7 @@ inline double MillisToSeconds(double ms) { return ms / 1E3; }
 inline uint64 SecondsToNanos(double s) { return s * 1E9; }
 
 // Returns the current CPU wallclock time in nanoseconds.
-int64 GetCurrentTimeNanos();
+int64_t GetCurrentTimeNanos();
 
 // Sleeps for the specified duration.
 void SleepForNanos(int64_t ns);

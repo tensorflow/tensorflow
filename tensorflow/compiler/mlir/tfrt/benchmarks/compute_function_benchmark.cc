@@ -83,6 +83,6 @@ static llvm::SmallVector<InputTensorSpec> Inputs() {
   };
 }
 
-BM_TFMlir(Compute, mlir_input, "compute", Inputs(), 1);
+BM_Mlir(Compute, mlir_input, "compute", Inputs())->Arg(0);
 
 }  // namespace tensorflow

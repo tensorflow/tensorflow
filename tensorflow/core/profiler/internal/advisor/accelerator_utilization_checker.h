@@ -25,11 +25,11 @@ namespace tfprof {
 struct ExecStats {
  public:
   // Earliest start time of a step.
-  int64 start_micros;
+  int64_t start_micros;
   // Latest finish time of a step.
-  int64 end_micros;
+  int64_t end_micros;
   // The duration spent on running a kernel during a step.
-  int64 exec_micros;
+  int64_t exec_micros;
 };
 
 class AcceleratorUtilizationChecker : public Checker {
@@ -100,7 +100,7 @@ class AcceleratorUtilizationChecker : public Checker {
   }
 
   std::map<string, ExecStats> accelerator_exec_stats_;
-  std::map<string, int64> ps_placement_;
+  std::map<string, int64_t> ps_placement_;
   AdviceProto::Checker reports_;
 };
 

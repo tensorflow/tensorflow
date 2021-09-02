@@ -156,7 +156,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return "ChooseFastestDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return cardinality_; }
+    int64_t Cardinality() const override { return cardinality_; }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -309,8 +309,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       std::vector<histogram::Histogram> histograms_;
 
       mutex mu_;
-      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
-      int64 fastest_index_ = -1;
+      int64_t experiment_counter_ TF_GUARDED_BY(mu_) = 0;
+      int64_t fastest_index_ = -1;
 
       std::vector<ThreadInfo> StartThreads(IteratorContext* ctx)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -367,11 +367,11 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     const std::vector<DatasetBase*> inputs_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
-    const int64 cardinality_;
-    const int64 num_experiments_;
+    const int64_t cardinality_;
+    const int64_t num_experiments_;
   };  // class Dataset
 
-  int64 num_experiments_;
+  int64_t num_experiments_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };  // class ChooseFastestDatasetOp

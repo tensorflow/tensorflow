@@ -26,7 +26,8 @@ def LmhloGpuAsyncConversionPass : FunctionPass<"lmhlo-gpu-async-conversion"> {
     "::mlir::gpu::GPUDialect",
     "::tfrt::compiler::TFRTDialect",
     "::tfrt::gpu::GpuDialect",
-    "::tfrt::gpu::conversion::GpuConversionDialect"
+    "::tfrt::gpu::conversion::GpuConversionDialect",
+    "::xla::gpu::XlirDialect"
   ];
 }
 
@@ -41,6 +42,7 @@ def AsyncGpuTfrtConversionPass : FunctionPass<"async-gpu-tfrt-conversion"> {
     "::mlir::gpu::GPUDialect",
     "::tfrt::compiler::TFRTDialect",
     "::tfrt::gpu::GpuDialect",
-    "::tfrt::gpu::conversion::GpuConversionDialect"
+    "::tfrt::gpu::conversion::GpuConversionDialect",
+    "::xla::gpu::XlirDialect"
   ];
 }

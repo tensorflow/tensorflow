@@ -49,6 +49,11 @@ static std::unordered_set<string>* get_dataset_op_registry() {
   return names;
 }
 
+std::string UniqueNodeName(const std::string& base) {
+  static std::atomic<int64> counter(0);
+  return strings::StrCat(base, "/", counter.fetch_add(1));
+}
+
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
 // and the wrapper's copy constructor and destructor take care of managing the
@@ -370,6 +375,17 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx) {
+  thread::ThreadPool* thread_pool =
+      ctx->device()->tensorflow_device_thread_pool();
+  if (thread_pool) {
+    return thread_pool->NumThreads();
+  } else {
+    static const int32_t kDefaultRunnerThreadpoolSize = port::MaxParallelism();
+    return kDefaultRunnerThreadpoolSize;
+  }
+}
+
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                     const IteratorBase* parent) {
   parent_ = parent;
@@ -389,7 +405,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return Status::OK();
 }
 
-int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
@@ -403,7 +419,7 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
-int64 GetTotalBytes(const std::vector<Tensor>& element) {
+int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
@@ -587,7 +603,7 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
-                        std::vector<Tensor>* out_tensors) {
+                        std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented(
       "Random access is not implemented for this dataset.");
 }
@@ -715,6 +731,15 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
     }
   }
   return AddTensor(t, output);
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddIdentity(
+    SerializationContext* ctx, const std::string& name_prefix, Node** input,
+    Node** output) {
+  *output =
+      ops::UnaryOp("Identity", *input,
+                   builder()->opts().WithName(UniqueNodeName(name_prefix)));
+  return Status::OK();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(

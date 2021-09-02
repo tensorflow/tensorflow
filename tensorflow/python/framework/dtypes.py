@@ -98,7 +98,9 @@ class DType(_dtypes.DType):
     """
     if (self.is_quantized or
         self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError("Cannot find minimum value of %s." % self)
+      raise TypeError(f"Cannot find minimum value of {self} with "
+                      f"{'quantized type' if self.is_quantized else 'type'} "
+                      f"{self.base_dtype}.")
 
     # there is no simple way to get the min value of a dtype, we have to check
     # float and int types separately
@@ -110,7 +112,7 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
-        raise TypeError("Cannot find minimum value of %s." % self)
+        raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
   def max(self):
@@ -122,7 +124,9 @@ class DType(_dtypes.DType):
     """
     if (self.is_quantized or
         self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError("Cannot find maximum value of %s." % self)
+      raise TypeError(f"Cannot find maximum value of {self} with "
+                      f"{'quantized type' if self.is_quantized else 'type'} "
+                      f"{self.base_dtype}.")
 
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
@@ -134,7 +138,7 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
-        raise TypeError("Cannot find maximum value of %s." % self)
+        raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property
   def limits(self, clip_negative=True):
@@ -718,5 +722,4 @@ def as_dtype(type_value):
   if isinstance(type_value, _dtypes.DType):
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
-  raise TypeError("Cannot convert value %r to a TensorFlow DType." %
-                  (type_value,))
+  raise TypeError(f"Cannot convert value {type_value!r} to a TensorFlow DType.")

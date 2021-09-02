@@ -28,12 +28,12 @@ namespace tensorflow {
 
 namespace {
 
-int64 get_uid() {
+int64_t get_uid() {
   uint64 unsigned_rand = random::New64() & INT64_MAX;
-  return static_cast<int64>(unsigned_rand);
+  return static_cast<int64_t>(unsigned_rand);
 }
 
-int64 GetCompilationCacheSizeFromEnv() {
+int64_t GetCompilationCacheSizeFromEnv() {
   const char* env = getenv("TF_XRT_COMPILATION_CACHE_SIZE");
   return env == nullptr ? 1024 : std::stol(env);
 }
@@ -197,7 +197,7 @@ XRTCompilationCache::CompiledSubgraph* XRTCompilationCache::InitializeEntry(
 
   // Add the entry to the uid index.
   auto uid_inserted = entries_by_uid_.insert(
-      std::pair<int64, CompiledSubgraph*>(entry->uid, entry));
+      std::pair<int64_t, CompiledSubgraph*>(entry->uid, entry));
   CHECK(uid_inserted.second);
 
   entry->initialized = true;
@@ -212,7 +212,7 @@ XRTCompilationCache::CompiledSubgraph* XRTCompilationCache::InitializeEntry(
 }
 
 Status XRTCompilationCache::CompileIfKeyAbsent(
-    const string& key, int64* uid,
+    const string& key, int64_t* uid,
     const std::function<Status(std::unique_ptr<xla::LocalExecutable>*)>&
         compile_function) {
   CompiledSubgraph* entry = nullptr;

@@ -14,7 +14,6 @@ package(
 
 package_group(
     name = "internal",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/...",
     ],
@@ -86,9 +85,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -137,7 +136,6 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -187,5 +185,4 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )

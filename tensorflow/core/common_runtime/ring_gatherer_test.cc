@@ -228,7 +228,7 @@ TEST_F(RingGathererInitParamsTest, SpecifiedSubdivs) {
         RunTest<int32>(dtype, DEVICE_##T, W, D, S, L, A);                     \
       } break;                                                                \
       case DT_INT64: {                                                        \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, S, L, A);                     \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, S, L, A);                   \
       } break;                                                                \
       default:                                                                \
         LOG(FATAL) << "Unimplemented";                                        \

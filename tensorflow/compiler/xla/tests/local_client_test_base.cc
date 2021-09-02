@@ -65,12 +65,12 @@ Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
 }
 
-int64 TestAllocator::allocation_count() const {
+int64_t TestAllocator::allocation_count() const {
   tensorflow::mutex_lock lock(count_mutex_);
   return allocation_count_;
 }
 
-int64 TestAllocator::allocation_count(int device_ordinal) const {
+int64_t TestAllocator::allocation_count(int device_ordinal) const {
   tensorflow::mutex_lock lock(count_mutex_);
   auto it = device_allocation_count_.find(device_ordinal);
   if (it == device_allocation_count_.end()) {
@@ -80,12 +80,12 @@ int64 TestAllocator::allocation_count(int device_ordinal) const {
   }
 }
 
-int64 TestAllocator::deallocation_count() const {
+int64_t TestAllocator::deallocation_count() const {
   tensorflow::mutex_lock lock(count_mutex_);
   return deallocation_count_;
 }
 
-int64 TestAllocator::deallocation_count(int device_ordinal) const {
+int64_t TestAllocator::deallocation_count(int device_ordinal) const {
   tensorflow::mutex_lock lock(count_mutex_);
   auto it = device_deallocation_count_.find(device_ordinal);
   if (it == device_deallocation_count_.end()) {

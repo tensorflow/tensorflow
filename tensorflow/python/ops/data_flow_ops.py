@@ -73,17 +73,18 @@ def _as_shape_list(shapes,
     shapes = [shapes]
   if not isinstance(shapes, (tuple, list)):
     raise TypeError(
-        "shapes must be a TensorShape or a list or tuple of TensorShapes.")
+        "Shapes must be a TensorShape or a list or tuple of TensorShapes, "
+        f"got {type(shapes)} instead.")
   if all(shape is None or isinstance(shape, int) for shape in shapes):
     # We have a single shape.
     shapes = [shapes]
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
     if any(not shape.is_fully_defined() for shape in shapes):
-      raise ValueError("All shapes must be fully defined: %s" % shapes)
+      raise ValueError(f"All shapes must be fully defined: {shapes}")
   if not unknown_rank_allowed:
     if any(shape.dims is None for shape in shapes):
-      raise ValueError("All shapes must have a defined rank: %s" % shapes)
+      raise ValueError(f"All shapes must have a defined rank: {shapes}")
 
   return shapes
 
@@ -95,7 +96,8 @@ def _as_name_list(names, dtypes):
     names = [names]
   if len(names) != len(dtypes):
     raise ValueError("List of names must have the same length as the list "
-                     "of dtypes")
+                     f"of dtypes, received len(names)={len(names)},"
+                     f"len(dtypes)={len(dtypes)}")
   return list(names)
 
 
@@ -160,13 +162,17 @@ class QueueBase(object):
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
-        raise ValueError("Queue shapes must have the same length as dtypes")
+        raise ValueError("Queue shapes must have the same length as dtypes, "
+                         f"received len(shapes)={len(shapes)}, "
+                         f"len(dtypes)={len(dtypes)}")
       self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
     if names is not None:
       if len(names) != len(dtypes):
-        raise ValueError("Queue names must have the same length as dtypes")
+        raise ValueError("Queue names must have the same length as dtypes,"
+                         f"received len(names)={len(names)},"
+                         f"len {len(dtypes)}")
       self._names = names
     else:
       self._names = None
@@ -274,8 +280,8 @@ class QueueBase(object):
         raise ValueError("Queue must have names to enqueue a dictionary")
       if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
-                         "names of Queue.  Dictionary: (%s), Queue: (%s)" %
-                         (sorted(vals.keys()), sorted(self._names)))
+                         f"names of Queue.  Dictionary: {sorted(vals.keys())},"
+                         f"Queue: {sorted(self._names)}")
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
       vals = [vals[k] for k in self._names]
@@ -906,9 +912,8 @@ class PaddingFIFOQueue(QueueBase):
     names = _as_name_list(names, dtypes)
     if len(dtypes) != len(shapes):
       raise ValueError("Shapes must be provided for all components, "
-                       "but received %d dtypes and %d shapes." % (len(dtypes),
-                                                                  len(shapes)))
-
+                       f"but received {len(dtypes)} dtypes and "
+                       f"{len(shapes)} shapes.")
     queue_ref = gen_data_flow_ops.padding_fifo_queue_v2(
         component_types=dtypes,
         shapes=shapes,
@@ -1060,7 +1065,7 @@ class Barrier(object):
       for i, shape in enumerate(self._shapes):
         if shape.num_elements() == 0:
           raise ValueError("Empty tensors are not supported, but received "
-                           "shape '%s' at index %d" % (shape, i))
+                           f"shape '{shape}' at index {i}")
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._types]
 
@@ -1621,7 +1626,7 @@ class BaseStagingArea(object):
     elif isinstance(shared_name, six.string_types):
       self._name = shared_name
     else:
-      raise ValueError("shared_name must be a string")
+      raise ValueError(f"shared_name must be a string, got {shared_name}")
 
     self._dtypes = dtypes
 
@@ -1710,8 +1715,8 @@ class BaseStagingArea(object):
             "Staging areas must have names to enqueue a dictionary")
       if not set(vals.keys()).issubset(self._names):
         raise ValueError("Keys in dictionary to put do not match names "
-                         "of staging area. Dictionary: (%s), Queue: (%s)" %
-                         (sorted(vals.keys()), sorted(self._names)))
+                         f"of staging area. Dictionary: {sorted(vals.keys())}"
+                         f"Queue: {sorted(self._names)}")
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
       vals, indices, _ = zip(*[(vals[k], i, k)
@@ -1727,8 +1732,8 @@ class BaseStagingArea(object):
                          "of tensors")
 
       if len(indices) != len(vals):
-        raise ValueError("Number of indices '%s' doesn't match "
-                         "number of values '%s'")
+        raise ValueError(f"Number of indices {len(indices)} doesn't match "
+                         f"number of values {len(vals)}")
 
       if not isinstance(vals, (list, tuple)):
         vals = [vals]
@@ -1736,8 +1741,8 @@ class BaseStagingArea(object):
 
     # Sanity check number of values
     if not len(vals) <= len(self._dtypes):
-      raise ValueError("Unexpected number of inputs '%s' vs '%s'" %
-                       (len(vals), len(self._dtypes)))
+      raise ValueError(f"Unexpected number of inputs {len(vals)} vs"
+                       f"{len(self._dtypes)}")
 
     tensors = []
 
@@ -1745,9 +1750,9 @@ class BaseStagingArea(object):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
       if val.dtype != dtype:
-        raise ValueError("Datatypes do not match. '%s' != '%s'" %
-                         (str(val.dtype), str(dtype)))
-
+        raise ValueError(f"Datatypes do not match. "
+                         f"Received val.dtype {str(val.dtype)} and "
+                         f"dtype {str(dtype)}")
       # Check shape
       val.get_shape().assert_is_compatible_with(shape)
 
@@ -2209,26 +2214,26 @@ class MapStagingArea(BaseStagingArea):
       indices = list(six.moves.range(len(self._dtypes)))
 
     if not isinstance(indices, (tuple, list)):
-      raise TypeError("Invalid indices type '%s'" % type(indices))
+      raise TypeError(f"Invalid indices type {type(indices)}")
 
     if len(indices) == 0:
       raise ValueError("Empty indices")
 
     if all(isinstance(i, str) for i in indices):
       if self._names is None:
-        raise ValueError("String indices provided '%s', but this Staging Area "
-                         "was not created with names." % indices)
+        raise ValueError(f"String indices provided {indices}, but "
+                         "this Staging Area was not created with names.")
 
       try:
         indices = [self._names.index(n) for n in indices]
       except ValueError:
-        raise ValueError("Named index '%s' not in "
-                         "Staging Area names '%s'" % (n, self._names))
+        raise ValueError(f"Named index not in "
+                         f"Staging Area names {self._names}")
     elif all(isinstance(i, int) for i in indices):
       pass
     else:
-      raise TypeError("Mixed types in indices '%s'. "
-                      "May only be str or int" % indices)
+      raise TypeError(f"Mixed types in indices {indices}. "
+                      "May only be str or int")
 
     dtypes = [self._dtypes[i] for i in indices]
 

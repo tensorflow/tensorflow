@@ -54,10 +54,10 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
     replica_group.add_replica_ids(i);
   }
 
-  const std::vector<std::pair<int64, int64>> source_target_pairs =
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
       ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
 
-  for (const std::pair<int64, int64>& source_target : source_target_pairs) {
+  for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
     int64_t source = source_target.first;
     int64_t target = source_target.second;
 
@@ -75,7 +75,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 /*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
     mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
     int64_t partition_count) {
-  const std::vector<std::pair<int64, int64>> source_target_pairs =
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
       ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
@@ -84,7 +84,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
       op.channel_id() ? partition_count : replica_count;
   return source_target_pairs.size() == expected_size &&
          absl::c_all_of(source_target_pairs,
-                        [](const std::pair<int64, int64>& source_target) {
+                        [](const std::pair<int64_t, int64_t>& source_target) {
                           return source_target.first == source_target.second;
                         });
 }
@@ -145,8 +145,8 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
 
   const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
       config_.GetSourceTarget(current_id);
-  const absl::optional<int64> source_id = source_target.source;
-  const absl::optional<int64> target_id = source_target.target;
+  const absl::optional<int64_t> source_id = source_target.source;
+  const absl::optional<int64_t> target_id = source_target.target;
 
   // NCCL 2.8.x has an issue with point-to-point communication primitives if
   // different ranks process different amounts of data. This can happen in the

@@ -1,0 +1,77 @@
+node {
+  name: "variable"
+  op: "VarHandleOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+      }
+    }
+  }
+}
+node {
+  name: "__inference__traced_restore_2487"
+  op: "__inference__traced_restore_2487"
+  input: "const"
+  input: "variable"
+  input: "variable"
+}
+library {
+  function {
+    signature {
+      name: "__inference__traced_restore_2487"
+      input_arg {
+        name: "file_prefix"
+        type: DT_STRING
+      }
+      input_arg {
+        name: "assignvariableop_uninitialized_variable"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+            unknown_rank: true
+          }
+        }
+      }
+      input_arg {
+        name: "assignvariableop_1_initialized_variable"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      is_stateful: true
+    }
+  }
+}
+versions {
+  producer: 728
+  min_consumer: 12
+}

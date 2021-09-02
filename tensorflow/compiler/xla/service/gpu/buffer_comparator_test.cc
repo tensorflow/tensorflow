@@ -54,7 +54,7 @@ class BufferComparatorTest : public testing::Test {
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
-            {static_cast<int64>(lhs_buffer->ElementCount())}),
+            {static_cast<int64_t>(lhs_buffer->ElementCount())}),
         HloModuleConfig());
     return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer)
         .ConsumeValueOrDie();

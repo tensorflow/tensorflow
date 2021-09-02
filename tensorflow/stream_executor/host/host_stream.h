@@ -38,8 +38,8 @@ class HostStream : public internal::StreamInterface {
 
   bool EnqueueTask(std::function<void()> task);
 
-  void *GpuStreamHack() override { return nullptr; }
-  void **GpuStreamMemberHack() override { return nullptr; }
+  void* GpuStreamHack() override { return nullptr; }
+  void** GpuStreamMemberHack() override { return nullptr; }
 
   void BlockUntilDone();
 

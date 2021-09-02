@@ -75,7 +75,7 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
   const DeviceMgr* dev_mgr_;               // not owned
   DeviceResolverInterface* dev_resolver_;  // not owned
   BufRendezvous buf_rendezvous_;
-  int64 step_id_;
+  int64_t step_id_;
 };
 
 }  // namespace tensorflow

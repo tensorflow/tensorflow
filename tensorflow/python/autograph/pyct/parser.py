@@ -303,9 +303,10 @@ def _parse_lambda(lam):
     return _without_context(node, lines, minl, maxl)
 
   elif not candidates:
+    lambda_codes = '\n'.join([unparse(l) for l in lambda_nodes])
     raise errors.UnsupportedLanguageElementError(
-        'could not parse the source code of {}:'
-        ' no matching AST found'.format(lam))
+        f'could not parse the source code of {lam}:'
+        f' no matching AST found among candidates:\n{lambda_codes}')
 
   # Attempt to narrow down selection by signature is multiple nodes are found.
   matches = [v for v in candidates if _node_matches_argspec(v[0], lam)]
@@ -318,10 +319,10 @@ def _parse_lambda(lam):
       'Match {}:\n{}\n'.format(i, unparse(node, include_encoding_marker=False))
       for i, (node, _, _) in enumerate(matches))
   raise errors.UnsupportedLanguageElementError(
-      'could not parse the source code of {}: found multiple definitions with'
-      ' identical signatures at the location. This error'
+      f'could not parse the source code of {lam}: found multiple definitions'
+      ' with identical signatures at the location. This error'
       ' may be avoided by defining each lambda on a single line and with'
-      ' unique argument names.\n{}'.format(lam, matches))
+      f' unique argument names. The matching definitions were:\n{matches}')
 
 
 # TODO(mdan): This should take futures as input instead.
@@ -344,7 +345,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, got {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -364,7 +365,7 @@ def parse_expression(src):
   if __debug__:
     if not isinstance(node, gast.Expr):
       raise ValueError(
-          'expected a single expression, found instead {}'.format(node))
+          'expected exactly one node of type Expr, got {}'.format(node))
   return node.value
 
 

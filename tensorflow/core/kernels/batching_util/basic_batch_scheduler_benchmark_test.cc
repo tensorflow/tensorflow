@@ -181,7 +181,7 @@ class LatencyBenchmark {
   // The time interval between successively injected tasks, in microseconds.
   // A large interval corresponds to a slow rate of task injection, and vice-
   // versa.
-  const int64 task_injection_interval_micros_;
+  const int64_t task_injection_interval_micros_;
 
   // The amount of work to do while processing one batch of tasks. (The cost is
   // independent of the number of tasks in the batch.)

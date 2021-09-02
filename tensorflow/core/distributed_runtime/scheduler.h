@@ -43,7 +43,7 @@ class SlackAnalysis {
   Microseconds ComputeAlap(std::vector<Microseconds>* alap_times);
 
   // Compute the "slack" of each node. 'slacks' is indexed by node id.
-  void ComputeSlack(std::vector<int64>* slacks);
+  void ComputeSlack(std::vector<int64_t>* slacks);
 
  private:
   const Graph* graph_;
@@ -69,7 +69,7 @@ class GreedyScheduler {
   };
 
   GreedyScheduler(const DeviceSet* devices, const CostModel* cost_model,
-                  const Graph* g, std::vector<int64>* priority);
+                  const Graph* g, std::vector<int64_t>* priority);
 
   ~GreedyScheduler();
 
@@ -84,7 +84,7 @@ class GreedyScheduler {
   const DeviceSet* devices_;
   const CostModel* cost_model_;
   const Graph* graph_;
-  std::vector<int64>* priority_;
+  std::vector<int64_t>* priority_;
   std::unordered_map<string, Sim*> device_states_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GreedyScheduler);
@@ -103,7 +103,7 @@ class PriorityScheduler {
 
   // Computes a schedule and assigns priorities to the nodes based on
   // the schedule. Returns the makespan.
-  Microseconds AssignPriorities(std::vector<int64>* priorities);
+  Microseconds AssignPriorities(std::vector<int64_t>* priorities);
 
  private:
   const DeviceSet* devices_;

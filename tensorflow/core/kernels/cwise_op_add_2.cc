@@ -30,10 +30,8 @@ REGISTER6(BinaryOp, CPU, "Add", functor::add, int8, int16, complex64, uint8,
 // is_aggregate.
 REGISTER8(BinaryOp, CPU, "AddV2", functor::add, int8, int16, complex64, uint8,
           uint16, uint32, uint64, complex128);
-#else
-REGISTER6(BinaryOp, CPU, "AddV2", functor::add, int8, int16, uint8, uint16,
-          uint32, uint64);
 #endif
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,

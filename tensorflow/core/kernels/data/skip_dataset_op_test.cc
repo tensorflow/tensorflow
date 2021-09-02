@@ -36,7 +36,7 @@ class SkipDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return {CreateTensor<int64>(TensorShape({}), {count_})};
+    return {CreateTensor<int64_t>(TensorShape({}), {count_})};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -56,7 +56,7 @@ class SkipDatasetParams : public DatasetParams {
   string dataset_type() const override { return SkipDatasetOp::kDatasetType; }
 
  private:
-  int64 count_;
+  int64_t count_;
 };
 
 class SkipDatasetOpTest : public DatasetOpsTestBase {};
@@ -115,14 +115,14 @@ std::vector<GetNextTestCase<SkipDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/SkipDatasetParams1(),
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{4}, {5}, {6}, {7}, {8}, {9}})},
+       CreateTensors<int64_t>(TensorShape{}, {{4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/SkipDatasetParams2(),
        /*expected_outputs=*/{}},
       {/*dataset_params=*/SkipDatasetParams3(),
        /*expected_outputs=*/{}},
       {/*dataset_params=*/SkipDatasetParams4(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/SkipDatasetParams5(),
        /*expected_outputs=*/{}}};
@@ -213,7 +213,7 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/SkipDatasetParams1(),
        /*breakpoints*/ {0, 2, 7},
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape{}, {{4}, {5}, {6}, {7}, {8}, {9}})},
+       CreateTensors<int64_t>(TensorShape{}, {{4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/SkipDatasetParams2(),
        /*breakpoints*/ {0, 2, 5},
        /*expected_outputs=*/{}},
@@ -223,7 +223,7 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/SkipDatasetParams4(),
        /*breakpoints*/ {0, 2, 5, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/SkipDatasetParams5(),
        /*breakpoints*/ {0, 2, 5},

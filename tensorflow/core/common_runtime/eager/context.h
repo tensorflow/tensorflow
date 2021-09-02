@@ -119,7 +119,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   AbstractTensorInterface* CreateBoolScalar(bool value) override;
 
   AbstractTensorInterface* CreateTensor(
-      DataType dtype, absl::Span<const int64> dim_sizes) override;
+      DataType dtype, absl::Span<const int64_t> dim_sizes) override;
   AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
                                         int num_dims, void* data, size_t len,
                                         MemoryReleaser memory_releaser,
@@ -327,6 +327,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return local_device_mgr()->ListDevices();
   }
 
+  std::vector<Device*> ListAllTfDevices() override;
+
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
   bool ShouldStoreGraphs() TF_LOCKS_EXCLUDED(metadata_mu_);
@@ -517,6 +519,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const SessionOptions& session_options() const { return opts_; }
   void InitPrioritizedDeviceTypeList();
 
+  // Re-assign cluster-FLR and re-initialize devices and FLR in process-FLR
+  void UpdateClusterFLRAndInitDevices(
+      DistributedFunctionLibraryRuntime* cluster_flr);
+
  private:
   Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
@@ -598,12 +604,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
       device_placement_policy_ TF_GUARDED_BY(policy_map_mu_);
 
+  // This device manager maintains only the local devices on this worker.
   OwnedOrUnownedHelper<DeviceMgr> local_device_manager_;
   // Maintain copy of all previously created local device managers.
   std::vector<std::unique_ptr<DeviceMgr>> old_local_device_managers_;
 
   // Unowned DynamicDeviceMgr is set on remote worker to allow running
   // multi-device function on remote worker.
+  // This device manager maintains all the devices (including both local and
+  // remote to this worker) in the cluster.
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
   Device* host_cpu_device_;  // Owned by device_manager
@@ -672,7 +681,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const bool log_memory_;
 
   // Whether to use same rendezvous instance across function/eager executions.
-  bool reuse_rendezvous_for_functions_ = false;
+  std::atomic<bool> reuse_rendezvous_for_functions_{false};
   mutable mutex global_rendezvous_mu_;
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);

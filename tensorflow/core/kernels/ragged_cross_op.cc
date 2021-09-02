@@ -45,7 +45,7 @@ namespace {
 class FeatureReader {
  public:
   // Returns the number of feature values in the specified batch.
-  virtual int64 FeatureCount(int64_t batch) const = 0;
+  virtual int64_t FeatureCount(int64_t batch) const = 0;
 
   // Copies the value for the specified feature to `out`.
   virtual void ReadValue(int64_t batch, int64_t n, uint64* out) const = 0;
@@ -80,7 +80,7 @@ class RaggedFeatureReader : public FeatureReader {
       : values_(values.flat<ValuesType>()),
         row_splits_(row_splits.flat<SplitsType>()) {}
 
-  int64 FeatureCount(int64_t batch) const override {
+  int64_t FeatureCount(int64_t batch) const override {
     return row_splits_(batch + 1) - row_splits_(batch);
   }
 
@@ -105,7 +105,7 @@ class DenseFeatureReader : public FeatureReader {
       : values_(tensor.matrix<ValuesType>()),
         feature_count_(tensor.dim_size(1)) {}
 
-  int64 FeatureCount(int64_t batch) const override { return feature_count_; }
+  int64_t FeatureCount(int64_t batch) const override { return feature_count_; }
 
   void ReadValue(int64_t batch, int64_t n, uint64* out) const override {
     CopyToFingerprint(values_(batch, n), out);
@@ -117,7 +117,7 @@ class DenseFeatureReader : public FeatureReader {
 
  private:
   const typename TTypes<ValuesType>::ConstMatrix values_;
-  const int64 feature_count_;
+  const int64_t feature_count_;
 };
 
 // A FeatureReader that is backed by a sparse tensor.
@@ -129,7 +129,7 @@ class SparseFeatureReader : public FeatureReader {
       : values_(values_t.flat<ValuesType>()) {
     row_splits_.reserve(batch_size + 1);
     row_splits_.push_back(0);
-    auto indices = indices_t.matrix<int64>();
+    auto indices = indices_t.matrix<int64_t>();
     int64_t num_values = values_.size();
     int64_t i = 0;  // value index
     for (int row = 0; row < batch_size; row++) {
@@ -138,7 +138,7 @@ class SparseFeatureReader : public FeatureReader {
     }
   }
 
-  int64 FeatureCount(int64_t batch) const override {
+  int64_t FeatureCount(int64_t batch) const override {
     return row_splits_[batch + 1] - row_splits_[batch];
   }
 
@@ -152,7 +152,7 @@ class SparseFeatureReader : public FeatureReader {
 
  private:
   const typename TTypes<ValuesType>::ConstFlat values_;
-  std::vector<int64> row_splits_;
+  std::vector<int64_t> row_splits_;
 };
 
 //==============================================================================
@@ -215,7 +215,7 @@ class OutputWriterImpl : public OutputWriter {
   // Joins the specified combination of input features into a single
   // fingerprint, and writes it to *out.
   void WriteCombination(int64_t batch_index,
-                        const std::vector<int>& combination, int64* out) {
+                        const std::vector<int>& combination, int64_t* out) {
     // Do the fingerprint concatenation on uint64.
     uint64 hashed_output = hash_key_;
     for (size_t i = 0; i < combination.size(); ++i) {
@@ -228,7 +228,7 @@ class OutputWriterImpl : public OutputWriter {
       *out = hashed_output % num_buckets_;
     } else {
       // To prevent negative output we take modulo to max int64.
-      *out = hashed_output % std::numeric_limits<int64>::max();
+      *out = hashed_output % std::numeric_limits<int64_t>::max();
     }
   }
 
@@ -250,7 +250,7 @@ class OutputWriterImpl : public OutputWriter {
   }
 
   const FeatureReaders& features_;
-  const int64 num_buckets_;
+  const int64_t num_buckets_;
   const uint64 hash_key_;
   FlatSplits splits_out_;
   FlatValues values_out_;
@@ -265,15 +265,15 @@ std::unique_ptr<OutputWriter> MakeOutputWriter(const FeatureReaders& features,
                                                Tensor* values_out) {
   if (values_out->dtype() == DT_INT64) {
     if (splits_out->dtype() == DT_INT64) {
-      return std::make_unique<OutputWriterImpl<int64, int64>>(
+      return std::make_unique<OutputWriterImpl<int64_t, int64_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     } else {
-      return std::make_unique<OutputWriterImpl<int64, int32>>(
+      return std::make_unique<OutputWriterImpl<int64_t, int32>>(
           features, num_buckets, hash_key, splits_out, values_out);
     }
   } else {
     if (splits_out->dtype() == DT_INT64) {
-      return std::make_unique<OutputWriterImpl<tstring, int64>>(
+      return std::make_unique<OutputWriterImpl<tstring, int64_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     } else {
       return std::make_unique<OutputWriterImpl<tstring, int32>>(
@@ -423,7 +423,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
     for (int i = 0; i < num_sparse; ++i) {
-      if (sparse_shape_list[i].flat<int64>()(0) != batch_size) {
+      if (sparse_shape_list[i].flat<int64_t>()(0) != batch_size) {
         return errors::InvalidArgument(
             "inputs must all have the same batch dimension size.");
       }
@@ -440,15 +440,15 @@ class RaggedCrossOp : public OpKernel {
 
   // Calculate the batch size from any input tensor.  (We check that all input
   // tensors have the same batch size in `ValidateInput`).
-  int64 CalculateBatchSize(const OpInputList& ragged_splits_list,
-                           const OpInputList& sparse_shape_list,
-                           const OpInputList& dense_list) {
+  int64_t CalculateBatchSize(const OpInputList& ragged_splits_list,
+                             const OpInputList& sparse_shape_list,
+                             const OpInputList& dense_list) {
     if (ragged_splits_list.size() > 0) {
       return ragged_splits_list[0].NumElements() - 1;
     } else if (dense_list.size() > 0) {
       return dense_list[0].dim_size(0);
     } else if (sparse_shape_list.size() > 0) {
-      return sparse_shape_list[0].flat<int64>()(0);
+      return sparse_shape_list[0].flat<int64_t>()(0);
     } else {
       return 0;
     }
@@ -534,15 +534,15 @@ class RaggedCrossOp : public OpKernel {
     if (values.dtype() == DT_INT64) {
       if (splits.dtype() == DT_INT64) {
         features->emplace_back(
-            new RaggedFeatureReader<int64, int64>(values, splits));
+            new RaggedFeatureReader<int64_t, int64_t>(values, splits));
       } else {
         features->emplace_back(
-            new RaggedFeatureReader<int64, int32>(values, splits));
+            new RaggedFeatureReader<int64_t, int32>(values, splits));
       }
     } else {
       if (splits.dtype() == DT_INT64) {
         features->emplace_back(
-            new RaggedFeatureReader<tstring, int64>(values, splits));
+            new RaggedFeatureReader<tstring, int64_t>(values, splits));
       } else {
         features->emplace_back(
             new RaggedFeatureReader<tstring, int32>(values, splits));
@@ -555,7 +555,7 @@ class RaggedCrossOp : public OpKernel {
   static Status BuildDenseFeatureReader(const Tensor& values,
                                         FeatureReaders* features) {
     if (values.dtype() == DT_INT64) {
-      features->emplace_back(new DenseFeatureReader<int64>(values));
+      features->emplace_back(new DenseFeatureReader<int64_t>(values));
     } else if (values.dtype() == DT_STRING) {
       features->emplace_back(new DenseFeatureReader<tstring>(values));
     } else {
@@ -573,7 +573,7 @@ class RaggedCrossOp : public OpKernel {
                                          FeatureReaders* features) {
     if (values.dtype() == DT_INT64) {
       features->emplace_back(
-          new SparseFeatureReader<int64>(indices, values, batch_size));
+          new SparseFeatureReader<int64_t>(indices, values, batch_size));
     } else if (values.dtype() == DT_STRING) {
       features->emplace_back(
           new SparseFeatureReader<tstring>(indices, values, batch_size));
@@ -608,8 +608,8 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Returns number of crosses for a given batch_index
-  int64 CrossCountByBatchIndex(const FeatureReaders& features,
-                               int batch_index) {
+  int64_t CrossCountByBatchIndex(const FeatureReaders& features,
+                                 int batch_index) {
     int64_t cross_count = 1;
     for (int i = 0; i < features.size(); ++i) {
       const auto feature_count = features[i]->FeatureCount(batch_index);
@@ -619,7 +619,7 @@ class RaggedCrossOp : public OpKernel {
     return cross_count;
   }
 
-  int64 num_buckets_;
+  int64_t num_buckets_;
   uint64 hash_key_;
   std::vector<DataType> ragged_values_types_;
   std::vector<DataType> ragged_splits_types_;
@@ -634,7 +634,7 @@ REGISTER_KERNEL_BUILDER(Name("RaggedCross")
                         RaggedCrossOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("RaggedCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("out_row_splits_type"),
+                            .TypeConstraint<int64_t>("out_row_splits_type"),
                         RaggedCrossOp<int64>);
 
 }  // namespace

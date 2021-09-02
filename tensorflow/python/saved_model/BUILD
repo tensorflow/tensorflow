@@ -32,6 +32,7 @@ py_strict_library(
         ":loader",
         ":main_op",
         ":method_name_updater",
+        ":registration",
         ":save",
         ":signature_constants",
         ":signature_def_utils",
@@ -337,6 +338,7 @@ py_strict_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":save_context",
         ":save_options",
@@ -407,6 +409,7 @@ py_library(
         ":loader",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -447,6 +450,7 @@ py_strict_library(
     deps = [
         ":function_deserialization",
         ":loader",
+        ":pywrap_saved_model",
         ":signature_serialization",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
@@ -461,7 +465,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training/tracking",
     ],
@@ -515,6 +518,28 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_library(
+    name = "registration",
+    srcs = [
+        "registration.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "registration_test",
+    srcs = ["registration_test.py"],
+    deps = [
+        ":registration",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking:base",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -697,7 +722,10 @@ tf_python_pybind_extension(
     ],
     features = ["-layering_check"],
     module_name = "pywrap_saved_model",
-    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    visibility = [
+        "//tensorflow/python/saved_model:__subpackages__",
+        "//tensorflow/python/training:__subpackages__",
+    ],
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
@@ -712,5 +740,15 @@ tf_py_test(
     deps = [
         ":pywrap_saved_model",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "keras_injection_test",
+    size = "small",
+    srcs = ["keras_injection_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
     ],
 )

@@ -114,9 +114,9 @@ string HumanReadableProfileBuilder::ToString() const {
       optimal_seconds_sum +=
           std::min(double{op.optimal_seconds}, CyclesToSeconds(op.cycles));
     }
-    total_flops += std::max(op.flop_count, int64{0});
-    total_transcendentals += std::max(op.transcendental_count, int64{0});
-    total_bytes += std::max(op.bytes_accessed, int64{0});
+    total_flops += std::max(op.flop_count, int64_t{0});
+    total_transcendentals += std::max(op.transcendental_count, int64_t{0});
+    total_bytes += std::max(op.bytes_accessed, int64_t{0});
   }
 
   VLOG(1) << "Total floating point ops: " << total_flops;

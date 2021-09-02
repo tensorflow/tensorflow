@@ -460,6 +460,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:register_types_traits.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework:resource_mgr.h",
+        "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
         "//tensorflow/core/framework:rng_alg.h",
         "//tensorflow/core/framework/registration:registration.h",
@@ -485,6 +486,7 @@ tf_cuda_library(
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
+        "//tensorflow/core/util:determinism_hdr",
         "//tensorflow/core/public:version.h",
         "//tensorflow/lite/kernels/shim:tf_headers",
     ] + if_mkl([
@@ -761,6 +763,7 @@ cc_library(
     deps = [
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
     ],
 )
 
@@ -1073,7 +1076,10 @@ cc_library(
 #         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
-#     }) + tf_defines_nortti_if_lite_protos(),
+#     }) + tf_defines_nortti_if_lite_protos() + select({
+#         "//tensorflow:android": ["TF_USE_SNAPPY"],
+#         "//conditions:default": [],
+#     }),
 #     features = ["-layering_check"],
 #     tags = [
 #         "manual",
@@ -1215,7 +1221,6 @@ alias(
 filegroup(
     name = "lib_internal_private_headers",
     srcs = [
-        "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
@@ -1682,6 +1687,7 @@ tf_cuda_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/util:determinism",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
@@ -1689,6 +1695,7 @@ tf_cuda_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core/util:tensor_format",
         "//tensorflow/compiler/jit:common",
+        "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(

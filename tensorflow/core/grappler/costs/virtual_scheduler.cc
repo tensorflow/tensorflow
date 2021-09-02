@@ -1069,7 +1069,7 @@ Costs SchedulerState::Summary() const {
   for (const auto& name : device_names) {
     const auto& state = device_.at(name);
 
-    std::map<string, int64> op_to_memory;
+    std::map<string, int64_t> op_to_memory;
     // First profile only persistent memory usage.
     int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
@@ -1290,9 +1290,9 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
   }
 }
 
-const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
+const std::unordered_map<string, int64_t> SchedulerState::GetPeakMemoryUsage()
     const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
@@ -1301,9 +1301,9 @@ const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
   return result;
 }
 
-const std::unordered_map<string, int64>
+const std::unordered_map<string, int64_t>
 SchedulerState::GetPersistentMemoryUsage() const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;

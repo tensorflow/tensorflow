@@ -85,7 +85,7 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   }
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
-    int64_t bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
+    int64_t bytes_to_read = std::min<int64_t>(kMaxSkipSize, bytes_to_skip);
     StringPiece data;
     Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
     if (s.ok() || errors::IsOutOfRange(s)) {
@@ -101,7 +101,7 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   return Status::OK();
 }
 
-int64 RandomAccessInputStream::Tell() const { return pos_; }
+int64_t RandomAccessInputStream::Tell() const { return pos_; }
 
 }  // namespace io
 }  // namespace tensorflow

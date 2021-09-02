@@ -40,7 +40,9 @@ def extract_example_parser_configuration(parse_example_op, sess):
   elif parse_example_op.type == "ParseExampleV2":
     return _extract_from_parse_example_v2(parse_example_op, sess)
   else:
-    raise ValueError("Unexpected op type: %s" % parse_example_op.type)
+    raise ValueError(
+        "Found unexpected type when parsing example. Expected `ParseExample` "
+        f"object. Received type: {parse_example_op.type}")
 
 
 def _extract_from_parse_example(parse_example_op, sess):

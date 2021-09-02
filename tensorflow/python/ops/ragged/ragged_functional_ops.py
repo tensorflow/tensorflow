@@ -19,12 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -88,16 +85,21 @@ def map_flat_values(op, *args, **kwargs):
     ValueError: If args contains no `RaggedTensors`, or if the `nested_splits`
       of the input `RaggedTensor`s are not identical.
   """
-  # Replace RaggedTensors with their values; and collect the splits tensors
+  # Replace RaggedTensors with their values; and collect the partitions tensors
   # from each RaggedTensor.
-  nested_splits_lists = []
+  partition_lists = []
   flat_values_nrows = []
-  inner_args = _replace_ragged_with_flat_values(args, nested_splits_lists,
+  inner_args = _replace_ragged_with_flat_values(args, partition_lists,
                                                 flat_values_nrows)
-  inner_kwargs = _replace_ragged_with_flat_values(kwargs, nested_splits_lists,
+  inner_kwargs = _replace_ragged_with_flat_values(kwargs, partition_lists,
                                                   flat_values_nrows)
-  if not nested_splits_lists:
+  if not partition_lists:
     return op(*args, **kwargs)
+
+  # If we can statically determine that the inputs are incompatible, then raise
+  # an error.  (We can't guarantee full compatibility statically, so we need to
+  # perform some runtime checks too; but this allows us to fail sooner in some
+  # cases.)
   if flat_values_nrows:
     flat_values_nrows = set(flat_values_nrows)
     if len(flat_values_nrows) != 1:
@@ -108,46 +110,47 @@ def map_flat_values(op, *args, **kwargs):
   else:
     flat_values_nrows = None
 
-  split_dtypes = set(splits[0].dtype for splits in nested_splits_lists)
-  if len(split_dtypes) > 1:
+  partition_dtypes = set(p[0].dtype for p in partition_lists)
+  if len(partition_dtypes) > 1:
     if not ragged_config.auto_cast_partition_dtype():
-      raise ValueError("Input RaggedTensors have mismatched row_splits dtypes; "
-                       "use RaggedTensor.with_row_splits_dtype() to convert "
-                       "them to compatible dtypes.")
+      raise ValueError("Input RaggedTensors have mismatched row partition "
+                       "dtypes; use RaggedTensor.with_row_splits_dtype() to "
+                       "convert them to compatible dtypes.")
 
-    nested_splits_lists = [
-        [math_ops.cast(s, dtypes.int64) for s in nested_splits]  # pylint: disable=g-complex-comprehension
-        for nested_splits in nested_splits_lists]
+    partition_lists = [
+        [p.with_row_splits_dtype(dtypes.int64)
+         for p in partition_list]  # pylint: disable=g-complex-comprehension
+        for partition_list in partition_lists
+    ]
 
-  with ops.control_dependencies(
-      ragged_util.assert_splits_match(nested_splits_lists)):
-    # Delegate to `op`
-    op_output = op(*inner_args, **inner_kwargs)
-    # Check that the result has the expected shape (if known).
-    if flat_values_nrows is not None:
-      if not op_output.shape[:1].is_compatible_with([flat_values_nrows]):
-        raise ValueError(
-            "tf.ragged.map_flat_values requires that the output of `op` have "
-            "the same outer-dimension size as flat_values of any ragged "
-            "inputs. (output shape: %s; expected outer dimension size: %s)" %
-            (op_output.shape, flat_values_nrows))
-    # Compose the result from the transformed values and the splits.
-    return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        op_output, nested_splits_lists[0], validate=False)
+  # Delegate to `op`
+  op_output = op(*inner_args, **inner_kwargs)
+  # Check that the result has the expected shape (if known).
+  if flat_values_nrows is not None:
+    if not op_output.shape[:1].is_compatible_with([flat_values_nrows]):
+      raise ValueError(
+          "tf.ragged.map_flat_values requires that the output of `op` have "
+          "the same outer-dimension size as flat_values of any ragged "
+          "inputs. (output shape: %s; expected outer dimension size: %s)" %
+          (op_output.shape, flat_values_nrows))
+  # Compose the result from the transformed values and the partitions.
+  return ragged_tensor.RaggedTensor._from_nested_row_partitions(  # pylint: disable=protected-access
+      op_output,
+      _merge_partition_lists(partition_lists),
+      validate=False)
 
 
-def _replace_ragged_with_flat_values(value, nested_splits_lists,
-                                     flat_values_nrows):
-  """Replace RaggedTensors with their flat_values, and record their splits.
+def _replace_ragged_with_flat_values(value, partition_lists, flat_values_nrows):
+  """Replace RaggedTensors with their flat_values, and record their partitions.
 
   Returns a copy of `value`, with any nested `RaggedTensor`s replaced by their
   `flat_values` tensor.  Looks inside lists, tuples, and dicts.
 
-  Appends each `RaggedTensor`'s `nested_splits` to `nested_splits_lists`.
+  Appends each `RaggedTensor`'s `RowPartition`s to `partition_lists`.
 
   Args:
     value: The value that should be transformed by replacing `RaggedTensors`.
-    nested_splits_lists: An output parameter used to record the `nested_splits`
+    partition_lists: An output parameter used to record the row partitions
       for any `RaggedTensors` that were replaced.
     flat_values_nrows: An output parameter used to record the outer dimension
       size for each replacement `flat_values` (when known).  Contains a list of
@@ -159,7 +162,7 @@ def _replace_ragged_with_flat_values(value, nested_splits_lists,
   # Base case
   if ragged_tensor.is_ragged(value):
     value = ragged_tensor.convert_to_tensor_or_ragged_tensor(value)
-    nested_splits_lists.append(value.nested_row_splits)
+    partition_lists.append(value._nested_row_partitions)  # pylint: disable=protected-access
     nrows = tensor_shape.dimension_at_index(value.flat_values.shape, 0).value
     if nrows is not None:
       flat_values_nrows.append(nrows)
@@ -167,7 +170,7 @@ def _replace_ragged_with_flat_values(value, nested_splits_lists,
 
   # Recursion cases
   def recurse(v):
-    return _replace_ragged_with_flat_values(v, nested_splits_lists,
+    return _replace_ragged_with_flat_values(v, partition_lists,
                                             flat_values_nrows)
 
   if isinstance(value, list):
@@ -178,3 +181,23 @@ def _replace_ragged_with_flat_values(value, nested_splits_lists,
     return dict((k, recurse(v)) for (k, v) in value.items())
   else:
     return value
+
+
+def _merge_partition_lists(partition_lists):
+  """Merges the given list of lists of RowPartitions.
+
+  Args:
+    partition_lists: A list of lists of RowPartition.
+
+  Returns:
+    A list of RowPartitions, where `result[i]` is formed by merging
+    `partition_lists[j][i]` for all `j`, using
+    `RowPartition.merge_precomputed_encodings`.
+  """
+  dst = list(partition_lists[0])
+  for src in partition_lists[1:]:
+    if len(src) != len(dst):
+      raise ValueError("All ragged inputs must have the same ragged_rank.")
+    for i in range(len(dst)):
+      dst[i] = dst[i].merge_precomputed_encodings(src[i])
+  return dst

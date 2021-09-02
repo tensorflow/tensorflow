@@ -38,8 +38,8 @@ static Status InitDeviceAndGraphModule(void* dso_handle) {
 
   // Raise error if neither device nor graph is found.
   if (errors::IsNotFound(status_se) && errors::IsNotFound(status_graph)) {
-    return errors::NotFound(status_se.ToString() + " " +
-                            status_graph.ToString());
+    return errors::NotFound(status_se.error_message() + " " +
+                            status_graph.error_message());
   }
 
   if (status_se == Status::OK()) {

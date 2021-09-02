@@ -73,7 +73,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   if (!param->shape().IsTuple()) {
     return false;
   }
-  std::set<int64> tuple_indices_to_keep;
+  std::set<int64_t> tuple_indices_to_keep;
   for (HloInstruction* user : param->users()) {
     // If the user is not a get tuple element, assume it is unsafe to remove
     // elements from the tuple.
@@ -94,7 +94,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   // computation branch.
   std::vector<Shape> new_tuple_shapes;
   new_tuple_shapes.reserve(tuple_indices_to_keep.size());
-  std::vector<int64> map(old_tuple_element_count, -1);
+  std::vector<int64_t> map(old_tuple_element_count, -1);
   for (int64_t i : tuple_indices_to_keep) {
     map[i] = new_tuple_shapes.size();
     new_tuple_shapes.push_back(param->shape().tuple_shapes(i));
@@ -417,7 +417,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   };
 
   bool changed = false;
-  absl::flat_hash_map<std::vector<const HloInstruction*>, int64>
+  absl::flat_hash_map<std::vector<const HloInstruction*>, int64_t>
       index_collision_table;
   for (int i = 0; i < conditional->shape().tuple_shapes_size(); ++i) {
     const std::vector<const HloInstruction*> ith_operands_vector =

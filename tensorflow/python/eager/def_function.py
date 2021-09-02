@@ -282,11 +282,13 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
           constraint=constraint)
       return
     if initial_value is None:
-      raise ValueError("initial_value must be specified.")
+      raise ValueError("`initial_value` must be a Tensor or a Python "
+                       "object convertible to a Tensor. Got None.")
     init_from_fn = callable(initial_value)
 
     if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
+      raise ValueError(f"`constraint` with type {type(constraint)} must be a "
+                       "callable.")
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
@@ -493,12 +495,11 @@ def _evaluate_var_is_initialized(variables):
             any_initialized = math_ops.reduce_any(components).numpy()
           if all_initialized != any_initialized:
             raise NotImplementedError(
-                ("Some but not all components of a parallel variable {} were "
-                 "initialized between their creation in a tf.function and "
-                 "the function's trace having completed. This is not yet "
-                 "supported; consider initializing either all or none of the "
-                 "components, or moving initialization out of the function."
-                ).format(repr(v)))
+                f"Some but not all components of a parallel variable {v!r} "
+                "were initialized between their creation in a tf.function and "
+                "the function's trace having completed. This is not "
+                "supported; consider initializing either all or none of the "
+                "components, or moving initialization out of the function.")
           numpy_value = all_initialized
         var_is_initialized[index] = numpy_value
   return var_is_initialized
@@ -780,8 +781,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
@@ -1392,7 +1396,7 @@ def function(func=None,
   thought of as compile-time constants), and builds a separate `tf.Graph` for
   each set of Python arguments that it encounters.
   For more information, see the
-  [tf.function guide](https://www.tensorflow.org/guide/function?hl=en#rules_of_tracing)
+  [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
   Executing a `GenericFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.

@@ -31,11 +31,8 @@ PythonRefManager::ManagedPyObjects::ManagedPyObjects(
 }
 
 PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
-  if (manager_) {
-    absl::MutexLock lock(&manager_->mu_);
-    for (pybind11::object& object : objects_) {
-      manager_->python_garbage_.push_back(std::move(object));
-    }
+  if (manager_ && !objects_.empty()) {
+    manager_->AddGarbage(absl::MakeSpan(objects_));
   }
 }
 

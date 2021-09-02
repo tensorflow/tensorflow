@@ -87,6 +87,8 @@ message TPUHostTransferProto {
   // If this host transfer is a splitted X64 transfer, specifies whether this
   // transfer is for lower bits.
   bool is_lower_bits = 8;
+  // The name of host side command handler.
+  string host_handler_name = 9;
 }
 
 message TPUHostTransferInfoProto {

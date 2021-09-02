@@ -71,7 +71,7 @@ class GatherOp : public OpKernel {
       if (axis_tensor.dtype() == DT_INT32) {
         axis = axis_tensor.scalar<int32>()();
       } else if (axis_tensor.dtype() == DT_INT64) {
-        axis = axis_tensor.scalar<int64>()();
+        axis = axis_tensor.scalar<int64_t>()();
       } else {
         OP_REQUIRES(c, false,
                     errors::InvalidArgument("axis must be int32 or int64."));
@@ -205,7 +205,7 @@ class GatherOp : public OpKernel {
 
 #define REGISTER_GATHER_ALL_INDICES(dev, type) \
   REGISTER_GATHER_FULL(dev, type, int32);      \
-  REGISTER_GATHER_FULL(dev, type, int64)
+  REGISTER_GATHER_FULL(dev, type, int64_t)
 
 #define REGISTER_GATHER_CPU(type) REGISTER_GATHER_ALL_INDICES(CPU, type)
 

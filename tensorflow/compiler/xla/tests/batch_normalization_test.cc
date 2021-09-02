@@ -467,8 +467,8 @@ XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic_fp16) {
 }
 
 struct BatchNormTestParam {
-  std::vector<int64> bounds;
-  int64 feature_index;
+  std::vector<int64_t> bounds;
+  int64_t feature_index;
   float random_value_mean;
   float random_value_var;
   bool use_cudnn_batchnorm;
@@ -503,7 +503,7 @@ class BatchNormTestManySizes
 std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
   std::vector<BatchNormTestParam> params;
 
-  auto add_testcase = [&](std::vector<int64> bounds, int64_t feature_index,
+  auto add_testcase = [&](std::vector<int64_t> bounds, int64_t feature_index,
                           float random_value_mean, float random_value_var) {
     BatchNormTestParam p{bounds, feature_index, random_value_mean,
                          random_value_var, /*use_cudnn_batchnorm=*/false};
@@ -547,7 +547,7 @@ INSTANTIATE_TEST_CASE_P(BatchNormTest_Instantiation, BatchNormTestManySizes,
 XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
-  const std::vector<int64>& bounds = GetParam().bounds;
+  const std::vector<int64_t>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);
@@ -561,8 +561,8 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
 
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
-  std::vector<int64> reduce_dims;
-  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  std::vector<int64_t> reduce_dims;
+  for (int64_t i = 0; i < static_cast<int64_t>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -648,7 +648,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
 XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
-  const std::vector<int64>& bounds = GetParam().bounds;
+  const std::vector<int64_t>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);
@@ -662,8 +662,8 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
 
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
-  std::vector<int64> reduce_dims;
-  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  std::vector<int64_t> reduce_dims;
+  for (int64_t i = 0; i < static_cast<int64_t>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -756,7 +756,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
 XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
-  const std::vector<int64>& bounds = GetParam().bounds;
+  const std::vector<int64_t>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);
@@ -773,8 +773,8 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
 
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
-  std::vector<int64> reduce_dims;
-  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  std::vector<int64_t> reduce_dims;
+  for (int64_t i = 0; i < static_cast<int64_t>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }

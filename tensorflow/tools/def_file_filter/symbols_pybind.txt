@@ -118,6 +118,7 @@ toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
 toco::RetrieveCollectedErrors
+toco::FlatBufferFileToMlir
 
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -224,16 +225,27 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
-tensorflow::AttrValue::CopyFrom  # tf_text
-tensorflow::AttrValue::MergeFrom
-tensorflow::AttrValue::SetCachedSize
-tensorflow::AttrValue::GetMetadata
-tensorflow::AttrValue::New
-tensorflow::AttrValue::Clear
-tensorflow::AttrValue::IsInitialized
-tensorflow::AttrValue::ByteSizeLong
-tensorflow::AttrValue::GetCachedSize
-tensorflow::AttrValue::~AttrValue
+
+[//tensorflow/core/framework:attr_value_proto_cc_impl] # tf_text
+tensorflow::AttrValue::`vftable'
+
+[//tensorflow/core/framework:op_def_proto_cc_impl] # tf_text
+tensorflow::OpDef::`vftable'
+
+[//tensorflow/lite/kernels/shim:shape] # tf_text
+tflite::shim::Shape::AddDims
+tflite::shim::Shape::Dim
+
+[//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
+tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::TfInitContext
+tflite::shim::TfInvokeContext::GetInput
+tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::SetInputShape
+tflite::shim::TfShapeInferenceContext::SetOutputShape
+tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -387,11 +399,15 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
-[//tensorflow/cc/saved_model:metrics_impl] # SavedModel metrics
+[//tensorflow/cc/saved_model:metrics_impl] # SavedModel and Checkpoint metrics
 tensorflow::metrics::SavedModelWrite
 tensorflow::metrics::SavedModelRead
 tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::CheckpointReadDuration
+tensorflow::metrics::CheckpointWriteDuration
+tensorflow::metrics::TrainingTimeSaved
+
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
@@ -413,7 +429,22 @@ tensorflow::GetCompilerIr
 tensorflow::TensorHandle::Tensor
 
 [//tensorflow/python:python_api_dispatcher] # python_api_dispatcher
-tensorflow::PythonAPIDispatcher
+tensorflow::py_dispatch::PythonAPIDispatcher
+tensorflow::py_dispatch::PySignatureChecker
+tensorflow::py_dispatch::PyTypeChecker::MatchType
+tensorflow::py_dispatch::PyInstanceChecker::PyInstanceChecker
+tensorflow::py_dispatch::PyInstanceChecker::Check
+tensorflow::py_dispatch::PyInstanceChecker::cost
+tensorflow::py_dispatch::PyInstanceChecker::DebugString
+tensorflow::py_dispatch::PyListChecker::PyListChecker
+tensorflow::py_dispatch::PyListChecker::Check
+tensorflow::py_dispatch::PyListChecker::cost
+tensorflow::py_dispatch::PyListChecker::DebugString
+tensorflow::py_dispatch::PyUnionChecker::PyUnionChecker
+tensorflow::py_dispatch::PyUnionChecker::Check
+tensorflow::py_dispatch::PyUnionChecker::cost
+tensorflow::py_dispatch::PyUnionChecker::DebugString
+tensorflow::py_dispatch::RegisterDispatchableType
 
 [//tensorflow/python:python_tensor_converter] # python_tensor_converter
 tensorflow::PythonTensorConverter

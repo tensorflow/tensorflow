@@ -1008,9 +1008,9 @@ RangeDatasetParams::RangeDatasetParams(int64_t start, int64_t stop,
       step_(step) {}
 
 std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
-  Tensor start_tensor = CreateTensor<int64>(TensorShape({}), {start_});
-  Tensor stop_tensor = CreateTensor<int64>(TensorShape({}), {stop_});
-  Tensor step_tensor = CreateTensor<int64>(TensorShape({}), {step_});
+  Tensor start_tensor = CreateTensor<int64_t>(TensorShape({}), {start_});
+  Tensor stop_tensor = CreateTensor<int64_t>(TensorShape({}), {stop_});
+  Tensor step_tensor = CreateTensor<int64_t>(TensorShape({}), {step_});
   return {start_tensor, stop_tensor, step_tensor};
 }
 
@@ -1029,7 +1029,7 @@ Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
 string RangeDatasetParams::dataset_type() const { return "Range"; }
 
 std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
-  Tensor batch_size = CreateTensor<int64>(TensorShape({}), {batch_size_});
+  Tensor batch_size = CreateTensor<int64_t>(TensorShape({}), {batch_size_});
   Tensor drop_remainder =
       CreateTensor<bool>(TensorShape({}), {drop_remainder_});
   return {batch_size, drop_remainder};
@@ -1079,10 +1079,11 @@ std::vector<FunctionDef> MapDatasetParams::func_lib() const {
 }
 
 TensorSliceDatasetParams::TensorSliceDatasetParams(
-    std::vector<Tensor> components, string node_name)
+    std::vector<Tensor> components, string node_name, bool is_files)
     : DatasetParams(TensorSliceDtypes(components),
                     TensorSliceShapes(components), std::move(node_name)),
-      components_(std::move(components)) {}
+      components_(std::move(components)),
+      is_files_(is_files) {}
 
 std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
   return components_;
@@ -1100,7 +1101,8 @@ Status TensorSliceDatasetParams::GetInputNames(
 Status TensorSliceDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
   *attr_vector = {{"Toutput_types", output_dtypes_},
-                  {"output_shapes", output_shapes_}};
+                  {"output_shapes", output_shapes_},
+                  {"is_files", is_files_}};
   return Status::OK();
 }
 
@@ -1117,7 +1119,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
     const std::vector<Tensor>& input_components) {
   std::vector<PartialTensorShape> shapes;
   for (const auto& component : input_components) {
-    gtl::InlinedVector<int64, 4> partial_dim_sizes;
+    gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
     for (int i = 1; i < component.dims(); ++i) {
       partial_dim_sizes.push_back(component.dim_size(i));
     }
@@ -1129,7 +1131,7 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
 string TensorSliceDatasetParams::dataset_type() const { return "TensorSlice"; }
 
 std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
-  return {CreateTensor<int64>(TensorShape({}), {count_})};
+  return {CreateTensor<int64_t>(TensorShape({}), {count_})};
 }
 
 Status TakeDatasetParams::GetInputNames(

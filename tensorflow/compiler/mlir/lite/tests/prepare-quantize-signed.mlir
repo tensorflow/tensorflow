@@ -201,3 +201,105 @@ func @QuantizeTransposeConv(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4xi32>)
 // PerTensor: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]]) : (tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1x32x42x128xf32>
 // PerTensor: "tfl.transpose_conv"(%arg1, %[[DEQUANTIZE]], %arg0,
 }
+
+// CHECK-LABEL: bias_adjust_pertensor
+func @bias_adjust_pertensor(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
+  } : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  %w = constant dense<[[0.0, 1.0], [1.0, 2.0]]> : tensor<2x2xf32>
+  %b = constant dense<[0.0, 2.1473647e6]> : tensor<2xf32>
+  %fc = "tfl.fully_connected"(%0, %w, %b) {
+    fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
+  } : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
+  return %fc : tensor<1x2xf32>
+// CHECK: %[[weight:.*]] = constant dense<{{\[\[}}0.000000e+00, 1.000000e+00]
+// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
+// CHECK-SAME: quant.uniform<i8<-127:127>:f32, 19998.892343977564>>
+// CHECK: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
+// CHECK: %[[bias:.*]] = constant dense<[0.000000e+00, 2147364.75]>
+// CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
+// CHECK-SAME: quant.uniform<i32:f32, 0.0019998892694710656>>
+// CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK: %[[fc:.*]] = "tfl.fully_connected"(%[[input:.*]], %[[w_dq]], %[[b_dq]])
+// CHECK: return %[[fc]]
+}
+
+// CHECK-LABEL: bias_adjust_perchannel
+func @bias_adjust_perchannel(%arg0: tensor<1x5x5x2xf32>, %arg1: tensor<4xi32>) -> (tensor<1x5x5x3xf32>) {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
+  } : (tensor<1x5x5x2xf32>) -> tensor<1x5x5x2xf32>
+  %w = constant dense<[[[[-1.0, 1.0]]], [[[1.0, 2.0]]], [[[-2.0, 1.0]]]]> : tensor<3x1x1x2xf32>
+  %b = constant dense<[1.0e-2, 2.1473647e1, -2.1473647e2]> : tensor<3xf32>
+  %transpose_conv = "tfl.transpose_conv"(%arg1, %w, %0, %b) {
+    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
+  } : (tensor<4xi32>, tensor<3x1x1x2xf32>, tensor<1x5x5x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
+  return %transpose_conv : tensor<1x5x5x3xf32>
+// CHECK: %[[weight:.*]] = constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
+// CHECK-SAME: {0.0078740157480314959,0.19998891099675145,1.9998891454946508}
+// CHECK: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
+// CHECK: %[[bias:.*]] = constant dense<[0.00999999977, 21.4736462, -214.736465]>
+// CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
+// CHECK-SAME: {7.8740158861230386E-10,1.9998891450408216E-8,1.9998891805679583E-7}
+// CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK: %[[conv:.*]] = "tfl.transpose_conv"(%arg1, %[[w_dq]], %[[input:.*]], %[[b_dq]])
+// CHECK: return %6 : tensor<1x5x5x3xf32>
+}
+
+// CHECK-LABEL: bias_adjust_duplicate_filter
+func @bias_adjust_duplicate_filter(%arg0: tensor<1x5x5x2xf32>) -> (tensor<1x5x5x3xf32>, tensor<1x5x5x3xf32>) {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
+  } : (tensor<1x5x5x2xf32>) -> tensor<1x5x5x2xf32>
+  %w = constant dense<[[[[-1.0, 1.0]]], [[[1.0, 2.0]]], [[[-2.0, 1.0]]]]> : tensor<3x1x1x2xf32>
+  %b = constant dense<0.0> : tensor<3xf32>
+  %b2 = constant dense<[1.0e-2, 2.1473647e1, -2.1473647e2]> : tensor<3xf32>
+  %conv = "tfl.conv_2d"(%0, %w, %b) {
+    dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU",
+    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
+  } : (tensor<1x5x5x2xf32>, tensor<3x1x1x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
+  %conv2 = "tfl.conv_2d"(%0, %w, %b2) {
+    dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU",
+    padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
+  } : (tensor<1x5x5x2xf32>, tensor<3x1x1x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
+  return %conv, %conv2 : tensor<1x5x5x3xf32>, tensor<1x5x5x3xf32>
+// CHECK: %[[w1:.*]] = constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK: %[[w1_q:.*]] = "tfl.quantize"(%[[w1]])
+// CHECK-SAME: {0.0078740157480314959,0.015748031496062992,0.015748031496062992}
+// CHECK: %[[w1_dq:.*]] = "tfl.dequantize"(%[[w1_q]])
+// Weight with adjusted scales
+// CHECK: %[[w2:.*]] = constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK: %[[w2_q:.*]] = "tfl.quantize"(%[[w2]])
+// CHECK-SAME: {0.0078740157480314959,0.19998891099675145,1.9998891454946508}
+// CHECK: %[[w2_dq:.*]] = "tfl.dequantize"(%[[w2_q]])
+// Bias with adjusted scales
+// CHECK: %[[bias:.*]] = constant dense<[0.00999999977, 21.4736462, -214.736465]>
+// CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
+// CHECK-SAME: {7.8740158861230386E-10,1.9998891450408216E-8,1.9998891805679583E-7}
+// CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+
+// CHECK: %[[conv_normal:.*]] = "tfl.conv_2d"(%[[input:.*]], %[[w1_dq]], %[[bias_normal:.*]])
+// CHECK: %[[conv_adjusted:.*]] = "tfl.conv_2d"(%[[input:.*]], %[[w2_dq]], %[[b_dq]])
+// CHECK: return %[[conv_normal]], %[[conv_adjusted]]
+}
+
+// CHECK-LABEL: bias_adjust_pass_immutable
+func @bias_adjust_pass_immutable(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[-1.28e-5, 1.27e-5]> : tensor<2xf32>
+  } : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  %w = constant dense<[[0.0, 1.0], [1.0, 2.0]]> : tensor<2x2xf32>
+  %w_q = "quant.stats"(%w) {
+    layerStats = dense<[0.0, 2.0]> : tensor<2xf32>
+  } : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %b = constant dense<[0.0, 2.1473647e3]> : tensor<2xf32>
+  %fc = "tfl.fully_connected"(%0, %w_q, %b) {
+    fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
+  } : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
+  return %fc : tensor<1x2xf32>
+// CHECK: %[[weight:.*]] = constant dense<{{\[\[}}0.000000e+00, 1.000000e+00]
+// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
+// CHECK-SAME: quant.uniform<i8:f32, 0.0078431372549019607:-128>
+}

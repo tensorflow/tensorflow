@@ -173,7 +173,7 @@ Status ProcessFunctionLibraryRuntime::GetRetTypes(
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
-    const string& device_name, int64* incarnation) const {
+    const string& device_name, int64_t* incarnation) const {
   FunctionLibraryRuntime* flr = GetFLR(device_name);
   if (flr == nullptr) {
     return errors::InvalidArgument("Device name: ", device_name, " not found.");
@@ -210,16 +210,32 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 }
 
 void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
-  DeviceMgr const* all_devices = device_mgr_;
-  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
-    all_devices = parent_->remote_device_mgr();
-  }
-
+  // Reset device_set_ by one of the two following scenarios:
+  // 1) Both cluster-FLR and its remote_device_mgr is available: include local
+  //    devices (if any) from the local device_mgr_ as Device type, and include
+  //    remote devices from cluster's remote_device_mgr as RemoteDevice type.
+  // 2) Include local devices from the local device_mgr_.
+  // In both scenarios, no device is added more than one times.
   mutex_lock l(mu_);
   device_set_ = std::make_shared<DeviceSet>();
-  for (auto d : all_devices->ListDevices()) {
-    device_set_->AddDevice(d);
+  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
+    for (auto d : parent_->remote_device_mgr()->ListDevices()) {
+      Device* device = nullptr;
+      if (device_mgr_->LookupDevice(d->name(), &device) == Status::OK()) {
+        // If this device exists in device_mgr, i.e., a local device,
+        // add this device from the instance included in device_mgr_
+        device_set_->AddDevice(device);
+      } else {
+        device_set_->AddDevice(d);
+      }
+    }
+  } else {
+    for (auto d : device_mgr_->ListDevices()) {
+      device_set_->AddDevice(d);
+    }
   }
+
+  // Update flr_map_ by adding new devices
   for (Device* d : device_mgr_->ListDevices()) {
     if ((*flr_map_)[d] == nullptr) {
       (*flr_map_)[d] = NewFunctionLibraryRuntime(
@@ -517,20 +533,21 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
             }
             // Compare with default_device if it has a narrower scope matching
             // requested device.
-            int colocated_on_default_device = 0;
-            for (int i = 0; i < matching_devices.size(); ++i) {
-              if (DeviceNameUtils::IsSameAddressSpace(
-                      default_device->parsed_name(),
-                      matching_devices.at(i)->parsed_name())) {
-                colocated_on_default_device++;
+            if (default_device != nullptr) {
+              int colocated_on_default_device = 0;
+              for (int i = 0; i < matching_devices.size(); ++i) {
+                if (DeviceNameUtils::IsSameAddressSpace(
+                        default_device->parsed_name(),
+                        matching_devices.at(i)->parsed_name())) {
+                  colocated_on_default_device++;
+                }
+              }
+              // Continue to raise error if multiple colocated devices are
+              // found.
+              if (colocated_on_default_device == 1) {
+                continue;
               }
             }
-            // Continue to raise error if multiple colocated devices are
-            // found.
-            if (colocated_on_default_device == 1) {
-              continue;
-            }
-
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
             string devices = "[";

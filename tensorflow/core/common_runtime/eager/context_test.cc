@@ -140,7 +140,7 @@ TEST_F(EagerContextTest, CompositeDeviceWithGivenName) {
 
 TEST_F(EagerContextTest, AddFunctionDef) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   const FunctionDef x_times_two = FDH::Define(
       // Name
       "XTimesTwo",
@@ -161,7 +161,7 @@ TEST_F(EagerContextTest, AddFunctionDef) {
 
 TEST_F(EagerContextTest, AddFunctionDefRepeatSame) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   const FunctionDef x_times_two = FDH::Define(
       // Name
       "XTimesTwo",
@@ -198,7 +198,7 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatSame) {
 
 TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   const FunctionDef x_times_two = FDH::Define(
       // Name
       "XTimesTwo",
@@ -215,7 +215,7 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
   TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
-  const Tensor kThree = test::AsScalar<int64>(3);
+  const Tensor kThree = test::AsScalar<int64_t>(3);
   // Same function name but body is different. This should error out.
   const FunctionDef x_times_two_copy = FDH::Define(
       // Name

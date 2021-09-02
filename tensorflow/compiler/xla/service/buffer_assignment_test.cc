@@ -283,8 +283,9 @@ class BufferAssignmentTest : public HloTestBase {
   // kConstant have assigned buffers, and returns their total size. If min_index
   // and max_index are not nullptr, the minimum and maximum buffer indices in
   // the assignment are written into them.
-  int64 ValidateBuffers(const std::vector<const HloInstruction*>& instructions,
-                        const BufferAssignment& buffers) {
+  int64_t ValidateBuffers(
+      const std::vector<const HloInstruction*>& instructions,
+      const BufferAssignment& buffers) {
     // Verifies all instructions have buffers, and gets the index ranges.
     for (const HloInstruction* hlo : instructions) {
       if (!buffers.HasTopLevelAllocation(hlo)) {
@@ -1559,8 +1560,8 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
-  Literal elements[] = {LiteralUtil::CreateR0<int64>(0),
-                        LiteralUtil::CreateR0<int64>(1)};
+  Literal elements[] = {LiteralUtil::CreateR0<int64_t>(0),
+                        LiteralUtil::CreateR0<int64_t>(1)};
   builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
@@ -2085,7 +2086,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
-  static int64 ByteSizeOf(const BufferValue& buffer) {
+  static int64_t ByteSizeOf(const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   }
 

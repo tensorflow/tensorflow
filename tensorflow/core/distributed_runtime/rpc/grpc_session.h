@@ -123,7 +123,7 @@ class GrpcSession : public Session {
   string handle_ TF_GUARDED_BY(mu_);
 
   // The current version of the graph.
-  int64 current_graph_version_ TF_GUARDED_BY(mu_);
+  int64_t current_graph_version_ TF_GUARDED_BY(mu_);
 
   bool is_local_ = false;
 

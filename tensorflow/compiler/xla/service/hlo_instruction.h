@@ -338,7 +338,7 @@ class HloPrintOptions {
   bool print_result_shape() const { return print_result_shape_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
-  int64 print_operand_index_annotation_interval() const {
+  int64_t print_operand_index_annotation_interval() const {
     return print_operand_index_annotation_interval_;
   }
   bool print_ids() const { return print_ids_; }
@@ -383,7 +383,7 @@ class HloPrintOptions {
   bool print_operand_names_;
   // The interval between the /*index=*/ annotated operands. 0 means never print
   // the annotation, 1 means print annotation for every operand.
-  int64 print_operand_index_annotation_interval_;
+  int64_t print_operand_index_annotation_interval_;
   bool print_program_shape_;
   bool print_percent_;
   bool print_control_dependencies_;
@@ -431,7 +431,7 @@ class CanonicalNameMap {
   }
 
  private:
-  int64 index;
+  int64_t index;
   absl::flat_hash_map<string, string> canonical_name_map;
 };
 
@@ -539,8 +539,8 @@ class HloInstruction {
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
-      const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map = {},
+      const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
+      const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true);
 
   // Creates a parameter-retrieving instruction.
@@ -633,7 +633,7 @@ class HloInstruction {
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
-      absl::Span<const int64> fft_length);
+      absl::Span<const int64_t> fft_length);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -677,7 +677,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates an all-gather-start op, which concats the operands of all
   // participants
@@ -690,7 +690,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a cross replica reduction op.
   //
@@ -709,7 +709,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a reduce-scatter operation which reduces its inputs across the
   // given replica groups and then scatters the reduced data across the N
@@ -718,7 +718,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids,
+      const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
 
   // Creates an asynchronous cross replica reduction op.
@@ -738,7 +738,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -771,8 +771,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id,
-      const absl::optional<int64>& split_dimension = absl::nullopt);
+      const absl::optional<int64_t>& channel_id,
+      const absl::optional<int64_t>& split_dimension = absl::nullopt);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -874,8 +874,9 @@ class HloInstruction {
   // start/limit indices.
   static std::unique_ptr<HloInstruction> CreateSlice(
       const Shape& shape, HloInstruction* operand,
-      absl::Span<const int64> start_indices,
-      absl::Span<const int64> limit_indices, absl::Span<const int64> strides);
+      absl::Span<const int64_t> start_indices,
+      absl::Span<const int64_t> limit_indices,
+      absl::Span<const int64_t> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specified in
@@ -883,7 +884,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
       absl::Span<HloInstruction* const> start_indices,
-      absl::Span<const int64> slice_sizes);
+      absl::Span<const int64_t> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
@@ -906,7 +907,7 @@ class HloInstruction {
   // f(f(init, value0), value1), ...)
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
-      absl::Span<const int64> dimensions_to_reduce,
+      absl::Span<const int64_t> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
   // A more general, multiple-argument version of the above.
@@ -922,7 +923,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values,
-      absl::Span<const int64> dimensions_to_reduce,
+      absl::Span<const int64_t> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
   // Creates a reduce-window instruction, where the computation (given
@@ -969,7 +970,7 @@ class HloInstruction {
   // Creates a broadcast instruction.
   static std::unique_ptr<HloInstruction> CreateBroadcast(
       const Shape& shape, HloInstruction* operand,
-      absl::Span<const int64> broadcast_dimensions);
+      absl::Span<const int64_t> broadcast_dimensions);
 
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
@@ -1008,7 +1009,7 @@ class HloInstruction {
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
       const Shape& shape, HloInstruction* operand,
-      absl::Span<const int64> dimensions);
+      absl::Span<const int64_t> dimensions);
 
   // Creates a n-ary sort op with a 'compare' computation which is used for
   // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
@@ -1044,7 +1045,7 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
+      absl::Span<const int64_t> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
@@ -1120,7 +1121,7 @@ class HloInstruction {
   // in the specified dimensions.
   static std::unique_ptr<HloInstruction> CreateReverse(
       const Shape& shape, HloInstruction* operand,
-      absl::Span<const int64> dimensions);
+      absl::Span<const int64_t> dimensions);
 
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
@@ -1171,7 +1172,7 @@ class HloInstruction {
   HloInstruction* mutable_operand(int64_t i);
 
   // Returns the number of operands to this instruction.
-  int64 operand_count() const { return operands_.size(); }
+  int64_t operand_count() const { return operands_.size(); }
 
   // Returns the vector of operands of this instruction.
   using InstructionVector = absl::InlinedVector<HloInstruction*, 2>;
@@ -1183,10 +1184,10 @@ class HloInstruction {
 
   // Returns the index of 'target' in the operands sequence.
   // Precondition: target must be an operand (or a fatal error will occur).
-  int64 operand_index(const HloInstruction* target) const;
+  int64_t operand_index(const HloInstruction* target) const;
 
   // Returns the number of users of this instruction.
-  int64 user_count() const { return users_.size(); }
+  int64_t user_count() const { return users_.size(); }
 
   // Returns the users of this instruction.
   const std::vector<HloInstruction*>& users() const { return users_; }
@@ -1194,7 +1195,7 @@ class HloInstruction {
   // Returns the index of the user in the users() vector.
   //
   // Precondition: `user` is a user of the instruction.
-  int64 UserId(HloInstruction* user);
+  int64_t UserId(HloInstruction* user);
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
@@ -1495,9 +1496,9 @@ class HloInstruction {
     return sharding_ ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
-  absl::optional<int64> sharding_unique_device() const {
+  absl::optional<int64_t> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return absl::optional<int64>();
+      return absl::optional<int64_t>();
     }
     return sharding_->UniqueDevice();
   }
@@ -1609,7 +1610,7 @@ class HloInstruction {
   // Returns the indices that the given operand appear in the operand list of
   // this instruction. Note that an instruction can use the same operand
   // multiple times.
-  absl::InlinedVector<int64, 4> OperandIndices(
+  absl::InlinedVector<int64_t, 4> OperandIndices(
       const HloInstruction* operand) const;
 
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
@@ -1618,7 +1619,7 @@ class HloInstruction {
   // dimensions.
   //
   // Precondition: this op must be a reshape.
-  std::tuple<bool, std::vector<int64>, std::vector<int64>>
+  std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.
@@ -1754,17 +1755,17 @@ class HloInstruction {
   //
   // TODO(b/62783254) Replace these methods with a more general way to
   // annotate HLOs with backend-specific information.
-  const std::vector<int64>& outer_dimension_partitions() const {
+  const std::vector<int64_t>& outer_dimension_partitions() const {
     return outer_dimension_partitions_;
   }
   void set_outer_dimension_partitions(
-      const std::vector<int64>& outer_dimension_partitions);
+      const std::vector<int64_t>& outer_dimension_partitions);
 
   // Old methods kept for smooth subclassing transition BEGIN.
   // TODO(b/80131774): Remove this code.
 
   // Delegates to HloBatchNormInstruction::feature_index.
-  int64 feature_index() const;
+  int64_t feature_index() const;
 
   // Delegates to HloBatchNormInstruction::epsilon.
   float epsilon() const;
@@ -1773,49 +1774,49 @@ class HloInstruction {
   FftType fft_type() const;
 
   // Delegates to HloFftInstruction::fft_length.
-  const std::vector<int64>& fft_length() const;
+  const std::vector<int64_t>& fft_length() const;
 
   // Delegates to HloChannelInstruction::channel_id.
-  absl::optional<int64> channel_id() const;
-  void set_channel_id(const absl::optional<int64>& channel_id);
+  absl::optional<int64_t> channel_id() const;
+  void set_channel_id(const absl::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
-  virtual const std::vector<int64>& dimensions() const {
+  virtual const std::vector<int64_t>& dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual int64 dimensions(int64_t index) const {
+  virtual int64_t dimensions(int64_t index) const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual std::vector<int64>* mutable_dimensions() {
+  virtual std::vector<int64_t>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
   }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
-  int64 concatenate_dimension() const;
+  int64_t concatenate_dimension() const;
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
-  int64 dimension() const;
+  int64_t dimension() const;
 
   // Delegates to HloReshapeInstruction::inferred_dimension.
-  int64 inferred_dimension() const;
+  int64_t inferred_dimension() const;
 
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
 
   // Delegates to HloSliceInstruction::slice_start.
-  int64 slice_starts(int64_t dimension) const;
-  const std::vector<int64>& slice_starts() const;
-  std::vector<int64>* mutable_slice_starts();
+  int64_t slice_starts(int64_t dimension) const;
+  const std::vector<int64_t>& slice_starts() const;
+  std::vector<int64_t>* mutable_slice_starts();
 
   // Delegates to HloSliceInstruction::slice_limits.
-  int64 slice_limits(int64_t dimension) const;
-  const std::vector<int64>& slice_limits() const;
-  std::vector<int64>* mutable_slice_limits();
+  int64_t slice_limits(int64_t dimension) const;
+  const std::vector<int64_t>& slice_limits() const;
+  std::vector<int64_t>* mutable_slice_limits();
 
   // Delegates to HloSliceInstruction::slice_strides.
-  int64 slice_strides(int64_t dimension) const;
-  const std::vector<int64>& slice_strides() const;
-  std::vector<int64>* mutable_slice_strides();
+  int64_t slice_strides(int64_t dimension) const;
+  const std::vector<int64_t>& slice_strides() const;
+  std::vector<int64_t>* mutable_slice_strides();
 
   // Returns the literal associated with this instruction.
   const Literal& literal() const;
@@ -1863,7 +1864,7 @@ class HloInstruction {
   fused_instructions();
 
   // Delegates to HloFusionInstruction::fused_instruction_count.
-  int64 fused_instruction_count() const;
+  int64_t fused_instruction_count() const;
 
   // Delegates to HloFusionInstruction::fused_parameter.
   HloInstruction* fused_parameter(int64_t parameter_number) const;
@@ -1885,7 +1886,7 @@ class HloInstruction {
   RandomDistribution random_distribution() const;
 
   // Delegates to HloParameterInstruction::parameter_number.
-  int64 parameter_number() const;
+  int64_t parameter_number() const;
 
   // Delegates to
   // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
@@ -1899,7 +1900,7 @@ class HloInstruction {
   parameter_replicated_at_leaf_buffers() const;
 
   // Delegates to HloGetTupleElementInstruction::tuple_index.
-  int64 tuple_index() const;
+  int64_t tuple_index() const;
 
   // Delegates to HloGetTupleElementInstruction::set_tuple_index.
   void set_tuple_index(int64_t new_tuple_index);
@@ -1932,7 +1933,7 @@ class HloInstruction {
   const std::vector<ReplicaGroup>& replica_groups() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
-  const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
+  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const;
 
   // Returns data on the window in a windowed operation such as
   // convolution.
@@ -1961,12 +1962,12 @@ class HloInstruction {
 
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
-  int64 feature_group_count() const;
+  int64_t feature_group_count() const;
 
   void set_feature_group_count(int64_t feature_group_count);
 
   // The number of batch groups. Must be a divisor of the input batch dimension
-  int64 batch_group_count() const;
+  int64_t batch_group_count() const;
 
   void set_batch_group_count(int64_t batch_group_count);
 
@@ -1993,10 +1994,10 @@ class HloInstruction {
   PaddingType padding_type() const;
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
-  int64 slice_sizes(int64_t dimension) const;
+  int64_t slice_sizes(int64_t dimension) const;
 
   // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
-  const std::vector<int64>& dynamic_slice_sizes() const;
+  const std::vector<int64_t>& dynamic_slice_sizes() const;
 
   // Delegates to HloCollectivePermuteInstruction::dynamic_slice_sizes.
   const std::vector<std::vector<int64_t>>& dynamic_slice_sizes_list() const;
@@ -2004,7 +2005,7 @@ class HloInstruction {
   // Delegates to HloGatherInstruction::gather_dimension_numbers.
   const GatherDimensionNumbers& gather_dimension_numbers() const;
   // Delegates to HloGatherInstruction::gather_slice_sizes.
-  absl::Span<const int64> gather_slice_sizes() const;
+  absl::Span<const int64_t> gather_slice_sizes() const;
 
   // Delegates to HloScatterInstruction::scatter_dimension_numbers().
   const ScatterDimensionNumbers& scatter_dimension_numbers() const;
@@ -2139,7 +2140,7 @@ class HloInstruction {
   // NOTE: For all instructions other than kFusion, being elementwise on one of
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
-      const absl::optional<int64>& operand_idx) const;
+      const absl::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
   virtual string OperandsToStringWithCanonicalNameMap(
@@ -2202,7 +2203,7 @@ class HloInstruction {
   // iteration. The value in the map contains the index of the instruction in
   // the vector what enables fast removal.
   std::vector<HloInstruction*> users_;
-  absl::flat_hash_map<const HloInstruction*, int64> user_map_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> user_map_;
 
   // The set of control successors of this instruction.
   std::vector<HloInstruction*> control_successors_;
@@ -2260,7 +2261,7 @@ class HloInstruction {
 
   // The number of partitions per outer dimension (listed in order from
   // outer-most dimension first).
-  std::vector<int64> outer_dimension_partitions_;
+  std::vector<int64_t> outer_dimension_partitions_;
 
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.

@@ -323,7 +323,7 @@ class DenseBincountOp : public OpKernel {
                           DenseBincountOp<CPUDevice, Tidx, T>);
 #define REGISTER_CPU_KERNELS(T) \
   REGISTER_KERNELS(int32, T);   \
-  REGISTER_KERNELS(int64, T);
+  REGISTER_KERNELS(int64_t, T);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -340,7 +340,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                           DenseBincountOp<GPUDevice, Tidx, T>);
 #define REGISTER_GPU_KERNELS(T) \
   REGISTER_KERNELS(int32, T);   \
-  REGISTER_KERNELS(int64, T);
+  REGISTER_KERNELS(int64_t, T);
 
 TF_CALL_int32(REGISTER_GPU_KERNELS);
 TF_CALL_float(REGISTER_GPU_KERNELS);
@@ -424,7 +424,7 @@ class SparseBincountOp : public OpKernel {
                           SparseBincountOp<CPUDevice, Tidx, T>);
 #define REGISTER_CPU_KERNELS(T) \
   REGISTER_KERNELS(int32, T);   \
-  REGISTER_KERNELS(int64, T);
+  REGISTER_KERNELS(int64_t, T);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -499,7 +499,7 @@ class RaggedBincountOp : public OpKernel {
                           RaggedBincountOp<CPUDevice, Tidx, T>);
 #define REGISTER_CPU_KERNELS(T) \
   REGISTER_KERNELS(int32, T);   \
-  REGISTER_KERNELS(int64, T);
+  REGISTER_KERNELS(int64_t, T);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS

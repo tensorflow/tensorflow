@@ -128,7 +128,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const string reduction_type_;
   mutex mu_;
   int counter_ TF_GUARDED_BY(mu_);
-  int64 current_global_step_ TF_GUARDED_BY(mu_);
+  int64_t current_global_step_ TF_GUARDED_BY(mu_);
 
   std::deque<Attempt> takegrad_attempts_ TF_GUARDED_BY(mu_);
 

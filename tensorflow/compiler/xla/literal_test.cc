@@ -339,13 +339,13 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
     {9.3f, 12.4f},
   });
   // clang-format on
-  std::vector<std::tuple<int64, int64, string>> seen;
+  std::vector<std::tuple<int64_t, int64_t, string>> seen;
   literal.EachCellAsString(
-      [&seen](absl::Span<const int64> indices, const string& value) {
+      [&seen](absl::Span<const int64_t> indices, const string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
-  using Elem = std::tuple<int64, int64, string>;
+  using Elem = std::tuple<int64_t, int64_t, string>;
   std::vector<Elem> expected = {Elem(0, 0, "3.1"), Elem(0, 1, "4.2"),
                                 Elem(1, 0, "9.3"), Elem(1, 1, "12.4")};
   EXPECT_EQ(expected, seen);
@@ -532,9 +532,9 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_TRUE(LiteralUtil::CreateR1<int>({100, 100, 100}).IsAll(100));
   EXPECT_FALSE(LiteralUtil::CreateR1<double>({100, 100, 100.001}).IsAll(100));
 
-  EXPECT_TRUE(LiteralUtil::CreateR2<uint64>({{8, 8}, {8, 8}}).IsAll(8));
-  EXPECT_FALSE(LiteralUtil::CreateR2<uint64>({{8, 8}, {8, 9}}).IsAll(8));
-  EXPECT_FALSE(LiteralUtil::CreateR2<uint64>({{9, 8}, {8, 8}}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR2<uint64_t>({{8, 8}, {8, 8}}).IsAll(8));
+  EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>({{8, 8}, {8, 9}}).IsAll(8));
+  EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>({{9, 8}, {8, 8}}).IsAll(8));
 
   half h8(8.0f);
   half h9(9.0f);
@@ -557,8 +557,8 @@ TEST_F(LiteralUtilTest, IsAll) {
   complex64 c8_9 = {8, 9};
   EXPECT_FALSE(LiteralUtil::CreateR2<complex64>({{c8_9}, {c8_9}}).IsAll(8));
 
-  auto uint64_max = std::numeric_limits<uint64>::max();
-  EXPECT_FALSE(LiteralUtil::CreateR2<uint64>(
+  auto uint64_max = std::numeric_limits<uint64_t>::max();
+  EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
                    .IsAll(-1));
 }
@@ -727,7 +727,7 @@ TEST_F(LiteralUtilTest, TransposeR4) {
   // clang-format on
   auto reshape = original.Transpose(/*permutation=*/{2, 3, 0, 1});
 
-  reshape.EachCell<float>([&](absl::Span<const int64> indices, float value) {
+  reshape.EachCell<float>([&](absl::Span<const int64_t> indices, float value) {
     EXPECT_EQ(value, original.Get<float>(
                          {indices[2], indices[3], indices[0], indices[1]}));
   });
@@ -740,7 +740,7 @@ TEST_F(LiteralUtilTest, TransposeDynamicR2) {
   // F32[<=3, 2] (1, 2)
   auto reshape = original.Transpose(/*permutation=*/{1, 0});
 
-  reshape.EachCell<float>([&](absl::Span<const int64> indices, float value) {
+  reshape.EachCell<float>([&](absl::Span<const int64_t> indices, float value) {
     EXPECT_EQ(value, original.Get<float>({indices[1], indices[0]}));
   });
 }
@@ -755,7 +755,7 @@ TEST_F(LiteralUtilTest, ToStaticR2) {
   EXPECT_TRUE(static_literal.shape().is_static());
 
   static_literal.EachCell<float>(
-      [&](absl::Span<const int64> indices, float value) {
+      [&](absl::Span<const int64_t> indices, float value) {
         EXPECT_EQ(value, original.Get<float>({indices[0], indices[1]}));
       });
 }
@@ -769,7 +769,7 @@ TEST_F(LiteralUtilTest, ToBoundedDynamicR2) {
   EXPECT_EQ(dynamic_literal.shape(), dynamic_shape);
 
   dynamic_literal.EachCell<float>(
-      [&](absl::Span<const int64> indices, float value) {
+      [&](absl::Span<const int64_t> indices, float value) {
         EXPECT_EQ(value, original.Get<float>({indices[0], indices[1]}));
       });
 }
@@ -913,15 +913,15 @@ TEST_F(LiteralUtilTest, SliceR2DynamicOutOfBound) {
 
 TEST_F(LiteralUtilTest, PopulateR1S64) {
   Literal output(ShapeUtil::MakeShape(S64, {1}));
-  output.PopulateR1<int64>({77});
-  auto expected = LiteralUtil::CreateR1<int64>({77});
+  output.PopulateR1<int64_t>({77});
+  auto expected = LiteralUtil::CreateR1<int64_t>({77});
   EXPECT_EQ(output, expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateR1U64) {
   Literal output(ShapeUtil::MakeShape(U64, {2}));
-  output.PopulateR1<uint64>({{77, 88}});
-  auto expected = LiteralUtil::CreateR1<uint64>({{77, 88}});
+  output.PopulateR1<uint64_t>({{77, 88}});
+  auto expected = LiteralUtil::CreateR1<uint64_t>({{77, 88}});
   EXPECT_EQ(output, expected);
 }
 
@@ -980,15 +980,15 @@ TEST_F(LiteralUtilTest, PopulateWithValueR0F32) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1S64) {
   Literal output(ShapeUtil::MakeShape(S64, {3}));
-  output.PopulateWithValue<int64>(-7);
-  auto expected = LiteralUtil::CreateR1<int64>({-7, -7, -7});
+  output.PopulateWithValue<int64_t>(-7);
+  auto expected = LiteralUtil::CreateR1<int64_t>({-7, -7, -7});
   EXPECT_EQ(output, expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   Literal output(ShapeUtil::MakeShape(U64, {2, 2}));
-  output.PopulateWithValue<uint64>(42);
-  auto expected = LiteralUtil::CreateR2<uint64>({{42, 42}, {42, 42}});
+  output.PopulateWithValue<uint64_t>(42);
+  auto expected = LiteralUtil::CreateR2<uint64_t>({{42, 42}, {42, 42}});
   EXPECT_EQ(output, expected);
 }
 
@@ -1044,18 +1044,18 @@ TEST_F(LiteralUtilTest, ReplicateR2U32) {
 }
 
 TEST_F(LiteralUtilTest, CopySliceFrom) {
-  const int64 dimensions[] = {17, 15, 34, 21};
-  const int64 layouts[][4] = {
+  const int64_t dimensions[] = {17, 15, 34, 21};
+  const int64_t layouts[][4] = {
       {3, 2, 1, 0}, {0, 2, 1, 3}, {0, 1, 2, 3}, {2, 0, 3, 1}, {1, 3, 0, 2}};
   for (const auto& layout : layouts) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
 
     auto source = Literal::CreateFromShape(shape);
-    const int64 zero_base[] = {0, 0, 0, 0};
-    const int64 step[] = {1, 1, 1, 1};
+    const int64_t zero_base[] = {0, 0, 0, 0};
+    const int64_t step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
-    auto init_proc = [&](absl::Span<const int64> indexes) {
+    auto init_proc = [&](absl::Span<const int64_t> indexes) {
       source.Set(indexes, ++seqnr);
       return true;
     };
@@ -1063,21 +1063,21 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
                             init_proc);
 
     auto blank = Literal::CreateFromShape(shape);
-    const int64 src_base[] = {3, 1, 5, 7};
-    const int64 dest_base[] = {6, 4, 12, 2};
-    const int64 copy_size[] = {7, 8, 11, 9};
+    const int64_t src_base[] = {3, 1, 5, 7};
+    const int64_t dest_base[] = {6, 4, 12, 2};
+    const int64_t copy_size[] = {7, 8, 11, 9};
     TF_EXPECT_OK(blank.CopySliceFrom(source, src_base, dest_base, copy_size));
 
-    std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
-    std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
+    std::vector<int64_t> source_indexes(TF_ARRAYSIZE(dimensions), 0);
+    std::vector<int64_t> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
-    auto check_proc = [&](absl::Span<const int64> indexes) {
+    auto check_proc = [&](absl::Span<const int64_t> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
       std::transform(source_indexes.begin(), source_indexes.end(), src_base,
-                     source_indexes.begin(), std::plus<int64>());
+                     source_indexes.begin(), std::plus<int64_t>());
       std::copy(indexes.begin(), indexes.end(), blank_indexes.begin());
       std::transform(blank_indexes.begin(), blank_indexes.end(), dest_base,
-                     blank_indexes.begin(), std::plus<int64>());
+                     blank_indexes.begin(), std::plus<int64_t>());
       auto bval = blank.Get<uint32>(blank_indexes);
       matched = (bval != 0 && bval == source.Get<uint32>(source_indexes));
       return matched;
@@ -1241,8 +1241,8 @@ TEST_F(LiteralUtilTest, F16) {
 
 TEST_F(LiteralUtilTest, Populate) {
   struct PopulateData {
-    std::vector<int64> dimensions;
-    std::vector<int64> layout;
+    std::vector<int64_t> dimensions;
+    std::vector<int64_t> layout;
   } populate_data[] = {
       {{}, {}},
       {{0}, {0}},
@@ -1258,7 +1258,7 @@ TEST_F(LiteralUtilTest, Populate) {
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
     Literal literal(shape);
-    auto generator = [&](absl::Span<const int64> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64_t> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
@@ -1267,10 +1267,10 @@ TEST_F(LiteralUtilTest, Populate) {
     };
     TF_EXPECT_OK(literal.Populate<uint32>(generator));
 
-    std::vector<int64> zero_base(data.dimensions.size(), 0);
-    std::vector<int64> step(data.dimensions.size(), 1);
+    std::vector<int64_t> zero_base(data.dimensions.size(), 0);
+    std::vector<int64_t> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](absl::Span<const int64> indexes) {
+    auto check_function = [&](absl::Span<const int64_t> indexes) {
       auto value = literal.Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1283,8 +1283,8 @@ TEST_F(LiteralUtilTest, Populate) {
 
 TEST_F(LiteralUtilTest, PopulateParallel) {
   struct PopulateData {
-    std::vector<int64> dimensions;
-    std::vector<int64> layout;
+    std::vector<int64_t> dimensions;
+    std::vector<int64_t> layout;
   } populate_data[] = {
       {{}, {}},
       {{0}, {0}},
@@ -1300,7 +1300,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
     Literal literal(shape);
-    auto generator = [&](absl::Span<const int64> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64_t> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
@@ -1309,10 +1309,10 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     };
     TF_EXPECT_OK(literal.PopulateParallel<uint32>(generator));
 
-    std::vector<int64> zero_base(data.dimensions.size(), 0);
-    std::vector<int64> step(data.dimensions.size(), 1);
+    std::vector<int64_t> zero_base(data.dimensions.size(), 0);
+    std::vector<int64_t> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](absl::Span<const int64> indexes) {
+    auto check_function = [&](absl::Span<const int64_t> indexes) {
       auto value = literal.Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1368,12 +1368,12 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto s64 = LiteralUtil::CreateR4WithLayout<int64>({{
+  auto s64 = LiteralUtil::CreateR4WithLayout<int64_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto u64 = LiteralUtil::CreateR4WithLayout<uint64>({{
+  auto u64 = LiteralUtil::CreateR4WithLayout<uint64_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
@@ -1681,22 +1681,22 @@ TEST_F(LiteralUtilTest, LiteralSliceOfALiteralSlice) {
 }
 
 TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtr) {
-  std::vector<int64> int64_values = {1, 2, 3};
+  std::vector<int64_t> int64_values = {1, 2, 3};
   const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
 
   BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values.data()),
                            literal_shape);
 
-  EXPECT_EQ(literal.Get<int64>({0}), 1);
-  EXPECT_EQ(literal.Get<int64>({1}), 2);
-  EXPECT_EQ(literal.Get<int64>({2}), 3);
+  EXPECT_EQ(literal.Get<int64_t>({0}), 1);
+  EXPECT_EQ(literal.Get<int64_t>({1}), 2);
+  EXPECT_EQ(literal.Get<int64_t>({2}), 3);
 }
 
 TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
-  std::vector<int64> one_two_three = {1, 2, 3};
+  std::vector<int64_t> one_two_three = {1, 2, 3};
   const Shape one_two_three_shape = ShapeUtil::MakeShape(S64, {3});
 
-  std::vector<int64> hundred = {100};
+  std::vector<int64_t> hundred = {100};
   const Shape hundred_shape = ShapeUtil::MakeShape(S64, {1});
 
   std::vector<const char*> src_buf_ptrs;
@@ -1707,16 +1707,17 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
       src_buf_ptrs,
       ShapeUtil::MakeTupleShape({one_two_three_shape, hundred_shape}));
 
-  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{0}),
-            1);
-  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{1}),
-            100);
+  EXPECT_EQ(
+      literal_tuple.Get<int64_t>(/*multi_index=*/{0}, /*shape_index=*/{0}), 1);
+  EXPECT_EQ(
+      literal_tuple.Get<int64_t>(/*multi_index=*/{0}, /*shape_index=*/{1}),
+      100);
 
-  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{1}, /*shape_index=*/{0}),
-            2);
+  EXPECT_EQ(
+      literal_tuple.Get<int64_t>(/*multi_index=*/{1}, /*shape_index=*/{0}), 2);
 
-  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{2}, /*shape_index=*/{0}),
-            3);
+  EXPECT_EQ(
+      literal_tuple.Get<int64_t>(/*multi_index=*/{2}, /*shape_index=*/{0}), 3);
 }
 
 TEST_F(LiteralUtilTest, LiteralMove) {
@@ -1870,8 +1871,8 @@ TEST_F(LiteralUtilTest, CreateFromShapeZeroInitialized) {
   EXPECT_EQ(tuple.Get<double>({}, {0}), 0.0);
   EXPECT_EQ(tuple.Get<bool>({0}, {1}), false);
   EXPECT_EQ(tuple.Get<bool>({1}, {1}), false);
-  EXPECT_EQ(tuple.Get<uint64>({0, 0}, {2}), 0);
-  EXPECT_EQ(tuple.Get<uint64>({1, 0}, {2}), 0);
+  EXPECT_EQ(tuple.Get<uint64_t>({0, 0}, {2}), 0);
+  EXPECT_EQ(tuple.Get<uint64_t>({1, 0}, {2}), 0);
   EXPECT_EQ(tuple.Get<complex64>({}, {3}), complex64(0.0f, 0.0f));
   EXPECT_EQ(tuple.Get<complex128>({}, {4}), complex128(0.0, 0.0));
 }
@@ -2058,23 +2059,23 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
 }
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
-  Literal literal = LiteralUtil::CreateR1<int64>({1, 2});
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{0}));
   EXPECT_EQ(broadcasted_literal,
-            LiteralUtil::CreateR2<int64>({{1, 1}, {2, 2}}));
+            LiteralUtil::CreateR2<int64_t>({{1, 1}, {2, 2}}));
 }
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
-  Literal literal = LiteralUtil::CreateR1<int64>({1, 2});
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
   EXPECT_EQ(broadcasted_literal,
-            LiteralUtil::CreateR2<int64>({{1, 2}, {1, 2}}));
+            LiteralUtil::CreateR2<int64_t>({{1, 2}, {1, 2}}));
 }
 
 TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
@@ -2088,13 +2089,13 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
 }
 
 TEST_F(LiteralUtilTest, DynamicBroadcast) {
-  Literal literal = LiteralUtil::CreateR1<int64>({1, 2});
+  Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
   literal.SetDynamicSize(0, 1);
   TF_ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
-  EXPECT_EQ(broadcasted_literal, LiteralUtil::CreateR2<int64>({{1}, {1}}));
+  EXPECT_EQ(broadcasted_literal, LiteralUtil::CreateR2<int64_t>({{1}, {1}}));
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
@@ -2110,7 +2111,7 @@ TEST_F(LiteralUtilTest, GetAsComplex128) {
   complex128 other_value = {1, 2};
   Literal c5 = LiteralUtil::CreateR0<complex128>(other_value);
   EXPECT_EQ(*c5.GetAsComplex128({}), other_value);
-  Literal c6 = LiteralUtil::CreateR0<int64>(1);
+  Literal c6 = LiteralUtil::CreateR0<int64_t>(1);
   EXPECT_FALSE(c6.GetAsComplex128({}).has_value());
 }
 

@@ -61,7 +61,7 @@ class HloModuleMetadata {
     module_metadata_.add_partitioned_module_ids(id);
   }
 
-  StatusOr<int64> current_pass_id() {
+  StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                         GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
@@ -116,7 +116,7 @@ class HloModuleMetadata {
 
   HloModuleMetadataProto module_metadata_;
   tensorflow::Env* env_;
-  int64 next_pass_id_ = 1;
+  int64_t next_pass_id_ = 1;
 
   // Stack of metadata for passes that are currently running. Size > 1 iff
   // passes are nested.

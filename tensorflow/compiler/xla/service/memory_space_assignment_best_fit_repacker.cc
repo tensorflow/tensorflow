@@ -71,7 +71,7 @@ class BestFitRepacker
   }
 
  private:
-  int64 max_size_;
+  int64_t max_size_;
   absl::Span<AllocationBlock*> allocation_blocks_;
 };
 

@@ -67,7 +67,7 @@ class LRNOp : public XlaOpKernel {
   }
 
  private:
-  int64 depth_radius_;
+  int64_t depth_radius_;
   float bias_;
   float alpha_;
   float beta_;
@@ -171,7 +171,7 @@ class LRNGradOp : public XlaOpKernel {
   }
 
  private:
-  int64 depth_radius_;
+  int64_t depth_radius_;
   float bias_;
   float alpha_;
   float beta_;

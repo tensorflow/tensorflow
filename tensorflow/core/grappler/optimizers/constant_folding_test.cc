@@ -1215,7 +1215,7 @@ TEST_F(ConstantFoldingTest, CreateConstNodes) {
 
   MAKE_TEST_GRAPH(float);
   MAKE_TEST_GRAPH(double);
-  MAKE_TEST_GRAPH(int64);
+  MAKE_TEST_GRAPH(int64_t);
   MAKE_TEST_GRAPH(int32);
   MAKE_TEST_GRAPH(int16);
   MAKE_TEST_GRAPH(int8);
@@ -2677,7 +2677,7 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
 
 TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   PaddingWithZeroSize<int32>();
-  PaddingWithZeroSize<int64>();
+  PaddingWithZeroSize<int64_t>();
 }
 
 TEST_F(ConstantFoldingTest, SqueezeWithAllDimensionsGreaterThanOne) {
@@ -4127,10 +4127,10 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
   Tensor x_t(DT_INT64, TensorShape({2, 2}));
-  x_t.flat<int64>()(0) = 9223372036854775807L;
-  x_t.flat<int64>()(1) = 1L;
-  x_t.flat<int64>()(2) = 9223372036854775807L;
-  x_t.flat<int64>()(3) = 1L;
+  x_t.flat<int64_t>()(0) = 9223372036854775807L;
+  x_t.flat<int64_t>()(1) = 1L;
+  x_t.flat<int64_t>()(2) = 9223372036854775807L;
+  x_t.flat<int64_t>()(3) = 1L;
   Output x = ops::Const(scope.WithOpName("x"), x_t);
   Output y = ops::Bitcast(scope.WithOpName("y"), x, DT_FLOAT);
   Output z = ops::Bitcast(scope.WithOpName("z"), y, DT_INT64);
@@ -4153,7 +4153,7 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   auto tensors = EvaluateNodes(output, item.fetch, {});
   ASSERT_EQ(tensors.size(), 1);
   ASSERT_EQ(tensors_expected.size(), 1);
-  test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int64_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ConstantFoldingTest, SimplifyCase) {

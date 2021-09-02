@@ -371,7 +371,7 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   ~CufftScratchAllocator() override {}
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
@@ -394,19 +394,19 @@ class CufftScratchAllocator : public se::ScratchAllocator {
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 memory_limit_;
-  int64 total_byte_size_;
+  int64_t memory_limit_;
+  int64_t total_byte_size_;
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
 
 }  // end namespace
 
-int64 GetCufftWorkspaceLimit(const string& envvar_in_mb,
-                             int64_t default_value_in_bytes) {
+int64_t GetCufftWorkspaceLimit(const string& envvar_in_mb,
+                               int64_t default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {

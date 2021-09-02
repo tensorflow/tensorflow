@@ -84,7 +84,7 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
     return computation->AddInstruction(std::move(inst));
   };
   // Reshape batch_dim N -> [G, N/G]
-  std::vector<int64> reshape_dims = SpanToVector(lhs->shape().dimensions());
+  std::vector<int64_t> reshape_dims = SpanToVector(lhs->shape().dimensions());
   reshape_dims[input_batch_dimension] =
       reshape_dims[input_batch_dimension] / num_groups;
   reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
@@ -93,12 +93,12 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 
   // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
   // W, G, C]
-  std::vector<int64> transpose_dims(lhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(lhs->shape().dimensions_size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);
-  std::vector<int64> transpose_reshape_dims =
+  std::vector<int64_t> transpose_reshape_dims =
       ComposePermutations(lhs->shape().dimensions(), transpose_dims);
   lhs = add(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(lhs->shape().element_type(), transpose_reshape_dims),
@@ -591,7 +591,7 @@ MatchBackwardInput(HloInstruction* conv) {
 
   // Reshape [H, W, ..., in_depth, out_depth / G] -> [H, W, ..., G, in_depth/G,
   // out_depth / G]
-  std::vector<int64> reshape_dims = SpanToVector(rhs->shape().dimensions());
+  std::vector<int64_t> reshape_dims = SpanToVector(rhs->shape().dimensions());
   auto num_groups = conv->feature_group_count();
   CHECK_EQ(input_features % num_groups, 0)
       << "Input feature count should be an exact multiple of feature group "
@@ -607,12 +607,12 @@ MatchBackwardInput(HloInstruction* conv) {
 
   // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
   // in_depth/G, G, out_depth / G]
-  std::vector<int64> transpose_dims(rhs->shape().dimensions_size());
+  std::vector<int64_t> transpose_dims(rhs->shape().dimensions_size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
   transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
                         input_feature_dimension);
-  std::vector<int64> transpose_reshape_dims =
+  std::vector<int64_t> transpose_reshape_dims =
       SpanToVector(rhs->shape().dimensions());
   transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
                                input_feature_dimension);

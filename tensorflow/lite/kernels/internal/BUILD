@@ -52,7 +52,10 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = ["types.h"],
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
@@ -555,7 +558,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -637,13 +640,14 @@ cc_library(
         ":cppmath",
         ":legacy_types",
         ":quantization_util",
+        ":reference_base",
         ":strided_slice_logic",
         ":tensor",
+        ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -797,6 +801,7 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "portable_tensor_utils.h",
         "tensor_utils.h",
         "tensor_utils_common.h",
     ],

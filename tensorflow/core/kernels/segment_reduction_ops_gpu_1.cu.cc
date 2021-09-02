@@ -35,7 +35,7 @@ namespace functor {
                                           functor::NonAtomicMaxOpGpu<T>,  \
                                           functor::AtomicMaxOpGpu<T>>;
 
-#define DEFINE_SORTED_GPU_SPECS(T) DEFINE_SORTED_GPU_SPECS_INDEX(T, int64);
+#define DEFINE_SORTED_GPU_SPECS(T) DEFINE_SORTED_GPU_SPECS_INDEX(T, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
 
@@ -52,9 +52,10 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
   template struct UnsortedSegmentFunctor<             \
       GPUDevice, T, Index, functor::Zero<T>, functor::AtomicSumOpGpu<T>>;
 
-#define DEFINE_REAL_GPU_SPECS(T) DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int64);
+#define DEFINE_REAL_GPU_SPECS(T) \
+  DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int64_t);
 
-#define DEFINE_SUM_GPU_SPECS(T) DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int64);
+#define DEFINE_SUM_GPU_SPECS(T) DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_REAL_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
@@ -74,15 +75,15 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
 // of the GitHub CI.
 #if !defined(PLATFORM_WINDOWS)
 
-#define DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR(T)                \
-  template struct SparseSegmentReductionFunctor<T, int64, int32>; \
-  template struct SparseSegmentReductionFunctor<T, int64, int64>;
+#define DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR(T)                  \
+  template struct SparseSegmentReductionFunctor<T, int64_t, int32>; \
+  template struct SparseSegmentReductionFunctor<T, int64_t, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR
 
-#define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                           \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int64, int32>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int64, int64>;
+#define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                             \
+  template struct SparseSegmentGradFunctor<GPUDevice, T, int64_t, int32>; \
+  template struct SparseSegmentGradFunctor<GPUDevice, T, int64_t, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
 

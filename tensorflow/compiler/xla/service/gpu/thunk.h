@@ -56,6 +56,7 @@ class Thunk {
     kGemm,
     kInfeed,
     kKernel,
+    kMemcpy,
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,
@@ -73,7 +74,7 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    absl::optional<int64> profile_index;
+    absl::optional<int64_t> profile_index;
     std::string profile_annotation;
   };
 
@@ -127,7 +128,7 @@ class Thunk {
   static absl::string_view KindToString(Thunk::Kind kind);
 
  protected:
-  absl::optional<int64> profile_index() const { return profile_index_; }
+  absl::optional<int64_t> profile_index() const { return profile_index_; }
 
   // Safely copies the given buffer to the GPU, deleting it on the host only
   // after the copy has completed.
@@ -143,7 +144,7 @@ class Thunk {
 
  private:
   Kind kind_;
-  absl::optional<int64> profile_index_;
+  absl::optional<int64_t> profile_index_;
   std::string profile_annotation_;
 };
 

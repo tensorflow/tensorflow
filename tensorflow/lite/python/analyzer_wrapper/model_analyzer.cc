@@ -28,15 +28,77 @@ namespace tflite {
 
 namespace {
 
-void dump_tensors(std::stringstream& out_stream,
-                  const flatbuffers::Vector<int32_t>* tensors,
-                  bool verbose = false) {
+const float kThreshold_zero_buffer_ratio = 10.0f;
+
+// Returns string representation of the given tensor of the subgraph.
+const std::string tensor_str(const int tensor_idx, const int subgraph_idx) {
+  std::stringstream ss;
+  if (subgraph_idx != 0 && tensor_idx != -1)
+    ss << "T#" << subgraph_idx << "_" << tensor_idx;
+  else
+    ss << "T#" << tensor_idx;
+  return ss.str();
+}
+
+// Returns string representation of the given subgraph.
+const std::string subgraph_str(const int subgraph_idx) {
+  std::stringstream ss;
+  ss << "Subgraph#" << subgraph_idx;
+  return ss.str();
+}
+
+// Dump details of the given tensor.
+void dump_tensor_detail(std::stringstream& out_stream,
+                        const tflite::Tensor* tensor, const int tensor_idx,
+                        const int subgraph_idx, const tflite::Model* model) {
+  out_stream << tensor_str(tensor_idx, subgraph_idx);
+  out_stream << "(" << tensor->name()->str() << ") ";
+  // Prints `shape_signature` instead of `shape` if it's available since it
+  // supports dynamic shapes.
+  if (tensor->shape_signature()) {
+    out_stream << "shape_signature:[";
+    for (int i = 0; i < tensor->shape_signature()->Length(); ++i) {
+      const int j = tensor->shape_signature()->Get(i);
+      out_stream << j;
+      if (i != tensor->shape_signature()->Length() - 1) {
+        out_stream << ", ";
+      }
+    }
+    out_stream << "]";
+  } else {
+    out_stream << "shape:[";
+    for (int i = 0; i < tensor->shape()->Length(); ++i) {
+      const int j = tensor->shape()->Get(i);
+      out_stream << j;
+      if (i != tensor->shape()->Length() - 1) {
+        out_stream << ", ";
+      }
+    }
+    out_stream << "]";
+  }
+  out_stream << ", type:" << EnumNameTensorType(tensor->type());
+
+  // Dump buffer size of constant tensors.
+  auto buffer_idx = tensor->buffer();
+  if (buffer_idx != 0 && buffer_idx < model->buffers()->Length()) {
+    auto* buffer = model->buffers()->Get(buffer_idx);
+    if (buffer->data() && buffer->data()->size() != 0) {
+      out_stream << " RO " << buffer->data()->size() << " bytes";
+    }
+  }
+  out_stream << "\n";
+}
+
+// Dump list of input or output tensors.
+void dump_tensor_list(std::stringstream& out_stream,
+                      const flatbuffers::Vector<int32_t>* tensors,
+                      const int subgraph_idx, bool verbose = false) {
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
       out_stream << "tensor #" << tensor_idx;
     } else {
-      out_stream << "T#" << tensor_idx;
+      out_stream << tensor_str(tensor_idx, subgraph_idx);
     }
     if (i != tensors->Length() - 1) {
       if (verbose) {
@@ -48,6 +110,7 @@ void dump_tensors(std::stringstream& out_stream,
   }
 }
 
+// Returns the string representation of the given OperatorCode.
 const std::string get_op_name(const OperatorCode* op_code) {
   auto builtin_code = GetBuiltinCode(op_code);
   if (builtin_code != BuiltinOperator_CUSTOM) {
@@ -57,17 +120,38 @@ const std::string get_op_name(const OperatorCode* op_code) {
   }
 }
 
+// Dump the given Operator node.
 void dump_node(std::stringstream& out_stream, const int node_no,
                const OperatorCode* op_code, const Operator* op,
-               const SubGraph* subgraph) {
+               const int subgraph_index) {
   out_stream << "Op#" << node_no << " " << get_op_name(op_code);
   out_stream << "(";
-  dump_tensors(out_stream, op->inputs());
+  dump_tensor_list(out_stream, op->inputs(), subgraph_index);
+  if (GetBuiltinCode(op_code) == BuiltinOperator_CALL_ONCE) {
+    out_stream << subgraph_str(
+        op->builtin_options_as_CallOnceOptions()->init_subgraph_index());
+  } else if (GetBuiltinCode(op_code) == BuiltinOperator_IF) {
+    out_stream << ", Then: "
+               << subgraph_str(op->builtin_options_as_IfOptions()
+                                   ->then_subgraph_index());
+    out_stream << ", Else: "
+               << subgraph_str(op->builtin_options_as_IfOptions()
+                                   ->else_subgraph_index());
+  } else if (GetBuiltinCode(op_code) == BuiltinOperator_WHILE) {
+    out_stream << ", Cond: "
+               << subgraph_str(op->builtin_options_as_WhileOptions()
+                                   ->cond_subgraph_index());
+    out_stream << ", Body: "
+               << subgraph_str(op->builtin_options_as_WhileOptions()
+                                   ->body_subgraph_index());
+  }
   out_stream << ") -> [";
-  dump_tensors(out_stream, op->outputs());
+  dump_tensor_list(out_stream, op->outputs(), subgraph_index);
   out_stream << "]\n";
 }
 
+// Dump the summary of the given TFLite flatbuffer model. It's printed at the
+// beginning of the analyzer output.
 void dump_model_summary(std::stringstream& out_stream,
                         const ::tflite::Model* model) {
   auto* subgraphs = model->subgraphs();
@@ -79,13 +163,73 @@ void dump_model_summary(std::stringstream& out_stream,
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);
     const OperatorCode* first_op_code =
         model->operator_codes()->Get(first_op->opcode_index());
-    out_stream << "For example, in Subgraph#0, the "
+    out_stream << "For example, in " << subgraph_str(0) << ", the "
                << get_op_name(first_op_code) << " op takes\n";
-    dump_tensors(out_stream, first_op->inputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->inputs(), 0, /*verbose=*/true);
     out_stream << " as input and produces ";
-    dump_tensors(out_stream, first_op->outputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->outputs(), 0, /*verbose=*/true);
     out_stream << " as output.\n\n";
   }
+}
+
+// Dump the statistics of the given TFLite flatbuffer model. It's printed at the
+// end of the analyzer output.
+void dump_model_stats(std::stringstream& out_stream,
+                      const ::tflite::Model* model, size_t model_size) {
+  size_t total_buffer_size = 0;
+  size_t total_zero_buffer_size = 0;
+  auto* buffers = model->buffers();
+  for (int i = 0; i < buffers->size(); ++i) {
+    const tflite::Buffer* buffer = buffers->Get(i);
+    if (buffer->data() == nullptr) {
+      continue;
+    }
+    bool is_all_zeros = true;
+    const unsigned char* data = buffer->data()->data();
+    for (int j = 0; j < buffer->data()->size(); ++j) {
+      if (data[j] != 0) {
+        is_all_zeros = false;
+        break;
+      }
+    }
+    if (is_all_zeros) {
+      total_zero_buffer_size += buffer->data()->size();
+    }
+    total_buffer_size += buffer->data()->size();
+  }
+
+  out_stream << "\n";
+  char temp[2048];
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes\n", "Model size", model_size);
+  out_stream << temp;
+  snprintf(
+      temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+      "Non-data buffer size", model_size - total_buffer_size,
+      (static_cast<float>(model_size - total_buffer_size) / model_size * 100));
+  out_stream << temp;
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+           "Total data buffer size", total_buffer_size,
+           (static_cast<float>(total_buffer_size) / model_size * 100));
+  out_stream << temp;
+  float zero_buffer_ratio =
+      static_cast<float>(total_zero_buffer_size) / model_size * 100;
+  snprintf(temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
+           "(Zero value buffers)", total_zero_buffer_size, zero_buffer_ratio);
+  out_stream << temp;
+  out_stream
+      << "\n"
+      << "* Buffers of TFLite model are mostly used for constant tensors.\n";
+  out_stream << "  And zero value buffers are buffers filled with zeros.\n";
+  if (zero_buffer_ratio > kThreshold_zero_buffer_ratio) {
+    out_stream << "  (Consider use "
+                  "`converter._experimental_unfold_large_splat_constant` "
+                  "to save the model size.)\n";
+  }
+  out_stream << "  Non-data buffers area are used to store operators, "
+                "subgraphs and etc.\n";
+  out_stream << "  You can find more details from "
+                "https://github.com/tensorflow/tensorflow/blob/master/"
+                "tensorflow/lite/schema/schema.fbs\n";
 }
 
 }  // namespace
@@ -136,21 +280,21 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   for (int i = 0; i < subgraphs->Length(); ++i) {
     std::vector<int> gpu_incompatibile_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
-    out_stream << "Subgraph#" << i;
+    out_stream << subgraph_str(i);
     if (subgraph->name()) {
       out_stream << " " << subgraph->name()->str();
     }
     out_stream << "(";
-    dump_tensors(out_stream, subgraph->inputs());
+    dump_tensor_list(out_stream, subgraph->inputs(), i);
     out_stream << ") -> [";
-    dump_tensors(out_stream, subgraph->outputs());
+    dump_tensor_list(out_stream, subgraph->outputs(), i);
     out_stream << "]\n";
     for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       const Operator* op = subgraph->operators()->Get(j);
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
       out_stream << "  ";  // indents for operators
-      dump_node(out_stream, /*node_no=*/j, op_code, op, subgraph);
+      dump_node(out_stream, /*node_no=*/j, op_code, op, i);
       if (check_gpu_compatibility) {
         auto status =
             CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
@@ -169,6 +313,16 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                  << " with TFLite runtime version " << TF_VERSION_STRING
                  << "\n";
     }
+
+    // Dump Subgraph Tensors.
+    out_stream << "\nTensors of " << subgraph_str(i) << "\n";
+    auto tensors = subgraph->tensors();
+    for (int j = 0; j < tensors->Length(); ++j) {
+      auto tensor = tensors->Get(j);
+      out_stream << "  ";  // indents for tensors
+      dump_tensor_detail(out_stream, tensor, j, i, model);
+    }
+    out_stream << "\n";
   }
   if (check_gpu_compatibility && model_is_gpu_compatibile) {
     out_stream
@@ -177,6 +331,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
         << ".\nBut it doesn't guarantee that your model works well with GPU "
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
   }
+
+  dump_model_stats(out_stream, model, fb_model->allocation()->bytes());
+
   return out_stream.str();
 }
 

@@ -238,7 +238,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
               return errors::InvalidArgument(
                   "`key_func` must return a scalar int64.");
             }
-            const int64_t key = key_func_output[0].scalar<int64>()();
+            const int64_t key = key_func_output[0].scalar<int64_t>()();
 
             if (states_.find(key) == states_.end()) {
               // Run the init function to create the initial state.
@@ -405,9 +405,9 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       bool end_of_input_ TF_GUARDED_BY(mu_) = false;
-      std::map<int64, std::vector<Tensor>> states_ TF_GUARDED_BY(mu_);
-      std::vector<int64> keys_ TF_GUARDED_BY(mu_);
-      int64 keys_index_ TF_GUARDED_BY(mu_) = 0;
+      std::map<int64_t, std::vector<Tensor>> states_ TF_GUARDED_BY(mu_);
+      std::vector<int64_t> keys_ TF_GUARDED_BY(mu_);
+      int64_t keys_index_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;

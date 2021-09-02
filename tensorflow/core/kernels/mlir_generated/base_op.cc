@@ -41,11 +41,11 @@ class MlirTensorBuffer : public TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
-    proto->set_requested_bytes(static_cast<int64>(size_));
+    proto->set_requested_bytes(static_cast<int64_t>(size_));
     proto->set_allocator_name(allocator_->Name());
     proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
     if (allocator_->TracksAllocationSizes()) {
-      auto ab = static_cast<int64>(allocator_->AllocatedSize(data()));
+      auto ab = static_cast<int64_t>(allocator_->AllocatedSize(data()));
       proto->set_allocated_bytes(ab);
       int64_t id = allocator_->AllocationId(data());
       if (id > 0) {

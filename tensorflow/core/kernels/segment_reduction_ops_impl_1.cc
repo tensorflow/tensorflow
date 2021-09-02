@@ -70,9 +70,10 @@ Status ValidateSparseSegmentReduction(OpKernelContext* context,
           "num_segments should be a scalar, not shape ",
           num_segments_t.shape().DebugString());
     }
-    int64_t output_rows = internal::SubtleMustCopy(
-        num_segments_t.dtype() == DT_INT32 ? num_segments_t.scalar<int32>()()
-                                           : num_segments_t.scalar<int64>()());
+    int64_t output_rows =
+        internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
+                                     ? num_segments_t.scalar<int32>()()
+                                     : num_segments_t.scalar<int64_t>()());
     if (output_rows < 0) {
       return errors::InvalidArgument("segment ids must be >= 0");
     }

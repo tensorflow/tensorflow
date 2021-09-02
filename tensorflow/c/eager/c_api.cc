@@ -504,13 +504,13 @@ class CAPICustomDeviceTensorHandle
     *num_dims = methods_.num_dims(data_, &s);
     return s.status;
   }
-  Status Dim(int dim_index, int64* dim) const override {
+  Status Dim(int dim_index, int64_t* dim) const override {
     TF_Status s;
     *dim = methods_.dim(data_, dim_index, &s);
     return s.status;
   }
 
-  bool HasCustomSummarizer() const override {
+  bool PreferCustomSummarizer() const override {
     return methods_.summarize != nullptr;
   }
 
@@ -569,9 +569,9 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
         tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     return nullptr;
   }
-  std::vector<tensorflow::int64> dimvec(num_dims);
+  std::vector<int64_t> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+    dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync

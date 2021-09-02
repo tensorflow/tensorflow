@@ -35,7 +35,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template struct FillProjectiveTransform<CPUDevice, uint8>;
 template struct FillProjectiveTransform<CPUDevice, int32>;
-template struct FillProjectiveTransform<CPUDevice, int64>;
+template struct FillProjectiveTransform<CPUDevice, int64_t>;
 template struct FillProjectiveTransform<CPUDevice, Eigen::half>;
 template struct FillProjectiveTransform<CPUDevice, float>;
 template struct FillProjectiveTransform<CPUDevice, double>;

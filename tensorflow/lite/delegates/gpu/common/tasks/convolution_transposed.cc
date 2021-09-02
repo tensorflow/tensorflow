@@ -464,7 +464,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           if (!check.empty()) {
             if (conditional_read) {
               c += "        FLT4 src" + id + " = " + check +
-                   " ? args.src_tensor.Read(" + address + ") : (FLT4)(0.0f);\n";
+                   " ? args.src_tensor.Read(" + address +
+                   ") : INIT_FLT4(0.0f);\n";
             } else {
               c += "        FLT4 src" + id + " = args.src_tensor.Read(" +
                    address + ") * INIT_FLT(" + check + ");\n";
@@ -497,9 +498,12 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     }
     c += "        x_c++;\n";
   }
+  if (weights_are_buffer && !gpu_info.SupportsPointersInKernels()) {
+    c += "      FLT16 flt16val;\n";
+  }
   for (int s = 0; s < block_size.w; ++s) {
     if (weights_are_buffer && !gpu_info.SupportsPointersInKernels()) {
-      c += "        FLT16 flt16val = args.weights.Read(f_offset + " +
+      c += "        flt16val = args.weights.Read(f_offset + " +
            std::to_string(s) + ");\n";
     }
     const std::string sind = std::to_string(s);

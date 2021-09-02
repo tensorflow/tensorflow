@@ -50,6 +50,12 @@ class InterpreterTest : public ::testing::Test {
 
   bool HasDelegates() { return interpreter_.HasDelegates(); }
 
+  bool IsFullyDelegated() const { return interpreter_.IsFullyDelegated(); }
+
+  TfLiteStatus ApplyLazyDelegateProviders() {
+    return interpreter_.ApplyLazyDelegateProviders();
+  }
+
   void BuildSignature(const std::string& signature_key,
                       const std::map<std::string, uint32_t>& inputs,
                       const std::map<std::string, uint32_t>& outputs) {

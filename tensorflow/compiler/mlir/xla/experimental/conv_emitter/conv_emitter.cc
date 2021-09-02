@@ -41,7 +41,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
@@ -70,11 +70,11 @@ ShapeInfo GetShapeInfo(
     mlir::Builder builder) {
   ShapeInfo shape_info;
 
-  std::vector<int64> physical_to_logical(
+  std::vector<int64_t> physical_to_logical(
       shape.layout().minor_to_major().rbegin(),
       shape.layout().minor_to_major().rend());
 
-  std::vector<int64> nchw_to_logical;
+  std::vector<int64_t> nchw_to_logical;
 
   nchw_to_logical.push_back(n_dim);
   nchw_to_logical.push_back(c_dim);

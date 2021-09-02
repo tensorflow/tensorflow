@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -106,7 +106,7 @@ void DispatcherState::RegisterWorker(
   workers_[address] =
       std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
-      absl::flat_hash_map<int64, std::shared_ptr<Task>>();
+      absl::flat_hash_map<int64_t, std::shared_ptr<Task>>();
   worker_index_resolver_.AddWorker(address);
 }
 
@@ -117,14 +117,15 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_job_key.emplace(create_job.named_job_key().name(),
                           create_job.named_job_key().index());
   }
-  absl::optional<int64> num_consumers;
+  absl::optional<int64_t> num_consumers;
   if (create_job.optional_num_consumers_case() ==
       CreateJobUpdate::kNumConsumers) {
     num_consumers = create_job.num_consumers();
   }
   auto job = std::make_shared<Job>(
       job_id, create_job.dataset_id(), create_job.processing_mode_def(),
-      create_job.num_split_providers(), named_job_key, num_consumers);
+      create_job.num_split_providers(), named_job_key, num_consumers,
+      create_job.target_workers());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -287,7 +288,7 @@ Status DispatcherState::GetElementSpec(int64_t dataset_id,
   return Status::OK();
 }
 
-int64 DispatcherState::NextAvailableDatasetId() const {
+int64_t DispatcherState::NextAvailableDatasetId() const {
   return next_available_dataset_id_;
 }
 
@@ -362,7 +363,7 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
   return Status::OK();
 }
 
-int64 DispatcherState::NextAvailableJobId() const {
+int64_t DispatcherState::NextAvailableJobId() const {
   return next_available_job_id_;
 }
 
@@ -375,7 +376,7 @@ Status DispatcherState::JobForJobClientId(int64_t job_client_id,
   return Status::OK();
 }
 
-int64 DispatcherState::NextAvailableJobClientId() const {
+int64_t DispatcherState::NextAvailableJobClientId() const {
   return next_available_job_client_id_;
 }
 
@@ -411,7 +412,7 @@ Status DispatcherState::TasksForWorker(
   if (it == tasks_by_worker_.end()) {
     return errors::NotFound("Worker ", worker_address, " not found");
   }
-  const absl::flat_hash_map<int64, std::shared_ptr<Task>>& worker_tasks =
+  const absl::flat_hash_map<int64_t, std::shared_ptr<Task>>& worker_tasks =
       it->second;
   tasks.reserve(worker_tasks.size());
   for (const auto& task : worker_tasks) {
@@ -420,7 +421,7 @@ Status DispatcherState::TasksForWorker(
   return Status::OK();
 }
 
-int64 DispatcherState::NextAvailableTaskId() const {
+int64_t DispatcherState::NextAvailableTaskId() const {
   return next_available_task_id_;
 }
 
@@ -428,7 +429,7 @@ Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
   return worker_index_resolver_.ValidateWorker(worker_address);
 }
 
-StatusOr<int64> DispatcherState::GetWorkerIndex(
+StatusOr<int64_t> DispatcherState::GetWorkerIndex(
     absl::string_view worker_address) const {
   return worker_index_resolver_.GetWorkerIndex(worker_address);
 }

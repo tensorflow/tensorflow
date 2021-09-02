@@ -90,7 +90,7 @@ static void BM_RegexReplace(::testing::benchmark::State& state) {
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupRegexReplaceGraph(input, kRegExPattern, kRewrite);
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 
 BENCHMARK(BM_RegexReplace)
@@ -121,7 +121,7 @@ static void BM_StaticRegexReplace(::testing::benchmark::State& state) {
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupStaticGraph(input, kRegExPattern, kRewrite);
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 
 BENCHMARK(BM_StaticRegexReplace)

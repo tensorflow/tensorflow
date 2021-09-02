@@ -75,9 +75,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
-// Performs checks that the whole module does not contain dynamic shapes.
-std::unique_ptr<OperationPass<FuncOp>> CreateTFEnsureStaticShapesPass();
-
 // Guarantee that all FuncOp's have a single use.
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
 

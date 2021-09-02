@@ -347,8 +347,8 @@ TEST(TensorBundleTest, SwapBytes) {
   // Cast to uint64*/int64* to make DataTypeToEnum<T> happy
   TestByteSwap(reinterpret_cast<const uint64*>(forward_64),
                reinterpret_cast<const uint64*>(swapped_64), arr_len_64);
-  TestByteSwap(reinterpret_cast<const int64*>(forward_64),
-               reinterpret_cast<const int64*>(swapped_64), arr_len_64);
+  TestByteSwap(reinterpret_cast<const int64_t*>(forward_64),
+               reinterpret_cast<const int64_t*>(swapped_64), arr_len_64);
   TestByteSwap(reinterpret_cast<const double*>(forward_64),
                reinterpret_cast<const double*>(swapped_64), arr_len_64);
 
@@ -534,7 +534,7 @@ TEST(TensorBundleTest, Basic) {
   TestBasic<int8>();
   TestBasic<complex64>();
   TestBasic<complex128>();
-  TestBasic<int64>();
+  TestBasic<int64_t>();
   TestBasic<bool>();
   TestBasic<qint32>();
   TestBasic<quint8>();
@@ -551,7 +551,7 @@ TEST(TensorBundleTest, Endianness) {
   TestEndianness<int8>();
   TestEndianness<complex64>();
   TestEndianness<complex128>();
-  TestEndianness<int64>();
+  TestEndianness<int64_t>();
   TestEndianness<bool>();
   TestEndianness<qint32>();
   TestEndianness<quint8>();
@@ -695,7 +695,7 @@ TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<int8>();
   TestNonStandardShapes<complex64>();
   TestNonStandardShapes<complex128>();
-  TestNonStandardShapes<int64>();
+  TestNonStandardShapes<int64_t>();
   TestNonStandardShapes<bool>();
   TestNonStandardShapes<qint32>();
   TestNonStandardShapes<quint8>();
@@ -802,21 +802,21 @@ class VariantObject {
     data->set_type_name(TypeName());
     data->set_metadata(metadata_);
     Tensor val_t = Tensor(DT_INT64, TensorShape({}));
-    val_t.scalar<int64>()() = value_;
+    val_t.scalar<int64_t>()() = value_;
     *(data->add_tensors()) = val_t;
   }
   bool Decode(const VariantTensorData& data) {
     EXPECT_EQ(data.type_name(), TypeName());
     data.get_metadata(&metadata_);
     EXPECT_EQ(data.tensors_size(), 1);
-    value_ = data.tensors(0).scalar<int64>()();
+    value_ = data.tensors(0).scalar<int64_t>()();
     return true;
   }
   bool operator==(const VariantObject other) const {
     return metadata_ == other.metadata_ && value_ == other.value_;
   }
   string metadata_;
-  int64 value_;
+  int64_t value_;
 };
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantObject, "TEST VariantObject");
@@ -1153,7 +1153,7 @@ BENCHMARK(BM_BundleWriterSmallTensor)->Range(1, 1 << 20);
 
 static void BM_BundleWriterLargeTensor(::testing::benchmark::State& state) {
   const int mb = state.range(0);
-  const int64_t bytes = static_cast<int64>(mb) * (1 << 20);
+  const int64_t bytes = static_cast<int64_t>(mb) * (1 << 20);
   Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
   for (auto s : state) {
     BundleWriter writer(Env::Default(), Prefix("foo"));

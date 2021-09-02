@@ -68,7 +68,7 @@ class StringDest : public WritableFile {
     return Status::OK();
   }
 #endif
-  Status Tell(int64* pos) override {
+  Status Tell(int64_t* pos) override {
     *pos = contents_->size();
     return Status::OK();
   }
@@ -347,25 +347,25 @@ TEST_F(RecordioTest, ReadErrorWithCompression) {
 TEST_F(RecordioTest, CorruptLength) {
   Write("foo");
   IncrementByte(6, 100);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptLengthCrc) {
   Write("foo");
   IncrementByte(10, 100);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptData) {
   Write("foo");
   IncrementByte(14, 10);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, CorruptDataCrc) {
   Write("foo");
   IncrementByte(WrittenBytes() - 1, 10);
-  AssertHasSubstr(Read(), "Data loss");
+  AssertHasSubstr(Read(), "corrupted record");
 }
 
 TEST_F(RecordioTest, ReadEnd) { CheckOffsetPastEndReturnsNoRecords(0); }

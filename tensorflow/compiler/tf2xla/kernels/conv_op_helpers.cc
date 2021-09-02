@@ -74,7 +74,7 @@ xla::XlaOp TransposeFilterForGroupConvolutionBackpropInput(
   xla::XlaOp result = xla::Reshape(filter, new_shape.dimensions());
 
   // 2. Transpose to [H, W, ..., G, filter_in_depth, out_depth / G]
-  std::vector<int64> transpose_dims(num_dims + 1);
+  std::vector<int64_t> transpose_dims(num_dims + 1);
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   std::swap(transpose_dims[num_spatial_dims],
             transpose_dims[num_spatial_dims + 1]);
@@ -138,7 +138,7 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
     const xla::Shape& filter_shape, const xla::Shape& out_backprop_shape,
     absl::Span<const int32> dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims,
-    absl::Span<const int64> explicit_paddings) {
+    absl::Span<const int64_t> explicit_paddings) {
   TensorShape input_tensor_shape, filter_tensor_shape,
       out_backprop_tensor_shape;
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(input_shape, &input_tensor_shape));
@@ -231,10 +231,10 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   }
 
   xla::ConvolutionDimensionNumbers dims;
-  std::vector<int64> window_strides(attrs.num_spatial_dims);
-  std::vector<int64> lhs_dilation(attrs.num_spatial_dims, 1);
-  std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
-  std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
+  std::vector<int64_t> window_strides(attrs.num_spatial_dims);
+  std::vector<int64_t> lhs_dilation(attrs.num_spatial_dims, 1);
+  std::vector<int64_t> rhs_dilation(attrs.num_spatial_dims);
+  std::vector<std::pair<int64_t, int64_t>> padding(attrs.num_spatial_dims);
 
   dims.set_input_batch_dimension(batch_dim);
   dims.set_output_batch_dimension(batch_dim);
@@ -335,11 +335,11 @@ StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   dnums.set_kernel_input_feature_dimension(attrs.num_spatial_dims + 1);
   dnums.set_kernel_output_feature_dimension(attrs.num_spatial_dims);
 
-  std::vector<int64> kernel_spatial_dims(attrs.num_spatial_dims);
-  std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
-  std::vector<int64> lhs_dilation(attrs.num_spatial_dims);
-  std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
-  std::vector<int64> ones(attrs.num_spatial_dims, 1);
+  std::vector<int64_t> kernel_spatial_dims(attrs.num_spatial_dims);
+  std::vector<std::pair<int64_t, int64_t>> padding(attrs.num_spatial_dims);
+  std::vector<int64_t> lhs_dilation(attrs.num_spatial_dims);
+  std::vector<int64_t> rhs_dilation(attrs.num_spatial_dims);
+  std::vector<int64_t> ones(attrs.num_spatial_dims, 1);
   xla::PaddingType padding_type = xla::PaddingType::PADDING_INVALID;
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
     int64_t dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
@@ -434,10 +434,10 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
           batch_group_count =
               attrs.depthwise ? filter_in_depth : in_depth / filter_in_depth;
 
-  std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
-  std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
-  std::vector<int64> window_strides(attrs.num_spatial_dims);
-  std::vector<int64> ones(attrs.num_spatial_dims, 1);
+  std::vector<std::pair<int64_t, int64_t>> padding(attrs.num_spatial_dims);
+  std::vector<int64_t> rhs_dilation(attrs.num_spatial_dims);
+  std::vector<int64_t> window_strides(attrs.num_spatial_dims);
+  std::vector<int64_t> ones(attrs.num_spatial_dims, 1);
 
   // Swap n_dim and c_dim in the activations.
   dnums.set_input_batch_dimension(c_dim);
@@ -511,7 +511,7 @@ StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // applying negative padding on the right/bottom.
     const int64_t pad_before =
         attrs.padding == Padding::EXPLICIT ? attrs.explicit_paddings[2 * dim]
-        : attrs.padding == Padding::SAME   ? std::max<int64>(pad_total / 2, 0)
+        : attrs.padding == Padding::SAME   ? std::max<int64_t>(pad_total / 2, 0)
                                            : 0;
     padding[i] = {pad_before, pad_total - pad_before};
   }

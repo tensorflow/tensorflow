@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
@@ -302,7 +302,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,
               errors::InvalidArgument(
                   "`buffer_size` must be >= 0 (0 == no buffering)"));

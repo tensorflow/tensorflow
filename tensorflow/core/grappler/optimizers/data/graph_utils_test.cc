@@ -25,6 +25,12 @@ namespace grappler {
 namespace graph_utils {
 namespace {
 
+using test::function::NDef;
+
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kToutputTypes[] = "Toutput_types";
+
 TEST(GraphUtilsTest, GetFirstElementIndexWithPredicate) {
   std::vector<int> vec({1, 2, 3, 4, 5, 6});
   auto result = GetFirstElementIndexWithPredicate(
@@ -72,7 +78,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt) {
 TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(42, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(42, &graph);
   EXPECT_TRUE(ContainsGraphNodeWithName(int64_node->name(), *graph.graph()));
   EXPECT_EQ(int64_node->attr().at("value").tensor().int64_val(0), 42);
 }
@@ -88,9 +94,9 @@ TEST(GraphUtilsTest, AddScalarConstNodeString) {
 TEST(GraphUtilsTest, GetScalarConstNodeInt64) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(128, &graph);
   int64_t result;
-  EXPECT_TRUE(GetScalarConstNodeValue<int64>(*int64_node, &result).ok());
+  EXPECT_TRUE(GetScalarConstNodeValue<int64_t>(*int64_node, &result).ok());
   EXPECT_EQ(result, 128);
 }
 
@@ -108,7 +114,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
   MutableGraphView graph(&graph_def);
   NodeDef* non_const = AddScalarPlaceholder(DT_INT64, &graph);
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64>(*non_const, &result);
+  Status s = GetScalarConstNodeValue<int64_t>(*non_const, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             "Node Placeholder is not a Const node. Op: Placeholder");
@@ -117,7 +123,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
 TEST(GraphUtilsTest, GetScalarConstNodeErrorWithType) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  NodeDef* int64_node = AddScalarConstNode<int64_t>(128, &graph);
   bool result;
   Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
   EXPECT_FALSE(s.ok());
@@ -137,7 +143,7 @@ TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
   tensor->add_int64_val(128);
 
   int64_t result;
-  Status s = GetScalarConstNodeValue<int64>(node, &result);
+  Status s = GetScalarConstNodeValue<int64_t>(node, &result);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             "Node Const should be a scalar but has shape: [1]");
@@ -368,6 +374,38 @@ TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
   NodeDef* sink_node;
   Status s = GetFetchNode(graph, item, &sink_node);
   EXPECT_FALSE(s.ok());
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoShapes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputTypes, gtl::ArraySlice<DataType>{}}});
+  NodeDef to_node;
+  EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoTypes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, gtl::ArraySlice<TensorShape>{}}});
+  NodeDef to_node;
+  EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsOutputTypes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, 666}, {kOutputTypes, 888}});
+  NodeDef to_node;
+  EXPECT_TRUE(CopyShapesAndTypesAttrs(from, &to_node));
+  EXPECT_EQ(to_node.attr().at(kOutputShapes).i(), 666);
+  EXPECT_EQ(to_node.attr().at(kOutputTypes).i(), 888);
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsToutputTypes) {
+  NodeDef from = NDef("tensor", "TensorDataset", {},
+                      {{kOutputShapes, 666}, {kToutputTypes, 888}});
+  NodeDef to_node;
+  EXPECT_TRUE(CopyShapesAndTypesAttrs(from, &to_node));
+  EXPECT_EQ(to_node.attr().at(kOutputShapes).i(), 666);
+  EXPECT_EQ(to_node.attr().at(kOutputTypes).i(), 888);
 }
 
 }  // namespace

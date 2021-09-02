@@ -31,7 +31,7 @@ namespace {
 using test::function::NDef;
 
 // If the user manually sets private thread pool, we don't insert the op.
-class ThreadPoolOpAlreadySetTest : public ::testing::TestWithParam<int64> {};
+class ThreadPoolOpAlreadySetTest : public ::testing::TestWithParam<int64_t> {};
 
 TEST_P(ThreadPoolOpAlreadySetTest, PrivateThreadPool) {
   const int64_t num_of_threads = GetParam();
@@ -39,9 +39,9 @@ TEST_P(ThreadPoolOpAlreadySetTest, PrivateThreadPool) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  NodeDef *start_val = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_val = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_val = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_val->name();
   range_inputs[1] = stop_val->name();
@@ -50,7 +50,7 @@ TEST_P(ThreadPoolOpAlreadySetTest, PrivateThreadPool) {
   NodeDef *range_node = graph_utils::AddNode("range", "RangeDataset",
                                              range_inputs, range_attrs, &graph);
   NodeDef *num_of_threads_val =
-      graph_utils::AddScalarConstNode<int64>(num_of_threads, &graph);
+      graph_utils::AddScalarConstNode<int64_t>(num_of_threads, &graph);
   std::vector<string> private_threads_inputs(2);
   private_threads_inputs[0] = range_node->name();
   private_threads_inputs[1] = num_of_threads_val->name();

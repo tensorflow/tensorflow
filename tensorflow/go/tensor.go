@@ -99,10 +99,6 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	raw := tensorData(t.c)
 
 	defer runtime.SetFinalizer(t, func(t *Tensor) {
-		if dataType == String {
-			t.clearTStrings(raw, int64(nbytes/C.sizeof_TF_TString))
-		}
-
 		t.finalize()
 	})
 
@@ -216,14 +212,6 @@ func newTensorFromC(c *C.TF_Tensor) *Tensor {
 	t := &Tensor{c: c, shape: shape}
 	runtime.SetFinalizer(t, (*Tensor).finalize)
 	return t
-}
-
-func (t *Tensor) clearTStrings(raw []byte, n int64) {
-	tstrs := (*(*[]C.TF_TString)(unsafe.Pointer(&raw)))[:n]
-
-	for _, tstr := range tstrs {
-		C.TF_TString_Dealloc(&tstr)
-	}
 }
 
 func (t *Tensor) finalize() { C.TF_DeleteTensor(t.c) }

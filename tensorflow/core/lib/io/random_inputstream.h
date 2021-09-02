@@ -41,7 +41,7 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   Status SkipNBytes(int64_t bytes_to_skip) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   Status Seek(int64_t position) {
     pos_ = position;
@@ -52,7 +52,7 @@ class RandomAccessInputStream : public InputStreamInterface {
 
  private:
   RandomAccessFile* file_;  // Not owned.
-  int64 pos_ = 0;           // Tracks where we are in the file.
+  int64_t pos_ = 0;         // Tracks where we are in the file.
   bool owns_file_ = false;
 };
 

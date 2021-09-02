@@ -181,7 +181,10 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
       if var_kwargs or any(is_distributed_var(a) for a in args):
         raise ValueError(
             "Mixing Variables and positional-only parameters not supported by "
-            "TPUStrategy.")
+            f"TPUStrategy. Received {len(var_kwargs)} DistributedVariables in "
+            f"**kwargs and {sum(is_distributed_var(a) for a in args)} in *args,"
+            " expected zero for both."
+        )
       return fn, args, kwargs
 
   star_args = []
@@ -523,9 +526,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
     tensor_rank = len(input_shape)
 
     if tensor_rank != len(partition_dimensions):
-      raise ValueError("Length of `partition_dimensions` ({}) must be  "
-                       "equal to the rank of `x` ({}).".format(
-                           len(partition_dimensions), tensor_rank))
+      raise ValueError("Length of `partition_dimensions` must equal to the "
+                       "rank of `tensor.shape` ({}). Received "
+                       "len(partition_dimensions)={}.".format(
+                           tensor_rank, len(partition_dimensions)))
 
     for dim_index, dim_size in enumerate(input_shape):
       if dim_size is None:
@@ -533,16 +537,18 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension {} ({}) must be "
+        raise ValueError("Tensor shape at `partition_dimensions[{}]` must be "
                          "divisible by corresponding value specified "
-                         "by `partition_dimensions` ({}).".format(
-                             dim_index, dim_size, split_size))
+                         "by `partition_dimensions` ({}). Received: {}.".format(
+                             dim_index, split_size, dim_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
-      raise ValueError("Number of logical devices ({}) does not match the "
-                       "number of partition splits specified ({}).".format(
-                           num_logical_devices_per_replica,
-                           num_partition_splits))
+      raise ValueError(
+          "The product of `partition_dimensions` should be the same as the "
+          "number of logical devices (={}). Received `partition_dimensions`={},"
+          "and their product is {}.".format(num_logical_devices_per_replica,
+                                            partition_dimensions,
+                                            num_partition_splits))
 
     tile_assignment = np.arange(num_partition_splits).reshape(
         partition_dimensions)
@@ -1236,7 +1242,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "Currently only support sum & mean in TPUStrategy.")
+            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
     if not isinstance(value, values.DistributedValues):

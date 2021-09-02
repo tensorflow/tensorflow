@@ -67,7 +67,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
     }
 
     const int num_batch_dims = a_shape.dimensions().size() - 2;
-    const std::vector<int64> batch_dims(
+    const std::vector<int64_t> batch_dims(
         a_shape.dimensions().begin(),
         a_shape.dimensions().begin() + num_batch_dims);
 
@@ -75,7 +75,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
         primitive_util::IsComplexType(type)
             ? primitive_util::ComplexComponentType(type)
             : type;
-    std::vector<int64> eigvals_dims = batch_dims;
+    std::vector<int64_t> eigvals_dims = batch_dims;
     eigvals_dims.push_back(m);
     Shape eigh_shape = ShapeUtil::MakeTupleShape(
         {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)});

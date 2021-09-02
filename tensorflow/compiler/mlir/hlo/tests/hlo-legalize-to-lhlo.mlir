@@ -220,12 +220,16 @@ func @imag_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @iota
+// CHECK-LABEL: func @iota(
+// CHECK-SAME:             %[[ARG_0:.*]]: memref<?xf32>) -> memref<10xi32> {
+// CHECK:         %[[VAL_0:.*]] = memref.alloc() : memref<10xi32>
+// CHECK:         "lmhlo.constant"(%[[VAL_0]]) {value = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]> : tensor<10xi32>} : (memref<10xi32>) -> ()
+// CHECK:         return %[[VAL_0]] : memref<10xi32>
+// CHECK:       }
 // TODO(herhut): Dummy should not be required here.
 func @iota(%dummy: tensor<?xf32>) -> tensor<10xi32> {
   %result = "mhlo.iota"()
       {iota_dimension = 0 : i64} : () -> tensor<10xi32>
-  // CHECK: "lmhlo.iota"(%{{.*}}) {iota_dimension = 0 : i64}
   return %result : tensor<10xi32>
 }
 

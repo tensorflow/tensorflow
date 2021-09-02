@@ -416,6 +416,18 @@ build_test(
 #------------------------------------------------------------------------------
 # JNI bindings (Java API and Java Tasks library)
 
+cc_library(
+    name = "jni_utils",
+    srcs = ["jni/jni_utils.cc"],
+    hdrs = ["jni/jni_utils.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/java/jni",
+    ],
+)
+
 # Contains code to initialize TFLite through JNI in the internal version.
 cc_library(
     name = "jni_initialization",

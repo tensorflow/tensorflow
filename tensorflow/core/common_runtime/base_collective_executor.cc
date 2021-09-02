@@ -52,8 +52,9 @@ bool IsCancelled(CancellationManager* cancel_mgr) {
 }  // namespace
 
 /*static*/
-int64 CollectiveAdapter::AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
-                                          int64_t num_chunks) {
+int64_t CollectiveAdapter::AlignedChunkElts(int64_t elt_bytes,
+                                            int64_t total_elts,
+                                            int64_t num_chunks) {
   DCHECK_GT(num_chunks, 0);
   int64_t base_chunk_elts = (total_elts + (num_chunks - 1)) / num_chunks;
   if (EIGEN_MAX_ALIGN_BYTES == 0) return base_chunk_elts;
@@ -129,14 +130,14 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
   }
 
   // Number of T elements in a particular chunk.
-  inline int64 ChunkElts(int i) const {
+  inline int64_t ChunkElts(int i) const {
     DCHECK_LT(i, num_chunks_);
     const T* chunk_start = std::min(data_end_, data_start_ + i * chunk_elts_);
     const T* chunk_end = std::min(data_end_, chunk_start + chunk_elts_);
     return chunk_end - chunk_start;
   }
 
-  int64 ChunkBytes(int i) const override { return sizeof(T) * ChunkElts(i); }
+  int64_t ChunkBytes(int i) const override { return sizeof(T) * ChunkElts(i); }
 
   // Returns a new Tensor that aliases the required chunk.
   Tensor ChunkAlias(int i) override {
@@ -158,14 +159,14 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   string DebugString() const override {
     return strings::StrCat(
-        "base addr ", reinterpret_cast<int64>(DMAHelper::base(&output_)),
+        "base addr ", reinterpret_cast<int64_t>(DMAHelper::base(&output_)),
         " num_chunks ", num_chunks_, " total_elts ", total_elts_, " chunk_elts",
         chunk_elts_, " value ",
         VALUE_IN_DEBUG_STRING ? output_.SummarizeValue(1024) : "<hidden>");
   }
 
   string TBounds(const Tensor& t) const override {
-    int64_t base_addr = reinterpret_cast<int64>(DMAHelper::base(&t));
+    int64_t base_addr = reinterpret_cast<int64_t>(DMAHelper::base(&t));
     return strings::StrCat("(", base_addr, ", ", (base_addr + t.TotalBytes()),
                            ")");
   }
@@ -180,10 +181,10 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
   Tensor output_;
   const DataType dt_;
   const TensorShape old_shape_;
-  const int64 num_chunks_;
+  const int64_t num_chunks_;
   Allocator* allocator_;
-  const int64 total_elts_;
-  const int64 chunk_elts_;
+  const int64_t total_elts_;
+  const int64_t chunk_elts_;
   const T* data_start_;
   const T* data_end_;
 };
@@ -215,8 +216,8 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                               align_chunks);
       break;
     case DT_INT64:
-      return new CollectiveAdapterImpl<int64>(output, num_chunks, allocator,
-                                              align_chunks);
+      return new CollectiveAdapterImpl<int64_t>(output, num_chunks, allocator,
+                                                align_chunks);
       break;
     default:
       LOG(FATAL) << "Unsupported type " << DataTypeString(output->dtype())
@@ -284,7 +285,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
       done(GetStatus(s));
     }
   };
-  auto timeout_microseconds = static_cast<int64>(
+  auto timeout_microseconds = static_cast<int64_t>(
       col_params->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
@@ -373,8 +374,8 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
       done(GetStatus(s));
     }
   };
-  auto timeout_microseconds =
-      static_cast<int64>(cp->instance.impl_details.timeout_seconds * 1'000'000);
+  auto timeout_microseconds = static_cast<int64_t>(
+      cp->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(

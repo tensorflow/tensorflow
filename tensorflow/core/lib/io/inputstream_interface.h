@@ -58,7 +58,7 @@ class InputStreamInterface {
   // If we Skip / Read beyond the end of the file, this should return the length
   // of the file.
   // If there are any errors, this must return -1.
-  virtual int64 Tell() const = 0;
+  virtual int64_t Tell() const = 0;
 
   // Resets the stream to the beginning.
   virtual Status Reset() = 0;

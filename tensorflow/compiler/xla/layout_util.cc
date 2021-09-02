@@ -56,7 +56,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t element_size_in_bits, int64_t memory_space) {
   Layout layout;
   layout.set_format(DENSE);
@@ -66,9 +66,10 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
-                      "it's negative. Value is "
-                   << dim;
+        LOG(FATAL)
+            << "Tile dimension size needs to be minimum int64_t value if "
+               "it's negative. Value is "
+            << dim;
       }
     }
     *layout.add_tiles() = tile;
@@ -79,19 +80,19 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 }
 
 /* static */ Layout LayoutUtil::MakeDescendingLayout(int64_t rank) {
-  std::vector<int64> layout(rank);
-  std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+  std::vector<int64_t> layout(rank);
+  std::iota(layout.rbegin(), layout.rend(), static_cast<int64_t>(0));
   return MakeLayout(layout);
 }
 
 /* static */ Layout LayoutUtil::MakeAscendingLayout(int64_t rank) {
-  std::vector<int64> layout(rank);
-  std::iota(layout.begin(), layout.end(), static_cast<int64>(0));
+  std::vector<int64_t> layout(rank);
+  std::iota(layout.begin(), layout.end(), static_cast<int64_t>(0));
   return MakeLayout(layout);
 }
 
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
-    absl::Span<const int64> major_to_minor) {
+    absl::Span<const int64_t> major_to_minor) {
   Layout layout;
   layout.set_format(DENSE);
   for (int i = major_to_minor.size() - 1; i >= 0; i--) {
@@ -289,7 +290,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Major(const Layout& layout) {
   CHECK(layout.format() == DENSE);
   return std::is_sorted(layout.minor_to_major().begin(),
-                        layout.minor_to_major().end(), std::greater<int64>());
+                        layout.minor_to_major().end(), std::greater<int64_t>());
 }
 
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
@@ -317,37 +318,37 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return lhs == rhs;
 }
 
-/* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
+/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
   return AsInt64Slice(shape.layout().minor_to_major());
 }
 
-/* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
+/* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Layout& layout) {
   CHECK(layout.format() == DENSE);
   return AsInt64Slice(layout.minor_to_major());
 }
 
-/* static */ int64 LayoutUtil::Major(const Layout& layout,
-                                     int64_t physical_dimension_number) {
+/* static */ int64_t LayoutUtil::Major(const Layout& layout,
+                                       int64_t physical_dimension_number) {
   CHECK_LE(0, physical_dimension_number);
   CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
   return Minor(layout,
                layout.minor_to_major_size() - 1 - physical_dimension_number);
 }
 
-/* static */ int64 LayoutUtil::Minor(const Layout& layout,
-                                     int64_t physical_dimension_number) {
+/* static */ int64_t LayoutUtil::Minor(const Layout& layout,
+                                       int64_t physical_dimension_number) {
   CHECK_EQ(layout.format(), DENSE);
   CHECK_LE(0, physical_dimension_number);
   CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
   return layout.minor_to_major(physical_dimension_number);
 }
 
-/* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
+/* static */ std::vector<int64_t> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
-  std::vector<int64> logical_to_physical(layout.minor_to_major_size());
+  std::vector<int64_t> logical_to_physical(layout.minor_to_major_size());
   for (int64_t physical = 0, end = logical_to_physical.size(); physical < end;
        ++physical) {
     const int64_t logical = Major(layout, physical);
@@ -423,9 +424,9 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 }
 
 /* static */ bool LayoutUtil::AreDimensionsConsecutive(
-    const Layout& layout, absl::Span<const int64> dims) {
+    const Layout& layout, absl::Span<const int64_t> dims) {
   CHECK(IsDense(layout));
-  std::vector<int64> positions_in_layout;
+  std::vector<int64_t> positions_in_layout;
   for (int64_t dim : dims) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));
@@ -460,11 +461,11 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   size_t hash_value = hash<Format>()(layout.format());
 
   for (int64_t minor_to_major : layout.minor_to_major()) {
-    hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
+    hash_value = Hash64Combine(hash_value, hash<int64_t>()(minor_to_major));
   }
   for (const Tile& tile : layout.tiles()) {
     for (int64_t tile_dim : tile.dimensions()) {
-      hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
+      hash_value = Hash64Combine(hash_value, hash<int64_t>()(tile_dim));
     }
   }
   hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());

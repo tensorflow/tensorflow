@@ -485,7 +485,7 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64_t val) {
   dest->append(begin, len);
 }
 
-bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64* result) {
+bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64_t* result) {
   if (src->empty()) return false;
   const uint64 xor_mask = (!((*src)[0] & 0x80)) ? ~0ULL : 0ULL;
   const unsigned char first_byte = (*src)[0] ^ (xor_mask & 0xff);

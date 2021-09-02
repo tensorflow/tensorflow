@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for legalizing HLO to TensorFlow.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -622,8 +624,8 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                   input_type.getShape()[i] -
                                       op.slice_sizes().getValue<int64_t>({i})));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
-          op.getLoc(), op.start_indices()[i].getType(), op.start_indices()[i],
-          clamp_min, clamp_max);
+          op.getLoc(), op.start_indices()[i].getType(), clamp_min,
+          op.start_indices()[i], clamp_max);
       start_indices_vector.push_back(clamped_index);
     }
 
@@ -684,6 +686,137 @@ struct DimensionVector {
 
   llvm::SmallVector<int64_t, 4> axes;
   llvm::SmallVector<int64_t, 4> sizes;
+};
+
+// Create a single const integer.
+Value BuildIntConstOp(ImplicitLocOpBuilder &builder,
+                      ConversionPatternRewriter &rewriter, int64_t const_value,
+                      Type type) {
+  Value result_const =
+      builder.create<ConstOp>(rewriter.getIntegerAttr(type, const_value));
+  return result_const;
+}
+// Create a const integer vector tensor (1-dim).
+Value BuildIntArrayConstOp(ImplicitLocOpBuilder &builder,
+                           ConversionPatternRewriter &rewriter,
+                           ArrayRef<int64_t> const_value, Type type) {
+  DenseIntElementsAttr const_value_raw;
+  if (type == rewriter.getI64Type()) {
+    const_value_raw = rewriter.getI64TensorAttr(const_value);
+  } else {
+    // Convert I64 const array to I32.
+    llvm::SmallVector<int32_t> const_i32_vec;
+    for (auto element : const_value) {
+      const_i32_vec.push_back(static_cast<int32_t>(element));
+    }
+    const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
+  }
+  Value result_const = builder.create<ConstOp>(const_value_raw);
+  return result_const;
+}
+
+// Create a tensor that is reshaped from input.
+Value BuildReshapeOp(ImplicitLocOpBuilder &builder,
+                     ConversionPatternRewriter &rewriter, Value input,
+                     ArrayRef<int64_t> shape, Type idx_type,
+                     Type element_type) {
+  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
+  Value reshaped_input = builder.create<ReshapeOp>(
+      RankedTensorType::get(shape, element_type), input, shape_cst);
+  return reshaped_input;
+}
+
+// Create a tensor which is equal to input[begin: begin + size].
+Value BuildSliceOp(ImplicitLocOpBuilder &builder,
+                   ConversionPatternRewriter &rewriter, Value input,
+                   Value begin, ArrayRef<int64_t> shape, Type idx_type,
+                   Type element_type) {
+  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
+  Value slice_result = builder.create<SliceOp>(
+      RankedTensorType::get(shape, element_type), input, begin, shape_cst);
+  return slice_result;
+}
+
+class ConvertDynamicUpdateSliceOp
+    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicUpdateSliceOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    ShapedType operand_type = op.operand().getType().cast<ShapedType>();
+    ShapedType update_type =
+        op.update().getType().dyn_cast_or_null<ShapedType>();
+    ShapedType start_indices_type =
+        op.start_indices().front().getType().dyn_cast_or_null<ShapedType>();
+    if (update_type == nullptr || start_indices_type == nullptr)
+      return rewriter.notifyMatchFailure(
+          op, "update and start_indices should have ShapedType");
+    if (!operand_type.hasStaticShape() || !update_type.hasStaticShape())
+      return rewriter.notifyMatchFailure(
+          op, "shape of operand and update should be static");
+
+    Type idx_type = start_indices_type.getElementType();
+    int64_t shape_dim = operand_type.getRank();
+    auto operand_shape = operand_type.getShape();
+    auto update_shape = update_type.getShape();
+
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value zero_cst = BuildIntConstOp(builder, rewriter, 0, idx_type);
+    Value one_cst = BuildIntConstOp(builder, rewriter, 1, idx_type);
+    // Clamp start indices in [0, operand_size - update_size].
+    llvm::SmallVector<Value> start_indices_vector;
+    Append(start_indices_vector, op.start_indices());
+    auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
+    Value start_indices_tensor =
+        builder.create<PackOp>(shape_tensor_type, start_indices_vector);
+    Value operand_shape_cst =
+        BuildIntArrayConstOp(builder, rewriter, operand_shape, idx_type);
+    Value update_shape_cst =
+        BuildIntArrayConstOp(builder, rewriter, update_shape, idx_type);
+    Value max_start_indices =
+        builder.create<SubOp>(operand_shape_cst, update_shape_cst);
+    Value start_indices_clip_max =
+        builder.create<MinimumOp>(start_indices_tensor, max_start_indices);
+    Value clamped_start_indices =
+        builder.create<MaximumOp>(start_indices_clip_max, zero_cst);
+
+    // Do dynamic_upate_slice on flattened operand and update with the aid of
+    // tf.TensorScatterUpdate op. It takes in 3 parameters: flat_operand,
+    // indices and flat_update. The indices are computed as follows:
+    // 1. Construct a range (0, n_operand). It arranges a id number to each
+    //    element position in operand.
+    // 2. Reshape the range to the shape of operand.
+    // 3. Compute the id numbers of update positions by choose a slice form
+    //    clamped_start_indices to clamped_start_indices + update_size.
+    // 4. Flatten the update id numbers and the indices is obtained.
+    int64_t n_operand = operand_type.getNumElements();
+    Value n_operand_cst =
+        BuildIntConstOp(builder, rewriter, n_operand, idx_type);
+    Value range_flat =
+        builder.create<RangeOp>(zero_cst, n_operand_cst, one_cst);
+    Value range = BuildReshapeOp(builder, rewriter, range_flat, operand_shape,
+                                 idx_type, idx_type);
+    Value update_indices_raw =
+        BuildSliceOp(builder, rewriter, range, clamped_start_indices,
+                     update_shape, idx_type, idx_type);
+    int64_t n_update = update_type.getNumElements();
+    Type element_type = operand_type.getElementType();
+    Value update_indices = BuildReshapeOp(builder, rewriter, update_indices_raw,
+                                          {n_update, 1}, idx_type, idx_type);
+    Value operand_flat = BuildReshapeOp(builder, rewriter, op.operand(),
+                                        {n_operand}, idx_type, element_type);
+    Value update_flat = BuildReshapeOp(builder, rewriter, op.update(),
+                                       {n_update}, idx_type, element_type);
+    Value flat_result = builder.create<TensorScatterUpdateOp>(
+        operand_flat, update_indices, update_flat);
+
+    // Reshape back before return.
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, operand_type, flat_result,
+                                           operand_shape_cst);
+    return success();
+  };
 };
 
 // A struct to hold information about dimensions of dot_general operands.
@@ -1001,6 +1134,105 @@ class ConvertReduceOpToTfMin
   }
 };
 
+class ConvertReduceOpToTfAll
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+ public:
+  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || !init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
+
+bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  Operation *iota_op = iota.getDefiningOp();
+  mhlo::BroadcastInDimOp iota_broadcast =
+      llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  if (!isa_and_nonnull<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
+    return false;
+  return true;
+}
+
+bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  if (dimensions.getNumElements() != 1) return false;
+  Operation *iota_op = iota.getDefiningOp();
+  auto iota_broadcast = llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  // Dimension should be the inner most dim.
+  // TODO(xuanyuanluo): Support more general dimensions.
+  auto iota_type = iota.getType().dyn_cast_or_null<ShapedType>();
+  if (!iota_type || !iota_type.hasRank()) return false;
+  auto rank = iota_type.getRank();
+  if (rank < 1) return false;
+  auto broadcast_dim = *dimensions.getIntValues().begin();
+
+  if (broadcast_dim.isNegative()) broadcast_dim += rank;
+  if (broadcast_dim != rank - 1) return false;
+  DenseElementsAttr range_const;
+  if (!matchPattern(iota_broadcast.operand(), m_Constant(&range_const)))
+    return false;
+  int index = 0;
+  for (auto value : range_const.getIntValues()) {
+    if (value != index++) return false;
+  }
+  return true;
+}
+
+// Currently it only supports the scenario where dimensions include only a
+// single number equal to iota.getRank() - 1.
+bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
+  DenseElementsAttr iota_const_attr;
+  if (matchPattern(iota, m_Constant(&iota_const_attr))) {
+    // The inner most dimension must match the reduce dimension.
+    auto iota_type = iota_const_attr.getType();
+    auto reduce_dim = *dimensions.getIntValues().begin();
+    if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
+    if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
+        (iota_type.getRank() - 1) != reduce_dim) {
+      return false;
+    }
+
+    // The inner dimension must match [0, 1, ...., size];
+    // TODO(renjieliu): Support non-inner dimension as well.
+    const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
+    if (inner_dim < 1) return false;
+
+    int64_t index = 0;
+    // We are checking whether the iota_const values are having the pattern
+    // like:
+    // 0 1 2 ... n - 1    <= inner most.   -------
+    // 0 1 2 ... n - 1                       |
+    //  ....                             outer_loop
+    //  ....                                 |
+    // 0 1 2 ... n - 1                    ---------
+    for (auto value : iota_const_attr.getIntValues()) {
+      if (value != index) return false;
+      index = (index + 1) % inner_dim;
+    }
+    return true;
+  }
+  return false;
+}
+
+// The following 3 different forms of mhlo::iota will be matched:
+// 1. IotaOp + BroadCastInDim.
+// 2. Constant (folded Iota) + BroadCastInDim.
+// 3. Constant (folded result).
+// Moreover, the dimensions has to match the iota_dimension.
+bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
+  if (MatchIotaBroadCastInDim(dimensions, iota)) return true;
+  if (MatchConstIotaBroadCastInDim(dimensions, iota)) return true;
+  return MatchIotaConst(dimensions, iota);
+}
+
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
@@ -1027,13 +1259,7 @@ class ConvertReduceOpToTfArgMinMax
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
     Value iota = reduce_op.inputs().back();
-    mhlo::BroadcastInDimOp iota_broadcast =
-        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
-    if (!iota_broadcast ||
-        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
-      return failure();
-    if (!llvm::isa<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
-      return failure();
+    if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
@@ -1048,17 +1274,15 @@ class ConvertReduceOpToTfArgMinMax
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    auto result_type = reduce_op.getType(0).cast<TupleType>();
     auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), result_type.getType(0), input, reduction_indices,
+        reduce_op.getLoc(), reduce_op->getResult(0).getType(), input,
+        reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), result_type.getType(1), input, reduction_indices);
+        reduce_op.getLoc(), reduce_op->getResult(1).getType(), input,
+        reduction_indices);
 
-    // Pack the result into a TupleOp to match return type. The Tuple will be
-    // optimised out by a subsequent pass.
-    SmallVector<Value, 2> result{tf_reduce_op, tf_argreduce_op};
-    rewriter.replaceOpWithNewOp<mhlo::TupleOp>(reduce_op, result);
+    rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
     return success();
   }
 
@@ -1614,6 +1838,15 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
+  // Helper params for representing the transpose params for the "canonicalized"
+  // output to the real output.
+  struct TransposeParams {
+    std::vector<int64_t> permutation;
+    // The following are the "canocanilzed" output shape with offset dims.
+    std::vector<int64_t> canonicalized_output_shape;
+    std::vector<int64_t> canonicalized_offset_dims;
+  };
+
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gather_op, ArrayRef<Value> args,
       ConversionPatternRewriter &rewriter) const final {
@@ -1676,9 +1909,16 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     }
 
     // Verify that offset_dims are the tailing dimensions in the output tensor.
-    auto offset_dims = gather_op.dimension_numbers().offset_dims();
+    auto offset_dims =
+        gather_op.dimension_numbers().offset_dims().getValues<int64_t>();
+    SmallVector<int64_t, 4> offset_dims_vector(offset_dims.begin(),
+                                               offset_dims.end());
+    const TransposeParams &transpose_params =
+        CanonicalizeOffset(/*result_type=*/result_type,
+                           /*original_offset_dims=*/offset_dims_vector);
+
     int64_t offset = start_indices_type.getRank() - 1;
-    for (int64_t o : offset_dims.getValues<int64_t>()) {
+    for (int64_t o : transpose_params.canonicalized_offset_dims) {
       if (o != offset) {
         return rewriter.notifyMatchFailure(gather_op,
                                            "unsupported offset dims");
@@ -1705,9 +1945,103 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         gather_op.getLoc(), operand_type, operand,
         rewriter.getI64TensorAttr(transpose_dimensions));
 
-    rewriter.replaceOpWithNewOp<TF::GatherNdOp>(gather_op, result_type, operand,
-                                                start_indices);
+    // Check whether we need to append a transpose op after the gather nd.
+    bool need_transpose_after = false;
+    for (int i = 0; i < transpose_params.permutation.size(); ++i) {
+      if (i != transpose_params.permutation[i]) {
+        need_transpose_after = true;
+        break;
+      }
+    }
+
+    auto tf_gather_nd_result_type =
+        RankedTensorType::get(transpose_params.canonicalized_output_shape,
+                              result_type.getElementType());
+    auto tf_gather_nd_op = rewriter.create<TF::GatherNdOp>(
+        gather_op->getLoc(), tf_gather_nd_result_type, operand, start_indices);
+    if (!need_transpose_after) {
+      rewriter.replaceOp(gather_op, tf_gather_nd_op->getOpResults());
+      return success();
+    }
+
+    // Insert the transpose op after the gather_nd.
+    rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+        gather_op, result_type, tf_gather_nd_op,
+        rewriter.getI64TensorAttr(transpose_params.permutation));
+
     return success();
+  }
+
+ private:
+  // Canonicalize the offset dims to make sure the offset dims are the trailing
+  // dimensions of the output tensor.
+  // We will also return the permutation for (the transpose op).
+  // However, it's not guaranteed the canonicalized offset dims can make it
+  // always legalizable to tf.
+  TransposeParams CanonicalizeOffset(
+      ShapedType result_type, ArrayRef<int64_t> original_offset_dims) const {
+    TransposeParams transpose_params;
+    int output_rank = result_type.getRank();
+    // The canonicalized offset should be the trailing of the output rank.
+    for (int start = output_rank - original_offset_dims.size();
+         start < output_rank; ++start) {
+      transpose_params.canonicalized_offset_dims.push_back(start);
+    }
+
+    // For those dims NOT inside the original_offset_dims are considered "batch
+    // dims".
+    std::vector<int64_t> batch_dims;
+    // Offset dims are guaranteed to be sorted.
+    int offset_index = 0;
+    for (int64_t i = 0; i < output_rank; ++i) {
+      if (offset_index >= original_offset_dims.size() ||
+          original_offset_dims[offset_index] != i) {
+        batch_dims.push_back(i);
+      } else {
+        ++offset_index;
+      }
+    }
+
+    // Populate the trnaspose permutation params from a "canonicalized" output
+    // to the real output.
+    // The canonicalized layout would be batch_dims followed by sliced_dims.
+    // The current layout is essentially a transpose after the canonicalized
+    // layout.
+    // Take the following as an example:
+    // If we have the:
+    // original_offset_dims like [1, 2, 4]
+    // batch_dims like [0, 3]
+    // It's like performing transpose on a "canonicalized"
+    // [batch_dims, sliced_dims]: [B1, B2, O1, O2, O3]
+    // into the current layout: [B1, O1, O2, B2, O3]
+    // where the permutation is [0, 2, 3, 1, 4]
+    int batch_idx = 0;
+    int offset_idx = 0;
+    int batch_dim_size = batch_dims.size();
+    for (int i = 0; i < output_rank; ++i) {
+      if (batch_idx >= batch_dims.size()) {
+        transpose_params.permutation.push_back(batch_dim_size + offset_idx);
+        ++offset_idx;
+      } else if (offset_idx < original_offset_dims.size() &&
+                 original_offset_dims[offset_idx] < batch_dims[batch_idx]) {
+        transpose_params.permutation.push_back(batch_dim_size + offset_idx);
+        ++offset_idx;
+      } else {
+        transpose_params.permutation.push_back(batch_idx++);
+      }
+    }
+
+    // Finally, let's find out what are the "canonicalized" output shape looks
+    // like.
+    for (auto dim : batch_dims) {
+      transpose_params.canonicalized_output_shape.push_back(
+          result_type.getDimSize(dim));
+    }
+    for (auto dim : original_offset_dims) {
+      transpose_params.canonicalized_output_shape.push_back(
+          result_type.getDimSize(dim));
+    }
+    return transpose_params;
   }
 };
 
@@ -1925,14 +2259,15 @@ static PassRegistration<LegalizeHloToTf> pass;
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns->insert<ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
-                   ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
-                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
-                   ConvertScatterMaxOp, ConvertScatterMinOp,
-                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<
+      ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+      ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+      ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 

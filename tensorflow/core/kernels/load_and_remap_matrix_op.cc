@@ -34,9 +34,9 @@ namespace tensorflow {
 namespace {
 // Returning a Status instead of using OP_REQUIRES directly since that doesn't
 // seem to work outside the main OpKernel functions.
-Status RemapVectorToMap(const TTypes<const int64>::Vec& remapping,
-                        std::vector<bool>* id_present,
-                        std::unordered_map<int64, int64>* old_id_to_new_id) {
+Status RemapVectorToMap(
+    const TTypes<const int64_t>::Vec& remapping, std::vector<bool>* id_present,
+    std::unordered_map<int64_t, int64_t>* old_id_to_new_id) {
   id_present->clear();
   id_present->resize(remapping.size(), false);
   for (int i = 0; i < remapping.size(); ++i) {
@@ -70,11 +70,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Checks what we're remapping and inverts the relevant remapping Tensors to
     // be maps with key = old ID, value = new ID.
-    std::unordered_map<int64, int64> old_row_to_new_row_map;
+    std::unordered_map<int64_t, int64_t> old_row_to_new_row_map;
     std::vector<bool> row_id_present;
     const Tensor* row_remapping_t;
     OP_REQUIRES_OK(context, context->input("row_remapping", &row_remapping_t));
-    const auto row_remapping = row_remapping_t->vec<int64>();
+    const auto row_remapping = row_remapping_t->vec<int64_t>();
     OP_REQUIRES(context, row_remapping.size() == num_rows_,
                 errors::InvalidArgument(strings::StrCat(
                     "Size of row_remapping is ", row_remapping.size(),
@@ -98,11 +98,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
     }
 
     // Processes the remapping for columns.
-    std::unordered_map<int64, int64> old_col_to_new_col_map;
+    std::unordered_map<int64_t, int64_t> old_col_to_new_col_map;
     std::vector<bool> col_id_present;
     const Tensor* col_remapping_t;
     OP_REQUIRES_OK(context, context->input("col_remapping", &col_remapping_t));
-    const auto col_remapping = col_remapping_t->vec<int64>();
+    const auto col_remapping = col_remapping_t->vec<int64_t>();
     // Note that we always "remap rows", even when the row vocabulary does
     // not change, because partitioning requires a mapping from partitioned
     // Variables to the full checkpoints we load.
@@ -225,7 +225,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
         // If the old row ID is not found in old_row_to_new_row_map, continue
         // to the next row; otherwise, copy it to the output matrix.
-        const int64* new_row_ptr =
+        const int64_t* new_row_ptr =
             gtl::FindOrNull(old_row_to_new_row_map, row_index);
         if (new_row_ptr == nullptr) {
           continue;
@@ -240,7 +240,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
              ++old_col) {
           int64_t new_col = old_col;
           if (remap_cols) {
-            const int64* new_col_ptr =
+            const int64_t* new_col_ptr =
                 gtl::FindOrNull(old_col_to_new_col_map, old_col);
             if (new_col_ptr == nullptr) {
               // Column remapping is specified, but this column is not found in
@@ -300,9 +300,9 @@ class LoadAndRemapMatrixOp : public OpKernel {
   }
 
  private:
-  int64 num_rows_;
-  int64 num_cols_;
-  int64 max_rows_in_memory_;
+  int64_t num_rows_;
+  int64_t num_cols_;
+  int64_t max_rows_in_memory_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("LoadAndRemapMatrix").Device(DEVICE_CPU),

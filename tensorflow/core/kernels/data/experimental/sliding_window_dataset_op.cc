@@ -35,19 +35,19 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     int64_t window_size = 0;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
+        ctx, ParseScalarArgument<int64_t>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
     int64_t window_shift = 0;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_shift", &window_shift));
+        ctx, ParseScalarArgument<int64_t>(ctx, "window_shift", &window_shift));
     OP_REQUIRES(
         ctx, window_shift > 0,
         errors::InvalidArgument("Window shift must be greater than zero."));
     int64_t window_stride = 0;
-    OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "window_stride", &window_stride));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "window_stride",
+                                                     &window_stride));
     OP_REQUIRES(
         ctx, window_stride > 0,
         errors::InvalidArgument("window_stride must be greater than zero."));
@@ -100,7 +100,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                              window_shift_, ", ", window_stride_, ")::Dataset");
     }
 
-    int64 Cardinality() const override {
+    int64_t Cardinality() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
@@ -305,9 +305,9 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
-    const int64 window_size_;
-    const int64 window_shift_;
-    const int64 window_stride_;
+    const int64_t window_size_;
+    const int64_t window_shift_;
+    const int64_t window_stride_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };

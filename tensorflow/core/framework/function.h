@@ -148,6 +148,8 @@ class FunctionDefHelper {
       CHECK(!ret.empty());
       return ret[0];
     }
+    std::vector<string> original_node_names;
+    std::vector<string> original_func_names;
 
     NodeDef ToNodeDef() const;
   };
@@ -801,13 +803,13 @@ class FunctionLibraryRuntime {
     // non-negative step IDs (contiguous, starting from 0), and
     // MasterSession generates 56-bit random step IDs whose MSB is
     // always 0, so a negative random step ID should suffice.
-    const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+    const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
-    absl::optional<int64> op_id = absl::nullopt;
+    absl::optional<int64_t> op_id = absl::nullopt;
 
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;

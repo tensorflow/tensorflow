@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
@@ -388,7 +389,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             maximum_cached_engines=maximum_cached_engines,
             allow_build_at_runtime=allow_build_at_runtime))
 
-  def _CheckTrtOps(self, concrete_func, check_fn=None):
+  def _CheckTrtOps(self, concrete_func, check_fn=None, num_engines=1):
     graph_def = concrete_func.graph.as_graph_def()
     trt_op_names = []
     for node in graph_def.node:
@@ -402,8 +403,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           trt_op_names.append(self._MayRemoveGraphSequenceNumber(node.name))
           if check_fn:
             check_fn(node)
-    self.assertEqual(1, len(trt_op_names))
-    self.assertIn("TRTEngineOp_0", trt_op_names[0])
+    self.assertLen(trt_op_names, num_engines)
 
   def _RandomInput(self, shape, dtype=np.float32):
     inp1 = np.random.random_sample(shape).astype(dtype)
@@ -485,8 +485,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
   @test_util.run_v2_only
-  def testTrtGraphConverter_ShapeOp_v2(self):
-    """Test case for TrtGraphConverterV2 with ShapeOp."""
+  def testTrtGraphConverter_ShapeOp_Int32InputOutput_v2(self):
+    """Testing ShapeOp and int32 values as engine input and outpu."""
 
     class ShapeOpModel(tracking.AutoTrackable):
 
@@ -499,7 +499,13 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       def run(self, x):
         q = x + 1
         q_shape = array_ops.shape(q)
-        return array_ops.identity(q_shape, name="output")
+        # Add an OP that is not supported by TF-TRT. This allows TF-TRT to build
+        # two engines. The first engine produces an int32 output and the second
+        # engines has an int32 input and an int32 output.
+        q = nn_ops.data_format_vec_permute(
+            q_shape, src_format="NHWC", dst_format="NCHW")
+        q = q * 2
+        return array_ops.identity(q, name="output")
 
     np_input = np.random.random_sample([5, 3]).astype(np.float32)
 
@@ -528,8 +534,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     root_with_trt = load.load(output_saved_model_dir)
     converted_signature = root_with_trt.signatures["serving_default"]
-    # Check that the graph is converted to one TRTEngineOp.
-    self._CheckTrtOps(converted_signature)
+    # Check that the graph is converted to two TRTEngineOps.
+    self._CheckTrtOps(converted_signature, num_engines=2)
     # Run the graph.
     output_with_trt = converted_signature(x=ops.convert_to_tensor(np_input))
     # Check the result of the run.

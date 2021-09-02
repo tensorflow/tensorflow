@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/logging.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -285,8 +287,12 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
     }
   }
 
-  static RunHandlerPool* pool =
-      new RunHandlerPool(num_inter_threads, num_intra_threads);
+  static RunHandlerPool* pool = [&]() {
+    LOG(INFO) << "Creating run-handler pool with "
+                 "[num_inter_threads, num_intra_threads] as ["
+              << num_inter_threads << "," << num_intra_threads << "]";
+    return new RunHandlerPool(num_inter_threads, num_intra_threads);
+  }();
   return pool;
 }
 
@@ -592,6 +598,10 @@ Status DirectSession::RunInternal(
   const int64_t call_timeout = run_options.timeout_in_ms() > 0
                                    ? run_options.timeout_in_ms()
                                    : operation_timeout_in_ms_;
+  absl::optional<absl::Time> deadline;
+  if (call_timeout > 0) {
+    deadline = absl::Now() + absl::Milliseconds(call_timeout);
+  }
 
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
@@ -647,6 +657,7 @@ Status DirectSession::RunInternal(
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
+  args.deadline = deadline;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -1575,7 +1586,7 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
-    DataTypeVector* output_types, int64* collective_graph_key) {
+    DataTypeVector* output_types, int64_t* collective_graph_key) {
   mutex_lock l(graph_state_lock_);
   if (finalized_) {
     return errors::FailedPrecondition("Session has been finalized.");

@@ -29,7 +29,7 @@ class SaveContextTest(test.TestCase):
 
   def test_multi_thread(self):
     self.assertFalse(save_context.in_save_context())
-    with self.assertRaisesRegex(ValueError, 'not in a SaveContext'):
+    with self.assertRaisesRegex(ValueError, 'Not in a SaveContext'):
       save_context.get_save_options()
 
     options = save_options.SaveOptions(save_debug_info=True)
@@ -42,7 +42,7 @@ class SaveContextTest(test.TestCase):
 
       def thread_fn():
         self.assertFalse(save_context.in_save_context())
-        with self.assertRaisesRegex(ValueError, 'not in a SaveContext'):
+        with self.assertRaisesRegex(ValueError, 'Not in a SaveContext'):
           save_context.get_save_options()
 
         options = save_options.SaveOptions(save_debug_info=False)
@@ -54,7 +54,7 @@ class SaveContextTest(test.TestCase):
           continue_thread.wait()
 
         self.assertFalse(save_context.in_save_context())
-        with self.assertRaisesRegex(ValueError, 'not in a SaveContext'):
+        with self.assertRaisesRegex(ValueError, 'Not in a SaveContext'):
           save_context.get_save_options()
 
       t = threading.Thread(target=thread_fn)
@@ -72,12 +72,12 @@ class SaveContextTest(test.TestCase):
       self.assertTrue(save_context.get_save_options().save_debug_info)
 
     self.assertFalse(save_context.in_save_context())
-    with self.assertRaisesRegex(ValueError, 'not in a SaveContext'):
+    with self.assertRaisesRegex(ValueError, 'Not in a SaveContext'):
       save_context.get_save_options()
 
   def test_enter_multiple(self):
     options = save_options.SaveOptions()
-    with self.assertRaisesRegex(ValueError, 'already in a SaveContext'):
+    with self.assertRaisesRegex(ValueError, 'Already in a SaveContext'):
       with save_context.save_context(options):
         with save_context.save_context(options):
           pass

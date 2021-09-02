@@ -45,19 +45,6 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
-def TensorFlowEnsureStaticShapesPass : FunctionPass<"tf-ensure-static-shapes"> {
-  let summary = "Performs checks that the whole module does not contain dynamic shapes.";
-
-  let description = [{
-    This pass performs check that none of the ops in the MLIR module
-    have dynamic shapes.
-    Note, the pass is created temporary to stage the rollout of the second
-    phase of the MLIR bridge and will be deleted after the rollout stage is completed.
-  }];
-
-  let constructor = "TF::CreateTFEnsureStaticShapesPass()";
-}
-
 def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
   let summary = "Prunes unreachable ops in a tf_executor.graph";
 

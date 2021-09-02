@@ -241,7 +241,7 @@ struct TransformFuncContext {
   // to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
   Status GetOneInt64Parameter(const string& name, int64_t default_value,
-                              int64* result) const;
+                              int64_t* result) const;
 
   // Gets a single occurrence of a parameter as a floating point number, falling
   // back to a default if it isn't present and returning an error if it isn't

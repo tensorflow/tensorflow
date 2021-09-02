@@ -521,7 +521,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     sa_builder.Attr("id", sa_id);
     sa_builder.Attr("shapes", input_shapes);
     sa_builder.Attr("shape", sa_shape);
-    sa_builder.Attr("expected_call_count", static_cast<int64>(ops.size()));
+    sa_builder.Attr("expected_call_count", static_cast<int64_t>(ops.size()));
     NodeDef* sa_node = graph->add_node();
     LOG_WARNING_AND_RETURN_IF_ERROR(sa_builder.Finalize(sa_node));
     node_map->AddNode(sa_name, sa_node);
@@ -1081,7 +1081,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
   // which means their names must be globally unique within a process,
   // so we include an optimizer invocation count in every generated
   // name.
-  static std::atomic<int64> invocation_counter(1);
+  static std::atomic<int64_t> invocation_counter(1);
   const int64_t invocation_count =
       invocation_counter.fetch_add(1, std::memory_order_seq_cst);
   VLOG(1) << "ProcessGraphDef " << invocation_count;

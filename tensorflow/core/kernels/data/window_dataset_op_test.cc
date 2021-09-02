@@ -45,9 +45,9 @@ class WindowDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return {CreateTensor<int64>(TensorShape({}), {size_}),
-            CreateTensor<int64>(TensorShape({}), {shift_}),
-            CreateTensor<int64>(TensorShape({}), {stride_}),
+    return {CreateTensor<int64_t>(TensorShape({}), {size_}),
+            CreateTensor<int64_t>(TensorShape({}), {shift_}),
+            CreateTensor<int64_t>(TensorShape({}), {stride_}),
             CreateTensor<bool>(TensorShape({}), {drop_remainder_})};
   }
 
@@ -71,9 +71,9 @@ class WindowDatasetParams : public DatasetParams {
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }
 
  private:
-  int64 size_;
-  int64 shift_;
-  int64 stride_;
+  int64_t size_;
+  int64_t shift_;
+  int64_t stride_;
   bool drop_remainder_;
 };
 
@@ -244,40 +244,40 @@ struct GetNextTestCase {
 std::vector<GetNextTestCase<WindowDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/WindowDatasetParams1(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape{}, {{0}, {1}}),
-            CreateTensors<int64>(TensorShape{}, {{2}, {3}}),
-            CreateTensors<int64>(TensorShape{}, {{4}, {5}}),
-            CreateTensors<int64>(TensorShape{}, {{6}})}},
+           {CreateTensors<int64_t>(TensorShape{}, {{0}, {1}}),
+            CreateTensors<int64_t>(TensorShape{}, {{2}, {3}}),
+            CreateTensors<int64_t>(TensorShape{}, {{4}, {5}}),
+            CreateTensors<int64_t>(TensorShape{}, {{6}})}},
           {/*dataset_params=*/WindowDatasetParams2(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape{}, {{0}, {2}}),
-            CreateTensors<int64>(TensorShape{}, {{2}, {4}}),
-            CreateTensors<int64>(TensorShape{}, {{4}, {6}})}},
+           {CreateTensors<int64_t>(TensorShape{}, {{0}, {2}}),
+            CreateTensors<int64_t>(TensorShape{}, {{2}, {4}}),
+            CreateTensors<int64_t>(TensorShape{}, {{4}, {6}})}},
           {/*dataset_params=*/WindowDatasetParams3(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}),
-                                 {{0}, {1}, {2}, {3}, {4}, {5}, {6}}),
-            CreateTensors<int64>(TensorShape({}), {{3}, {4}, {5}, {6}}),
-            CreateTensors<int64>(TensorShape({}), {{6}})}},
+           {CreateTensors<int64_t>(TensorShape({}),
+                                   {{0}, {1}, {2}, {3}, {4}, {5}, {6}}),
+            CreateTensors<int64_t>(TensorShape({}), {{3}, {4}, {5}, {6}}),
+            CreateTensors<int64_t>(TensorShape({}), {{6}})}},
           {/*dataset_params=*/WindowDatasetParams4(),
            /*expected_outputs=*/{}},
           {/*dataset_params=*/WindowDatasetParams5(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {1}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {1}})}},
           {/*dataset_params=*/WindowDatasetParams6(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {1}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {1}})}},
           {/*dataset_params=*/WindowDatasetParams7(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}}),
-            CreateTensors<int64>(TensorShape({}), {{2}}),
-            CreateTensors<int64>(TensorShape({}), {{4}}),
-            CreateTensors<int64>(TensorShape({}), {{6}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}}),
+            CreateTensors<int64_t>(TensorShape({}), {{2}}),
+            CreateTensors<int64_t>(TensorShape({}), {{4}}),
+            CreateTensors<int64_t>(TensorShape({}), {{6}})}},
           {/*dataset_params=*/WindowDatasetParams8(),
            /*expected_outputs=*/{}},
           {/*dataset_params=*/WindowDatasetParams9(),
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {2}, {4}, {6}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {2}, {4}, {6}})}},
           {/*dataset_params=*/WindowDatasetParams10(),
            /*expected_outputs=*/{}}};
 }
@@ -414,48 +414,48 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/WindowDatasetParams1(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape{}, {{0}, {1}}),
-            CreateTensors<int64>(TensorShape{}, {{2}, {3}}),
-            CreateTensors<int64>(TensorShape{}, {{4}, {5}}),
-            CreateTensors<int64>(TensorShape{}, {{6}})}},
+           {CreateTensors<int64_t>(TensorShape{}, {{0}, {1}}),
+            CreateTensors<int64_t>(TensorShape{}, {{2}, {3}}),
+            CreateTensors<int64_t>(TensorShape{}, {{4}, {5}}),
+            CreateTensors<int64_t>(TensorShape{}, {{6}})}},
           {/*dataset_params=*/WindowDatasetParams2(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape{}, {{0}, {2}}),
-            CreateTensors<int64>(TensorShape{}, {{2}, {4}}),
-            CreateTensors<int64>(TensorShape{}, {{4}, {6}})}},
+           {CreateTensors<int64_t>(TensorShape{}, {{0}, {2}}),
+            CreateTensors<int64_t>(TensorShape{}, {{2}, {4}}),
+            CreateTensors<int64_t>(TensorShape{}, {{4}, {6}})}},
           {/*dataset_params=*/WindowDatasetParams3(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}),
-                                 {{0}, {1}, {2}, {3}, {4}, {5}, {6}}),
-            CreateTensors<int64>(TensorShape({}), {{3}, {4}, {5}, {6}}),
-            CreateTensors<int64>(TensorShape({}), {{6}})}},
+           {CreateTensors<int64_t>(TensorShape({}),
+                                   {{0}, {1}, {2}, {3}, {4}, {5}, {6}}),
+            CreateTensors<int64_t>(TensorShape({}), {{3}, {4}, {5}, {6}}),
+            CreateTensors<int64_t>(TensorShape({}), {{6}})}},
           {/*dataset_params=*/WindowDatasetParams4(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/WindowDatasetParams5(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {1}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {1}})}},
           {/*dataset_params=*/WindowDatasetParams6(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {1}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {1}})}},
           {/*dataset_params=*/WindowDatasetParams7(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}}),
-            CreateTensors<int64>(TensorShape({}), {{2}}),
-            CreateTensors<int64>(TensorShape({}), {{4}}),
-            CreateTensors<int64>(TensorShape({}), {{6}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}}),
+            CreateTensors<int64_t>(TensorShape({}), {{2}}),
+            CreateTensors<int64_t>(TensorShape({}), {{4}}),
+            CreateTensors<int64_t>(TensorShape({}), {{6}})}},
           {/*dataset_params=*/WindowDatasetParams8(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/WindowDatasetParams9(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/
-           {CreateTensors<int64>(TensorShape({}), {{0}, {2}, {4}, {6}})}},
+           {CreateTensors<int64_t>(TensorShape({}), {{0}, {2}, {4}, {6}})}},
           {/*dataset_params=*/WindowDatasetParams10(),
            /*breakpoints=*/{0, 1, 9},
            /*expected_outputs=*/{}}};

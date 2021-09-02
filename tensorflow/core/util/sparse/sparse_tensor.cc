@@ -130,8 +130,8 @@ bool SparseTensor::IndicesValidVectorFastPath() const {
   bool order_valid = true;
 
   int64_t prev_index = -1;
-  const auto ix_t = ix_.matrix<int64>();
-  const int64* const index_base_ptr = ix_t.data();
+  const auto ix_t = ix_.matrix<int64_t>();
+  const int64_t* const index_base_ptr = ix_t.data();
 
   for (std::size_t n = 0; n < ix_t.dimension(0); ++n) {
     const int64_t index = index_base_ptr[n];
@@ -152,8 +152,8 @@ bool SparseTensor::IndicesValidVectorFastPath() const {
 // NOTE(mrry): If this method returns false, call IndicesValidHelper<true>()
 // to obtain a meaningful error message.
 bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
-  const auto ix_t = ix_.matrix<int64>();
-  const int64* const shape_ptr = shape_.data();
+  const auto ix_t = ix_.matrix<int64_t>();
+  const int64_t* const shape_ptr = shape_.data();
 
   DCHECK_EQ(shape_.size(), 2);
   DCHECK_EQ(order_[0], 0);
@@ -212,7 +212,7 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
     // Interpret the row and column as a concatenated 64-bit integer, and
     // validate that the concatenated indices are in strictly increasing order.
     const int64_t concatenated_index =
-        (static_cast<int64>(row_32) << 32) + col_32;
+        (static_cast<int64_t>(row_32) << 32) + col_32;
     order_valid = order_valid & (concatenated_index > prev_index);
     prev_index = concatenated_index;
   }
@@ -223,8 +223,8 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
 
 template <bool standard_order>
 Status SparseTensor::IndicesValidHelper() const {
-  const auto ix_t = ix_.matrix<int64>();
-  const int64* const shape_ptr = shape_.data();
+  const auto ix_t = ix_.matrix<int64_t>();
+  const int64_t* const shape_ptr = shape_.data();
 
   for (std::size_t n = 0; n < num_entries(); ++n) {
     bool valid = true;

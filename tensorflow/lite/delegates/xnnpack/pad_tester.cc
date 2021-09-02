@@ -130,7 +130,7 @@ std::vector<char> PadTester::CreateTfLiteModel() const {
       CreateBuffer(builder,
                    builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(paddings.data()),
-                       sizeof(float) * paddings.size())),
+                       sizeof(int32_t) * paddings.size())),
   }};
 
   const std::vector<int32_t> output_shape = OutputShape();

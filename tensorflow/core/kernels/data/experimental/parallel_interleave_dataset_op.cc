@@ -223,7 +223,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  int64 num_threads() const { return cycle_length_ + prefetch_input_elements_; }
+  int64_t num_threads() const {
+    return cycle_length_ + prefetch_input_elements_;
+  }
 
   // Parallel interleave's implementation is designed around a few principles:
   //  1. Thread creation is relatively expensive. (Not reusing
@@ -515,7 +517,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
       // Restore `interleave_indices_`.
-      std::set<int64> all_indices;
+      std::set<int64_t> all_indices;
       {
         int64_t interleave_size;
         TF_RETURN_IF_ERROR(
@@ -584,7 +586,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> output;
-      int64 id = -1;
+      int64_t id = -1;
 
       explicit OutputElem(const Status& s) : status(s) {}
       OutputElem(const Status& s, int64_t id) : status(s), id(id) {}
@@ -837,7 +839,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                   worker_thread_states_[thread_index]
                       .output_elem.output.empty() &&
                   !worker_thread_states_[thread_index].end_of_sequence) {
-                int64& id = worker_thread_states_[thread_index].output_elem.id;
+                int64_t& id =
+                    worker_thread_states_[thread_index].output_elem.id;
                 profiler::TraceMe traceme(
                     [&] {
                       id = profiler::TraceMe::NewActivityId();
@@ -1089,7 +1092,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           iterator_name, strings::StrCat(prefix, "_", kCode),
-          static_cast<int64>(status.code())));
+          static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             iterator_name, strings::StrCat(prefix, "_", KMessage),
@@ -1155,9 +1158,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_GUARDED_BY(ckpt_mu_);
 
     // Indices in `workers_` of iterators to interleave.
-    std::vector<int64> interleave_indices_ TF_GUARDED_BY(mu_);
+    std::vector<int64_t> interleave_indices_ TF_GUARDED_BY(mu_);
     // Indices in `workers_` of prefetched iterators.
-    std::deque<int64> staging_indices_ TF_GUARDED_BY(mu_);
+    std::deque<int64_t> staging_indices_ TF_GUARDED_BY(mu_);
 
     // The index into output_elements_ for next element to produce.
     size_t next_index_ TF_GUARDED_BY(mu_) = 0;
@@ -1176,11 +1179,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_func_;
-  const int64 cycle_length_;
-  const int64 block_length_;
+  const int64_t cycle_length_;
+  const int64_t block_length_;
   const DeterminismPolicy deterministic_;
-  const int64 buffer_output_elements_;
-  const int64 prefetch_input_elements_;
+  const int64_t buffer_output_elements_;
+  const int64_t prefetch_input_elements_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const TraceMeMetadata traceme_metadata_;

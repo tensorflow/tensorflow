@@ -362,10 +362,23 @@ template <typename T, typename U>
 struct FusedBatchNormGrad<CPUDevice, T, U> {
   void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
-                  const Tensor& mean_input, const Tensor& variance_input,
-                  U epsilon, Tensor* x_backprop_output,
-                  Tensor* scale_backprop_output, Tensor* offset_backprop_output,
-                  bool use_reserved_space, TensorFormat tensor_format) {
+                  const Tensor* offset_input, const Tensor& mean_input,
+                  const Tensor& variance_input, const Tensor* y_input,
+                  U epsilon, FusedBatchNormActivationMode activation_mode,
+                  Tensor* x_backprop_output, Tensor* scale_backprop_output,
+                  Tensor* offset_backprop_output,
+                  Tensor* side_input_backprop_output, bool use_reserved_space,
+                  TensorFormat tensor_format) {
+    OP_REQUIRES(context,
+                y_input == nullptr &&
+                    activation_mode == FusedBatchNormActivationMode::kIdentity,
+                errors::Internal(
+                    "The CPU implementation of FusedBatchNormGrad does not "
+                    "support activations."));
+    OP_REQUIRES(context, side_input_backprop_output == nullptr,
+                errors::Internal("The CPU implementation of FusedBatchNormGrad "
+                                 "does not support side input."));
+
     Tensor transformed_y_backprop_input;
     Tensor transformed_x_input;
     Tensor transformed_x_backprop_output;
@@ -689,15 +702,15 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
   explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
 
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
@@ -712,14 +725,14 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
         temporary_memory.template flat<T>().size() * sizeof(T));
   }
 
-  int64 TotalByteSize() const { return total_byte_size_; }
+  int64_t TotalByteSize() const { return total_byte_size_; }
 
   Tensor get_allocated_tensor(int index) const {
     return allocated_tensors_[index];
   }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   std::vector<Tensor> allocated_tensors_;
 };
@@ -742,8 +755,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
 
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
+  int64_t GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64_t>::max();
   }
 
   StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
@@ -751,7 +764,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
     int64_t allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+        Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
     Status allocation_status(context_->allocate_output(
@@ -766,10 +779,10 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return StatusOr<DeviceMemory<uint8>>(memory_uint8);
   }
 
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 total_byte_size_ = 0;
+  int64_t total_byte_size_ = 0;
   OpKernelContext* context_;  // not owned
   int output_index_;
   bool output_allocated = false;
@@ -1004,9 +1017,12 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
 template <typename T, typename U>
 struct FusedBatchNormGrad<GPUDevice, T, U> {
   void operator()(OpKernelContext* context, const Tensor& y_backprop,
-                  const Tensor& x, const Tensor& scale, const Tensor& mean,
-                  const Tensor& inv_variance, U epsilon, Tensor* x_backprop,
-                  Tensor* scale_backprop, Tensor* offset_backprop,
+                  const Tensor& x, const Tensor& scale, const Tensor* offset,
+                  const Tensor& mean, const Tensor& inv_variance,
+                  const Tensor* y, U epsilon,
+                  FusedBatchNormActivationMode activation_mode,
+                  Tensor* x_backprop, Tensor* scale_backprop,
+                  Tensor* offset_backprop, Tensor* side_input_backprop,
                   bool use_reserved_space, TensorFormat tensor_format) {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
@@ -1040,6 +1056,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
             << " y_backprop shape: " << y_backprop.shape().DebugString()
             << " x shape: " << x.shape().DebugString()
             << " scale shape: " << scale.shape().DebugString()
+            << " activation mode: " << ToString(activation_mode)
             << " tensor format: " << ToString(tensor_format)
             << " compute format: " << ToString(compute_format);
 
@@ -1117,12 +1134,21 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         StreamExecutorUtil::AsDeviceMemory<T>(y_backprop_maybe_transformed);
     auto x_ptr = StreamExecutorUtil::AsDeviceMemory<T>(x_maybe_transformed);
     auto scale_ptr = StreamExecutorUtil::AsDeviceMemory<U>(scale);
+    auto offset_ptr = offset != nullptr
+                          ? StreamExecutorUtil::AsDeviceMemory<U>(*offset)
+                          : se::DeviceMemory<U>();
     auto mean_ptr = StreamExecutorUtil::AsDeviceMemory<U>(mean);
     auto inv_variance_ptr = StreamExecutorUtil::AsDeviceMemory<U>(inv_variance);
+    auto y_ptr = y != nullptr ? StreamExecutorUtil::AsDeviceMemory<T>(*y)
+                              : se::DeviceMemory<T>();
     auto scale_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*scale_backprop);
     auto offset_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*offset_backprop);
+    auto side_input_backprop_ptr =
+        side_input_backprop != nullptr
+            ? StreamExecutorUtil::AsDeviceMemory<T>(*side_input_backprop)
+            : se::DeviceMemory<T>();
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
         workspace_allocator;
@@ -1147,10 +1173,13 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationBackward(
-                y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, inv_variance_ptr,
-                x_desc, scale_offset_desc, static_cast<double>(epsilon),
-                &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
-                reserve_space_data_ptr, workspace_allocator.get())
+                y_backprop_ptr, x_ptr, scale_ptr, offset_ptr, mean_ptr,
+                inv_variance_ptr, y_ptr, x_desc, scale_offset_desc,
+                static_cast<double>(epsilon),
+                AsDnnActivationMode(activation_mode), &x_backprop_ptr,
+                &scale_backprop_ptr, &offset_backprop_ptr,
+                &side_input_backprop_ptr, reserve_space_data_ptr,
+                workspace_allocator.get())
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1428,8 +1457,11 @@ class FusedBatchNormOpEx : public FusedBatchNormOpBase<Device, T, U> {
 
 template <typename Device, typename T, typename U>
 class FusedBatchNormGradOpBase : public OpKernel {
+  using FbnActivationMode = functor::FusedBatchNormActivationMode;
+
  protected:
-  explicit FusedBatchNormGradOpBase(OpKernelConstruction* context)
+  explicit FusedBatchNormGradOpBase(OpKernelConstruction* context,
+                                    bool is_batch_norm_grad_ex = false)
       : OpKernel(context) {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
@@ -1439,6 +1471,42 @@ class FusedBatchNormGradOpBase : public OpKernel {
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    if (!is_batch_norm_grad_ex) {
+      has_side_input_ = false;
+      activation_mode_ = FbnActivationMode::kIdentity;
+    } else {
+      OP_REQUIRES_OK(context, ParseActivationMode(context, &activation_mode_));
+
+      int num_side_inputs;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("num_side_inputs", &num_side_inputs));
+      OP_REQUIRES(context, num_side_inputs >= 0 && num_side_inputs <= 1,
+                  errors::InvalidArgument(
+                      "FusedBatchNormGrad accepts at most one side input."));
+      has_side_input_ = (num_side_inputs == 1);
+      if (has_side_input_ && is_training_) {
+        OP_REQUIRES(
+            context, activation_mode_ != FbnActivationMode::kIdentity,
+            errors::InvalidArgument("Identity activation is not supported with "
+                                    "non-empty side input"));
+      }
+    }
+
+    if (activation_mode_ != FbnActivationMode::kIdentity && is_training_) {
+      // NOTE(kaixih@nvidia): Following requirements are coming from
+      // implementation details of cudnnBatchNormalizationBackwardEx used in
+      // training mode.
+      OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
+                  errors::InvalidArgument("FusedBatchNormGrad with activation "
+                                          "supports only DT_HALF data type."));
+      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument("FusedBatchNormGrad with activation "
+                                          "supports only NHWC tensor format."));
+      OP_REQUIRES(context, functor::BatchnormSpatialPersistentEnabled(),
+                  errors::InvalidArgument(
+                      "FusedBatchNormGrad with activation must run with cuDNN "
+                      "spatial persistence mode enabled."));
+    }
   }
 
   virtual void ComputeWithReservedSpace(OpKernelContext* context,
@@ -1454,6 +1522,9 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // The Eigen implementation saves variance in the forward pass, while cuDNN
     // saves inverted variance.
     const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
+    bool use_activation = activation_mode_ != FbnActivationMode::kIdentity;
+    const Tensor* offset = use_activation ? &context->input(6) : nullptr;
+    const Tensor* y = use_activation ? &context->input(7) : nullptr;
 
     OP_REQUIRES(context, y_backprop.dims() == 4 || y_backprop.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
@@ -1472,6 +1543,15 @@ class FusedBatchNormGradOpBase : public OpKernel {
                 errors::InvalidArgument(
                     "saved variance must be 1-dimensional",
                     saved_maybe_inv_var_or_pop_var.shape().DebugString()));
+    if (use_activation) {
+      OP_REQUIRES(
+          context, x.dim_size(3) % 4 == 0,
+          errors::InvalidArgument("FusedBatchNormGrad with activation requires "
+                                  "channel dimension to be a multiple of 4."));
+      OP_REQUIRES(context, offset->dims() == 1,
+                  errors::InvalidArgument("offset must be 1-dimensional",
+                                          offset->shape().DebugString()));
+    }
     bool use_reshape = (x.dims() == 5);
     auto x_shape = x.shape();
     TensorShape dest_shape;
@@ -1511,6 +1591,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
 
+    Tensor* side_input_backprop = nullptr;
+    if (has_side_input_) {
+      OP_REQUIRES_OK(context, context->allocate_output(5, alloc_shape,
+                                                       &side_input_backprop));
+    }
+
     // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, U> f;
@@ -1521,10 +1607,17 @@ class FusedBatchNormGradOpBase : public OpKernel {
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(
-          context, y_backprop, x, scale, saved_mean_or_pop_mean,
-          saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
-          offset_backprop, use_reserved_space, tensor_format_);
+          context, y_backprop, x, scale, offset, saved_mean_or_pop_mean,
+          saved_maybe_inv_var_or_pop_var, y, epsilon_, activation_mode_,
+          x_backprop, scale_backprop, offset_backprop, side_input_backprop,
+          use_reserved_space, tensor_format_);
     } else {
+      OP_REQUIRES(
+          context,
+          activation_mode_ == FbnActivationMode::kIdentity && !has_side_input_,
+          errors::InvalidArgument(
+              "FusedBatchNormGrad with activation is only supported "
+              "when is_training=True."));
       // Necessary layout conversion is currently done in python.
       OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
                   errors::InvalidArgument(
@@ -1546,6 +1639,8 @@ class FusedBatchNormGradOpBase : public OpKernel {
   U epsilon_;
   TensorFormat tensor_format_;
   bool is_training_;
+  bool has_side_input_;
+  FbnActivationMode activation_mode_;
 };
 
 template <typename Device, typename T, typename U>
@@ -1565,6 +1660,21 @@ class FusedBatchNormGradOpV3 : public FusedBatchNormGradOpBase<Device, T, U> {
  public:
   explicit FusedBatchNormGradOpV3(OpKernelConstruction* context)
       : FusedBatchNormGradOpBase<Device, T, U>(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    FusedBatchNormGradOpBase<Device, T, U>::ComputeWithReservedSpace(context,
+                                                                     true);
+  }
+};
+
+template <typename Device, typename T, typename U>
+class FusedBatchNormGradOpEx : public FusedBatchNormGradOpBase<Device, T, U> {
+  static constexpr bool kWithSideInputAndActivation = true;
+
+ public:
+  explicit FusedBatchNormGradOpEx(OpKernelConstruction* context)
+      : FusedBatchNormGradOpBase<Device, T, U>(context,
+                                               kWithSideInputAndActivation) {}
 
   void Compute(OpKernelContext* context) override {
     FusedBatchNormGradOpBase<Device, T, U>::ComputeWithReservedSpace(context,
@@ -1680,6 +1790,12 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<GPUDevice, float, float>);
 
+REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<float>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormGradOpEx<GPUDevice, float, float>);
+
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
@@ -1697,6 +1813,12 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<Eigen::half>("T")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<GPUDevice, Eigen::half, float>);
+
+REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormGradOpEx<GPUDevice, Eigen::half, float>);
 
 #endif
 

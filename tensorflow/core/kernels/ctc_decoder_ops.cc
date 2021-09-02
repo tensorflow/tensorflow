@@ -121,7 +121,7 @@ class CTCDecodeHelper {
       OpOutputList* decoded_shape) const {
     // Calculate the total number of entries for each path
     const int64_t batch_size = sequences.size();
-    std::vector<int64> num_entries(top_paths_, 0);
+    std::vector<int64_t> num_entries(top_paths_, 0);
 
     // Calculate num_entries per path
     for (const auto& batch_s : sequences) {
@@ -146,9 +146,9 @@ class CTCDecodeHelper {
       s = decoded_shape->allocate(p, TensorShape({2}), &p_shape);
       if (!s.ok()) return s;
 
-      auto indices_t = p_indices->matrix<int64>();
-      auto values_t = p_values->vec<int64>();
-      auto shape_t = p_shape->vec<int64>();
+      auto indices_t = p_indices->matrix<int64_t>();
+      auto values_t = p_values->vec<int64_t>();
+      auto shape_t = p_shape->vec<int64_t>();
 
       int64_t max_decoded = 0;
       int64_t offset = 0;

@@ -181,7 +181,7 @@ class HloModule {
   HloComputation* GetComputationWithName(absl::string_view name);
 
   // Gets the number of computations in this module.
-  int64 computation_count() const { return computations_.size(); }
+  int64_t computation_count() const { return computations_.size(); }
 
   // Returns the mutable computation for the given index.
   HloComputation* mutable_computation(int64_t idx) {
@@ -190,7 +190,7 @@ class HloModule {
   }
 
   // Gets the number of instructions in this module.
-  int64 instruction_count() const;
+  int64_t instruction_count() const;
 
   // Deallocate removed instructions in each computation.
   void Cleanup() {
@@ -369,8 +369,8 @@ class HloModule {
   }
 
   // Get the list of program arguments to be prefetch across programs.
-  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
-      const {
+  const absl::Span<const std::pair<int64_t, ShapeIndex>>
+  CrossProgramPrefetches() const {
     return cross_program_prefetches_;
   }
 
@@ -433,7 +433,7 @@ class HloModule {
   absl::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
-  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
+  std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;

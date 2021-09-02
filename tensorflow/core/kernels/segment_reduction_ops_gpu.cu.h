@@ -113,19 +113,19 @@ __global__ void SortedSegmentReductionCustomKernel(
 // 'segment_ids' mapping and 'inner_dim_size'.
 template <typename T, typename Index, typename KernelReductionFunctor>
 __global__ void UnsortedSegmentCustomKernel(
-    const int64 input_outer_dim_size, const int64 inner_dim_size,
-    const int64 output_outer_dim_size, const Index* __restrict__ segment_ids,
+    const int64_t input_outer_dim_size, const int64_t inner_dim_size,
+    const int64_t output_outer_dim_size, const Index* __restrict__ segment_ids,
     const T* __restrict__ input, T* __restrict__ output) {
-  const int64 input_total_size = input_outer_dim_size * inner_dim_size;
-  for (int64 input_index : GpuGridRangeX(input_total_size)) {
-    const int64 input_segment_index = input_index / inner_dim_size;
-    const int64 segment_offset = input_index % inner_dim_size;
+  const int64_t input_total_size = input_outer_dim_size * inner_dim_size;
+  for (int64_t input_index : GpuGridRangeX(input_total_size)) {
+    const int64_t input_segment_index = input_index / inner_dim_size;
+    const int64_t segment_offset = input_index % inner_dim_size;
     const Index output_segment_index = segment_ids[input_segment_index];
     if (output_segment_index < 0 ||
         output_segment_index >= output_outer_dim_size) {
       continue;
     }
-    const int64 output_index =
+    const int64_t output_index =
         output_segment_index * inner_dim_size + segment_offset;
     KernelReductionFunctor()(output + output_index, ldg(input + input_index));
   }
@@ -249,7 +249,7 @@ __global__ void SegmentReduceVectorKernel(
         // Perform indirect lookup if required.
         const Tindex y_idx =
             indices && y_ok ? indices[y_offset + y] : y_offset + y;
-        const int64 input_idx = static_cast<int64>(y_idx) * ninner_vec + x;
+        const int64_t input_idx = static_cast<int64_t>(y_idx) * ninner_vec + x;
         // Load the input row from global mem.
         Treducevec block_result =
             x_ok && y_ok ? input_vec[input_idx] : Tvec(initial_value);
@@ -276,7 +276,7 @@ __global__ void SegmentReduceVectorKernel(
           }
         }
         // Cast from Treducevec to Tvec.
-        const int64 output_idx = static_cast<int64>(seg) * ninner_vec + x;
+        const int64_t output_idx = static_cast<int64_t>(seg) * ninner_vec + x;
         output_vec[output_idx] = static_cast<Tvec>(result);
       }
     }
@@ -453,7 +453,7 @@ Status SegmentReduceGPUImplNoInnerDim(
     // be a vector type and they are not supported as Tensor dtypes.
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
         DT_INT8,
-        TensorShape({static_cast<int64>(nsegments * sizeof(Treducevec))}),
+        TensorShape({static_cast<int64_t>(nsegments * sizeof(Treducevec))}),
         &output_raw));
     output_raw_ptr =
         reinterpret_cast<Treducevec*>(output_raw.flat<int8>().data());
@@ -492,7 +492,7 @@ Status SegmentReduceGPUImpl(
   if (nouter == 0) {
     // Just set output to empty_segment_value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
-    int64 output_size = static_cast<int64>(nsegments) * ninner_vec;
+    int64_t output_size = static_cast<int64_t>(nsegments) * ninner_vec;
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
     return GpuLaunchKernel(SetToValue<Tvec, Tinit>, config.block_count,
                            config.thread_per_block, 0, d.stream(), output_size,
@@ -706,7 +706,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     TF_CHECK_OK(GpuLaunchKernel(
         SetToValue<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), output.size(), output.data(), InitialValueF()()));
-    const int64 data_size = data.size();
+    const int64_t data_size = data.size();
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -715,9 +715,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // *) 'data_size' is the total number of elements to process.
     // *) 'segment_ids.shape' is a prefix of data's shape.
     // *) 'input_outer_dim_size' is the total number of segments to process.
-    const int64 input_outer_dim_size = segment_ids.dimension(0);
-    const int64 input_inner_dim_size = data.dimension(1);
-    const int64 output_outer_dim_size = output.dimension(0);
+    const int64_t input_outer_dim_size = segment_ids.dimension(0);
+    const int64_t input_inner_dim_size = data.dimension(1);
+    const int64_t output_outer_dim_size = output.dimension(0);
     config = GetGpuLaunchConfig(data_size, d);
 
     TF_CHECK_OK(GpuLaunchKernel(
@@ -790,23 +790,31 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
                                   segment_offsets_ptr, weights_ptr));
     }
 
-    // Sort indices and permute segments.
-    Tensor sorted_indices;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<Index>::value,
-                                                   TensorShape({nouter}),
-                                                   &sorted_indices));
-    Index* sorted_indices_ptr = sorted_indices.flat<Index>().data();
-    Tensor sorted_segment;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<SegmentId>::value,
-                                TensorShape({nouter}), &sorted_segment));
-    SegmentId* sorted_segment_ptr = sorted_segment.flat<SegmentId>().data();
-    OP_REQUIRES_OK(context, GpuRadixSort(context, nouter,
-                                         /*keys_in=*/indices_vec.data(),
-                                         /*keys_out=*/sorted_indices_ptr,
-                                         /*indices_in=*/segment_vec.data(),
-                                         /*indices_out=*/sorted_segment_ptr,
-                                         /*num_bits=*/Log2Ceiling64(noutput)));
+    const Index* sorted_indices_ptr = indices_vec.data();
+    const SegmentId* sorted_segment_ptr = segment_vec.data();
+    Tensor tmp_sorted_indices;
+    Tensor tmp_sorted_segment;
+    if (noutput > 1) {
+      // Sort indices and permute segments.
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<Index>::value,
+                                  TensorShape({nouter}), &tmp_sorted_indices));
+      Index* tmp_sorted_indices_ptr = tmp_sorted_indices.flat<Index>().data();
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<SegmentId>::value,
+                                  TensorShape({nouter}), &tmp_sorted_segment));
+      SegmentId* tmp_sorted_segment_ptr =
+          tmp_sorted_segment.flat<SegmentId>().data();
+      OP_REQUIRES_OK(context,
+                     GpuRadixSort(context, nouter,
+                                  /*keys_in=*/indices_vec.data(),
+                                  /*keys_out=*/tmp_sorted_indices_ptr,
+                                  /*indices_in=*/segment_vec.data(),
+                                  /*indices_out=*/tmp_sorted_segment_ptr,
+                                  /*num_bits=*/Log2Ceiling64(noutput)));
+      sorted_indices_ptr = tmp_sorted_indices_ptr;
+      sorted_segment_ptr = tmp_sorted_segment_ptr;
+    }
 
     // Compute the gradient using a weighted SegmentReduceGPU with the segment
     // IDs and indices swapped.

@@ -110,7 +110,7 @@ class ScopedAllocatorInstance : public Allocator {
   bool TracksAllocationSizes() const override { return false; }
   size_t RequestedSize(const void* ptr) const override { return 0; }
   size_t AllocatedSize(const void* ptr) const override { return 0; }
-  int64 AllocationId(const void* ptr) const override { return 0; }
+  int64_t AllocationId(const void* ptr) const override { return 0; }
   size_t AllocatedSizeSlow(const void* ptr) const override { return 0; }
   std::string Name() override;
 

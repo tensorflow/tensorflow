@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -170,7 +172,7 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 }
 
 AbstractTensorInterface* EagerContext::CreateTensor(
-    DataType dtype, absl::Span<const int64> dim_sizes) {
+    DataType dtype, absl::Span<const int64_t> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
 }
 
@@ -330,6 +332,19 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
 void EagerContext::ResetClusterFLR(
     DistributedFunctionLibraryRuntime* cluster_flr) {
   cluster_flr_.Reset(cluster_flr, /*owned=*/true);
+}
+
+void EagerContext::UpdateClusterFLRAndInitDevices(
+    DistributedFunctionLibraryRuntime* cluster_flr) {
+  ResetClusterFLR(cluster_flr);
+
+  const ConfigProto* config = pflr_ ? pflr_->config() : nullptr;
+  ResetPFLR(
+      local_device_manager_.Get(), env_, /*config=*/config,
+      TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      /*optimizer_options=*/
+      config ? config->graph_options().optimizer_options() : OptimizerOptions(),
+      thread_pool_.get(), cluster_flr_.Get());
 }
 
 EagerExecutor& EagerContext::Executor() {
@@ -600,11 +615,42 @@ bool EagerContext::RunEagerOpAsFunction() const {
 }
 
 void EagerContext::ListDevices(
-    std::vector<tensorflow::DeviceAttributes>* devices) {
-  local_device_mgr()->ListDeviceAttributes(devices);
-  if (remote_device_mgr()) {
-    remote_device_mgr()->ListDeviceAttributes(devices);
+    std::vector<tensorflow::DeviceAttributes>* device_attributes) {
+  std::vector<Device*> devices = ListAllTfDevices();
+  device_attributes->reserve(devices.size());
+  for (const auto& dev : devices) {
+    device_attributes->emplace_back(dev->attributes());
   }
+}
+
+std::vector<Device*> EagerContext::ListAllTfDevices() {
+  // Since remote_device_mgr may also contain local devices, make sure no
+  // duplicated device is returned.
+  std::vector<Device*> devices;
+  std::unordered_set<string> dev_names;
+
+  if (local_device_mgr()) {
+    for (const auto& dev : local_device_mgr()->ListDevices()) {
+      devices.emplace_back(dev);
+      dev_names.emplace(dev->attributes().name());
+    }
+  }
+
+  // TODO (b/197281777): Include local devices in remote_device_mgr on the
+  // client-side in single-client deployment.
+  if (remote_device_mgr()) {
+    for (const auto& dev : remote_device_mgr()->ListDevices()) {
+      Device* device = nullptr;
+      if (local_device_mgr()->LookupDevice(dev->name(), &device) !=
+          Status::OK()) {
+        // Include this device from remote_device_mgr only if it does not exist
+        // in local_device_mgr.
+        devices.emplace_back(dev);
+      }
+    }
+  }
+
+  return devices;
 }
 
 Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_CONV_PARAMETERS_H_
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 
@@ -37,16 +38,37 @@ namespace tensorflow {
 // need to create separate ConvParameters objects for them.
 class ConvParameters {
  public:
-  ConvParameters(int64_t batch, int64_t in_depths, absl::Span<const int64_t> in,
-                 int data_format, int64_t out_depths,
-                 absl::Span<const int64_t> filter,
-                 absl::Span<const int64_t> dilation,
-                 absl::Span<const int64_t> stride,
-                 absl::Span<const int64_t> padding, DataType dtype,
-                 int device_id, int group_count = 1,
-                 bool has_side_input = false,
-                 stream_executor::dnn::ActivationMode activation_mode =
-                     stream_executor::dnn::ActivationMode::kNone);
+  struct FusionInfo {
+    // For some implementations (e.g. cuDNN new backend) these scales are part
+    // of the algorithm, not part of the parameters an algorithm take. They need
+    // to be used to distinguish different algorithms.
+    double conv_scale;
+    double side_input_scale;
+    stream_executor::dnn::ActivationMode activation_mode;
+    bool is_contrib;
+  };
+
+  // LINT.IfChange(conv_parameters_version)
+  // A positive number that denotes the version of this class. Should be
+  // incremented everytime this class or ConvParametersProto are updated in a
+  // way that may invalidate autotune results.
+  static constexpr int kVersion = 1;
+  // LINT.ThenChange()
+
+  // We have three kinds of convolutions today.  Vanilla unfused convolutions,
+  // fused convolutions, and fused convolutions as implemented in the `contrib`
+  // directory.  The two fused convolutions ultimately correspond to the same
+  // cudnn calls, but have slightly different semantics (e.g. they interpret
+  // padding differently).
+  ConvParameters(
+      int64_t batch, int64_t in_depths, absl::Span<const int64_t> in,
+      int data_format, int64_t out_depths, absl::Span<const int64_t> filter,
+      absl::Span<const int64_t> dilation, absl::Span<const int64_t> stride,
+      absl::Span<const int64_t> padding, DataType dtype, int device_id,
+      int group_count,
+      absl::optional<FusionInfo> fusion_info = absl::optional<FusionInfo>(),
+      // This argument should be set only for test use.
+      int version = kVersion);
 
   ConvParameters(int device_id, const ConvParametersProto& proto);
 

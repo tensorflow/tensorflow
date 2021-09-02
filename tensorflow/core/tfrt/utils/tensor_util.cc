@@ -61,7 +61,7 @@ llvm::Expected<tensorflow::Tensor> CopyScalarHostTensorToTFTensor(
         tensor.dtype());
   }
 
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<Index, 4> dims;
   tensor.shape().GetDimensions(&dims);
 
   auto tf_dtype = tensorflow::tfd::GetTfDataType(tensor.dtype());
@@ -145,7 +145,7 @@ StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
   // TODO(chky): Handle non-trivial types such as strings.
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFDTypeToTFRTDType(tensor.dtype()));
   auto shape = tensor.shape().dim_sizes();
-  TensorMetadata metadata(dtype, TensorShape(llvm::SmallVector<ssize_t, 4>(
+  TensorMetadata metadata(dtype, TensorShape(llvm::SmallVector<Index, 4>(
                                      shape.begin(), shape.end())));
 
   if (dtype == DType::String) {
@@ -175,7 +175,7 @@ StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle) {
   const auto& metadata = tensor_handle.GetAvailableMetadata();
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFRTDTypeToTFDType(metadata.dtype));
-  llvm::SmallVector<ssize_t, 4> shape;
+  llvm::SmallVector<Index, 4> shape;
   metadata.shape.GetDimensions(&shape);
   const auto& host_tensor = tensor_handle.GetAsyncTensor()->get<HostTensor>();
 

@@ -59,6 +59,10 @@ PyObject* RegisterCustomOpdefs(PyObject* list);
 // Returns the collected TFLite conversion errors.
 const std::vector<std::string> RetrieveCollectedErrors();
 
+// Returns MLIR string dump of the given Flatbuffer model.
+std::string FlatBufferFileToMlir(const std::string& model,
+                                 bool input_is_filepath);
+
 // All the exported functions should be listed in
 // tensorflow/tools/def_file_filter/symbols_pybind.txt for the Windows build.
 }  // namespace toco

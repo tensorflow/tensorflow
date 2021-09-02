@@ -988,7 +988,7 @@ class TrtGraphConverterV2(object):
 
     Args:
       input_saved_model_dir: the directory to load the SavedModel which contains
-        the input graph to transforms. Used only when input_graph_def is None.
+        the input graph to transforms. Required.
       input_saved_model_tags: list of tags to load the SavedModel.
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.

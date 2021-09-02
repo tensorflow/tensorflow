@@ -31,8 +31,12 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
+from google.protobuf import wrappers_pb2
+
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -49,6 +53,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
@@ -64,6 +69,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
@@ -504,8 +510,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported.f(input2)
 
     self.assertEqual(31, imported.f(input1).numpy())
@@ -633,8 +639,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call.*"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call.*"):
       imported.f(x, learning_rate=0.5, epochs=4)
 
     self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
@@ -1013,8 +1019,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([2, 4, 6, 8],
                         concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported.f.get_concrete_function(
           tensor_spec.TensorSpec([None], dtypes.int32))
     imported.f.get_concrete_function(
@@ -1507,7 +1513,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
     self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
 
-    with self.assertRaisesRegex(ValueError, "Could not find matching function"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching concrete function"):
       root.f(["hello", 1.0])
 
   def test_prefer_specific_trace(self, cycles):
@@ -1728,8 +1735,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(4.0, imported({"a": 3.0}).numpy())
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported({"a": 2.0, "b": 3.0})
 
   def test_shapes_available(self, cycles):
@@ -1789,6 +1796,49 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      root.v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
+
+  def test_captured_dataset_with_asset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self, temp_dir, file_name):
+        super(HasDataset, self).__init__()
+        file = os.path.join(temp_dir, file_name)
+        with tf_record.TFRecordWriter(file, "GZIP") as f:
+          for v in ["a", "aa", "aaa"]:
+            f.write(str(v))
+        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int32)
+        for element in self.dataset:
+          current_sum += x * string_ops.string_length(element)
+        return current_sum
+
+    temp_dir = self.get_temp_dir()
+    file_name = "tf_record_asset.tfrecord.gz"
+    root = HasDataset(temp_dir, file_name)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(os.path.join(temp_dir, file_name))
+    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
+    if compat.forward_compatible(2021, 9, 20):
+      self.assertTrue(file_io.file_exists(asset_path))
+      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+      file_io.rename(save_dir, load_dir)
+
+      # TODO(b/188455028): Remove assertRaises block and check that invoking
+      # loaded SavedModel behaves as expected.
+      with self.assertRaises(ValueError) as error:
+        _ = load.load(load_dir)
+      self.assertEqual("Signature specifies 1 arguments, got: 0.",
+                       str(error.exception))
 
   def test_captured_dataset(self, cycles):
 
@@ -2080,6 +2130,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_load_registered(self, cycles):
+
+    @registration.register_serializable(name=f"Module{cycles}")
+    class Module(tracking.AutoTrackable):
+
+      def __init__(self, name="module"):
+        self.v = variables.Variable(1.)
+        self.name = name
+
+      def _serialize_to_proto(self, **unused_kwargs):
+        return wrappers_pb2.StringValue(value=self.name)
+
+      @classmethod
+      def _deserialize_from_proto(cls, proto, **unused_kwargs):
+        if proto.Is(wrappers_pb2.StringValue.DESCRIPTOR):
+          unpacked = wrappers_pb2.StringValue()
+          proto.Unpack(unpacked)
+          return cls(name=unpacked.value)
+        raise AssertionError(
+            "Did not receive proto of correct type during deserialization. "
+            f"Expected type {wrappers_pb2.StringValue.DESCRIPTOR.full_name}, "
+            f"got {proto.TypeName()}")
+
+    m = Module("a")
+    m.v.assign(5)
+    loaded = cycle(m, cycles)
+    self.assertIsInstance(loaded, Module)
+    self.assertEqual(5, loaded.v.numpy())
+    self.assertEqual("a", loaded.name)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2147,7 +2227,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     root.a = variables.Variable(3.)
     with self.assertRaisesRegex(
-        ValueError, "object has an attribute named a, which is reserved."):
+        ValueError, "object has an attribute named 'a', which is reserved."):
       save.save(root, path)
 
   def test_save_cached_variable(self):

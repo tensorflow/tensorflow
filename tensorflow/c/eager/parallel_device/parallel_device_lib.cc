@@ -428,7 +428,7 @@ ParallelDevice::Join(
     if (expected_output_shapes[i].IsFullyDefined()) {
       per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
           *this, std::move(components),
-          absl::Span<const int64>(expected_output_shapes[i].dim_sizes()),
+          absl::Span<const int64_t>(expected_output_shapes[i].dim_sizes()),
           status));
     } else {
       per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
@@ -466,12 +466,21 @@ std::vector<std::string> ParallelDevice::SummarizeDeviceNames() const {
 
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
-    std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+    std::vector<TensorHandlePtr> components, absl::Span<const int64_t> shape,
     TF_Status* status) {
+  TFE_TensorHandleGetStatus(components[0].get(), status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   // Verify that the TensorHandle's shape and dtype match all of the component
   // shapes and dtypes.
   for (TensorHandlePtr& component : components) {
+    TFE_TensorHandleGetStatus(component.get(), status);
+    if (!status->status.ok()) {
+      return nullptr;
+    }
     if (TFE_TensorHandleDataType(component.get()) != dtype) {
       TF_SetStatus(status, TF_INTERNAL,
                    "Components of a ParallelTensor must all have "
@@ -486,10 +495,19 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
     std::vector<TensorHandlePtr> components, TF_Status* status) {
+  TFE_TensorHandleGetStatus(components[0].get(), status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   // Verify that the combined TensorHandle's dtype matches all of the component
   // dtypes.
   for (TensorHandlePtr& component : components) {
+    TFE_TensorHandleGetStatus(component.get(), status);
+    if (!status->status.ok()) {
+      return nullptr;
+    }
     if (TFE_TensorHandleDataType(component.get()) != dtype) {
       TF_SetStatus(status, TF_INTERNAL,
                    "Components of a ParallelTensor must all have "

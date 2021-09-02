@@ -85,8 +85,10 @@ struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
   LowerStaticTensorListPass() = default;
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
-  explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through) {
+  explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through,
+                                     bool default_to_single_batch) {
     this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
+    this->default_to_single_batch = default_to_single_batch;
   }
 
   StringRef getArgument() const final {
@@ -107,6 +109,14 @@ struct LowerStaticTensorListPass
           "When specified to true, if the tensorlist ops can't be properly "
           "legalized by this pass, then the IR won't be changed so that "
           "tensorlist ops can pass through (default false)"),
+      llvm::cl::init(false)};
+
+  Option<bool> default_to_single_batch{
+      *this, "default-to-single-batch",
+      llvm::cl::desc(
+          "When specified to true, if the tensorlist ops has unspecified batch "
+          "size, this pass will assume that the batch size is one to proceed "
+          "tensorlist op lowering (default true)"),
       llvm::cl::init(false)};
 };
 
@@ -225,9 +235,11 @@ template <typename OpT>
 class TensorListOpConverterBase : public OpConversionPattern<OpT> {
  public:
   explicit TensorListOpConverterBase<OpT>(MLIRContext *context,
-                                          bool allow_tensorlist_pass_through)
+                                          bool allow_tensorlist_pass_through,
+                                          bool default_to_single_batch)
       : OpConversionPattern<OpT>::OpConversionPattern(context),
-        allow_tensorlist_pass_through_(allow_tensorlist_pass_through) {}
+        allow_tensorlist_pass_through_(allow_tensorlist_pass_through),
+        default_to_single_batch_(default_to_single_batch) {}
 
  protected:
   // This flag will control the behavior of error emitting during rewrite:
@@ -235,6 +247,11 @@ class TensorListOpConverterBase : public OpConversionPattern<OpT> {
   // tracing mode. 2) If it's false, then patterns will emit standard errors
   // when there is a rewrite failure.
   bool allow_tensorlist_pass_through_;
+
+  // This flag will control the behavior of setting the batch size one when the
+  // given batch size is None in order to force to proceed the tensor list op
+  // lowerings.
+  bool default_to_single_batch_;
 };
 
 // Converts tf.Const containing variant of type TensorList to a tensor of
@@ -385,6 +402,7 @@ template <typename OpT>
 struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
   using TensorListOpConverterBase<OpT>::TensorListOpConverterBase;
   using TensorListOpConverterBase<OpT>::allow_tensorlist_pass_through_;
+  using TensorListOpConverterBase<OpT>::default_to_single_batch_;
 
   // Create and return a 1-d tensor with exactly one element equal to the number
   // of list elements to initialize the output tensor list with.
@@ -497,6 +515,14 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
       for (auto it = int_values.begin(); it != int_values.end(); ++it) {
         auto dim_value = (*it).getSExtValue();
         if (it == int_values.begin() && dim_value == -1) {
+          if (!default_to_single_batch_) {
+            const char *error_info =
+                "requires element_shape to be static during TF Lite "
+                "transformation pass";
+            return allow_tensorlist_pass_through_
+                       ? rewriter.notifyMatchFailure(op, error_info)
+                       : op.emitOpError(error_info);
+          }
           dim_value = 1;
         }
         new_element_shape_values.push_back(dim_value);
@@ -555,8 +581,10 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
 struct ConvertTensorListReserve
     : public ConvertTensorListInitOp<TF::TensorListReserveOp> {
   explicit ConvertTensorListReserve(MLIRContext *context,
-                                    bool allow_tensorlist_pass_through)
-      : ConvertTensorListInitOp(context, allow_tensorlist_pass_through) {}
+                                    bool allow_tensorlist_pass_through,
+                                    bool default_to_single_batch)
+      : ConvertTensorListInitOp(context, allow_tensorlist_pass_through,
+                                default_to_single_batch) {}
 
   Value GetNumElements(TF::TensorListReserveOp op, ArrayRef<Value> operands,
                        PatternRewriter *rewriter) const override {
@@ -585,8 +613,10 @@ struct ConvertTensorListReserve
 struct ConvertEmptyTensorList
     : public ConvertTensorListInitOp<TF::EmptyTensorListOp> {
   explicit ConvertEmptyTensorList(MLIRContext *context,
-                                  bool allow_tensorlist_pass_through)
-      : ConvertTensorListInitOp(context, allow_tensorlist_pass_through) {}
+                                  bool allow_tensorlist_pass_through,
+                                  bool default_to_single_batch)
+      : ConvertTensorListInitOp(context, allow_tensorlist_pass_through,
+                                default_to_single_batch) {}
 
   Value GetNumElements(TF::EmptyTensorListOp op, ArrayRef<Value> operands,
                        PatternRewriter *rewriter) const override {
@@ -635,9 +665,6 @@ struct ConvertTensorListPushBack
 // returned. 2) If the requested size is larger than the input tensorlist's
 // size. We need to create an additional tensorlist with 'size - input_size'
 // elements, and append it to the end of the input tensorlist.
-// TODO(haoliang): We could simplify this transformation by rewriting to pure
-// tensorlist ops and a few non-tensorlist ops (such as `SliceOp`). By operating
-// only on variant types, we could save some ops involved in rewriting this op.
 struct ConvertTensorListResize
     : public OpConversionPattern<TF::TensorListResizeOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -710,8 +737,10 @@ struct ConvertTensorListResize
         op, result_type, if_cond,
         /*input=*/
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
-        /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
-        /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
+        /*then_branch=*/
+        mlir::SymbolRefAttr::get(then_branch_op),
+        /*else_branch=*/
+        mlir::SymbolRefAttr::get(else_branch_op),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }
@@ -869,7 +898,6 @@ struct ConvertTensorListStack
 // we concatenate all those tensors along the first dimension.
 // The pattern will be rejected if either `element_shape` is not constant, or
 // the first dimension of `input` is not known.
-// TODO(b/184168136): Consider rewrite in tablegen.
 struct ConvertTensorListConcatV2
     : public TensorListOpConverterBase<TF::TensorListConcatV2Op> {
   using TensorListOpConverterBase<
@@ -1416,9 +1444,9 @@ void LowerStaticTensorListPass::runOnOperation() {
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
                   ConvertIf>(context);
-  patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve,
-                  ConvertTensorListConcatV2>(context,
-                                             allow_tensorlist_pass_through);
+  patterns.insert<ConvertEmptyTensorList, ConvertTensorListConcatV2,
+                  ConvertTensorListReserve>(
+      context, allow_tensorlist_pass_through, default_to_single_batch);
   ModuleOp module = getOperation();
   if (!allow_tensorlist_pass_through) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
@@ -1448,9 +1476,9 @@ void LowerStaticTensorListPass::runOnOperation() {
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
 std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
-    bool allow_tensorlist_pass_through) {
+    bool allow_tensorlist_pass_through, bool default_to_single_batch) {
   return std::make_unique<LowerStaticTensorListPass>(
-      allow_tensorlist_pass_through);
+      allow_tensorlist_pass_through, default_to_single_batch);
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass;

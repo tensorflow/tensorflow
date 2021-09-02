@@ -57,9 +57,9 @@ StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
   CHECK_GE(ndim, 2);
   int64_t n = a_shape.dimensions(ndim - 1);
 
-  std::vector<int64> batch_dims(a_shape.dimensions().begin(),
-                                a_shape.dimensions().end() - 2);
-  std::vector<int64> batch_dim_ids(batch_dims.size());
+  std::vector<int64_t> batch_dims(a_shape.dimensions().begin(),
+                                  a_shape.dimensions().end() - 2);
+  std::vector<int64_t> batch_dim_ids(batch_dims.size());
   absl::c_iota(batch_dim_ids, 0);
 
   // Find the workspace size.

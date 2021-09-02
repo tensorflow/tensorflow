@@ -422,10 +422,10 @@ class CompiledFunction {
   ~CompiledFunction();
 
   // pybind11::object typed subclass for CompiledFunction objects.
-  class pyobject : public pybind11::object {
+  class pyobject : public py::object {
    public:
     PYBIND11_OBJECT(pyobject,  // NOLINT
-                    pybind11::object, CompiledFunction::IsCompiledFunction);
+                    py::object, CompiledFunction::IsCompiledFunction);
     pyobject() = default;
     CompiledFunction* func() const {
       return CompiledFunction::AsCompiledFunctionUnchecked(*this);
@@ -436,9 +436,9 @@ class CompiledFunction {
   using object = pyobject;
 
   // Returns true if `h` is a CompiledFunction.
-  static bool IsCompiledFunction(pybind11::handle handle);
+  static bool IsCompiledFunction(py::handle handle);
   // Converts `handle` to a CompiledFunction*. Does not do any checking.
-  static CompiledFunction* AsCompiledFunctionUnchecked(pybind11::handle handle);
+  static CompiledFunction* AsCompiledFunctionUnchecked(py::handle handle);
 
   // This function will:
   // (a) flatten the inputs using pytree
@@ -744,7 +744,14 @@ void CompiledFunction::PopulateCacheEntry(
 
 void CompiledFunction::TryToPopulateDefaultDevice() {
   // The following line calls Python and may release the GIL.
-  py::object device_and_is_committed = get_device_();
+  py::object device_and_is_committed;
+  try {
+    device_and_is_committed = get_device_();
+  } catch (py::error_already_set& e) {
+    // Backend or device initialization failed. Handle this in Python.
+    always_fallback_to_python_ = true;
+    return;
+  }
   // If the GIL was released by the call to get_device_, another thread may
   // have filled in default_device_.
   if (!default_device_) {
@@ -837,7 +844,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
-        out_and_fastpath_data = out_and_fastpath_data =
+        out_and_fastpath_data =
             cache_miss_(*py::reinterpret_borrow<py::args>(args),
                         **kwargs.value_or(py::kwargs()));
         out_tuple = py::cast<py::tuple>(out_and_fastpath_data);

@@ -203,7 +203,7 @@ namespace functor {
 extern template struct DiagFunctor<GPUDevice, double>;
 extern template struct DiagFunctor<GPUDevice, float>;
 extern template struct DiagFunctor<GPUDevice, int32>;
-extern template struct DiagFunctor<GPUDevice, int64>;
+extern template struct DiagFunctor<GPUDevice, int64_t>;
 extern template struct DiagFunctor<GPUDevice, complex64>;
 extern template struct DiagFunctor<GPUDevice, complex128>;
 }  // namespace functor
@@ -226,7 +226,7 @@ namespace functor {
 extern template struct DiagPartFunctor<GPUDevice, double>;
 extern template struct DiagPartFunctor<GPUDevice, float>;
 extern template struct DiagPartFunctor<GPUDevice, int32>;
-extern template struct DiagPartFunctor<GPUDevice, int64>;
+extern template struct DiagPartFunctor<GPUDevice, int64_t>;
 extern template struct DiagPartFunctor<GPUDevice, complex64>;
 extern template struct DiagPartFunctor<GPUDevice, complex128>;
 extern template struct DiagPartFunctor<GPUDevice, Eigen::half>;

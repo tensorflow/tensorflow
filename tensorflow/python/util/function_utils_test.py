@@ -235,7 +235,7 @@ class HasKwargsTest(test.TestCase):
 
   def test_raises_type_error(self):
     with self.assertRaisesRegex(TypeError,
-                                'fn should be a function-like object'):
+                                'should be a callable'):
       function_utils.has_kwargs('not a function')
 
 

@@ -120,7 +120,7 @@ XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_address_bits(64);
 
   builder.set_name("Interpreter");
-  builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
+  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
   builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
   return builder.Build();

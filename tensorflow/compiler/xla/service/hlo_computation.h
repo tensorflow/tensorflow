@@ -196,12 +196,12 @@ class HloComputation {
   HloInstruction* root_instruction() const { return root_instruction_; }
 
   // Returns the number of parameters for this computation.
-  int64 num_parameters() const { return param_instructions_.size(); }
+  int64_t num_parameters() const { return param_instructions_.size(); }
 
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64_t param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
+    CHECK_LT(param_no, static_cast<int64_t>(param_instructions_.size()))
         << "Computation " << name() << " has no parameter number " << param_no;
     return param_instructions_[param_no];
   }
@@ -239,7 +239,7 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true);
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
@@ -269,7 +269,7 @@ class HloComputation {
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
 
-  int64 instruction_count() const { return instruction_iterators_.size(); }
+  int64_t instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -452,7 +452,7 @@ class HloComputation {
   // dependency purposes. Send and RecvDone are in the group, and AllReduces
   // with the same channel id are in the group.
   using ChannelDependencyGroup =
-      absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
+      absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>;
   ChannelDependencyGroup ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
@@ -508,7 +508,7 @@ class HloComputation {
   // null if there is no such computation.
   HloInstruction* GetInstructionWithName(absl::string_view name);
 
-  int64 unique_id() const { return unique_id_; }
+  int64_t unique_id() const { return unique_id_; }
 
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
@@ -563,7 +563,7 @@ class HloComputation {
                                bool ignore_safety_check);
 
   string name_;
-  int64 unique_id_;
+  int64_t unique_id_;
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the

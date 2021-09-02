@@ -437,7 +437,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     def test_apply():
       mid_level_api.apply_gradients((1, 2, 3))
 
-    with self.assertRaisesRegex(ValueError, 'Expected Tensor.'):
+    with self.assertRaisesRegex(ValueError, 'found non-tensor type'):
       strategy.run(test_apply)
 
   def test_pass_different_structure_to_apply_gradients(self):

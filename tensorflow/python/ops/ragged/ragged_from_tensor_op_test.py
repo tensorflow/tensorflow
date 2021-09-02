@@ -569,8 +569,10 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
       {
           'tensor': [[1]],
           'lengths': [0],
-          'padding': 0,
-          'error': (ValueError, 'Specify lengths or padding, but not both')
+          'padding':
+              0,
+          'error': (ValueError,
+                    'Specify argument `lengths` or `padding`, but not both.')
       },
       {
           'tensor': [[1]],
@@ -599,26 +601,38 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
       },
       {
           'tensor': [[1]],
-          'ragged_rank': 'bad',
-          'error': (TypeError, r'ragged_rank expected int, got \'bad\'')
+          'ragged_rank':
+              'bad',
+          'error': (TypeError,
+                    r'Argument `ragged_rank` must be an int. Received bad.')
       },
       {
           'tensor': [[1]],
-          'ragged_rank': 0,
-          'error': (ValueError, r'ragged_rank must be greater than 0; got 0')
+          'ragged_rank':
+              0,
+          'error':
+              (ValueError,
+               r'Argument `ragged_rank` must be greater than 0. Received 0.')
       },
       {
           'tensor': [[1]],
-          'ragged_rank': -1,
-          'error': (ValueError, r'ragged_rank must be greater than 0; got -1')
+          'ragged_rank':
+              -1,
+          'error':
+              (ValueError,
+               r'Argument `ragged_rank` must be greater than 0. Received -1.')
       },
       {
           'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
                      [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
           'lengths': ([2, 2], [2, 2, 2, 2]),
-          'ragged_rank': 3,
-          'error': (ValueError, r'If lengths is a tuple of row_lengths, then '
-                    r'ragged_rank must be len\(lengths\).')
+          'ragged_rank':
+              3,
+          'error':
+              (ValueError,
+               r'If Argument `lengths` is a tuple of row_lengths, argument '
+               r'`ragged_rank` must be len\(lengths\): 2. Received '
+               r'ragged_rank: 3.')
       },
   )
   def testErrors(self,

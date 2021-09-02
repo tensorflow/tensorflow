@@ -35,11 +35,11 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-void TestMul(const std::vector<int64>& x_shape,
+void TestMul(const std::vector<int64_t>& x_shape,
              const std::vector<float>& x_values, float x_min_value,
-             float x_max_value, const std::vector<int64>& y_shape,
+             float x_max_value, const std::vector<int64_t>& y_shape,
              const std::vector<float>& y_values, float y_min_value,
-             float y_max_value, const std::vector<int64>& expected_shape,
+             float y_max_value, const std::vector<int64_t>& expected_shape,
              const std::vector<float>& expected_values, double tolerance) {
   Scope root = Scope::NewRootScope();
 
@@ -84,8 +84,8 @@ void TestMul(const std::vector<int64>& x_shape,
   test::ExpectTensorNear<float>(expected_z_float, z_float, tolerance);
 }
 
-void TestMulShape(const std::vector<int64>& x_shape,
-                  const std::vector<int64>& y_shape) {
+void TestMulShape(const std::vector<int64_t>& x_shape,
+                  const std::vector<int64_t>& y_shape) {
   const size_t x_num_elements = TensorShape(x_shape).num_elements();
   std::vector<float> x_values(x_num_elements);
   for (int i = 0; i < x_num_elements; ++i) {
@@ -126,7 +126,7 @@ void TestMulShape(const std::vector<int64>& x_shape,
   std::vector<float> expected_values(
       expected_values_data,
       expected_values_data + expected_values_tensor.NumElements());
-  std::vector<int64> expected_shape;
+  std::vector<int64_t> expected_shape;
   for (const int64_t dim : expected_values_tensor.shape().dim_sizes()) {
     expected_shape.push_back(dim);
   }
@@ -134,8 +134,8 @@ void TestMulShape(const std::vector<int64>& x_shape,
           y_min_value, y_max_value, expected_shape, expected_values, 256.0);
 }
 
-void TimeMul(const std::vector<int64>& x_shape,
-             const std::vector<int64>& y_shape, int64_t iterations) {
+void TimeMul(const std::vector<int64_t>& x_shape,
+             const std::vector<int64_t>& y_shape, int64_t iterations) {
   TestMulShape(x_shape, y_shape);
 
   Scope root = Scope::NewRootScope();

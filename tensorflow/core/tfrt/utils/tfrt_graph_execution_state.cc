@@ -440,7 +440,7 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
     *updated_graph_def.add_node() = std::move(node);
   }
 
-  graph_def.mutable_node()->UnsafeArenaSwap(updated_graph_def.mutable_node());
+  graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
   return Status::OK();
 }
 

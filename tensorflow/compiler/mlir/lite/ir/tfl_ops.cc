@@ -872,6 +872,23 @@ bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
 }
 
 //===----------------------------------------------------------------------===//
+// Gather op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(GatherOp op) {
+  ShapedType params_type = op.params().getType().cast<ShapedType>();
+  // TFLite gather kernel supports 1D string input only.
+  if (params_type.getElementType().isa<mlir::TF::StringType>()) {
+    if (params_type.hasRank() && params_type.getRank() != 1) {
+      return op.emitOpError(
+                 "expect 1d input when the given type is string, got ")
+             << params_type;
+    }
+  }
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
@@ -2977,6 +2994,21 @@ LogicalResult Verify(StridedSliceOp op) {
   // If input is unranked, there is nothing else to be verified.
   if (!ranked_input_type) return success();
   int num_input_dims = ranked_input_type.getRank();
+
+  if (auto begin_type = op.begin().getType().dyn_cast<RankedTensorType>()) {
+    if (begin_type.getRank() != 1) return failure();
+    if (begin_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto end_type = op.end().getType().dyn_cast<RankedTensorType>()) {
+    if (end_type.getRank() != 1) return failure();
+    if (end_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto strides_type = op.strides().getType().dyn_cast<RankedTensorType>()) {
+    if (strides_type.getRank() != 1) return failure();
+    if (strides_type.getDimSize(0) > num_input_dims) return failure();
+  }
 
   // The kernel will reshape the input tensor with new axis, it only supports
   // this reshaped tensor up to 5D.

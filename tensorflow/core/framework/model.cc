@@ -1598,9 +1598,10 @@ Model::Model()
 }
 
 Model::~Model() {
-  // Before the model is destroyed, we record its final state in the gauge.
-  auto result = DebugString();
-  model_gauge_cell_->Set([result]() { return result; });
+  // Before the model is destroyed, we record an empty string in the gauge to
+  // prevent race condition where the gauge callback is called after the Model
+  // is destroyed.
+  model_gauge_cell_->Set([]() { return std::string(); });
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,

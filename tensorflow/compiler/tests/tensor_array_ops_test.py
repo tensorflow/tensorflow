@@ -1033,7 +1033,7 @@ class TensorArrayTest(xla_test.XLATestCase):
             dtype=tf_dtype, tensor_array_name="foo", size=10)
 
         indices = constant_op.constant([1, 8])
-        value = constant_op.constant(convert([[1.0, -1.0], [10.0, -10.0]]))
+        value = constant_op.constant(convert([[1.0, 5.0], [10.0, 20.0]]))
 
         w = ta.scatter(indices, value)
         r0 = w.read(id0)
@@ -1043,15 +1043,14 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       # Test aggregation of read
       read_vals = session.run(xla.compile(fn), feed_dict={id0: 1, id1: 8})
-      self.assertAllEqual(convert([1.0, -1.0]), read_vals[0])
-      self.assertAllEqual(convert([10.0, -10.0]), read_vals[1])
+      self.assertAllEqual(convert([1.0, 5.0]), read_vals[0])
+      self.assertAllEqual(convert([10.0, 20.0]), read_vals[1])
 
-  # Disable temporarily due to b/195023333
-  # @test_util.disable_control_flow_v2("b/122315734 (scatter)")
-  # def testTensorArrayScatterRead(self):
-  #   for dtype in self.numeric_tf_types:
-  #     self._testTensorArrayScatterRead(dtype)
-  #   self._testTensorArrayScatterRead(dtypes.bool)
+  @test_util.disable_control_flow_v2("b/122315734 (scatter)")
+  def testTensorArrayScatterRead(self):
+    for dtype in self.numeric_tf_types:
+      self._testTensorArrayScatterRead(dtype)
+    self._testTensorArrayScatterRead(dtypes.bool)
 
   @test_util.disable_control_flow_v2("b/122315734 (scatter)")
   def testTensorArrayScatterReadAndGradients(self):

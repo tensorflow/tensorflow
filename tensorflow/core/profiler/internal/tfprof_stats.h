@@ -63,7 +63,7 @@ class TFStats {
   const std::map<string, std::unique_ptr<TFGraphNode>>& nodes() const {
     return nodes_map_;
   }
-  const std::set<int64>& steps() const { return steps_; }
+  const std::set<int64_t>& steps() const { return steps_; }
   bool has_code_traces() const { return has_code_traces_; }
   double run_coverage() const {
     return covered_nodes_.size() / (nodes_map_.size() + 1e-10);
@@ -101,7 +101,7 @@ class TFStats {
   bool Validate(const Options& opts) const;
   string MaybeReportMissingTrace() const;
 
-  std::set<int64> steps_;
+  std::set<int64_t> steps_;
   bool has_code_traces_;
   bool miss_accelerator_stream_;
   std::unique_ptr<TFScope> scope_view_;
@@ -116,9 +116,9 @@ class TFStats {
   GraphNodeProto empty_graph_node_;
   MultiGraphNodeProto empty_multi_graph_node_;
 
-  std::map<int64, string> id_to_string_;
+  std::map<int64_t, string> id_to_string_;
   // Graph nodes covered by RunMetadata, that is traced with run time stats.
-  std::set<int64> covered_nodes_;
+  std::set<int64_t> covered_nodes_;
 };
 
 }  // namespace tfprof

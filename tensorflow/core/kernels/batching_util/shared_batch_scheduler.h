@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/clock.h"
+#include "absl/types/variant.h"
+#include "absl/utility/utility.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -109,6 +111,11 @@ template <typename TaskType>
 class SharedBatchScheduler
     : public std::enable_shared_from_this<SharedBatchScheduler<TaskType>> {
  public:
+  using BatchTaskHandleUniquePtr =
+      std::unique_ptr<Batch<internal::BatchInputTaskHandle<TaskType>>>;
+  using BatchTaskUniqueptr = std::unique_ptr<Batch<TaskType>>;
+  using BatchUniquePtr =
+      absl::variant<BatchTaskUniqueptr, BatchTaskHandleUniquePtr>;
   // TODO(b/25089730): Tune defaults based on best practices as they develop.
   struct Options {
     // The name to use for the pool of batch threads.
@@ -156,13 +163,16 @@ class SharedBatchScheduler
     //
     // The goal is to smooth out batch sizes under low request rates, and thus
     // avoid latency spikes.
-    int64 batch_timeout_micros = 0;
+    int64_t batch_timeout_micros = 0;
 
     // The maximum allowable number of enqueued (accepted by Schedule() but
     // not yet being processed on a batch thread) tasks in terms of batches.
     // If this limit is reached, Schedule() will return an UNAVAILABLE error.
     // See the class documentation above for guidelines on how to tune this
     // parameter.
+    //
+    // Must be positive, or else invalid argument error will be returned at
+    // queue creation time.
     size_t max_enqueued_batches = 10;
 
     // If true, queue implementation would split one input batch task into
@@ -217,9 +227,8 @@ class SharedBatchScheduler
  private:
   explicit SharedBatchScheduler(const Options& options);
 
-  void GetNextWorkItem_Locked(
-      internal::Queue<TaskType>** queue_for_batch_out,
-      std::unique_ptr<Batch<TaskType>>* batch_to_process_out)
+  void GetNextWorkItem_Locked(internal::Queue<TaskType>** queue_for_batch_out,
+                              BatchUniquePtr* batch_to_process_out)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The code executed in 'batch_threads_'. Obtains a batch to process from the
@@ -227,6 +236,15 @@ class SharedBatchScheduler
   // queue declines to provide a batch to process, moves onto the next queue. If
   // no queues provide a batch to process, just sleeps briefly and exits.
   void ThreadLogic();
+
+  // Called by `AddQueue`.
+  Status AddQueueAfterRewritingOptions(
+      const QueueOptions& options,
+      std::function<void(std::unique_ptr<Batch<TaskType>>)>
+          process_batch_callback,
+      std::unique_ptr<BatchScheduler<TaskType>>* queue);
+
+  static bool BatchExists(const BatchUniquePtr& batch_to_process);
 
   const Options options_;
 
@@ -300,12 +318,9 @@ class Queue {
   // BatchScheduler::Schedule().
   Status Schedule(std::unique_ptr<TaskType>* task);
 
-  // Enqueue task as it is.
-  Status ScheduleWithoutSplit(std::unique_ptr<TaskType>* task);
-
-  // Enqueue `task`, and split it inline (eagerly) to form batches to be
+  // Enqueue `task` as it is OR split it inline (eagerly) to form batches to be
   // processed by `Queue<TaskType>::ProcessBatch`
-  Status ScheduleWithEagerSplit(std::unique_ptr<TaskType>* task);
+  Status ScheduleWithoutOrEagerSplit(std::unique_ptr<TaskType>* task);
 
   // Enqueue `task` along with the batch queue metadata.
   // Batches are formed by the time `ScheduleWithLazySplit` returns; and each
@@ -333,7 +348,7 @@ class Queue {
   // this queue. Either returns a batch that is ready to be processed, or
   // nullptr if the queue declines to schedule a batch at this time. If it
   // returns a batch, the batch is guaranteed to be closed.
-  std::unique_ptr<Batch<TaskType>> ScheduleBatch();
+  typename SharedBatchScheduler<TaskType>::BatchUniquePtr ScheduleBatch();
 
   // A variant of `ScheduleBatch`.
   // Batches are guaranteed to form at task enqueue time.
@@ -393,6 +408,12 @@ class Queue {
   // Same as SchedulingCapacity(), but assumes the caller already holds a
   // lock on 'mu_'.
   size_t SchedulingCapacityInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Returns true if queue doesn't have capacity for this task.
+  //
+  // `task` must outlive this method.
+  bool BatchTaskExceedQueueCapacity(TaskType* task) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The task size of the last batch in the queue.
   size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -531,6 +552,27 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
     std::function<void(std::unique_ptr<Batch<TaskType>>)>
         process_batch_callback,
     std::unique_ptr<BatchScheduler<TaskType>>* queue) {
+  QueueOptions rewrite_options = options;
+  if ((!rewrite_options.enable_large_batch_splitting) &&
+      rewrite_options.max_enqueued_batches == 0) {
+    // Many existing models (with very low QPS) rely on this option to be >0.
+    // Rewrite and set this to one and retain old behavior to allow such models
+    // to continue to work.
+    //
+    // Note, technically an invalid-argument error should be returned, but
+    // that may break such models.
+    rewrite_options.max_enqueued_batches = 1;
+  }
+  return AddQueueAfterRewritingOptions(rewrite_options, process_batch_callback,
+                                       queue);
+}
+
+template <typename TaskType>
+Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
+    const QueueOptions& options,
+    std::function<void(std::unique_ptr<Batch<TaskType>>)>
+        process_batch_callback,
+    std::unique_ptr<BatchScheduler<TaskType>>* queue) {
   if (options.input_batch_size_limit == 0) {
     return errors::InvalidArgument(
         "input_batch_size_limit must be positive; was ",
@@ -541,9 +583,9 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
         "batch_timeout_micros must be non-negative; was ",
         options.batch_timeout_micros);
   }
-  if (options.max_enqueued_batches < 0) {
+  if (options.max_enqueued_batches == 0) {
     return errors::InvalidArgument(
-        "max_enqueued_batches must be non-negative; was ",
+        "max_enqueued_batches must be positive; was ",
         options.max_enqueued_batches);
   }
 
@@ -609,14 +651,23 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
 }
 
 template <typename TaskType>
+bool SharedBatchScheduler<TaskType>::BatchExists(
+    const BatchUniquePtr& batch_to_process) {
+  if (absl::holds_alternative<BatchTaskUniqueptr>(batch_to_process)) {
+    return absl::get<BatchTaskUniqueptr>(batch_to_process) == nullptr;
+  }
+  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) == nullptr;
+}
+
+template <typename TaskType>
 void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
     internal::Queue<TaskType>** queue_for_batch_out,
-    std::unique_ptr<Batch<TaskType>>* batch_to_process_out) {
-  std::unique_ptr<Batch<TaskType>> batch_to_process;
+    BatchUniquePtr* batch_to_process_out) {
+  BatchUniquePtr batch_to_process;
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   const int num_queues = queues_.size();
   for (int num_queues_tried = 0;
-       batch_to_process == nullptr && num_queues_tried < num_queues;
+       (BatchExists(batch_to_process)) && num_queues_tried < num_queues;
        ++num_queues_tried) {
     DCHECK(next_queue_to_schedule_ != queues_.end());
 
@@ -628,13 +679,14 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
 
     // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
     batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
-    if (batch_to_process != nullptr) {
+
+    if (!BatchExists(batch_to_process)) {
       queue_for_batch = next_queue_to_schedule_->get();
     }
 
     // Advance 'next_queue_to_schedule_'.
     if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
-        batch_to_process == nullptr) {
+        (BatchExists(batch_to_process))) {
       // We've encountered a closed queue with no work to do. Drop it.
       DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
       next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
@@ -653,14 +705,16 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
 template <typename TaskType>
 void SharedBatchScheduler<TaskType>::ThreadLogic() {
   // A batch to process next (or nullptr if no work to do).
-  std::unique_ptr<Batch<TaskType>> batch_to_process;
+  BatchUniquePtr batch_to_process;
   // The queue with which 'batch_to_process' is associated.
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
     mutex_lock l(mu_);
     while (true) {
       GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
-      if (batch_to_process != nullptr) break;
+      if (!BatchExists(batch_to_process)) {
+        break;
+      }
       if (queues_.empty()) return;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
@@ -670,7 +724,32 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     }
   }
 
-  queue_for_batch->ProcessBatch(std::move(batch_to_process));
+  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
+  if (absl::holds_alternative<BatchTaskHandleUniquePtr>(batch_to_process)) {
+    // The corresponding `queue_for_batch` must be created with
+    // `enable_lazy_split=true`.
+    BatchTaskHandleUniquePtr ptr =
+        std::move(absl::get<BatchTaskHandleUniquePtr>(batch_to_process));
+    batch_to_schedule = std::make_unique<Batch<TaskType>>();
+    std::vector<std::unique_ptr<internal::BatchInputTaskHandle<TaskType>>>
+        task_handles = ptr->RemoveAllTasks();
+
+    // TODO(b/194294263):
+    // Handle the batch-kernel callback properly when lazy split returns
+    // error.
+    for (int i = 0; i < task_handles.size(); i++) {
+      batch_to_schedule->AddTask(std::move(task_handles[i]->GetSplitTask()));
+    }
+    batch_to_schedule->Close();
+
+  } else {
+    // The corresponding `queue_for_batch` must be created with
+    // `enable_lazy_split=false`.
+    batch_to_schedule =
+        std::move(absl::get<BatchTaskUniqueptr>(batch_to_process));
+  }
+
+  queue_for_batch->ProcessBatch(std::move(batch_to_schedule));
 }
 
 namespace internal {
@@ -720,56 +799,8 @@ Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   }
   if (options_.enable_lazy_split) {
     return ScheduleWithLazySplit(std::move(task));
-  } else if (options_.enable_large_batch_splitting) {
-    return ScheduleWithEagerSplit(std::move(task));
-  } else {
-    return ScheduleWithoutSplit(std::move(task));
   }
-}
-
-template <typename TaskType>
-Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
-  bool notify_of_schedulable_batch = false;
-  {
-    mutex_lock l(mu_);
-
-    DCHECK(!closed_);
-
-    if (batches_.back()->size() + (*task)->size() >
-        options_.input_batch_size_limit) {
-      if (batches_.size() >= options_.max_enqueued_batches) {
-        return errors::Unavailable(
-            "The batch scheduling queue to which this task was submitted is "
-            "full");
-      }
-      StartNewBatch();
-    }
-    if (batches_.back()->empty()) {
-      open_batch_start_time_micros_ = env_->NowMicros();
-    }
-    profiler::TraceMeProducer trace_me(
-        [task] {
-          return profiler::TraceMeEncode(
-              "ScheduleWithoutSplit",
-              {{"batching_input_task_size", (*task)->size()}});
-        },
-        profiler::ContextType::kSharedBatchScheduler,
-        batches_.back()->traceme_context_id());
-    batches_.back()->AddTask(std::move(*task));
-
-    if (!schedulable_batch_) {
-      if (batches_.size() > 1 || IsOpenBatchSchedulable()) {
-        schedulable_batch_ = true;
-        notify_of_schedulable_batch = true;
-      }
-    }
-  }
-
-  if (notify_of_schedulable_batch) {
-    schedulable_batch_callback_();
-  }
-
-  return Status::OK();
+  return ScheduleWithoutOrEagerSplit(std::move(task));
 }
 
 template <typename TaskType>
@@ -788,15 +819,13 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
 
     DCHECK(!closed_);
 
-    const int64 open_batch_capacity =
-        max_execution_batch_size - this->tail_batch_task_size();
-    const size_t scheduling_capacity = SchedulingCapacityInternal();
-
-    if ((*task)->size() > scheduling_capacity) {
+    if (BatchTaskExceedQueueCapacity((*task).get())) {
       return errors::Unavailable(
           "The batch scheduling queue to which this task was submitted is "
           "full");
     }
+    const int64 open_batch_capacity =
+        max_execution_batch_size - this->tail_batch_task_size();
 
     auto input_batch = std::make_shared<BatchInputTask<TaskType>>(
         std::move(*task), open_batch_capacity, max_execution_batch_size,
@@ -841,21 +870,19 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
   return Status::OK();
 }
 
-// TODO(b/154140947):
-// Merge `ScheduleWithEagerSplit` and `ScheduleWithoutSplit` into `Schedule`.
-// Two variants are created so original path (ScheduleWithoutSplit) is kept as
-// it is.
+// TODO(b/194294263):
+// Merge `ScheduleWithoutOrEagerSplit` and `ScheduleWithLazySplit` into
+// `Schedule`.
 template <typename TaskType>
-Status Queue<TaskType>::ScheduleWithEagerSplit(
+Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     std::unique_ptr<TaskType>* task) {
-  profiler::TraceMe trace_me([task] {
+  const bool large_batch_splitting = options_.enable_large_batch_splitting;
+  profiler::TraceMe trace_me([task, large_batch_splitting] {
     return profiler::TraceMeEncode(
-        "ScheduleWithEagerSplit",
+        large_batch_splitting ? "ScheduleWithEagerSplit"
+                              : "ScheduleWithoutSplit",
         {{"batching_input_task_size", (*task)->size()}});
   });
-
-  // The max size to be enqueued.
-  const int max_execution_batch_size = options_.max_execution_batch_size;
 
   bool notify_of_schedulable_batch = false;
   {
@@ -863,27 +890,24 @@ Status Queue<TaskType>::ScheduleWithEagerSplit(
 
     DCHECK(!closed_);
 
-    const size_t scheduling_capacity = SchedulingCapacityInternal();
-
-    // The scenario when concurrent incoming batches arrives and use up all
-    // queue capacity isn't covered by unit test.
-    // The coverage boils down to sepcify "function library" in a way that,
-    // one batch task can synchronize with another task, and then two tasks
-    // run concurrently. An integration test might be a better fit.
-    if ((*task)->size() > scheduling_capacity) {
+    // TODO(b/161857471):
+    // Add test coverage when when concurrent incoming batches arrives and
+    // use up all queue capacity.
+    if (BatchTaskExceedQueueCapacity((*task).get())) {
       return errors::Unavailable(
           "The batch scheduling queue to which this task was submitted is "
           "full");
     }
 
     const int64_t open_batch_remaining_slot =
-        max_execution_batch_size - batches_.back()->size();
+        max_execution_batch_size() - batches_.back()->size();
 
     const int64_t input_task_size = (*task)->size();
 
     std::vector<std::unique_ptr<TaskType>> output_tasks;
 
-    if (input_task_size <= open_batch_remaining_slot) {
+    if (input_task_size <= open_batch_remaining_slot ||
+        !large_batch_splitting) {
       // This is the fast path when input doesn't need to be split.
       output_tasks.push_back(std::move(*task));
     } else {
@@ -892,7 +916,7 @@ Status Queue<TaskType>::ScheduleWithEagerSplit(
 
     for (int i = 0; i < output_tasks.size(); ++i) {
       if (batches_.back()->size() + output_tasks[i]->size() >
-          options_.max_execution_batch_size) {
+          max_execution_batch_size()) {
         StartNewBatch();
       }
       if (batches_.back()->empty()) {
@@ -949,12 +973,42 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      options_.max_enqueued_batches - this->num_enqueued_batches();
+      static_cast<int64>(options_.max_enqueued_batches) -
+      this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =
       execution_batch_size_limit - this->tail_batch_task_size();
+  // Note the returned value is guaranteed to be not negative, since
+  // enqueue operation could only happen if queue has enough capacity.
   return (num_new_batches_schedulable * execution_batch_size_limit) +
          open_batch_capacity;
+}
+
+template <typename TaskType>
+bool Queue<TaskType>::BatchTaskExceedQueueCapacity(TaskType* task) const {
+  // Queue creation requires that `enable_large_batch_splitting` is true
+  // when `enable_lazy_split` is true, so this covers both eager split and
+  // lazy split.
+  if (options_.enable_large_batch_splitting) {
+    return task->size() > SchedulingCapacityInternal();
+  }
+
+  // NOTE, the capacity checking below is loose and is retained
+  // for backward compatibility that was broken due to the merge of no-split
+  // and eager split.
+  // There are existing clients/models that rely on the loose check
+  // and can get errors after the merge. Retaining the old behavior
+  // allows such models to continue to work.
+  //
+  // We need to revisit/remove this check after we fix model configs.
+  bool batch_task_exceed_queue_capacity = false;
+  if (batches_.back()->size() + task->size() >
+      options_.input_batch_size_limit) {
+    if (batches_.size() >= options_.max_enqueued_batches) {
+      batch_task_exceed_queue_capacity = true;
+    }
+  }
+  return batch_task_exceed_queue_capacity;
 }
 
 template <typename TaskType>
@@ -986,7 +1040,8 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
 }
 
 template <typename TaskType>
-std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
+typename SharedBatchScheduler<TaskType>::BatchUniquePtr
+Queue<TaskType>::ScheduleBatch() {
   if (!options_.enable_lazy_split) {
     return ScheduleBatchWithEagerSplit();
   }
@@ -1013,20 +1068,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
     }
   }
 
-  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
-  if (task_handles_to_schedule != nullptr) {
-    batch_to_schedule = std::make_unique<Batch<TaskType>>();
-    std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> task_handles =
-        task_handles_to_schedule->RemoveAllTasks();
-
-    // TODO(b/194294263):
-    // Handle the batch-kernel callback properly when lazy split returns error.
-    for (int i = 0; i < task_handles.size(); i++) {
-      batch_to_schedule->AddTask(std::move(task_handles[i]->GetSplitTask()));
-    }
-    batch_to_schedule->Close();
-  }
-  return batch_to_schedule;
+  return std::move(task_handles_to_schedule);
 }
 
 template <typename TaskType>

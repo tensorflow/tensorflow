@@ -21,10 +21,8 @@ package_group(
     ],
 )
 
-# No native TFRT-based TF CPU op/kernels.
-# This target is cheaper to build.
 cc_library(
-    name = "runtime_fallback_only",
+    name = "runtime",
     srcs = ["runtime.cc"],
     hdrs = ["runtime.h"],
     copts = if_cuda(
@@ -33,13 +31,11 @@ cc_library(
     ),
     deps = [
         ":work_queue_interface",
-        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "@tf_runtime//:core_runtime",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
@@ -52,20 +48,6 @@ cc_library(
             "@tf_runtime//backends/gpu:gpu_tensor",
         ],
     ),
-)
-
-cc_library(
-    name = "runtime",
-    hdrs = ["runtime.h"],
-    deps = [
-        ":runtime_fallback_only",
-        ":work_queue_interface",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "@com_google_absl//absl/flags:flag",
-        "@tf_runtime//:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
-    ],
 )
 
 cc_library(

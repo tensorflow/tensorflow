@@ -31,7 +31,7 @@ namespace gpu {
 
 struct ConditionalThunkConfig {
   bool branch_index_is_bool;
-  int64 branch_count;
+  int64_t branch_count;
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
 };
 

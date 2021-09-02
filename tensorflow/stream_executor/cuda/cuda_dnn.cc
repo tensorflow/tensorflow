@@ -554,18 +554,18 @@ class CudnnTensorDescriptor {
       case dnn::DataLayout::kBatchDepthYX: {
         const int nd = batch_descriptor.ndims() + 2;
         // cuDNN requires the strides and dims to be ordered as BDYX.
-        std::vector<int64> strides64 =
+        std::vector<int64_t> strides64 =
             batch_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-        std::vector<int64> dims64 =
+        std::vector<int64_t> dims64 =
             batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
 
         // cuDNN requires arrays of ints.
         std::vector<int> strides(nd);
         std::vector<int> dims(nd);
         std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                       &CheckedNarrowing<int64, int>);
+                       &CheckedNarrowing<int64_t, int>);
         std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                       &CheckedNarrowing<int64, int>);
+                       &CheckedNarrowing<int64_t, int>);
         CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(handle_.get(), elem_type, nd,
                                                   dims.data(), strides.data()))
             << "batch_descriptor: " << batch_descriptor.ToString();
@@ -638,7 +638,7 @@ class CudnnFilterDescriptor {
     std::vector<int> dims(2 + filter_descriptor.ndims());
     dims[0] = filter_descriptor.output_feature_map_count();
     dims[1] = filter_descriptor.input_feature_map_count();
-    absl::Span<const int64> spatial_dims =
+    absl::Span<const int64_t> spatial_dims =
         filter_descriptor.input_filter_dims();
     std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
 
@@ -764,9 +764,9 @@ class CudnnConvolutionDescriptor {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       cudnnDataType_t data_type)
       : handle_(CreateConvolutionDescriptor()) {
-    absl::Span<const int64> strides64 = convolution_descriptor.strides();
-    absl::Span<const int64> padding64 = convolution_descriptor.padding();
-    absl::Span<const int64> dilations64 = convolution_descriptor.dilations();
+    absl::Span<const int64_t> strides64 = convolution_descriptor.strides();
+    absl::Span<const int64_t> padding64 = convolution_descriptor.padding();
+    absl::Span<const int64_t> dilations64 = convolution_descriptor.dilations();
     CHECK_NE(convolution_descriptor.pad_alignment(),
              dnn::PadAlignment::kTensorFlowPadding)
         << "TensorFlow padding alignment is not supported.";
@@ -776,13 +776,13 @@ class CudnnConvolutionDescriptor {
     std::vector<int> padding(convolution_descriptor.ndims());
     std::vector<int> dilations(convolution_descriptor.ndims());
     std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
     std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
     // TODO(yangzihao): Test with negative dilation to make sure that cudnn
     // doesn't crash.
     std::transform(dilations64.cbegin(), dilations64.cend(), dilations.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
 
     CHECK_CUDNN_OK(cudnnSetConvolutionNdDescriptor(
         handle_.get(), convolution_descriptor.ndims(), padding.data(),
@@ -861,20 +861,20 @@ class CudnnPoolingDescriptor {
   explicit CudnnPoolingDescriptor(
       const dnn::PoolingDescriptor& pooling_descriptor)
       : handle_(CreatePoolingDescriptor()) {
-    absl::Span<const int64> strides64 = pooling_descriptor.strides();
-    absl::Span<const int64> padding64 = pooling_descriptor.padding();
-    absl::Span<const int64> shape64 = pooling_descriptor.window();
+    absl::Span<const int64_t> strides64 = pooling_descriptor.strides();
+    absl::Span<const int64_t> padding64 = pooling_descriptor.padding();
+    absl::Span<const int64_t> shape64 = pooling_descriptor.window();
 
     const int nd = pooling_descriptor.ndims();
     std::vector<int> shape(nd);
     std::vector<int> padding(nd);
     std::vector<int> strides(nd);
     std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
     std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
-                   &CheckedNarrowing<int64, int>);
+                   &CheckedNarrowing<int64_t, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
     const auto cudnn_max_pooling_mode = RequireCudnnDeterminism()
                                             ? CUDNN_POOLING_MAX_DETERMINISTIC
@@ -1091,7 +1091,7 @@ class CudnnDropoutDescriptor {
   CudnnDropoutDescriptor(CudnnDropoutDescriptor&&) = default;
 
   static port::StatusOr<CudnnDropoutDescriptor> Create(
-      const CudnnHandle& cudnn, float dropout, uint64 seed,
+      const CudnnHandle& cudnn, float dropout, uint64_t seed,
       ScratchAllocator* state_allocator) {
     DropoutDescriptor handle = CreateDropoutDescriptor();
 
@@ -1142,13 +1142,13 @@ class CudnnRnnParamsDescriptor {
       cudnnDirectionMode_t direction_mode, int num_layers);
 
   cudnnFilterDescriptor_t handle() const { return handle_.get(); }
-  int64 params_size_in_bytes() const { return params_size_in_bytes_; }
+  int64_t params_size_in_bytes() const { return params_size_in_bytes_; }
   ParamsRegions params_weights() const { return weights_; }
   ParamsRegions params_biases() const { return biases_; }
 
  private:
   FilterDescriptor handle_;
-  int64 params_size_in_bytes_;
+  int64_t params_size_in_bytes_;
   ParamsRegions weights_;
   ParamsRegions biases_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnParamsDescriptor);
@@ -1192,8 +1192,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
       int cell_size, int batch_size, cudnnRNNInputMode_t input_mode,
       cudnnDirectionMode_t direction_mode, cudnnRNNMode_t rnn_mode,
       cudnnDataType_t data_type, cudnnDataType_t compute_type,
-      const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
-      ScratchAllocator* state_allocator, bool use_padded_io) {
+      const dnn::AlgorithmConfig& algorithm_config, float dropout,
+      uint64_t seed, ScratchAllocator* state_allocator, bool use_padded_io) {
     SE_ASSIGN_OR_RETURN(
         CudnnDropoutDescriptor dropout_desc,
         CudnnDropoutDescriptor::Create(cudnn, dropout, seed, state_allocator));
@@ -1317,7 +1317,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   const dnn::AlgorithmConfig& algorithm_config() const {
     return algorithm_config_;
   }
-  int64 ParamsSizeInBytes() const override {
+  int64_t ParamsSizeInBytes() const override {
     return params_desc_.params_size_in_bytes();
   }
   cudnnFilterDescriptor_t params_handle() const {
@@ -1450,8 +1450,8 @@ port::Status CheckAndFetchProjectionWeights(
         /*nbDims=*/&n_dims, /*filterDimA=*/dims));
     int64_t size =
         dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
-    dnn::RnnDescriptor::ParamsRegion region = {reinterpret_cast<int64>(offset),
-                                               size};
+    dnn::RnnDescriptor::ParamsRegion region = {
+        reinterpret_cast<int64_t>(offset), size};
     weights->push_back(region);
   }
   return port::Status::OK();
@@ -1476,7 +1476,7 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
       /*xDesc=*/input_desc.get(), /*sizeInBytes=*/&params_size,
       /*dataType=*/data_type));
-  int64_t params_size_in_bytes = static_cast<int64>(params_size);
+  int64_t params_size_in_bytes = static_cast<int64_t>(params_size);
 
   FilterDescriptor filter_desc = CreateFilterDescriptor();
   int64_t filter_dim0 =
@@ -1542,7 +1542,7 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
         int64_t size =
             dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
         dnn::RnnDescriptor::ParamsRegion region = {
-            reinterpret_cast<int64>(offset), size};
+            reinterpret_cast<int64_t>(offset), size};
         (type == 0 ? weights : biases).push_back(region);
       }
     }
@@ -1786,7 +1786,7 @@ port::Status CheckRNNParameterSize(
       /*xDesc=*/input_desc.handles()[0], /*sizeInBytes=*/&params_size_in_bytes,
       /*dataType=*/rnn_desc.data_type()));
 #endif
-  if (static_cast<int64>(params_size_in_bytes) !=
+  if (static_cast<int64_t>(params_size_in_bytes) !=
       rnn_desc.ParamsSizeInBytes()) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "Mismatching RNN parameter size");
@@ -1840,6 +1840,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
 port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
     const CudnnTensorDescriptor& scale_offset_descriptor,
     ScratchAllocator* workspace_allocator) {
@@ -1850,10 +1851,11 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
       /*xDesc=*/x_descriptor.handle(),
       /*yDesc=*/x_descriptor.handle(),
       /*dyDesc=*/x_descriptor.handle(),
-      /*dzDesc=*/nullptr,
+      /*dzDesc=*/x_descriptor.handle(),
       /*dxDesc=*/x_descriptor.handle(),
       /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
-      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
+      /*activationDesc=*/activation_desc,
+      /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -2355,7 +2357,7 @@ CudnnSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64 seed, ScratchAllocator* state_allocator,
+    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
     bool use_padded_io) {
   // Setting up a cudnnRNNDescriptor requires a cuDNN handle, but because it's
   // not enqueueing anything into a stream, we pass in the null stream.
@@ -2845,16 +2847,16 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
       /*yDesc=*/output_nd.handle(), /*algo=*/ToConvForwardAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64_t size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
+  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionForwardWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
 
-  if (size_in_bytes_int64 == 0) {
+  if (size_in_bytes_int64_t == 0) {
     return DeviceMemory<uint8>();
   }
 
@@ -2891,16 +2893,16 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
       /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64_t size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
+  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionBackwardDataWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
 
-  if (size_in_bytes_int64 == 0) {
+  if (size_in_bytes_int64_t == 0) {
     return DeviceMemory<uint8>();
   }
 
@@ -2937,16 +2939,16 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
       /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64_t size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
+  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionBackwardFilterWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
 
-  if (size_in_bytes_int64 == 0) {
+  if (size_in_bytes_int64_t == 0) {
     return DeviceMemory<uint8>();
   }
 
@@ -3000,8 +3002,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
-            : int64{0};
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64_t{0})
+            : int64_t{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionFwdAlgo_t algo,
                         GetCudnnConvolutionForwardAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -3062,8 +3064,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
-            : int64{0};
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64_t{0})
+            : int64_t{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdDataAlgo_t algo,
                         GetCudnnConvolutionBackwardDataAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -3123,8 +3125,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
-            : int64{0};
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64_t{0})
+            : int64_t{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdFilterAlgo_t algo,
                         GetCudnnConvolutionBackwardFilterAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -3389,9 +3391,9 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   int vector_size, vector_dim;
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(input_descriptor, element_type);
-  std::vector<int64> input_dims = input_descriptor.vectorized_dims(
+  std::vector<int64_t> input_dims = input_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  std::vector<int64> input_strides = input_descriptor.vectorized_strides(
+  std::vector<int64_t> input_strides = input_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
 
   if (vector_size == 32) {
@@ -3413,9 +3415,9 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   // y tensor.
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(output_descriptor, element_type);
-  std::vector<int64> output_dims = output_descriptor.vectorized_dims(
+  std::vector<int64_t> output_dims = output_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  std::vector<int64> output_strides = output_descriptor.vectorized_strides(
+  std::vector<int64_t> output_strides = output_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
 
   auto tensor_y = cudnn_frontend::TensorBuilder()
@@ -3431,9 +3433,9 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   // w tensor.
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(filter_descriptor, element_type);
-  std::vector<int64> filter_dims = filter_descriptor.vectorized_dims(
+  std::vector<int64_t> filter_dims = filter_descriptor.vectorized_dims(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
-  std::vector<int64> filter_strides = filter_descriptor.vectorized_strides(
+  std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
 
   auto tensor_w = cudnn_frontend::TensorBuilder()
@@ -3524,9 +3526,9 @@ GetCudnnFusedOperationGraph(
   int vector_size, vector_dim;
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(input_descriptor, element_type);
-  std::vector<int64> input_dims = input_descriptor.vectorized_dims(
+  std::vector<int64_t> input_dims = input_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  std::vector<int64> input_strides = input_descriptor.vectorized_strides(
+  std::vector<int64_t> input_strides = input_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
 
   if (vector_size == 32) {
@@ -3547,9 +3549,9 @@ GetCudnnFusedOperationGraph(
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(output_descriptor, element_type);
-  std::vector<int64> output_dims = output_descriptor.vectorized_dims(
+  std::vector<int64_t> output_dims = output_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  std::vector<int64> output_strides = output_descriptor.vectorized_strides(
+  std::vector<int64_t> output_strides = output_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   auto tensor_y = cudnn_frontend::TensorBuilder()
                       .setDim(output_dims.size(), output_dims.data())
@@ -3573,9 +3575,9 @@ GetCudnnFusedOperationGraph(
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(filter_descriptor, element_type);
-  std::vector<int64> filter_dims = filter_descriptor.vectorized_dims(
+  std::vector<int64_t> filter_dims = filter_descriptor.vectorized_dims(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
-  std::vector<int64> filter_strides = filter_descriptor.vectorized_strides(
+  std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
   auto tensor_w = cudnn_frontend::TensorBuilder()
                       .setDim(filter_dims.size(), filter_dims.data())
@@ -3595,9 +3597,9 @@ GetCudnnFusedOperationGraph(
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(bias_descriptor, element_type);
-  std::vector<int64> bias_dims = bias_descriptor.vectorized_dims(
+  std::vector<int64_t> bias_dims = bias_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  std::vector<int64> bias_strides = bias_descriptor.vectorized_strides(
+  std::vector<int64_t> bias_strides = bias_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   auto tensor_b = cudnn_frontend::TensorBuilder()
                       .setDim(bias_dims.size(), bias_dims.data())
@@ -3843,8 +3845,8 @@ GetFirstWorkingExecutionPlan(
       bool specify_workspace_limit = scratch_allocator != nullptr;
       auto memory_limit_bytes =
           specify_workspace_limit
-              ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
-              : int64{0};
+              ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64_t{0})
+              : int64_t{0};
       int64_t workspace_size = plan.getWorkspaceSize();
       if (workspace_size <= memory_limit_bytes) {
         return std::unique_ptr<cudnn_frontend::ExecutionPlan>(
@@ -4753,48 +4755,57 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<float>& y_backprop,
     const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop,
+    dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<float>* side_input_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
-  return IsStatusOk(DoBatchNormalizationBackwardImpl(
-                        stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop,
-                        x, scale, mean, inv_var, x_desc, scale_offset_desc,
-                        epsilon, x_backprop, scale_backprop, offset_backprop,
-                        reserve_space_data, workspace_allocator),
-                    /*report_error=*/true);
+  return IsStatusOk(
+      DoBatchNormalizationBackwardImpl(
+          stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop, x, scale,
+          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
+          activation_mode, x_backprop, scale_backprop, offset_backprop,
+          side_input_backprop, reserve_space_data, workspace_allocator),
+      /*report_error=*/true);
 }
 
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
     const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::half>* side_input_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
-  return IsStatusOk(DoBatchNormalizationBackwardImpl(
-                        stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop,
-                        x, scale, mean, inv_var, x_desc, scale_offset_desc,
-                        epsilon, x_backprop, scale_backprop, offset_backprop,
-                        reserve_space_data, workspace_allocator),
-                    /*report_error=*/true);
+  return IsStatusOk(
+      DoBatchNormalizationBackwardImpl(
+          stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale,
+          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
+          activation_mode, x_backprop, scale_backprop, offset_backprop,
+          side_input_backprop, reserve_space_data, workspace_allocator),
+      /*report_error=*/true);
 }
 
 template <class T, class U>
 port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
     Stream* stream, int cudnn_input_type, int cudnn_scale_type,
     const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-    const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
-    const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
+    const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
+    const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
-    DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
+    dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
+    DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
+    DeviceMemory<T>* side_input_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(
       x_desc, static_cast<cudnnDataType_t>(cudnn_input_type));
@@ -4813,11 +4824,26 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7402
   if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
-    const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
-                        CreateBatchNormBackwardWorkspace(
-                            stream, cudnn, mode, bn_ops, x_descriptor,
-                            scale_offset_descriptor, workspace_allocator))
+    const cudnnBatchNormOps_t bn_ops = [&]() {
+      if (side_input_backprop->is_null()) {
+        return activation_mode == dnn::ActivationMode::kNone
+                   ? CUDNN_BATCHNORM_OPS_BN
+                   : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
+      } else {
+        return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+      }
+    }();
+
+    // We use Nan propagation to be consistent with
+    // CudnnSupport::DoActivate(...).
+    CudnnActivationDescriptor activation_desc(
+        activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+
+    SE_ASSIGN_OR_RETURN(
+        DeviceMemory<uint8> workspace,
+        CreateBatchNormBackwardWorkspace(
+            stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
+            scale_offset_descriptor, workspace_allocator))
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackwardEx(
         /*handle=*/cudnn.handle(),
         /*mode=*/mode,
@@ -4828,30 +4854,41 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         /*betaParamDiff=*/&zero,
         /*xDesc=*/x_descriptor.handle(),
         /*xData=*/x.opaque(),
-        /*yDesc=*/nullptr,
-        /*yData=*/nullptr,
+        /*yDesc=*/x_descriptor.handle(),
+        /*yData=*/y.opaque(),
         /*dyDesc=*/x_descriptor.handle(),
         /*dyData=*/y_backprop.opaque(),
-        /*dzDesc=*/nullptr,
-        /*dzData=*/nullptr,
+        /*dzDesc=*/x_descriptor.handle(),
+        /*dzData=*/side_input_backprop->opaque(),
         /*dxDesc=*/x_descriptor.handle(),
         /*dxData=*/x_backprop->opaque(),
         /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
         /*bnScaleData=*/scale.opaque(),
-        /*bnBiasData=*/nullptr,
+        /*bnBiasData=*/offset.opaque(),
         /*dBnScaleData=*/scale_backprop->opaque(),
         /*dBnBiasData=*/offset_backprop->opaque(),
         /*epsilon=*/epsilon,
         /*savedMean=*/mean.opaque(),
         /*savedInvVariance=*/inv_var.opaque(),
-        /*activationDesc=*/nullptr,
+        /*activationDesc=*/activation_desc.handle(),
         /*workspace=*/workspace.opaque(),
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),
         /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
   }
 #endif
-  if (!called) {
+  auto check_no_side_input_or_activation = [&]() -> port::Status {
+    if (activation_mode != dnn::ActivationMode::kNone ||
+        !side_input_backprop->is_null()) {
+      return port::InternalError(absl::StrCat(
+          "Side input and activation are not supported by cuDNN version: ",
+          CUDNN_VERSION));
+    } else {
+      return port::Status::OK();
+    }
+  };
+
+  if (!called && check_no_side_input_or_activation().ok()) {
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
         cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
         x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
@@ -4948,10 +4985,13 @@ port::Status CudnnSupport::DoFusedConvolve(
       (side_input_scale == 0) ? output_data.opaque() : side_input_data.opaque();
 
   VLOG(2) << "\nconv_input_scale = " << conv_input_scale
+          << "\nconv_input_descriptor = " << conv_input_descriptor.ToString()
           << "\nconv_input_nd.handle() = " << conv_input_nd.handle()
           << "\nconv_input_data.opaque() = " << conv_input_data.opaque()
+          << "\nfilter_descriptor = " << filter_descriptor.ToString()
           << "\nfilter.handle() = " << filter.handle()
           << "\nfilter_data.opaque() = " << filter_data.opaque()
+          << "\nconvolution_descriptor = " << convolution_descriptor.ToString()
           << "\nconv.handle() = " << conv.handle()
           << "\nalgo = " << algo_desc.algo_id()
           << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
@@ -5352,9 +5392,9 @@ bool CudnnSupport::DoMatMul(Stream* stream,
 
     const float alpha = 1.0f;  // Take the matrix product without scaling it.
     const float beta = 0.0f;   // Ignore the original values in output_data.
-    const uint64 m = output_dimensions.feature_map_count();
-    const uint64 n = input_dimensions.count();
-    const uint64 k = input_dimensions.NodesAcrossFeatureMaps();
+    const uint64_t m = output_dimensions.feature_map_count();
+    const uint64_t n = input_dimensions.count();
+    const uint64_t k = input_dimensions.NodesAcrossFeatureMaps();
     const int lda = m;
     const int ldb = k;
     const int ldc = output_dimensions.NodesAcrossFeatureMaps();
@@ -5446,7 +5486,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
                               const dnn::BatchDescriptor& dimensions,
                               const DeviceMemory<float>& input_data,
                               DeviceMemory<float>* output_data,
-                              uint64 options) {
+                              uint64_t options) {
   CudnnActivationDescriptor activation_desc(
       activation_mode, CUDNN_PROPAGATE_NAN, dimensions.value_max());
 

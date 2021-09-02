@@ -74,8 +74,8 @@ static Graph* MatrixTriangularSolveWithBroadcast(int64_t b0, int64_t b1,
   Node* in0_node = nullptr;
   Node* in1_node = nullptr;
   if (manual_broadcast) {
-    auto vec0 = broadcasted_in0_shape.vec<int64>();
-    auto vec1 = broadcasted_in1_shape.vec<int64>();
+    auto vec0 = broadcasted_in0_shape.vec<int64_t>();
+    auto vec1 = broadcasted_in1_shape.vec<int64_t>();
     for (int i = 0; i < 3; ++i) {
       vec0(i) = (i == 0 ? std::max(b0, b1) : in0.shape().dim_size(i));
       vec1(i) = (i == 0 ? std::max(b0, b1) : in1.shape().dim_size(i));

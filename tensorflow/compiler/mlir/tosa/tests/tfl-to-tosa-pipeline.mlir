@@ -594,17 +594,74 @@ func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
 
 // -----
 
-// CHECK-LABEL: test_strided_slice
+// CHECK-LABEL: test_strided_slice_simple
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [9, 1, 7, 3, 2, 1]}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) {size = [9, 1, 7, 1, 2, 1], start = [0, 0, 0, 0, 0, 0]}
 // CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [9, 7, 2]}
-func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
+func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
   %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = constant dense<[1, 3, 1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x7x2xf32>
   return %0 : tensor<9x7x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_unstrided
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
+// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x2xf32> to tensor<?x?x?xf32>
+// CHECK: return %[[VAR1]]
+func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?xf32> {
+  %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
+  %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_unstrided_shorter
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 3], start = [4, 0, 0]}
+// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x3xf32> to tensor<?x?x?xf32>
+// CHECK: return %[[VAR1]]
+func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?xf32> {
+  %cst = constant dense<[4, 0]> : tensor<2xi32>
+  %cst_0 = constant dense<[13, 21]> : tensor<2xi32>
+  %cst_1 = constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_dynamic_masked
+// CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
+// CHECK: return %[[VAR0]]
+func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor<3xi32>) -> tensor<*xf32> {
+  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Its possible that the begin mask is not set but the begin index is 0, which
+// is equivalent to being at the beginning. However as we are bypassing the
+// entire operation the operand type may not match and will need to be cast to
+// the result type. These casts can be removed during shape inference.
+// CHECK-LABEL: test_strided_slice_dynamic_begin
+func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
+  %cst = constant dense<[0, 2, 0]> : tensor<3xi32>
+  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  // CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
+  // CHECK: return %[[VAR0]]
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
@@ -652,8 +709,7 @@ func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: 
 // -----
 
 // CHECK-LABEL: test_unstack
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 32, 32, 8], start = [0, 0, 0, 0]}
-// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [32, 32, 8]}
 func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
   %0 = "tfl.unpack"(%arg0)  {axis = 0 : i32, num = 1 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32>
   return %0 : tensor<32x32x8xf32>
@@ -826,7 +882,7 @@ func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [2, 2, 2, 32, 32, 1]}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [2, 64, 64, 1]}
-// CHECK: %[[VAR6:.*]] = "tosa.slice"(%[[VAR5]]) {size = [2, 64, 64, 1], start = [0, 0, 0, 0]}
+// CHECK: return %[[VAR5:.*]]
 func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1xf32> {
   %cst = constant dense<2> : tensor<2xi32>
   %cst_0 = constant dense<0> : tensor<2x2xi32>
@@ -1116,6 +1172,19 @@ func @test_relu6_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707
 
 // -----
 
+// CHECK-LABEL: test_relu6_qu8
+// CHECK: %[[CAST:.+]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: %[[RESCALE:.+]] = "tosa.rescale"(%[[CAST]]) {double_round = false, input_zp = -128 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: %[[CLAMP:.+]] = "tosa.clamp"(%[[RESCALE]]) {max_fp = 6.000000e+00 : f32, max_int = 22 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+// CHECK: %[[OUT:.+]] = "tosa.rescale"(%[[CLAMP]]) {double_round = false, input_zp = -128 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK: return %[[OUT]]
+func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.04>> {
+  %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>
+  return %0 : tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>
+}
+
+// -----
+
 // CHECK-LABEL: test_leaky_relu_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<i32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)
@@ -1148,8 +1217,7 @@ func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 2]}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR3]], %[[VAR4]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR6:.*]] = "tosa.reduce_sum"(%[[VAR5]]) {axis = 1 : i64}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 42]}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR7]])
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR6]])
 // CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [6, 7, 3]}
 func @test_gather_nd(%arg0: tensor<13x21x3xf32>, %arg1: tensor<6x7x2xi32>) -> tensor<6x7x3xf32> {
   %1 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<6x7x2xi32>) -> tensor<6x7x3xf32>

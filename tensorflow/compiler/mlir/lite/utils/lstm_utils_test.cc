@@ -85,9 +85,6 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
   return func;
 }
 
-// TODO(ashwinm): Revisit if this test should be moved to a test pass
-// with FileCheck test after the pass that consumes the lstm_utils to stack
-// the layers.
 class LstmUtilsTest : public ::testing::Test {
  protected:
   LstmUtilsTest() {}

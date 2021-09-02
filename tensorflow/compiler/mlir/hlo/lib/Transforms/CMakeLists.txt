@@ -24,6 +24,8 @@ add_mlir_library(MLIRBufferTransforms
   Core
 
   LINK_LIBS PUBLIC
+  MLIRHLOAnalysis
   MLIRIR
   MLIRPass
+  MLIRTransforms
 )

@@ -3464,8 +3464,18 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "nextafter_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "nextafter_op",
-    deps = MATH_DEPS + [":cwise_op"],
+    deps = MATH_DEPS + [
+        ":cwise_op",
+        "//tensorflow/core/kernels/mlir_generated:nextafter_op",
+    ],
 )
 
 tf_kernel_library(
@@ -3917,6 +3927,7 @@ tf_kernel_library(
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
+        "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
     ]),
 )
 
@@ -4711,7 +4722,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     prefix = "sparse_concat_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -6088,6 +6102,7 @@ filegroup(
         "lookup_table_op.h",
         "lookup_util.h",
         "list_kernels.h",
+        "l2loss_op.h",
         "map_kernels.h",
         "maxpooling_op.h",
         "mfcc.h",
@@ -6095,6 +6110,7 @@ filegroup(
         "mfcc_mel_filterbank.h",
         "multinomial_op.h",
         "pad_op.h",
+        "partitioned_function_ops.h",
         "pooling_ops_3d.h",
         "ragged_tensor_variant.h",
         "random_op.h",
@@ -6179,6 +6195,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
+        "//tensorflow/core/kernels/linalg:qr_op_impl.h",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6341,6 +6358,7 @@ filegroup(
         "dilation_ops.cc",
         "dynamic_stitch_op.cc",
         "fft_ops.cc",
+        "functional_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
         "initializable_lookup_table.cc",
@@ -6351,6 +6369,7 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
+        "l2loss_op.cc",
         "map_kernels.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
@@ -6362,6 +6381,7 @@ filegroup(
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
         "parse_tensor_op.cc",
+        "partitioned_function_ops.cc",
         "pooling_ops_3d.cc",
         "queue_base.cc",
         "queue_op.cc",
@@ -6538,6 +6558,10 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_complex.cc",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_real.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_complex128.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_complex64.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_double.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_float.cc",
     ],
 )
 

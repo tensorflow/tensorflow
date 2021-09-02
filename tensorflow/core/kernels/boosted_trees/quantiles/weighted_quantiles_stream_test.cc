@@ -20,7 +20,7 @@
 
 namespace tensorflow {
 namespace {
-using Tuple = std::tuple<int64, int64>;
+using Tuple = std::tuple<int64_t, int64_t>;
 
 using Summary =
     boosted_trees::quantiles::WeightedQuantilesSummary<double, double>;

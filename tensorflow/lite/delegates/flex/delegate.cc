@@ -58,6 +58,8 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   if (context->recommended_num_threads > 0) {
     session_options.config.set_intra_op_parallelism_threads(
         context->recommended_num_threads);
+    session_options.config.set_inter_op_parallelism_threads(
+        context->recommended_num_threads);
   }
 
   auto status = delegate_data_.Prepare(

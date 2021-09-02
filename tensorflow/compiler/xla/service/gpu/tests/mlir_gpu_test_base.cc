@@ -82,7 +82,7 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
 
   for (auto arg : arguments) {
     Shape shape =
-        ShapeUtil::MakeShape(xla::U8, {static_cast<int64>(arg.size())});
+        ShapeUtil::MakeShape(xla::U8, {static_cast<int64_t>(arg.size())});
     execution_inputs.emplace_back(shape);
     execution_inputs.back().SetBuffer({}, MaybeOwningDeviceMemory(arg));
   }
@@ -135,7 +135,7 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
 StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect,
+                      mlir::StandardOpsDialect, mlir::gpu::GPUDialect,
                       mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;

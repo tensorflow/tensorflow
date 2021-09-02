@@ -175,6 +175,22 @@ inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
           "InternalError to avoid invoking TF network error handling logic."));
 }
 
+template <typename T>
+std::string FormatOriginalNodeLocationForError(const T& node_names,
+                                               const T& func_names) {
+  std::vector<std::string> error_message;
+  for (int i = 0; i != node_names.size(); ++i) {
+    if (i != 0) {
+      error_message.push_back(", ");
+    }
+    if (i < func_names.size()) {
+      error_message.push_back(FormatFunctionForError(func_names[i]));
+    }
+    error_message.push_back(FormatNodeNameForError(node_names[i]));
+  }
+  return absl::StrJoin(error_message, "");
+}
+
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;
 

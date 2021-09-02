@@ -292,7 +292,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
 
-  int64 GetMemoryLimitInBytes() override { return -1; }
+  int64_t GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
       int64_t byte_size) override {
@@ -382,8 +382,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         c_ptrs.push_back(&c_device_memory.back());
       }
     } else {
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
       for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }
@@ -536,8 +536,8 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
         c_ptrs.push_back(&c_device_memory.back());
       }
     } else {
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
       for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }

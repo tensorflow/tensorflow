@@ -242,7 +242,7 @@ class RamFileBlockCache : public FileBlockCache {
   size_t cache_size_ TF_GUARDED_BY(mu_) = 0;
 
   // A filename->file_signature map.
-  std::map<string, int64> file_signature_map_ TF_GUARDED_BY(mu_);
+  std::map<string, int64_t> file_signature_map_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

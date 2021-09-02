@@ -738,8 +738,9 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
-  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
-                                            step_id(), "output", type, &shape);
+  ScopedMemoryDebugAnnotation op_annotation(
+      op_kernel().name_view().data(), step_id(), "output", type,
+      [&shape]() { return shape.DebugString(); });
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -768,8 +769,9 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
-  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
-                                            step_id(), "temp", type, &shape);
+  ScopedMemoryDebugAnnotation op_annotation(
+      op_kernel().name_view().data(), step_id(), "temp", type,
+      [&shape]() { return shape.DebugString(); });
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -860,9 +862,9 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
-    ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
-                                              step_id(), "output",
-                                              tensor.dtype(), &tensor.shape());
+    ScopedMemoryDebugAnnotation op_annotation(
+        op_kernel().name_view().data(), step_id(), "output", tensor.dtype(),
+        [&tensor]() { return tensor.shape().DebugString(); });
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
@@ -979,7 +981,7 @@ void OpKernelContext::record_temp_memory_allocation(int64_t size,
   }
 }
 
-int64 OpKernelContext::temp_memory_allocated() const {
+int64_t OpKernelContext::temp_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->temp_memory_allocated;
@@ -999,7 +1001,7 @@ void OpKernelContext::record_persistent_memory_allocation(int64_t size,
   }
 }
 
-int64 OpKernelContext::persistent_memory_allocated() const {
+int64_t OpKernelContext::persistent_memory_allocated() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
     return tracking_state_->persistent_memory_allocated;
@@ -1008,13 +1010,13 @@ int64 OpKernelContext::persistent_memory_allocated() const {
   }
 }
 
-std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+std::vector<int64_t> OpKernelContext::persistent_alloc_ids() const {
   if (tracking_state_) {
     mutex_lock l(tracking_state_->stats_mu);
-    return std::vector<int64>(tracking_state_->persistent_alloc_ids.begin(),
-                              tracking_state_->persistent_alloc_ids.end());
+    return std::vector<int64_t>(tracking_state_->persistent_alloc_ids.begin(),
+                                tracking_state_->persistent_alloc_ids.end());
   } else {
-    return std::vector<int64>();
+    return std::vector<int64_t>();
   }
 }
 
@@ -1436,12 +1438,12 @@ Status SupportedDeviceTypesForNode(
       TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
     }
 
-    std::sort(prioritized_device_types->begin(),
-              prioritized_device_types->end(),
-              [](const std::pair<DeviceType, int32>& a,
-                 const std::pair<DeviceType, int32>& b) {
-                return a.second > b.second;
-              });
+    std::stable_sort(prioritized_device_types->begin(),
+                     prioritized_device_types->end(),
+                     [](const std::pair<DeviceType, int32>& a,
+                        const std::pair<DeviceType, int32>& b) {
+                       return a.second > b.second;
+                     });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {

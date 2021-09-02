@@ -62,7 +62,7 @@ class MasterTest : public ::testing::Test {
   // rpc calls.
 
   Status CreateSession(const GraphDef& def, string* handle,
-                       int64* initial_version) {
+                       int64_t* initial_version) {
     ::grpc::ClientContext ctx;
     CreateSessionRequest req;
     *(req.mutable_graph_def()) = def;
@@ -78,7 +78,7 @@ class MasterTest : public ::testing::Test {
   }
 
   Status ExtendSession(const string& handle, const GraphDef& def,
-                       int64_t current_version, int64* new_version) {
+                       int64_t current_version, int64_t* new_version) {
     ::grpc::ClientContext ctx;
     ExtendSessionRequest req;
     req.set_session_handle(handle);

@@ -40,19 +40,11 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in);
 template <typename Device, typename T, typename Tmultiples, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<Tmultiples> broadcast_array) {
-  auto x = in.tensor<T, NDIM>();
-  auto y = out->tensor<T, NDIM>();
-
-  bool use_32bit = y.size() < Eigen::NumTraits<int>::highest();
-
   Eigen::array<Tmultiples, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
-  if (use_32bit && Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-    // Use 32bit indexing to speed up the computations
-    To32Bit(y).device(d) = To32Bit(x).broadcast(b);
-  } else {
-    y.device(d) = x.broadcast(b);
-  }
+  MaybeWith32BitIndexing<Device>(
+      [&](auto out32, auto in32) { out32.device(d) = in32.broadcast(b); },
+      out->tensor<T, NDIM>(), in.tensor<T, NDIM>());
 }
 
 template <typename Device, typename T, typename Tmultiples>

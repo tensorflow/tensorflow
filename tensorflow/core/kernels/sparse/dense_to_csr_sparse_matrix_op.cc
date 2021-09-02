@@ -87,7 +87,7 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
             indices.dim_size(1), " vs. ", rank));
 
     Tensor dense_shape(cpu_allocator(), DT_INT64, TensorShape({rank}));
-    auto dense_shape_mutable = dense_shape.vec<int64>();
+    auto dense_shape_mutable = dense_shape.vec<int64_t>();
     for (int i = 0; i < rank; ++i) {
       dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
     }
@@ -97,7 +97,7 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = indices.NumElements() / rank;
 
     Tensor values;
-    OP_REQUIRES_OK(ctx, functor::DoGatherNd<Device, T, int64>(
+    OP_REQUIRES_OK(ctx, functor::DoGatherNd<Device, T, int64_t>(
                             ctx, params, indices, &values));
 
     Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
@@ -112,7 +112,7 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
     // Convert from COO to CSR format.
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(ctx,
-                   coo_to_csr(batch_size, num_rows, indices.matrix<int64>(),
+                   coo_to_csr(batch_size, num_rows, indices.matrix<int64_t>(),
                               batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
                               csr_col_ind.vec<int32>()));
 
@@ -195,7 +195,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
       functor::CalculateNNZPerBatchMatrixFromIndices<Device>
           calculate_nnz_from_indices;
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
       OP_REQUIRES_OK_ASYNC(
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
@@ -369,14 +369,15 @@ namespace functor {
 
 template <>
 Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64>::ConstMatrix indices,
+    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
     TTypes<int32>::Vec nnz_per_batch);
 extern template struct CalculateNNZPerBatchMatrixFromIndices<GPUDevice>;
 
 template <>
 struct SparseTensorToCOOSparseMatrix<GPUDevice> {
-  void operator()(const GPUDevice& d, TTypes<int64>::ConstVec host_dense_shape,
-                  TTypes<int64>::ConstMatrix indices,
+  void operator()(const GPUDevice& d,
+                  TTypes<int64_t>::ConstVec host_dense_shape,
+                  TTypes<int64_t>::ConstMatrix indices,
                   TTypes<int>::Vec coo_row_ind, TTypes<int>::Vec coo_col_ind);
 };
 extern template struct SparseTensorToCOOSparseMatrix<GPUDevice>;

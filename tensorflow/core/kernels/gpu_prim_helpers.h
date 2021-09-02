@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace tensorflow {
 
@@ -57,6 +58,36 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
                     const Tindex* indices_in,  // Optional
                     Tindex* indices_out, int num_bits = sizeof(Tkey) * 8) {
   if (size == 0) return Status::OK();
+  if (num_bits == 0) {
+    // Workaround for CUB failing when begin_bit = end_bit = 0 (e.g., when all
+    // keys are 0, so no sorting is needed).
+    se::Stream* stream = context->op_device_context()->stream();
+    if (keys_out) {
+      // Copy keys_in to keys_out.
+      size_t num_bytes = size * sizeof(Tkey);
+      se::DeviceMemoryBase src(const_cast<Tkey*>(keys_in), num_bytes);
+      se::DeviceMemoryBase dst(keys_out, num_bytes);
+      if (!stream->ThenMemcpy(&dst, src, num_bytes).ok()) {
+        return errors::Internal("Failed to copy keys_in to keys_out");
+      }
+    }
+    if (indices_in) {
+      // Copy indices_in to indices_out.
+      size_t num_bytes = size * sizeof(Tindex);
+      se::DeviceMemoryBase src(const_cast<Tindex*>(indices_in), num_bytes);
+      se::DeviceMemoryBase dst(indices_out, num_bytes);
+      if (!stream->ThenMemcpy(&dst, src, num_bytes).ok()) {
+        return errors::Internal("Failed to copy indices_in to indices_out");
+      }
+    } else {
+      // Set output indices to range.
+      const Eigen::GpuDevice& device =
+          context->eigen_device<Eigen::GpuDevice>();
+      TF_RETURN_IF_ERROR(detail::RangeInit(device, Tindex(0), Tindex(1),
+                                           Tindex(size), indices_out));
+    }
+    return Status::OK();
+  }
   // Allocate temporary inputs/outputs if necessary.
   Tensor tmp_indices_in;
   if (!indices_in) {
@@ -90,7 +121,7 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
   }
   // Allocate temporary storage.
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   // Sort indices by keys.
   err = gpuprim::DeviceRadixSort::SortPairs(
@@ -127,7 +158,7 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
   }
   Tensor temp_storage;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   err = gpuprim::DeviceScan::InclusiveSum(temp_storage.flat<int8>().data(),
                                           temp_storage_bytes, input, output,
@@ -164,7 +195,7 @@ Status GpuSegmentedReduce(
   }
   Tensor temp_storage;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   err = gpuprim::DeviceSegmentedReduce::Reduce(
       temp_storage.flat<int8>().data(), temp_storage_bytes, input, output,
@@ -174,6 +205,45 @@ Status GpuSegmentedReduce(
     return errors::Internal(
         "Failed to launch gpuprim::DeviceSegmentedReduce::Reduce"
         ", temp_storage_bytes: ",
+        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  }
+  return Status::OK();
+}
+
+template <typename InputIteratorT, typename FlagIteratorT,
+          typename OutputIteratorT, typename NumSelectedT = int>
+Status GpuSelectFlagged(OpKernelContext* context, int size,
+                        InputIteratorT input, FlagIteratorT flags,
+                        OutputIteratorT output,
+                        NumSelectedT* out_num_selected = nullptr) {
+  const auto& cu_stream = GetGpuStream(context);
+  Tensor out_num_selected_t;
+  if (!out_num_selected) {
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DataTypeToEnum<NumSelectedT>::value,
+                               TensorShape({}), &out_num_selected_t));
+    out_num_selected = out_num_selected_t.scalar<NumSelectedT>().data();
+  }
+  size_t temp_storage_bytes;
+  auto err =
+      gpuprim::DeviceSelect::Flagged(nullptr, temp_storage_bytes, input, flags,
+                                     output, out_num_selected, size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSelect::Flagged to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  Tensor temp_storage;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+      &temp_storage));
+  err = gpuprim::DeviceSelect::Flagged(temp_storage.flat<int8>().data(),
+                                       temp_storage_bytes, input, flags, output,
+                                       out_num_selected, size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSelect::Flagged, temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
   return Status::OK();

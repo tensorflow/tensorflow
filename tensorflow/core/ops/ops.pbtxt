@@ -8562,6 +8562,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "tpu_cancellation_closes_chips"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -21734,6 +21741,51 @@ op {
   }
   input_arg {
     name: "updates"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadTPUEmbeddingAdagradMomentumParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulators"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momenta"
     type: DT_FLOAT
   }
   attr {
@@ -40558,6 +40610,51 @@ op {
   is_stateful: true
 }
 op {
+  name: "RetrieveTPUEmbeddingAdagradMomentumParameters"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "accumulators"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "momenta"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RetrieveTPUEmbeddingAdagradParameters"
   output_arg {
     name: "parameters"
@@ -55779,6 +55876,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "is_files"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   is_stateful: true
 }

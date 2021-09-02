@@ -188,25 +188,33 @@ class OriginResolver(gast.NodeVisitor):
 
     self._function_stack = []
 
-  def _absolute_lineno(self, node):
-    return node.lineno + self._lineno_offset
+  def _absolute_lineno(self, lineno):
+    return lineno + self._lineno_offset
 
-  def _absolute_col_offset(self, node):
-    return node.col_offset + self._col_offset
+  def _absolute_col_offset(self, col_offset):
+    if col_offset is None:
+      return 0
+    return col_offset + self._col_offset
 
   def _attach_origin_info(self, node):
+    lineno = getattr(node, 'lineno', None)
+    col_offset = getattr(node, 'col_offset', None)
+
+    if lineno is None:
+      return
+
     if self._function_stack:
       function_name = self._function_stack[-1].name
     else:
       function_name = None
 
-    source_code_line = self._source_lines[node.lineno - 1]
-    comment = self._comments_map.get(node.lineno)
+    source_code_line = self._source_lines[lineno - 1]
+    comment = self._comments_map.get(lineno)
 
-    loc = Location(self._filepath, self._absolute_lineno(node),
-                   self._absolute_col_offset(node))
+    loc = Location(self._filepath, self._absolute_lineno(lineno),
+                   self._absolute_col_offset(col_offset))
     origin = OriginInfo(loc, function_name, source_code_line, comment)
-    anno.setanno(node, 'lineno', node.lineno)
+    anno.setanno(node, 'lineno', lineno)
     anno.setanno(node, anno.Basic.ORIGIN, origin)
 
   def visit(self, node):
@@ -215,8 +223,7 @@ class OriginResolver(gast.NodeVisitor):
       entered_function = True
       self._function_stack.append(_Function(node.name))
 
-    if hasattr(node, 'lineno'):
-      self._attach_origin_info(node)
+    self._attach_origin_info(node)
     self.generic_visit(node)
 
     if entered_function:

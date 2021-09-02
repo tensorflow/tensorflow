@@ -68,9 +68,9 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
   const TensorShape shape =
-      TensorShape(ctx->input(base_index + 2).vec<int64>());
+      TensorShape(ctx->input(base_index + 2).vec<int64_t>());
   CheckRankAtLeast2(ctx, shape);
-  std::vector<int64> order(shape.dims());
+  std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
 
   return sparse::SparseTensor::Create(
@@ -151,7 +151,7 @@ void OutputSparseTensor(OpKernelContext* ctx, const TensorShape& output_shape,
       ctx, ctx->allocate_output(1, TensorShape({num_values}), &out_values_t));
   OP_REQUIRES_OK(ctx, ctx->allocate_output(
                           2, TensorShape({output_shape.dims()}), &out_shape_t));
-  auto out_indices_mat = out_indices_t->matrix<int64>();
+  auto out_indices_mat = out_indices_t->matrix<int64_t>();
   auto out_values_flat = out_values_t->vec<T>();
 
   // For each set, write its indices and values to output tensors.
@@ -180,7 +180,7 @@ void OutputSparseTensor(OpKernelContext* ctx, const TensorShape& output_shape,
   }
 
   // Write output shape.
-  auto out_shape_flat = out_shape_t->vec<int64>();
+  auto out_shape_flat = out_shape_t->vec<int64_t>();
   for (int32_t i = 0; i < output_shape.dims(); ++i) {
     out_shape_flat(i) = output_shape.dim_size(i);
   }
@@ -288,7 +288,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int8);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int16);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int32);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(int64);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(int64_t);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint8);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint16);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(tstring);
@@ -402,7 +402,7 @@ Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
 // Split `flat_group_index` into separate dimensions based on `group_shape`.
 void PopulateGroupIndices(const int64_t flat_group_index,
                           VarDimArray group_shape,
-                          std::vector<int64>* group_indices) {
+                          std::vector<int64_t>* group_indices) {
   group_indices->clear();
   int64_t running_flat_group_index = flat_group_index;
   for (int group_dim_index = group_shape.size() - 1; group_dim_index >= 0;
@@ -445,7 +445,7 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  std::vector<int64> group_indices;
+  std::vector<int64_t> group_indices;
   int64_t num_elements;
   OP_REQUIRES_OK(ctx,
                  TensorShapeUtils::NumElements(group_shape, &num_elements));
@@ -504,7 +504,7 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
   auto set2_grouper =
       set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
-  std::vector<int64> group_indices;
+  std::vector<int64_t> group_indices;
   int64_t num_elements;
   OP_REQUIRES_OK(ctx,
                  TensorShapeUtils::NumElements(group_shape, &num_elements));
@@ -565,9 +565,9 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 // Return <0 if set1 <= set2, or set2 is empty.
 // Return >0 if set2 <= set1, or set1 is empty.
 void CompareGroups(OpKernelContext* ctx,
-                   const std::vector<int64>& set1_group_indices,
-                   const std::vector<int64>& set2_group_indices,
-                   int64* result) {
+                   const std::vector<int64_t>& set1_group_indices,
+                   const std::vector<int64_t>& set2_group_indices,
+                   int64_t* result) {
   if (set1_group_indices.empty()) {
     *result = set2_group_indices.empty() ? 0 : 1;
     return;
@@ -589,7 +589,7 @@ void CompareGroups(OpKernelContext* ctx,
 }
 
 // Empty indices vector represents iteration end in `CompareGroups`.
-const std::vector<int64> GROUP_ITER_END;
+const std::vector<int64_t> GROUP_ITER_END;
 
 // `ctx` contains set1 and set2 sparse tensors.
 // Iterate over groups in set1 and set2, applying `ApplySetOperation` to each,
@@ -714,7 +714,7 @@ class DenseToDenseSetOperationOp : public SetOperationOp<T> {
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
@@ -735,7 +735,7 @@ class DenseToSparseSetOperationOp : public SetOperationOp<T> {
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
@@ -756,7 +756,7 @@ class SparseToSparseSetOperationOp : public SetOperationOp<T> {
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);

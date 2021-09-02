@@ -636,7 +636,8 @@ class VariableScopeTest(test.TestCase):
           with variable_scope.variable_scope("_"):
             pass
 
-    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
+    self.assertRaisesRegex(ValueError,
+                           "'_' is not a valid (?:root )?scope name", f)
 
 
 class VariableScopeWithCustomGetterTest(test.TestCase):

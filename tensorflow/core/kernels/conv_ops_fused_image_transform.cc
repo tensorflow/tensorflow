@@ -112,15 +112,15 @@ struct ResizeTaskParameters {
   int input_depth;
   int top_padding;
   int pad_offset;
-  int64 resized_height;
+  int64_t resized_height;
   ImageResizerState st;
   const T1* input_batch_start;
-  int64 cache_start_x;
-  int64 cache_end_x;
+  int64_t cache_start_x;
+  int64_t cache_end_x;
   int left_padding;
-  int64 resized_width;
-  int64 padded_width;
-  int64 padded_height;
+  int64_t resized_width;
+  int64_t padded_width;
+  int64_t padded_height;
 };
 
 template <class T1>
@@ -193,9 +193,9 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
   }
   // Here's where to do the actual resize.
   in_y *= st.height_scale;
-  const int64_t top_y_index = static_cast<int64>(std::floor(in_y));
+  const int64_t top_y_index = static_cast<int64_t>(std::floor(in_y));
   const int64_t bottom_y_index =
-      std::min(static_cast<int64>(std::ceil(in_y)), (st.in_height - 1));
+      std::min(static_cast<int64_t>(std::ceil(in_y)), (st.in_height - 1));
   // Lerp is used for bilinear filtering when that's needed.
   result.y_lerp = static_cast<T1>(in_y - top_y_index);
   // Which rows of the original input image to pull the values from.
@@ -216,8 +216,8 @@ struct PerCachePixelParameters {
         x_lerp(other.x_lerp) {}
 
   T1* cache_line_pixel;
-  int64 left_x_index;
-  int64 right_x_index;
+  int64_t left_x_index;
+  int64_t right_x_index;
   T1 x_lerp;
 };
 
@@ -243,9 +243,9 @@ CalculatePerCachePixelParameters(int64_t cache_x, int64_t cache_start_x,
   // Resize the x parameters.
   in_x *= st.width_scale;
   // Get the x coordinates for the left and right pixels to pull from.
-  result.left_x_index = static_cast<int64>(std::floor(in_x));
+  result.left_x_index = static_cast<int64_t>(std::floor(in_x));
   result.right_x_index =
-      std::min(static_cast<int64>(std::ceil(in_x)), (st.in_width - 1));
+      std::min(static_cast<int64_t>(std::ceil(in_x)), (st.in_width - 1));
   // This x_lerp is used to blend pixels in bilinear filtering.
   result.x_lerp = static_cast<T1>(in_x - result.left_x_index);
   return result;

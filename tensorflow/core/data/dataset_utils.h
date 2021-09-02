@@ -36,7 +36,7 @@ constexpr int kShardHint = -1;
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource,
                     const string& container_name, ResourceHandle* handle) {
-  static std::atomic<int64> resource_id_counter(0);
+  static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
@@ -152,7 +152,8 @@ class DeterminismPolicy {
 //
 // By TensorFlow convention, if both seeds are 0, they should be replaced with
 // non-deterministically chosen seeds.
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds);
 
 // Adds the functions in `to_add` to `base`. If a function with a matching
 // signature already exists in `base`, replaces it with the function from
@@ -204,6 +205,10 @@ class DummyResourceOp : public OpKernel {
 // MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
 bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 
+// Returns the index-th slice of a given tensor. If the index-th slice of
+// the tensor is not aligned, returns a deep copy of the tensor.
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index);
+
 // Removes device placements from the ops of all functions in `library`.
 void StripDevicePlacement(FunctionDefLibrary* library);
 
@@ -236,9 +241,37 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
+// Constructs and stores the parameters for the CopyBatch function.
+struct CopyBatchParams {
+  Allocator* allocator;
+  std::function<void(std::function<void()>)>* runner;
+  int64 runner_threadpool_size;
+
+  explicit CopyBatchParams(IteratorContext* ctx) {
+    allocator = ctx->allocator({});
+    runner = ctx->runner();
+    runner_threadpool_size = ctx->runner_threadpool_size();
+  }
+
+  explicit CopyBatchParams(OpKernelContext* ctx) {
+    allocator = ctx->get_allocator({});
+    runner = ctx->runner();
+    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
+  }
+};
+
 // Copies the input elements to a batch.
-Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+//
+// The `batch_elements` argument contains the individual elements to copy into a
+// batch. The `parallel_copy` argument indicates whether to parallelize the
+// copy. The `allocation_callback` argument can be used to pass a callback to
+// invoke upon successful allocation of the memory for the batch. The
+// `out_tensors` argument will be used to store the resulting batch (one for
+// each component of the input).
+Status CopyBatch(CopyBatchParams params,
                  const std::vector<std::vector<Tensor>>& batch_elements,
+                 bool parallel_copy,
+                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, rollout
@@ -252,7 +285,8 @@ absl::flat_hash_set<string> GetExperiments(
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
-// given options.
+// given options. An optimization must be a graph optimizer name that has been
+// registered with Grappler.
 void GetOptimizations(const Options& options,
                       absl::flat_hash_set<tstring>* optimizations_enabled,
                       absl::flat_hash_set<tstring>* optimizations_disabled,
@@ -265,7 +299,11 @@ absl::flat_hash_set<tstring> SelectOptimizations(
     const absl::flat_hash_set<tstring>& optimizations_disabled,
     const absl::flat_hash_set<tstring>& optimizations_default);
 
-// Creates graph rewrite configs based on the given options.
+// Creates graph rewrite configs based on the given options. The configs will
+// only be used if their corresponding optimizers registered with Grappler are
+// enabled.
+// A config is a string with the following format:
+//   <optimizer name>:<attribute name>:<attribute value>
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options);
 
 // Determines whether max intra-op parallelism should be configured.
@@ -283,6 +321,12 @@ bool ShouldApplyOptimizations(
     const absl::flat_hash_set<tstring>& optimizations_enabled,
     const absl::flat_hash_set<tstring>& optimizations_default);
 
+// Returns the default CPU budget.
+inline int GetCpuBudget() {
+  static bool in_experiment = GetExperiments().contains("tune_cpu_budget");
+  return (in_experiment ? 1.2 : 1.0) * port::NumSchedulableCPUs();
+}
+
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:
@@ -290,7 +334,7 @@ class DatasetExperimentRegistry {
   static void Register(const string& experiment, int64_t rollout_pct);
 
   // Returns all registered experiments.
-  static absl::flat_hash_map<string, int64> Experiments();
+  static absl::flat_hash_map<string, int64_t> Experiments();
 };
 
 // Helper class to register a dataset experiment.

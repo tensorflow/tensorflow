@@ -367,6 +367,7 @@ def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.abs", "abs")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
@@ -447,6 +448,7 @@ class DivideDelegateWithName(object):
 
 
 @tf_export("math.divide", "divide")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`.
@@ -481,6 +483,7 @@ def divide(x, y, name=None):
 
 
 @tf_export("math.multiply", "multiply")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply(x, y, name=None):
   """Returns an element-wise x * y.
@@ -544,6 +547,7 @@ _mul.__doc__ = (
 
 
 @tf_export("math.subtract", "subtract")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
@@ -625,10 +629,12 @@ def scalar_mul(scalar, x, name=None):
     else:
       return gen_math_ops.mul(scalar, x, name)
   else:
-    raise ValueError("Only scalar multiply works, got shape %s" % shape)
+    raise ValueError(
+        f"The input scalar must be a 0-D value. Received shape {shape}.")
 
 
 @tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def softplus(features, name=None):
   """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
@@ -662,6 +668,7 @@ def scalar_mul_v2(scalar, x, name=None):
 
 
 @tf_export("math.pow", "pow")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
@@ -691,6 +698,7 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("dtypes.complex", "complex")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
@@ -730,12 +738,15 @@ def complex(real, imag, name=None):
     elif input_types == (dtypes.float32, dtypes.float32):
       Tout = dtypes.complex64
     else:
-      raise TypeError("real and imag have incorrect types: "
-                      "{} {}".format(real.dtype.name, imag.dtype.name))
+      raise TypeError(
+          f"The `real` and `imag` components have incorrect types: "
+          f"{real.dtype.name} {imag.dtype.name}. They must be consistent, and "
+          f"one of {[dtypes.float32, dtypes.float64]}")
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
 @tf_export("math.sign", "sign")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sign(x, name=None):
   r"""Returns an element-wise indication of the sign of a number.
@@ -782,9 +793,9 @@ def sign(x, name=None):
 
 
 @tf_export("math.real", v1=["math.real", "real"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
-@dispatch.add_dispatch_support
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -817,9 +828,9 @@ def real(input, name=None):
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
-@dispatch.add_dispatch_support
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -851,9 +862,9 @@ def imag(input, name=None):
 
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
-@dispatch.add_dispatch_support
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -896,6 +907,7 @@ def angle(input, name=None):
 
 
 @tf_export("math.round", "round")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
@@ -924,6 +936,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
 
 
 @tf_export("cast", "dtypes.cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -995,6 +1008,7 @@ def cast(x, dtype, name=None):
 
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
@@ -1317,7 +1331,7 @@ def _maybe_get_dtype(x):
   if isinstance(x, tensor_shape.TensorShape):
     return np.int32
   if isinstance(x, (list, tuple)):
-    raise ValueError("Got sequence {}".format(x))
+    raise ValueError(f"Cannot determine dtype.  Got sequence {x}.")
   return x
 
 
@@ -1454,12 +1468,14 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
     x_dtype = sp_values.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     try:
       dtype = _TRUEDIV_TABLE[x_dtype]
     except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}.")
     if dtype is not None:
       sp_values = cast(sp_values, dtype)
       y = cast(y, dtype)
@@ -1474,12 +1490,14 @@ def _truediv_python3(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     try:
       dtype = _TRUEDIV_TABLE[x_dtype]
     except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}.")
     if dtype is not None:
       x = cast(x, dtype)
       y = cast(y, dtype)
@@ -1506,8 +1524,8 @@ def _div_python2(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
     if x_dtype.is_floating or x_dtype.is_complex:
       return gen_math_ops.real_div(x, y, name=name)
     else:
@@ -1515,6 +1533,7 @@ def _div_python2(x, y, name=None):
 
 
 @tf_export("math.truediv", "truediv")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
@@ -1579,9 +1598,9 @@ def div(x, y, name=None):
 
 
 @tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
-@dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes a safe divide which returns 0 if `y` (denominator) is zero.
 
@@ -1608,6 +1627,7 @@ def div_no_nan(x, y, name=None):
 
 
 @tf_export("math.multiply_no_nan")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
@@ -1627,8 +1647,8 @@ def multiply_no_nan(x, y, name=None):
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}")
     return gen_math_ops.mul_no_nan(x, y, name=name)
 
 
@@ -1639,6 +1659,7 @@ mod = gen_math_ops.floor_mod
 # TODO(aselle): Deprecate this once all internal functionality uses
 # tf.truncatediv
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("floordiv")
 def floordiv(x, y, name=None):
@@ -1739,6 +1760,7 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
@@ -1837,6 +1859,7 @@ ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
 
 
 @tf_export("math.equal", "equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def equal(x, y, name=None):
   """Returns the truth value of (x == y) element-wise.
@@ -1873,6 +1896,7 @@ def equal(x, y, name=None):
 
 
 @tf_export("math.not_equal", "not_equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def not_equal(x, y, name=None):
   """Returns the truth value of (x != y) element-wise.
@@ -2640,7 +2664,8 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     input_tensor = ops.convert_to_tensor(input_tensor)
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
     if means.dtype.is_integer:
-      raise TypeError("Input must be either real or complex")
+      raise TypeError(f"Input must be either real or complex. "
+                      f"Received integer type {means.dtype}.")
     diff = input_tensor - means
     if diff.dtype.is_complex:
       # For complex values we need to take the absolute value before squaring.
@@ -3398,7 +3423,6 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("trace")
-@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -3570,9 +3594,15 @@ def matmul(a,
 
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
-      raise ValueError("Only one of transpose_a and adjoint_a can be True.")
+      raise ValueError(
+          f"Only one of `transpose_a` and `adjoint_a` can be True. "
+          f"Received `transpose_a`={transpose_a}, "
+          f"`adjoint_a`={adjoint_a}.")
     if transpose_b and adjoint_b:
-      raise ValueError("Only one of transpose_b and adjoint_b can be True.")
+      raise ValueError(
+          f"Only one of `transpose_b` and `adjoint_b` can be True. "
+          f"Received `transpose_b`={transpose_b}, "
+          f"`adjoint_b`={adjoint_b}.")
 
     if context.executing_eagerly():
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
@@ -3829,7 +3859,7 @@ def _as_indexed_slices(x, optimize=True):
   """
   # TODO(touts): op_scope
   if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
-    raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
+    raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
   if isinstance(x, ops.IndexedSlices):
     return x
   x_shape = array_ops.shape_internal(x, optimize=optimize)
@@ -3853,7 +3883,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
     TypeError: If 'inputs' is not a list or a tuple.
   """
   if not isinstance(inputs, (list, tuple)):
-    raise TypeError("Expected a list or tuple, not a %s" % type(inputs))
+    raise TypeError(f"Expected a list or tuple, not {type(inputs)}.")
   outputs = [_as_indexed_slices(i, optimize=optimize) for i in inputs]
   with_int32_index = [
       o.indices for o in outputs if o.indices.dtype == dtypes.int32
@@ -3872,6 +3902,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
 
 
 @tf_export("math.add", "add")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def add(x, y, name=None):
   """Returns x + y element-wise.
@@ -3952,7 +3983,7 @@ def add(x, y, name=None):
 
 
 @tf_export("math.add_n", "add_n")
-@dispatch.add_dispatch_support
+@dispatch.add_dispatch_support(iterable_parameters=["inputs"])
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
@@ -3990,12 +4021,12 @@ def add_n(inputs, name=None):
     cannot be inferred.
   """
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
-    raise ValueError("inputs must be an iterable of at least one "
-                     "Tensor/IndexedSlices with the same dtype and shape")
+    raise ValueError("Inputs must be an iterable of at least one "
+                     "Tensor/IndexedSlices with the same dtype and shape.")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be an iterable of at least one "
-                     "Tensor/IndexedSlices with the same dtype and shape")
+    raise ValueError("Inputs must be an iterable of at least one "
+                     "Tensor/IndexedSlices with the same dtype and shape.")
 
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
@@ -4070,8 +4101,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
-        tensor_dtype, inputs[0].dtype))
+    raise TypeError(
+        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of type "
+        f"{inputs[0].dtype}. These must be equal. Try casting the input to the "
+        f"desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
@@ -4088,6 +4121,7 @@ def _accumulate_n_grad(op, grad):
 
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
@@ -4140,6 +4174,7 @@ def sigmoid(x, name=None):
 
 
 @tf_export("math.log_sigmoid", v1=["math.log_sigmoid", "log_sigmoid"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("log_sigmoid")
 def log_sigmoid(x, name=None):
@@ -4366,6 +4401,7 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
 def conj(x, name=None):
@@ -4419,8 +4455,8 @@ def conj(x, name=None):
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric or variant tensor, got dtype %r" %
-                      x.dtype)
+      raise TypeError(
+          f"Expected numeric or variant tensor, got dtype {x.dtype!r}.")
 
 
 def reduced_shape(input_shape, axes):
@@ -4492,7 +4528,6 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
-@dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
@@ -4538,7 +4573,6 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
-@dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
@@ -5011,11 +5045,12 @@ def tensordot(a, b, axes, name=None):
     a_shape = a.get_shape()
     if isinstance(axes, compat.integral_types):
       if axes < 0:
-        raise ValueError("'axes' must be at least 0.")
+        raise ValueError(f"`axes` must be at least 0. Received: {axes}.")
       if a_shape.ndims is not None:
         if axes > a_shape.ndims:
-          raise ValueError("'axes' must not be larger than the number of "
-                           "dimensions of tensor %s." % a)
+          raise ValueError(f"`axes` must not be larger than the number of "
+                           f"dimensions of tensor {a}.  Received {axes}, vs "
+                           f"tensor dimensions {a_shape.ndims}.")
         return (list(xrange(a_shape.ndims - axes,
                             a_shape.ndims)), list(xrange(axes)))
       else:
@@ -5024,7 +5059,8 @@ def tensordot(a, b, axes, name=None):
                       dtype=dtypes.int32), range(axes, dtype=dtypes.int32))
     elif isinstance(axes, (list, tuple)):
       if len(axes) != 2:
-        raise ValueError("'axes' must be an integer or have length 2.")
+        raise ValueError(
+            f"`axes` must be an integer or have length 2. Received {axes}.")
       a_axes = axes[0]
       b_axes = axes[1]
       if isinstance(a_axes, compat.integral_types) and \
@@ -5032,9 +5068,8 @@ def tensordot(a, b, axes, name=None):
         a_axes = [a_axes]
         b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
-        raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s." %
-            (len(a_axes), len(b_axes)))
+        raise ValueError(f"Different number of contraction axes `a` and `b`, "
+                         f"{len(a_axes)} != {len(b_axes)}.")
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)
@@ -5120,8 +5155,8 @@ def polyval(coeffs, x, name=None):
   @end_compatibility
   """
   if not isinstance(coeffs, list):
-    raise ValueError("Argument coeffs must be list type "
-                     "found {}.".format(type(coeffs)))
+    raise ValueError(
+        f"Argument coeffs must be list type. Received type {type(coeffs)}.")
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -5138,6 +5173,7 @@ def polyval(coeffs, x, name=None):
 
 
 @tf_export("math.reciprocal_no_nan")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
@@ -5208,6 +5244,7 @@ def xlog1py(x, y, name=None):
 
 
 @tf_export("math.erfinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfinv(x, name=None):
   """Compute inverse error function.
@@ -5226,6 +5263,7 @@ def erfinv(x, name=None):
 
 
 @tf_export("math.ndtri")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ndtri(x, name=None):
   """Compute quantile of Standard Normal.
@@ -5241,6 +5279,7 @@ def ndtri(x, name=None):
 
 
 @tf_export("math.erfcinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfcinv(x, name=None):
   """Computes the inverse of complementary error function.
@@ -5270,9 +5309,9 @@ def erfcinv(x, name=None):
 
 
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
-@dispatch.add_dispatch_support
 def ceil(x, name=None):
   """Return the ceiling of the input, element-wise.
 
@@ -5298,6 +5337,7 @@ def ceil(x, name=None):
 
 
 @tf_export("math.sqrt", "sqrt")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes element-wise square root of the input tensor.
@@ -5336,6 +5376,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.exp", "exp")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def exp(x, name=None):
   r"""Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -5413,9 +5454,9 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 
 
 @tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
-@dispatch.add_dispatch_support
 def rsqrt(x, name=None):
   """Computes reciprocal of square root of x element-wise.
 
@@ -5438,6 +5479,7 @@ def rsqrt(x, name=None):
 
 
 @tf_export("math.acos", "acos")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def acos(x, name=None):
   """Computes acos of x element-wise.
@@ -5469,6 +5511,7 @@ def acos(x, name=None):
 
 
 @tf_export("math.floor", "floor")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def floor(x, name=None):
   """Returns element-wise largest integer not greater than x.
@@ -5491,3 +5534,54 @@ def floor(x, name=None):
     A `Tensor`. Has the same type as x.
   """
   return gen_math_ops.floor(x, name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_or)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_xor)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.left_shift)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.right_shift)
+dispatch.register_unary_elementwise_api(gen_bitwise_ops.invert)
+dispatch.register_binary_elementwise_api(gen_math_ops.atan2)
+dispatch.register_binary_elementwise_api(gen_math_ops.floor_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.less)
+dispatch.register_binary_elementwise_api(gen_math_ops.less_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_and)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_or)
+dispatch.register_binary_elementwise_api(gen_math_ops.maximum)
+dispatch.register_binary_elementwise_api(gen_math_ops.minimum)
+dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
+dispatch.register_unary_elementwise_api(gen_math_ops.acosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.asin)
+dispatch.register_unary_elementwise_api(gen_math_ops.asinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.atan)
+dispatch.register_unary_elementwise_api(gen_math_ops.atanh)
+dispatch.register_unary_elementwise_api(gen_math_ops.cos)
+dispatch.register_unary_elementwise_api(gen_math_ops.cosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.digamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.erf)
+dispatch.register_unary_elementwise_api(gen_math_ops.erfc)
+dispatch.register_unary_elementwise_api(gen_math_ops.expm1)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_finite)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_inf)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_nan)
+dispatch.register_unary_elementwise_api(gen_math_ops.lgamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.log)
+dispatch.register_unary_elementwise_api(gen_math_ops.log1p)
+dispatch.register_unary_elementwise_api(gen_math_ops.logical_not)
+dispatch.register_unary_elementwise_api(gen_math_ops.neg)
+dispatch.register_unary_elementwise_api(gen_math_ops.next_after)
+dispatch.register_unary_elementwise_api(gen_math_ops.reciprocal)
+dispatch.register_unary_elementwise_api(gen_math_ops.rint)
+dispatch.register_unary_elementwise_api(gen_math_ops.sin)
+dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.square)
+dispatch.register_unary_elementwise_api(gen_math_ops.tan)
+dispatch.register_unary_elementwise_api(gen_math_ops.tanh)
+

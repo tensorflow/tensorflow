@@ -104,11 +104,15 @@ void SetForbiddenContextFunction(FunctionType* func) {
 // Returns true if at least one tensor in the given list is kTfLiteDynamic.
 template <typename TensorIntArray>
 bool HasDynamicTensorImpl(const TfLiteContext& context,
-                          const TensorIntArray& int_array) {
+                          const TensorIntArray& int_array,
+                          int* dynamic_tensor_index) {
   for (int i : int_array) {
     if (i == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& tensor = context.tensors[i];
     if (tensor.allocation_type == kTfLiteDynamic) {
+      if (dynamic_tensor_index) {
+        *dynamic_tensor_index = i;
+      }
       return true;
     }
   }
@@ -116,8 +120,10 @@ bool HasDynamicTensorImpl(const TfLiteContext& context,
 }
 
 bool HasDynamicTensor(const TfLiteContext& context,
-                      const TfLiteIntArray* int_array) {
-  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
+                      const TfLiteIntArray* int_array,
+                      int* dynamic_tensor_index) {
+  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array},
+                              dynamic_tensor_index);
 }
 
 // Gets the legacy TfLiteQuantizationParams from the current TfLiteQuantization.
@@ -215,7 +221,6 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map) {
-  // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -597,7 +602,6 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
 TfLiteStatus Subgraph::SetMetadata(
     const std::map<std::string, std::string>* metadata) {
   metadata_ = metadata;
-  // TODO(b/188185962): Set context_.allow_fp32_relax_to_fp16 based on metadata.
   return kTfLiteOk;
 }
 
@@ -724,7 +728,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // have been resized. For inputs marked as dynamic, we can't short-circuit the
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
-      !HasDynamicTensorImpl(context_, inputs())) {
+      !HasDynamicTensorImpl(context_, inputs(), &dynamic_tensor_index_)) {
     if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
       // If the only change was the release of non-persistent memory via
       // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
@@ -953,11 +957,17 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     if (IsUnresolvedCustomOp(op_reg)) {
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
-            "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you apply/link the Flex delegate before inference.");
+            "Select TensorFlow op(s), included in the given model, is(are) not "
+            "supported by this interpreter. Make sure you apply/link the Flex "
+            "delegate before inference. For the Android, it can be resolved by "
+            "adding \"org.tensorflow:tensorflow-lite-select-tf-ops\" "
+            "dependency. See instructions: "
+            "https://www.tensorflow.org/lite/guide/ops_select");
       } else {
-        ReportError("Encountered unresolved custom op: %s.",
-                    op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+        ReportError(
+            "Encountered unresolved custom op: %s.\nSee instructions: "
+            "https://www.tensorflow.org/lite/guide/ops_custom",
+            op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteError;
     }
@@ -974,7 +984,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Forwarding inputs without modification won't be not evaluated in the
     // operators. So, it needs to look up the subgraph's output tensors at the
     // beginning.
-    has_dynamic_tensors_ = HasDynamicTensorImpl(context_, outputs());
+    has_dynamic_tensors_ =
+        HasDynamicTensorImpl(context_, outputs(), &dynamic_tensor_index_);
   }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
@@ -993,7 +1004,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Discontinue if the node has dynamic outputs. Note that we don't
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
-    if (HasDynamicTensor(context_, node.outputs)) {
+    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_)) {
       has_dynamic_tensors_ = true;
       return kTfLiteOk;
     }
@@ -1154,7 +1165,7 @@ TfLiteStatus Subgraph::Invoke() {
     // Force execution prep for downstream ops if the latest op triggered the
     // resize of a dynamic tensor.
     if (tensor_resized_since_op_invoke_ &&
-        HasDynamicTensor(context_, node.outputs)) {
+        HasDynamicTensor(context_, node.outputs, nullptr)) {
       next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
 
       // This happens when an intermediate dynamic tensor is resized.
@@ -1317,8 +1328,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       GetLegacyQuantization(quantization),
                       const_cast<char*>(buffer), bytes, kTfLiteMmapRo,
                       allocation, false, &tensor);
-    // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-    // if there are other required callers.
     tensor.quantization = *scoped_quantization.release();
     tensor.sparsity = scoped_sparsity.release();
   }
@@ -1371,8 +1380,6 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
                     GetLegacyQuantization(quantization),
                     /*buffer=*/nullptr, required_bytes, allocation_type,
                     nullptr, is_variable, &tensor);
-  // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
-  // if there are other required callers.
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
@@ -1563,6 +1570,14 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
 
 bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
 
+bool Subgraph::IsFullyDelegated() const {
+  for (const int nid : execution_plan_) {
+    const TfLiteNode& node = nodes_and_registration_[nid].first;
+    if (node.delegate == nullptr) return false;
+  }
+  return true;
+}
+
 void Subgraph::EnsureTensorsVectorCapacity() {
   const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
   if (required_capacity > tensors_.capacity()) {
@@ -1634,7 +1649,9 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
-          "tensors with a graph that has dynamic-sized tensors.");
+          "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "
+          "dynamic-sized tensor).",
+          dynamic_tensor_index_);
       return kTfLiteApplicationError;
     }
   }
@@ -1642,8 +1659,6 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (delegates_applied_.empty()) {
     // This is the first delegate being applied, so remember original execution
     // plan.
-    // TODO(b/119623453): Restore execution plan to this state if delegate
-    // application fails.
     pre_delegation_execution_plan_ = execution_plan_;
   }
 
@@ -1743,6 +1758,11 @@ void Subgraph::SetName(const char* name) {
 }
 
 const std::string& Subgraph::GetName() const { return name_; }
+
+void Subgraph::DumpMemoryPlannerDebugInfo() const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->DumpDebugInfo(execution_plan());
+}
 
 TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   if (memory_planner_) {

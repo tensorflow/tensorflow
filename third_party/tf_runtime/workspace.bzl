@@ -6,8 +6,8 @@ def repo():
     """Imports TFRT."""
 
     # Attention: tools parse and update these lines.
-    TFRT_COMMIT = "dd97c44051b7dc0a877f71dcb271721f7cfadb2b"
-    TFRT_SHA256 = "58d641fb6f6f2ebbb39ab55b990a1e1457678b05d8f7cf1faee8110c3775998c"
+    TFRT_COMMIT = "bd539c47cd6dc71e8ce95c0f74712d903a3814d8"
+    TFRT_SHA256 = "1047f7e504af7cbdc5a251301348f5b25616e0f864bd6edfdec4d74eafa34946"
 
     tf_http_archive(
         name = "tf_runtime",
@@ -17,4 +17,7 @@ def repo():
             "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/{commit}.tar.gz".format(commit = TFRT_COMMIT),
             "https://github.com/tensorflow/runtime/archive/{commit}.tar.gz".format(commit = TFRT_COMMIT),
         ],
+        # A patch file can be provided for atomic commits to both TF and TFRT.
+        # The job that bumps the TFRT_COMMIT also resets patch_file to 'None'.
+        patch_file = None,
     )

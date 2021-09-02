@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -61,7 +62,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_stateless_random_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -87,6 +91,12 @@ autograph_ctx = lazy_loader.LazyLoader(
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
     "tensorflow.python.autograph.impl.api")
+# Loaded lazily due to a circular dependency
+# dataset_ops->parsing_ops->dataset_ops
+# TODO(varshaan): Use a regular import.
+parsing_ops = lazy_loader.LazyLoader(
+    "parsing_ops", globals(),
+    "tensorflow.python.ops.parsing_ops")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -280,6 +290,37 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return gen_dataset_ops.dataset_to_graph(
         self._variant_tensor, allow_stateful=allow_stateful)
 
+  def _maybe_track_assets(self, graph_def):
+    """Finds and tracks nodes in `graph_def` that refer to asset files.
+
+    Args:
+      graph_def: Serialized graph representation of this dataset.
+
+    Returns:
+      A dictionary mapping the node name of an asset constant to a tracked
+      `tracking.Asset` object.
+    """
+    asset_tracker = {}
+    for node in graph_def.node:
+      if node.name.startswith("FileIdentity"):
+        asset_tracker[node.input[0]] = None
+
+    if not asset_tracker:
+      return {}
+
+    for node in graph_def.node:
+      if node.name in asset_tracker:
+        tensor_proto = node.attr["value"].tensor
+        with context.eager_mode(), ops.device("CPU"):
+          node_value = parsing_ops.parse_tensor(
+              tensor_proto.SerializeToString(), dtypes.string).numpy()
+        asset_tracker[node.name] = ([
+            self._track_trackable(
+                tracking.Asset(n), name=node.name + "_" + str(i))
+            for i, n in enumerate(node_value)
+        ])
+    return asset_tracker
+
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
 
@@ -309,11 +350,28 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         output_node_name, = node.input
     if output_node_name is None:
       raise AssertionError("Could not find the dataset's output node.")
+
+    file_path_nodes = {}
+    # TODO(b/188455028): Remove this check when
+    # `CapturableResource._map_resources` take an argument to provide the
+    # re-mapped asset tensor object instead of the original eager one.
+    if ops.get_default_graph().building_function:
+      asset_tracker = self._maybe_track_assets(graph_def)
+      for key in asset_tracker:
+        assets_list = [
+            array_ops.expand_dims(asset.asset_path, axis=0)
+            for asset in asset_tracker[key]
+        ]
+        file_path_nodes[key] = array_ops.concat(assets_list, axis=0)
+
     # Add functions used in this Dataset to the function's graph, since they
     # need to follow it around (and for example be added to a SavedModel which
     # references the dataset).
     variant_function = wrap_function.function_from_graph_def(
-        graph_def, inputs=[], outputs=output_node_name + ":0")
+        graph_def,
+        inputs=[],
+        outputs=output_node_name + ":0",
+        captures=file_path_nodes)
     for used_function in self._functions():
       used_function.function.add_to_graph(variant_function.graph)
     return variant_function
@@ -382,7 +440,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
       options = options_lib.Options()
-      options.experimental_optimization.autotune = False
+      options.autotune.enabled = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
       dataset = _OptionsDataset(self, options)
@@ -1227,7 +1285,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = Dataset.from_tensor_slices(matching_files)
+      dataset = TensorSliceDataset(matching_files, is_files=True)
+      if issubclass(Dataset, DatasetV1):
+        dataset = DatasetV1Adapter(dataset)
       if shuffle:
         # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
         # list of files might be empty.
@@ -1688,8 +1748,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Dataset: A `Dataset`.
 
     Raises:
-      ValueError: If a component has an unknown rank, and  the `padded_shapes`
+      ValueError: If a component has an unknown rank, and the `padded_shapes`
         argument is not set.
+      TypeError: If a component is of an unsupported type. The list of supported
+        types is documented in
+        https://www.tensorflow.org/guide/data#dataset_structure.
     """
     if padded_shapes is None:
       padded_shapes = get_legacy_output_shapes(self)
@@ -2932,6 +2995,240 @@ name=None))
 
     return _UniqueDataset(self)
 
+  def rejection_resample(self,
+                         class_func,
+                         target_dist,
+                         initial_dist=None,
+                         seed=None):
+    """A transformation that resamples a dataset to achieve a target distribution.
+
+    Lets consider the following example where a dataset with an initial data
+    distribution of `init_dist` needs to be resampled into a dataset with
+    `target_dist` distribution.
+
+    >>> import collections
+    >>> initial_dist = [0.5, 0.5]
+    >>> target_dist = [0.6, 0.4]
+    >>> num_classes = len(initial_dist)
+    >>> num_samples = 100000
+    >>> data_np = np.random.choice(num_classes, num_samples, p=initial_dist)
+    >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
+    >>> x = collections.defaultdict(int)
+    >>> for i in dataset:
+    ...   x[i.numpy()] += 1
+
+    The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
+    `initial_dist` distribution.
+
+    >>> dataset = dataset.rejection_resample(
+    ...    class_func=lambda x: x % 2,
+    ...    target_dist=target_dist,
+    ...    initial_dist=initial_dist)
+
+    >>> y = collections.defaultdict(int)
+    >>> for i in dataset:
+    ...   cls, _ = i
+    ...   y[cls.numpy()] += 1
+
+    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus
+    satisfying the `target_dist` distribution.
+
+    Args:
+      class_func: A function mapping an element of the input dataset to a scalar
+        `tf.int32` tensor. Values should be in `[0, num_classes)`.
+      target_dist: A floating point type tensor, shaped `[num_classes]`.
+      initial_dist: (Optional.)  A floating point type tensor, shaped
+        `[num_classes]`.  If not provided, the true class distribution is
+        estimated live in a streaming fashion.
+      seed: (Optional.) Python integer seed for the resampler.
+
+    Returns:
+      A `Dataset`
+    """
+
+    target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
+    target_dist_t = math_ops.cast(target_dist_t, dtypes.float32)
+
+    # Get initial distribution.
+    if initial_dist is not None:
+      initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
+      initial_dist_t = math_ops.cast(initial_dist_t, dtypes.float32)
+      acceptance_dist, prob_of_original = (
+          _calculate_acceptance_probs_with_mixing(initial_dist_t,
+                                                  target_dist_t))
+      initial_dist_ds = DatasetV2.from_tensors(initial_dist_t).repeat()
+      acceptance_dist_ds = DatasetV2.from_tensors(acceptance_dist).repeat()
+      prob_of_original_ds = DatasetV2.from_tensors(prob_of_original).repeat()
+    else:
+      initial_dist_ds = _estimate_initial_dist_ds(target_dist_t,
+                                                  self.map(class_func))
+      acceptance_and_original_prob_ds = initial_dist_ds.map(
+          lambda initial: _calculate_acceptance_probs_with_mixing(  # pylint: disable=g-long-lambda
+              initial, target_dist_t))
+      acceptance_dist_ds = acceptance_and_original_prob_ds.map(
+          lambda accept_prob, _: accept_prob)
+      prob_of_original_ds = acceptance_and_original_prob_ds.map(
+          lambda _, prob_original: prob_original)
+    filtered_ds = _filter_ds(self, acceptance_dist_ds, initial_dist_ds,
+                             class_func, seed)
+    # Prefetch filtered dataset for speed.
+    filtered_ds = filtered_ds.prefetch(3)
+
+    prob_original_static = _get_prob_original_static(
+        initial_dist_t, target_dist_t) if initial_dist is not None else None
+
+    def add_class_value(*x):
+      if len(x) == 1:
+        return class_func(*x), x[0]
+      else:
+        return class_func(*x), x
+
+    if prob_original_static == 1:
+      return self.map(add_class_value)
+    elif prob_original_static == 0:
+      return filtered_ds
+    else:
+      return Dataset.sample_from_datasets(
+          [self.map(add_class_value), filtered_ds],
+          weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
+          seed=seed,
+          stop_on_empty_dataset=True)
+
+  @staticmethod
+  def sample_from_datasets(datasets,
+                           weights=None,
+                           seed=None,
+                           stop_on_empty_dataset=False):
+    """Samples elements at random from the datasets in `datasets`.
+
+    Creates a dataset by interleaving elements of `datasets` with `weight[i]`
+    probability of picking an element from dataset `i`. Sampling is done without
+    replacement. For example, suppose we have 2 datasets:
+
+    ```python
+    dataset1 = tf.data.Dataset.range(0, 3)
+    dataset2 = tf.data.Dataset.range(100, 103)
+    ```
+
+    Suppose that we sample from these 2 datasets with the following weights:
+
+    ```python
+    sample_dataset = tf.data.Dataset.sample_from_datasets(
+        [dataset1, dataset2], weights=[0.5, 0.5])
+    ```
+
+    One possible outcome of elements in sample_dataset is:
+
+    ```
+    print(list(sample_dataset.as_numpy_iterator()))
+    # [100, 0, 1, 101, 2, 102]
+    ```
+
+    Args:
+      datasets: A non-empty list of `tf.data.Dataset` objects with compatible
+        structure.
+      weights: (Optional.) A list or Tensor of `len(datasets)` floating-point
+        values where `weights[i]` represents the probability to sample from
+        `datasets[i]`, or a `tf.data.Dataset` object where each element is such
+        a list. Defaults to a uniform distribution across `datasets`.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
+        seed that will be used to create the distribution. See
+        `tf.random.set_seed` for behavior.
+      stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
+        dataset. If `False`, it skips empty datasets. It is recommended to set
+        it to `True`. Otherwise, the distribution of samples starts off as the
+        user intends, but may change as input datasets become empty. This can be
+        difficult to detect since the dataset starts off looking correct.
+        Default to `False` for backward compatibility.
+
+    Returns:
+      A dataset that interleaves elements from `datasets` at random, according
+      to `weights` if provided, otherwise with uniform probability.
+
+    Raises:
+      TypeError: If the `datasets` or `weights` arguments have the wrong type.
+      ValueError:
+        - If `datasets` is empty, or
+        - If `weights` is specified and does not match the length of `datasets`.
+    """
+
+    def _shapes_are_compatible(datasets, weights):
+      if isinstance(weights, ops.Tensor):
+        return weights.shape.is_compatible_with([len(datasets)])
+      return len(datasets) == len(weights)
+
+    def _skip_datasets_with_zero_weight(datasets, weights):
+      datasets_and_weights = [(dataset, weight)
+                              for (dataset, weight) in zip(datasets, weights)
+                              if weight > 0]
+      return (zip(*datasets_and_weights) if datasets_and_weights else
+              ([datasets[0].take(0)], [1.]))
+
+    if not datasets:
+      raise ValueError("`datasets` must be a non-empty list of datasets.")
+
+    if not isinstance(weights, DatasetV2):
+      if weights is None:
+        # Select inputs with uniform probability.
+        logits = [[1.0] * len(datasets)]
+
+      else:
+        if not _shapes_are_compatible(datasets, weights):
+          raise ValueError("`weights` must have the same length as `datasets`.")
+
+        # Use the given `weights` as the probability of choosing the respective
+        # input.
+        if not isinstance(weights, ops.Tensor):
+          datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
+        weights = ops.convert_to_tensor(weights, name="weights")
+        if weights.dtype not in (dtypes.float32, dtypes.float64):
+          raise TypeError("`weights` must be convertible to a tensor of "
+                          "`tf.float32` or `tf.float64` elements.")
+
+        # The `stateless_multinomial()` op expects log-probabilities, as opposed
+        # to weights.
+        logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
+
+      # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When
+      # it is a `Dataset`, it is possible that evaluating it has a side effect
+      # the user depends on.
+      if len(datasets) == 1:
+        return datasets[0]
+
+      def select_dataset_constant_logits(seed):
+        return array_ops.squeeze(
+            gen_stateless_random_ops.stateless_multinomial(
+                logits, 1, seed=seed),
+            axis=[0, 1])
+
+      selector_input = MapDataset(
+          RandomDataset(seed).batch(2),
+          select_dataset_constant_logits,
+          use_inter_op_parallelism=False)
+
+    else:
+      # Use each element of the given `weights` dataset as the probability of
+      # choosing the respective input.
+      #
+      # The `stateless_multinomial()` op expects log-probabilities, as opposed
+      # to weights.
+      logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
+
+      def select_dataset_varying_logits(logits, seed):
+        return array_ops.squeeze(
+            gen_stateless_random_ops.stateless_multinomial(
+                logits, 1, seed=seed),
+            axis=[0, 1])
+
+      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
+      selector_input = MapDataset(
+          logits_and_seeds,
+          select_dataset_varying_logits,
+          use_inter_op_parallelism=False)
+
+    return _DirectedInterleaveDataset(selector_input, datasets,
+                                      stop_on_empty_dataset)
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
@@ -3689,7 +3986,7 @@ class TensorDataset(DatasetSource):
 class TensorSliceDataset(DatasetSource):
   """A `Dataset` of slices from a dataset element."""
 
-  def __init__(self, element):
+  def __init__(self, element, is_files=False):
     """See `Dataset.from_tensor_slices()` for details."""
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
@@ -3703,9 +4000,13 @@ class TensorSliceDataset(DatasetSource):
       batch_dim.assert_is_compatible_with(tensor_shape.Dimension(
           tensor_shape.dimension_value(t.get_shape()[0])))
 
+    compat_kwargs = {
+        "output_shapes": structure.get_flat_tensor_shapes(self._structure)
+    }
+    if compat.forward_compatible(2021, 9, 20):
+      compat_kwargs["is_files"] = is_files
     variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure))
+        self._tensors, **compat_kwargs)
     super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
@@ -5328,6 +5629,209 @@ class RandomDataset(DatasetSource):
     return tensor_spec.TensorSpec([], dtypes.int64)
 
 
+def _get_prob_original_static(initial_dist_t, target_dist_t):
+  """Returns the static probability of sampling from the original.
+
+  `tensor_util.constant_value(prob_of_original)` returns `None` if it encounters
+  an Op that it isn't defined for. We have some custom logic to avoid this.
+
+  Args:
+    initial_dist_t: A tensor of the initial distribution.
+    target_dist_t: A tensor of the target distribution.
+
+  Returns:
+    The probability of sampling from the original distribution as a constant,
+    if it is a constant, or `None`.
+  """
+  init_static = tensor_util.constant_value(initial_dist_t)
+  target_static = tensor_util.constant_value(target_dist_t)
+
+  if init_static is None or target_static is None:
+    return None
+  else:
+    return np.min(target_static / init_static)
+
+
+def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_func, seed):
+  """Filters a dataset based on per-class acceptance probabilities.
+
+  Args:
+    dataset: The dataset to be filtered.
+    acceptance_dist_ds: A dataset of acceptance probabilities.
+    initial_dist_ds: A dataset of the initial probability distribution, given or
+      estimated.
+    class_func: A function mapping an element of the input dataset to a scalar
+      `tf.int32` tensor. Values should be in `[0, num_classes)`.
+    seed: (Optional.) Python integer seed for the resampler.
+
+  Returns:
+    A dataset of (class value, data) after filtering.
+  """
+
+  def maybe_warn_on_large_rejection(accept_dist, initial_dist):
+    proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
+    return control_flow_ops.cond(
+        math_ops.less(proportion_rejected, .5),
+        lambda: accept_dist,
+        lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
+            accept_dist, [proportion_rejected, initial_dist, accept_dist],
+            message="Proportion of examples rejected by sampler is high: ",
+            summarize=100,
+            first_n=10))
+
+  acceptance_dist_ds = (
+      DatasetV2.zip((acceptance_dist_ds,
+                     initial_dist_ds)).map(maybe_warn_on_large_rejection))
+
+  def _gather_and_copy(acceptance_prob, data):
+    if isinstance(data, tuple):
+      class_val = class_func(*data)
+    else:
+      class_val = class_func(data)
+    return class_val, array_ops.gather(acceptance_prob, class_val), data
+
+  current_probabilities_and_class_and_data_ds = DatasetV2.zip(
+      (acceptance_dist_ds, dataset)).map(_gather_and_copy)
+
+  def _reject(unused_class_val, p, unused_data):
+    return random_ops.random_uniform([], seed=seed, dtype=p.dtype) < p
+
+  filtered_ds = current_probabilities_and_class_and_data_ds.filter(_reject)
+  return filtered_ds.map(lambda class_value, _, data: (class_value, data))
+
+
+# pylint: disable=missing-function-docstring
+def _estimate_initial_dist_ds(target_dist_t,
+                              class_values_ds,
+                              dist_estimation_batch_size=32,
+                              smoothing_constant=10):
+  num_classes = (target_dist_t.shape[0] or array_ops.shape(target_dist_t)[0])
+  initial_examples_per_class_seen = array_ops.fill([num_classes],
+                                                   np.int64(smoothing_constant))
+
+  def update_estimate_and_tile(num_examples_per_class_seen, c):
+    updated_examples_per_class_seen, dist = _estimate_data_distribution(
+        c, num_examples_per_class_seen)
+    tiled_dist = array_ops.tile(
+        array_ops.expand_dims(dist, 0), [dist_estimation_batch_size, 1])
+    return updated_examples_per_class_seen, tiled_dist
+
+  initial_dist_ds = (
+      class_values_ds.batch(dist_estimation_batch_size).scan(
+          initial_examples_per_class_seen, update_estimate_and_tile).unbatch())
+
+  return initial_dist_ds
+
+
+def _get_target_to_initial_ratio(initial_probs, target_probs):
+  # Add tiny to initial_probs to avoid divide by zero.
+  denom = (initial_probs + np.finfo(initial_probs.dtype.as_numpy_dtype).tiny)
+  return target_probs / denom
+
+
+def _estimate_data_distribution(c, num_examples_per_class_seen):
+  """Estimate data distribution as labels are seen.
+
+  Args:
+    c: The class labels.  Type `int32`, shape `[batch_size]`.
+    num_examples_per_class_seen: Type `int64`, shape `[num_classes]`, containing
+      counts.
+
+  Returns:
+    num_examples_per_lass_seen: Updated counts.  Type `int64`, shape
+      `[num_classes]`.
+    dist: The updated distribution.  Type `float32`, shape `[num_classes]`.
+  """
+  num_classes = num_examples_per_class_seen.get_shape()[0]
+  # Update the class-count based on what labels are seen in batch.
+  num_examples_per_class_seen = math_ops.add(
+      num_examples_per_class_seen,
+      math_ops.reduce_sum(
+          array_ops.one_hot(c, num_classes, dtype=dtypes.int64), 0))
+  init_prob_estimate = math_ops.truediv(
+      num_examples_per_class_seen,
+      math_ops.reduce_sum(num_examples_per_class_seen))
+  dist = math_ops.cast(init_prob_estimate, dtypes.float32)
+  return num_examples_per_class_seen, dist
+
+
+def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
+  """Calculates the acceptance probabilities and mixing ratio.
+
+  In this case, we assume that we can *either* sample from the original data
+  distribution with probability `m`, or sample from a reshaped distribution
+  that comes from rejection sampling on the original distribution. This
+  rejection sampling is done on a per-class basis, with `a_i` representing the
+  probability of accepting data from class `i`.
+
+  This method is based on solving the following analysis for the reshaped
+  distribution:
+
+  Let F be the probability of a rejection (on any example).
+  Let p_i be the proportion of examples in the data in class i (init_probs)
+  Let a_i is the rate the rejection sampler should *accept* class i
+  Let t_i is the target proportion in the minibatches for class i (target_probs)
+
+  ```
+  F = sum_i(p_i * (1-a_i))
+    = 1 - sum_i(p_i * a_i)     using sum_i(p_i) = 1
+  ```
+
+  An example with class `i` will be accepted if `k` rejections occur, then an
+  example with class `i` is seen by the rejector, and it is accepted. This can
+  be written as follows:
+
+  ```
+  t_i = sum_k=0^inf(F^k * p_i * a_i)
+      = p_i * a_j / (1 - F)    using geometric series identity, since 0 <= F < 1
+      = p_i * a_i / sum_j(p_j * a_j)        using F from above
+  ```
+
+  Note that the following constraints hold:
+  ```
+  0 <= p_i <= 1, sum_i(p_i) = 1
+  0 <= a_i <= 1
+  0 <= t_i <= 1, sum_i(t_i) = 1
+  ```
+
+  A solution for a_i in terms of the other variables is the following:
+    ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
+
+  If we try to minimize the amount of data rejected, we get the following:
+
+  M_max = max_i [ t_i / p_i ]
+  M_min = min_i [ t_i / p_i ]
+
+  The desired probability of accepting data if it comes from class `i`:
+
+  a_i = (t_i/p_i - m) / (M_max - m)
+
+  The desired probability of pulling a data element from the original dataset,
+  rather than the filtered one:
+
+  m = M_min
+
+  Args:
+    initial_probs: A Tensor of the initial probability distribution, given or
+      estimated.
+    target_probs: A Tensor of the corresponding classes.
+
+  Returns:
+    (A 1D Tensor with the per-class acceptance probabilities, the desired
+    probability of pull from the original distribution.)
+  """
+  ratio_l = _get_target_to_initial_ratio(initial_probs, target_probs)
+  max_ratio = math_ops.reduce_max(ratio_l)
+  min_ratio = math_ops.reduce_min(ratio_l)
+
+  # Target prob to sample from original distribution.
+  m = min_ratio
+
+  # TODO(joelshor): Simplify fraction, if possible.
+  a_i = (ratio_l - m) / (max_ratio - m)
+  return a_i, m
+
+
 class _TakeWhileDataset(UnaryUnchangedStructureDataset):
   """A dataset that stops iteration when `predicate` returns false."""
 
@@ -5600,6 +6104,53 @@ class _ScanDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.scan()"
+
+
+class _DirectedInterleaveDataset(DatasetV2):
+  """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
+
+  def __init__(self, selector_input, data_inputs, stop_on_empty_dataset=False):
+    self._selector_input = selector_input
+    self._data_inputs = list(data_inputs)
+    self._stop_on_empty_dataset = stop_on_empty_dataset
+
+    first_output_types = get_legacy_output_types(data_inputs[0])
+    first_output_classes = get_legacy_output_classes(data_inputs[0])
+
+    for i, data_input in enumerate(data_inputs[1:]):
+      if (get_legacy_output_types(data_input) != first_output_types or
+          get_legacy_output_classes(data_input) != first_output_classes):
+        raise TypeError(
+            "All datasets must have the same type and class.\n"
+            "dataset 0 vs dataset %s types: %s ; %s\n"
+            "classes: %s ; %s" %
+            (i + 1, first_output_types, get_legacy_output_types(data_input),
+             first_output_classes, get_legacy_output_classes(data_input)))
+
+    spec = self._data_inputs[0].element_spec
+    for data_input in self._data_inputs[1:]:
+      spec = nest.pack_sequence_as(spec, [
+          x.most_specific_compatible_type(y) for (x, y) in zip(
+              nest.flatten(spec), nest.flatten(data_input.element_spec))
+      ])
+    self._element_spec = spec
+
+    # pylint: disable=protected-access
+    variant_tensor = (
+        ged_ops.directed_interleave_dataset(
+            self._selector_input._variant_tensor,
+            [data_input._variant_tensor for data_input in self._data_inputs],
+            stop_on_empty_dataset=self._stop_on_empty_dataset,
+            **self._flat_structure))
+
+    super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
+
+  def _inputs(self):
+    return [self._selector_input] + self._data_inputs
+
+  @property
+  def element_spec(self):
+    return self._element_spec
 
 
 @auto_control_deps.register_acd_resource_resolver

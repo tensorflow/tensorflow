@@ -404,10 +404,10 @@ void TestQuantizedToFloatInPlaceUsingEigen(
       if (sizeof(T) == 1) {
         input_array(i) = Eigen::NumTraits<T>::lowest() + i;
       } else {
-        int64_t offset = static_cast<int64>(q_range / values_count * i);
+        int64_t offset = static_cast<int64_t>(q_range / values_count * i);
         input_array(i) = static_cast<int32>(
-            std::min<int64>(Eigen::NumTraits<T>::lowest() + offset,
-                            Eigen::NumTraits<T>::highest()));
+            std::min<int64_t>(Eigen::NumTraits<T>::lowest() + offset,
+                              Eigen::NumTraits<T>::highest()));
       }
     }
 

@@ -50,7 +50,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-int64 GetRemoteDeviceIncarnation(Device* device) {
+int64_t GetRemoteDeviceIncarnation(Device* device) {
   if (device == nullptr || device->IsLocal()) return 0;
   return device->attributes().incarnation();
 }
@@ -89,13 +89,13 @@ Status TensorHandle::PackedTensorHandleData::NumDims(int* num_dims) const {
 }
 
 Status TensorHandle::PackedTensorHandleData::Dim(int dim_index,
-                                                 int64* dim) const {
+                                                 int64_t* dim) const {
   *dim = shape_.dim_size(dim_index);
   return Status::OK();
 }
 
 Status TensorHandle::PackedTensorHandleData::NumElements(
-    int64* num_elements) const {
+    int64_t* num_elements) const {
   *num_elements = shape_.num_elements();
   return Status::OK();
 }
@@ -575,7 +575,7 @@ void TensorHandle::SetInferenceShape(
     shape_inference::InferenceContext* const inference_context,
     const shape_inference::ShapeHandle& shape_handle) {
   auto num_dims = inference_context->Rank(shape_handle);
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   if (num_dims == shape_inference::InferenceContext::kUnknownRank) {
     inference_shape_ = PartialTensorShape();
     return;
@@ -635,7 +635,7 @@ Status TensorHandle::NumDims(int* num_dims) const {
   }
 }
 
-Status TensorHandle::Dim(int dim_index, int64* dim) const {
+Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
   DCHECK(dim != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
@@ -648,7 +648,7 @@ Status TensorHandle::Dim(int dim_index, int64* dim) const {
   }
 }
 
-Status TensorHandle::NumElements(int64* num_elements) const {
+Status TensorHandle::NumElements(int64_t* num_elements) const {
   DCHECK(num_elements != nullptr);
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();
@@ -707,7 +707,7 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 
 #if !defined(IS_MOBILE_PLATFORM)
 Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
-                                   int64* op_id, int32* output_num) const {
+                                   int64_t* op_id, int32* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 

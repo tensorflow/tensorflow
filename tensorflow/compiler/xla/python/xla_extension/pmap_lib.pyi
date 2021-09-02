@@ -14,7 +14,8 @@
 # ==============================================================================
 
 import inspect
-from typing import Any, Callable, List, Sequence, Iterable, Tuple
+import numpy as np
+from typing import Any, Callable, List, Optional, Sequence, Iterable, Tuple
 
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
@@ -57,12 +58,30 @@ class ShardingSpec:
 
 class ShardedDeviceArray:
   def __init__(self,
-               __aval: Any,
-               __sharding_spec: ShardingSpec,
-               __device_buffers: List[Any]) -> None: ...
+               aval: Any,
+               sharding_spec: ShardingSpec,
+               device_buffers: List[Any],
+               indices: Any,
+               weak_type: bool) -> None: ...
   aval: Any
+  indices: Any
   sharding_spec: ShardingSpec
-  device_buffers: List[Any]
+  @property
+  def device_buffers(self) -> Optional[List[Any]]: ...
+  _npy_value: Optional[np.ndarray]
+  _one_replica_buffer_indices: Optional[Any]
+
+  @property
+  def shape(self) -> Tuple[int]: ...
+  @property
+  def dtype(self) -> np.dtype: ...
+  @property
+  def size(self) -> int: ...
+  @property
+  def ndim(self) -> int: ...
+
+  def delete(self) -> None: ...
+
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
@@ -71,4 +90,5 @@ class PmapFunction:
 
 def pmap(__fun: Callable[..., Any],
          __cache_miss: Callable[..., Any],
-         __static_argnums: Sequence[int]) -> PmapFunction: ...
+         __static_argnums: Sequence[int],
+         __shard_arg_fallback: Callable[..., Any]) -> PmapFunction: ...

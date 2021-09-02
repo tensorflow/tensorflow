@@ -185,7 +185,7 @@ string PrintTensor(const TensorProto& tensor_proto) {
     case DT_QINT8:
       return PrintArray(num_elts, t.flat<int8>().data());
     case DT_INT64:
-      return PrintArray(num_elts, t.flat<int64>().data());
+      return PrintArray(num_elts, t.flat<int64_t>().data());
     case DT_BOOL:
       return PrintArray(num_elts, t.flat<bool>().data());
     case DT_STRING: {

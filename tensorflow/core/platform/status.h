@@ -96,6 +96,12 @@ class Status {
 
   /// \brief Return a string representation of this status suitable for
   /// printing. Returns the string `"OK"` for success.
+  ///
+  /// By default, it returns combination of the error code name, the message and
+  /// any associated payload messages. This string is designed simply to be
+  /// human readable and its exact format should not be load bearing. Do not
+  /// depend on the exact format of the result of `ToString()` which is subject
+  /// to change.
   std::string ToString() const;
 
   // Ignores any errors. This method does nothing except potentially suppress
@@ -103,6 +109,7 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
+  // TODO(fmuham): Replace tensorflow::StringPiece with absl::Cord.
   // The Payload-related APIs are cloned from absl::Status.
   //
   // Returns the payload of a status given its unique `type_url` key, if

@@ -127,7 +127,7 @@ class Predicate {
 
   // An ID assigned to the Predicate at construction time.  Conceptually like a
   // pointer, except that it is stable across runs.
-  int64 id() const { return id_; }
+  int64_t id() const { return id_; }
 
   virtual absl::Span<Predicate* const> GetOperands() const = 0;
 
@@ -144,7 +144,7 @@ class Predicate {
   explicit Predicate(int64_t id) : id_(id) {}
 
  private:
-  const int64 id_;
+  const int64_t id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Predicate);
 };
@@ -635,7 +635,7 @@ class PredicateFactory {
   absl::flat_hash_map<SignatureForIntSymbol, std::unique_ptr<Predicate>,
                       HashSignatureForIntSymbol>
       interned_int_symbol_instances_;
-  int64 id_counter_ = 0;
+  int64_t id_counter_ = 0;
   int stack_depth_ = 0;
 };
 

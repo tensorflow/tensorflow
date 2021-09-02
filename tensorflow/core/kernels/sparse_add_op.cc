@@ -89,8 +89,8 @@ class SparseAddOp : public OpKernel {
         errors::InvalidArgument(
             "Operands do not have the same ranks; got shapes: ",
             a_shape->SummarizeValue(10), " and ", b_shape->SummarizeValue(10)));
-    const auto a_shape_flat = a_shape->flat<int64>();
-    const auto b_shape_flat = b_shape->flat<int64>();
+    const auto a_shape_flat = a_shape->flat<int64_t>();
+    const auto b_shape_flat = b_shape->flat<int64_t>();
     for (int i = 0; i < a_shape->NumElements(); ++i) {
       OP_REQUIRES(ctx, a_shape_flat(i) == b_shape_flat(i),
                   errors::InvalidArgument(
@@ -107,8 +107,8 @@ class SparseAddOp : public OpKernel {
     const Treal thresh = thresh_t->scalar<Treal>()();
 
     // (1) do a pass over inputs, and append values and indices to vectors
-    auto a_indices_mat = a_indices->matrix<int64>();
-    auto b_indices_mat = b_indices->matrix<int64>();
+    auto a_indices_mat = a_indices->matrix<int64_t>();
+    auto b_indices_mat = b_indices->matrix<int64_t>();
     std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
     entries_to_copy.reserve(a_nnz + b_nnz);
     std::vector<T> out_values;
@@ -162,7 +162,7 @@ class SparseAddOp : public OpKernel {
                                         &out_indices_t));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(1, TensorShape({sum_nnz}), &out_values_t));
-    auto out_indices_mat = out_indices_t->matrix<int64>();
+    auto out_indices_mat = out_indices_t->matrix<int64_t>();
     auto out_values_flat = out_values_t->vec<T>();
 
     for (i = 0; i < sum_nnz; ++i) {
@@ -187,7 +187,7 @@ class SparseAddOp : public OpKernel {
 // is because std::abs() on uint8 does not compile.
 REGISTER_KERNELS(float, float);
 REGISTER_KERNELS(double, double);
-REGISTER_KERNELS(int64, int64);
+REGISTER_KERNELS(int64_t, int64);
 REGISTER_KERNELS(int32, int32);
 REGISTER_KERNELS(int16, int16);
 REGISTER_KERNELS(int8, int8);

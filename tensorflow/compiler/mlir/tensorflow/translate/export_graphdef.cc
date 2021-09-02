@@ -566,7 +566,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (IsLegacyCallInstruction(&inner_op)) {
         TF_RETURN_IF_ERROR(convert_called_function(
             inner_op.getAttrOfType<mlir::SymbolRefAttr>("f")
-                .getLeafReference()));
+                .getLeafReference()
+                .getValue()));
       }
 
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inner_op));

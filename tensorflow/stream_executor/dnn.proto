@@ -112,8 +112,8 @@ message AlgorithmProto {
 }
 
 // Proto definition of AlgorithmConfig in "dnn.h".
-// TODO(ruochengw): After cl/380702564, add support for algorithm configs with
-// cuDNN Frontend APIs.
+// TODO(ruochengw): After cl/380702564 is submitted, add support for algorithm
+// configs with cuDNN Frontend APIs.
 message AlgorithmConfigProto {
   // Use oneof to emulate optional semantics in proto2 since older
   // version of proto3 cannot distinguish "unset field" and "default field".

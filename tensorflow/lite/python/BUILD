@@ -237,7 +237,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -585,7 +585,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -82,7 +82,7 @@ class StringTable {
       return idx->second;
     }
     all_strings_.push_back(str);
-    return string_id_.insert(std::pair<string, int64>(str, string_id_.size()))
+    return string_id_.insert(std::pair<string, int64_t>(str, string_id_.size()))
         .first->second;
   }
 

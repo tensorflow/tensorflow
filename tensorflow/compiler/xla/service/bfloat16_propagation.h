@@ -197,7 +197,7 @@ class BFloat16Propagation : public HloModulePass {
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.
-  absl::flat_hash_map<const HloComputation*, int64> caller_counts_;
+  absl::flat_hash_map<const HloComputation*, int64_t> caller_counts_;
 
   // We first store the potential F32-to-BF16 changes to changes_to_bf16_, which
   // are subject to further adjustment, then finally applied to the HLOs. This

@@ -804,7 +804,7 @@ def tf_native_cc_binary(
                 "-lpthread",
                 "-lm",
             ],
-        }) + linkopts + _rpath_linkopts(name),
+        }) + linkopts + _rpath_linkopts(name) + lrt_if_needed(),
         **kwargs
     )
 
@@ -1183,7 +1183,8 @@ def tf_gpu_cc_test(
         linkstatic = 0,
         args = [],
         kernels = [],
-        linkopts = []):
+        linkopts = [],
+        **kwargs):
     tf_cc_test(
         name = name,
         size = size,
@@ -1196,6 +1197,7 @@ def tf_gpu_cc_test(
         linkstatic = linkstatic,
         tags = tags,
         deps = deps,
+        **kwargs
     )
     tf_cc_test(
         name = name,
@@ -1218,6 +1220,7 @@ def tf_gpu_cc_test(
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
+        **kwargs
     )
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
         cleaned_tags = tags + two_gpu_tags
@@ -1244,6 +1247,7 @@ def tf_gpu_cc_test(
             deps = deps + if_cuda_or_rocm([
                 clean_dep("//tensorflow/core:gpu_runtime"),
             ]),
+            **kwargs
         )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
@@ -3038,3 +3042,14 @@ tf_gen_options_header = rule(
 # open source build.
 def tf_disable_ptxas_warning_flags():
     return []
+
+# Use this to replace the `non_portable_tf_deps` (i.e., tensorflow/core/...) with
+# tensorflow/core:portable_tensorflow_lib_lite when building portably.
+def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_with_runtime = False):
+    portable_tf_lib = "//tensorflow/core:portable_tensorflow_lib_lite"
+
+    return select({
+        "//tensorflow:android": [portable_tf_lib],
+        "//tensorflow:ios": [portable_tf_lib],
+        "//conditions:default": non_portable_tf_deps,
+    })

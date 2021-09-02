@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace saved_model {
 namespace python {
 
-// Wraps the SM Metrics API methods for exporting to Python.
+// Wraps the SM and Checkpoint Metrics API methods for exporting to Python.
 void DefineMetricsModule(pybind11::module main_module);
 
 }  // namespace python

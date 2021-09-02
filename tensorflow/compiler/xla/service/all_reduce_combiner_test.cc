@@ -41,7 +41,7 @@ using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 int64_t kMaxCombineCount = 256;
 
-int64 AllReduceCount(const HloModule& module) {
+int64_t AllReduceCount(const HloModule& module) {
   int64_t count = 0;
   for (HloComputation* computation : module.computations()) {
     if (computation->IsFusionComputation()) {
@@ -60,7 +60,7 @@ int64 AllReduceCount(const HloModule& module) {
 // feeds into a a all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
-    std::vector<int64> sizes_in_kib, std::vector<HloComputation*> reductions,
+    std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,
     std::vector<HloInstruction*>* inputs, HloComputation::Builder* b) {
   CHECK_EQ(reductions.size(), sizes_in_kib.size());
   std::vector<HloInstruction*> all_reduces;
@@ -99,7 +99,7 @@ HloComputation* MakeReduction(const HloOpcode type, HloModule* module) {
 // Creates replica groups for AllReduce. groups[i] represents replica ids
 // for group 'i'.
 std::vector<ReplicaGroup> CreateReplicaGroups(
-    absl::Span<const std::vector<int64>> groups) {
+    absl::Span<const std::vector<int64_t>> groups) {
   std::vector<ReplicaGroup> replica_groups(groups.size());
   for (int64_t i = 0; i < groups.size(); ++i) {
     *replica_groups[i].mutable_replica_ids() = {groups[i].begin(),

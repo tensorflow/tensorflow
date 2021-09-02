@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -35,6 +36,16 @@ std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
         LOG(FATAL) << "Runtime error: " << diag.message << "\n";
       },
       tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue());
+}
+
+std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
+  return std::make_unique<HostContext>(
+      [](const tfrt::DecodedDiagnostic& diag) {
+        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
+      },
+      tfrt::CreateMallocAllocator(),
+      tfrt::CreateMultiThreadedWorkQueue(num_threads,
+                                         /*num_blocking_threads=*/1));
 }
 
 mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
@@ -59,13 +70,15 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
   if (lower_from_tensorflow) {
     opts.register_pass_pipeline = tensorflow::CreateTfCpuRtPipeline;
   }
+  opts.type_converter = mlir::BufferizeTypeConverter();
 
   // Cache all jit executables, otherwise different benchmark runs will produce
   // different .so files and the same compiled function will have different
   // records in the perf profile.
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
-  std::string key = llvm::formatv("{0}", function_name);
+  std::string key =
+      llvm::formatv("{0}/{1}", mlir_input.data(), opts.num_worker_threads);
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);

@@ -48,6 +48,7 @@ filegroup(
         "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
         "src/main/java/org/tensorflow/lite/InterpreterImpl.java",
         "src/main/java/org/tensorflow/lite/NativeInterpreterWrapper.java",
+        "src/main/java/org/tensorflow/lite/NativeSignatureRunnerWrapper.java",
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",

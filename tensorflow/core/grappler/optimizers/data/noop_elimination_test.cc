@@ -39,7 +39,8 @@ NodeDef *MakeNode(StringPiece node_type, std::vector<int> params,
                   string input_node, MutableGraphView *graph) {
   std::vector<NodeDef *> node_params;
   for (int param : params) {
-    node_params.push_back(graph_utils::AddScalarConstNode<int64>(param, graph));
+    node_params.push_back(
+        graph_utils::AddScalarConstNode<int64_t>(param, graph));
   }
   std::vector<string> inputs = {input_node};
   for (int i = 0; i < node_params.size(); i++) {
@@ -74,9 +75,9 @@ NodeDef *MakeCacheNode(string input_node, MutableGraphView *graph) {
 }
 
 NodeDef *MakeRangeNode(MutableGraphView *graph) {
-  auto *start_node = graph_utils::AddScalarConstNode<int64>(0, graph);
-  auto *stop_node = graph_utils::AddScalarConstNode<int64>(10, graph);
-  auto *step_node = graph_utils::AddScalarConstNode<int64>(1, graph);
+  auto *start_node = graph_utils::AddScalarConstNode<int64_t>(0, graph);
+  auto *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, graph);
+  auto *step_node = graph_utils::AddScalarConstNode<int64_t>(1, graph);
 
   std::vector<string> range_inputs = {start_node->name(), stop_node->name(),
                                       step_node->name()};

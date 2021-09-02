@@ -66,7 +66,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return cardinality_; }
+  int64_t Cardinality() const override { return cardinality_; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -156,11 +156,11 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     }
 
     std::unique_ptr<IteratorBase> input_impl_;
-    int64 num_elements_;
+    int64_t num_elements_;
   };
 
   const DatasetBase* input_;
-  const int64 cardinality_;
+  const int64_t cardinality_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -177,7 +177,7 @@ void AssertCardinalityDatasetOp::MakeDataset(OpKernelContext* ctx,
                                              DatasetBase** output) {
   int64_t cardinality;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kCardinality, &cardinality));
+                 ParseScalarArgument<int64_t>(ctx, kCardinality, &cardinality));
   *output = new Dataset(ctx, input, cardinality, output_types_, output_shapes_);
 }
 

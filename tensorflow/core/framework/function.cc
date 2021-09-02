@@ -117,17 +117,19 @@ void AddAttr(const string& name, const T& val, NodeDef* ndef) {
 }
 
 Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
-  // attr_values should specify all attrs defined in fdef.
-  for (const auto& a : sig.attr()) {
-    const AttrValue* v = attr_values.Find(a.name());
-    if (!v) {
-      return errors::NotFound("Attr ", a.name(), " is not found from ",
+  // attr_values should specify all attrs defined in fdef, except for those
+  // which have a default value
+  for (const auto& attr : sig.attr()) {
+    const AttrValue* attr_value = attr_values.Find(attr.name());
+    if (attr_value) {
+      Status status = AttrValueHasType(*attr_value, attr.type());
+      if (!status.ok()) {
+        errors::AppendToMessage(&status, "for attr '", attr.name(), "'");
+        return status;
+      }
+    } else if (!attr.has_default_value()) {
+      return errors::NotFound("Attr ", attr.name(), " is not found from ",
                               SummarizeOpDef(sig));
-    }
-    Status status = AttrValueHasType(*v, a.type());
-    if (!status.ok()) {
-      errors::AppendToMessage(&status, "for attr '", a.name(), "'");
-      return status;
     }
   }
 
@@ -331,6 +333,12 @@ class FunctionInstantiationHelper {
     // Attrs.
     for (const auto& p : attrs) {
       (*gnode->mutable_attr())[p.first] = p.second;
+    }
+
+    // Experimental_debug_info.
+    if (fnode.has_experimental_debug_info()) {
+      gnode->mutable_experimental_debug_info()->MergeFrom(
+          fnode.experimental_debug_info());
     }
 
     return Status::OK();
@@ -707,7 +715,6 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
-// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
@@ -750,11 +757,20 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     }
   }
 
-  auto substitute = [attr_values](StringPiece name, AttrValue* val) {
+  auto substitute = [attr_values, &sig](StringPiece name, AttrValue* val) {
+    // Look for a specified value...
     if (const AttrValue* v = attr_values.Find(name)) {
       *val = *v;
       return true;
     }
+    // .. and if not, then check for a default value.
+    if (const OpDef::AttrDef* attr = FindAttr(name, sig)) {
+      if (attr->has_default_value()) {
+        *val = attr->default_value();
+        return true;
+      }
+    }
+    // No luck finding a substitution.
     return false;
   };
 
@@ -1825,6 +1841,14 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   }
   if (!this->device.empty()) {
     n.set_device(this->device);
+  }
+  if (!this->original_node_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_node_names() = {
+        this->original_node_names.begin(), this->original_node_names.end()};
+  }
+  if (!this->original_func_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_func_names() = {
+        this->original_func_names.begin(), this->original_func_names.end()};
   }
   return n;
 }

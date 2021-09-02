@@ -506,6 +506,10 @@ class Context(object):
     device_list = pywrap_tfe.TFE_ContextListDevices(self._context_handle)
     try:
       self._num_gpus = 0
+      current_job, current_task = None, None
+      server_def = self._server_def or self._collective_ops_server_def
+      if server_def is not None:
+        current_job, current_task = server_def.job_name, server_def.task_index
       for i in range(pywrap_tfe.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
@@ -517,7 +521,8 @@ class Context(object):
         logical_devices.append(
             LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tfe.TF_DeviceListType(device_list, i)
-        if dev_type == "GPU":
+        if (dev_type == "GPU" and spec.job == current_job and
+            spec.task == current_task):
           self._num_gpus += 1
 
     finally:
@@ -695,8 +700,8 @@ class Context(object):
 
   def enable_coordination_service(self, service_type):
     if self._context_handle:
-      logging.warn("Configuring coordination service type may not be effective "
-                   "because the context is already initialized.")
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
     self._coordination_service = service_type
 
   @property
@@ -717,6 +722,19 @@ class Context(object):
   def delete_config_key_value(self, key):
     ensure_initialized()
     pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
+
+  def report_error_to_cluster(self, error_code, error_message):
+    """Report error to other members in a multi-client cluster.
+
+    Args:
+      error_code: a `tf.errors` error code.
+      error_message: a string. The error message.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
+                                          error_message)
+    else:
+      raise ValueError("Context is not initialized.")
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""
@@ -2118,24 +2136,19 @@ def in_eager_mode():
   return executing_eagerly()
 
 
-def shared_name(name=None):
-  """Returns the anonymous shared name GUID if no shared name is specified.
+def anonymous_name():
+  """Returns the anonymous shared name.
 
-  In eager mode we need to use a unique shared name to avoid spurious sharing
-  issues. The runtime generates a unique name on our behalf when the reserved
-  GUID is used as a shared name.
-
-  Args:
-    name: Optional shared name
+  In eager mode we create anonymous resources to avoid spurious sharing issues.
+  The runtime generates a unique name on our behalf when the reserved
+  anonymous shared name is used as a shared name.
 
   Returns:
-    Eager compatible shared name.
+    The anonymous shared name.
   """
-  if name or not executing_eagerly():
-    return name
 
-  # Ensure a unique name when eager execution is enabled to avoid spurious
-  # sharing issues.
+  # The magic value is defined as
+  # `tensorflow::ResourceHandle::ANONYMOUS_NAME` in C++.
   return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
 
 
@@ -2514,6 +2527,9 @@ def async_wait():
   are finished, potentially raising exceptions if async execution results in
   an error state. It is a no-op if the context is not initialized.
   """
+  disable_async_executor_env_var = "TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"
+  if os.environ.get(disable_async_executor_env_var) == str(True):
+    return
   if context()._context_handle is not None:  # pylint: disable=protected-access
     context().sync_executors()
 

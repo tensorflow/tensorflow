@@ -374,7 +374,9 @@ DistributedRuntimeService::DistributedRuntimeService(
     const DistributedRuntimeServiceImpl::Options& options)
     : impl_(options) {}
 
-DistributedRuntimeService::~DistributedRuntimeService() {
+DistributedRuntimeService::~DistributedRuntimeService() { Shutdown(); }
+
+void DistributedRuntimeService::Shutdown() {
   if (server_) {
     LOG(INFO) << "Jax service shutting down";
     server_->Shutdown();

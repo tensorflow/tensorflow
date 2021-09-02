@@ -35,7 +35,7 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   // The default is already unknown
   if (!context->RankKnown(handle)) return Status::OK();
 
-  std::vector<int64> dims(context->Rank(handle));
+  std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0, end = dims.size(); i < end; ++i) {
     dims[i] = context->Value(context->Dim(handle, i));
   }

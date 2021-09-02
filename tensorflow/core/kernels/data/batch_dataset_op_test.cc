@@ -119,28 +119,28 @@ BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
 std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/BatchDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams3(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64_t>(TensorShape({1}), {9})}},
           {/*dataset_params=*/BatchDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({3}),
-                                {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
+           CreateTensors<int64_t>(TensorShape({3}),
+                                  {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/BatchDatasetParams5(),
            /*expected_outputs=*/{}},
           {/*dataset_params=*/BatchDatasetParams6(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({10}),
-                                {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
+           CreateTensors<int64_t>(TensorShape({10}),
+                                  {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
 
           {/*dataset_params=*/BatchDatasetParams7(),
            /*expected_outputs=*/{}}};
@@ -247,34 +247,34 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/BatchDatasetParams1(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams2(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams3(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64_t>(TensorShape({1}), {9})}},
           {/*dataset_params=*/BatchDatasetParams4(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8})}},
           {/*dataset_params=*/BatchDatasetParams5(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/BatchDatasetParams6(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({10}),
-                                {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
+           {CreateTensor<int64_t>(TensorShape({10}),
+                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
           {/*dataset_params=*/BatchDatasetParams7(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/{}}};

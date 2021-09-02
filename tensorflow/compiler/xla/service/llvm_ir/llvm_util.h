@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
@@ -46,28 +45,6 @@ class TargetOptions;
 
 namespace xla {
 namespace llvm_ir {
-
-// Convert a absl::string_view to a llvm::StringRef. Note: both
-// absl::string_view and llvm::StringRef are non-owning pointers into a
-// string in memory. This method is used to feed strings to LLVM
-// & Clang APIs that expect llvm::StringRef.
-inline llvm::StringRef AsStringRef(absl::string_view str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
-inline absl::string_view AsStringView(llvm::StringRef str) {
-  return absl::string_view(str.data(), str.size());
-}
-
-template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
-  return llvm::ArrayRef<T>(vec.data(), vec.size());
-}
-
-template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T> slice) {
-  return llvm::ArrayRef<T>(slice.data(), slice.size());
-}
 
 // Dump the given LLVM entity to a string. This works for Types and Values.
 template <typename T>
@@ -137,7 +114,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
-// determined from the element type of the array.  The int64 index overload
+// determined from the element type of the array.  The int64_t index overload
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* b);
@@ -243,7 +220,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // This can be very useful for debugging generated programs in short order when
 // developing new generated routines.
 //
-// Precondition: value must be an int64.
+// Precondition: value must be an int64_t.
 // Precondition: tag must be a stable pointer for the lifetime of the generated
 // program (the constant pointer is burned in to the program).
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b);
@@ -271,7 +248,7 @@ llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder);
 
 // Returns the number of bytes within the shape.
-int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
+int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
@@ -302,10 +279,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,
                                   absl::string_view name, llvm::Module* module);
-
-// Extracts the xla_backend_extra_options from `config` and passes those that
-// don't start with xla_ to LLVM.
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
 // Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
 // result as a pair of (low 32 bits, high 32 bits).

@@ -404,17 +404,6 @@ func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
 // CHECK: return %[[dq]]
 }
 
-// Legacy-LABEL: QuantizeSmallRange
-func @QuantizeSmallRange(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
-  %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  %1 = "std.constant"() {value = dense<[[-1.27e-7, 1.27e-7], [-1.0e-8, 1.0e-8]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-  %2 = "std.constant"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
-  %3 = "tfl.fully_connected"(%0, %1, %2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
-  %4 = "quant.stats"(%3) {layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  return %4 : tensor<1x2xf32>
-// Legacy: "tfl.quantize"(%[[weight:.*]]) {qtype = tensor<2x2x!quant.uniform<i8<-127:127>:f32, 9.9999999999999995E-7>>
-}
-
 // CHECK-LABEL: ZeroPointLegacy
 // Legacy-LABEL: ZeroPointLegacy
 // Legacy mode re-calculates zero point when it's changed due to subtle difference in scale.

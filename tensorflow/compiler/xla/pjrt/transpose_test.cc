@@ -128,8 +128,8 @@ TEST(TransposeTest, InvalidTilings) {
 }
 
 // Computes the size in elements of a tiled array.
-int64_t SizeOfTiledArray(absl::Span<int64 const> shape,
-                         absl::Span<int64 const> tiling) {
+int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
+                         absl::Span<int64_t const> tiling) {
   int64_t size = 1;
   for (size_t i = 0; i < shape.size(); ++i) {
     if (i >= shape.size() - tiling.size()) {
@@ -144,7 +144,7 @@ int64_t SizeOfTiledArray(absl::Span<int64 const> shape,
 
 // Advances 'indices' in the lexicographical order of the multidimensional
 // array with `shape`. Returns false if the end of the array has been reached.
-bool BumpIndices(absl::Span<int64 const> shape, absl::Span<int64> indices) {
+bool BumpIndices(absl::Span<int64_t const> shape, absl::Span<int64_t> indices) {
   CHECK_EQ(shape.size(), indices.size());
   for (int dimno = indices.size() - 1; dimno >= 0; --dimno) {
     if (indices[dimno] + 1 < shape[dimno]) {
@@ -160,9 +160,9 @@ bool BumpIndices(absl::Span<int64 const> shape, absl::Span<int64> indices) {
 
 // Converts a multidimensional index `indices` into an array with `shape` and
 // tiling `tiling` into a linear offset into a buffer.
-int64 IndexToLinearIndex(absl::Span<int64 const> shape,
-                         absl::Span<int64 const> tiling,
-                         absl::Span<int64 const> indices) {
+int64_t IndexToLinearIndex(absl::Span<int64_t const> shape,
+                           absl::Span<int64_t const> tiling,
+                           absl::Span<int64_t const> indices) {
   CHECK_LE(tiling.size(), shape.size());
   CHECK_EQ(shape.size(), indices.size());
   int64_t stride = 1;
@@ -196,7 +196,7 @@ std::vector<T> TileArray(const Array<T>& in, absl::Span<int64_t const> tiling) {
   if (in.num_elements() == 0) {
     return out;
   }
-  std::vector<int64> indices(in.num_dimensions(), 0);
+  std::vector<int64_t> indices(in.num_dimensions(), 0);
   do {
     int64_t i = IndexToLinearIndex(in.dimensions(), tiling, indices);
     out.at(i) = in(indices);
@@ -357,7 +357,7 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
     const TransposeTestCase test = GetParam();
     tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
                                               "Transpose", parallelism);
-    std::vector<int64> output_dims = Permute(test.dims, test.permutation);
+    std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
         auto plan, TransposePlan::Create(
                        sizeof(T), test.dims, test.permutation,
@@ -388,7 +388,7 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
 TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(1); }
 TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(1); }
 TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(1); }
-TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64>(1); }
+TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64_t>(1); }
 TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(1); }
 
 TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8>(16); }
@@ -453,7 +453,7 @@ void BM_Eigen(const TransposeTestCase& bm, int parallelism,
   CHECK_EQ(parallelism, 1);
   Array<T> input(bm.dims);
   input.FillIota(0);
-  std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
+  std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
   for (auto s : state) {
     TransposeUsingEigen(input.data(), output.data(), bm.dims, output_dims,
@@ -480,7 +480,7 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
                             TransposePlan::Transformation::kNone, parallelism));
   Array<T> input(bm.dims);
   input.FillIota(0);
-  std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
+  std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
   tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
                                             "Transpose", parallelism);
