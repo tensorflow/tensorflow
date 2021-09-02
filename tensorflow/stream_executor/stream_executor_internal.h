@@ -193,6 +193,35 @@ class StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
+  virtual port::Status LaunchExecutableGraph(Stream *stream, void *exec_graph) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
+  virtual port::Status BeginGraphCapture(Stream *stream) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
+  virtual port::StatusOr<void *> EndGraphCapture(Stream *stream, void *graph) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
+  virtual port::StatusOr<void *> InstantiateGraph(void *graph,
+                                                  void *graph_exec) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
+  virtual port::Status UpdateExecutableGraph(void *graph, void *graph_exec) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
+  virtual void DestroyExecutableGraph(void *context, void *exec_graph) {
+    port::UnimplementedError("Not Implemented");
+  }
+
+  virtual void DestroyGraph(void *context, void *graph) {
+    port::UnimplementedError("Not Implemented");
+  }
+
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual DeviceMemoryBase Allocate(uint64 size, int64 memory_space) = 0;

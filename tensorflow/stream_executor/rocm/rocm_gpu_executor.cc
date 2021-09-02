@@ -341,6 +341,42 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
+port::Status GpuExecutor::LaunchExecutableGraph(Stream* main_stream,
+                                                void* graph_exec) {
+  return port::InternalError(
+      "Feature not supported on ROCm platform (LaunchExecutableGraph)");
+}
+
+port::Status GpuExecutor::BeginGraphCapture(Stream* stream) {
+  return port::InternalError(
+      "Feature not supported on ROCm platform (BeginGraphCapture)");
+}
+
+port::Status<void*> GpuExecutor::EndGraphCapture(Stream* capture_stream,
+                                                 void* graph) {
+  return port::InternalError(
+      "Feature not supported on ROCm platform (EndGraphCapture)");
+}
+
+port::StatusOr<void*> GpuExecutor::InstantiateGraph(void* graph,
+                                                    void* graph_exec) {
+  return port::InternalError(
+      "Feature not supported on ROCm platform (InstantiateGraph)");
+}
+
+port::Status GpuExecutor::UpdateExecutableGraph(void* graph, void* graph_exec) {
+  return port::InternalError(
+      "Feature not supported on ROCm platform (UpdateExecutableGraph)");
+}
+
+void GpuExecutor::DestroyExecutableGraph(void* context, void* exec_graph) {
+  LOG(ERROR) << "Feature not supported on ROCm platform (DestroyExecutableGraph)");
+}
+
+void GpuExecutor::DestroyGraph(void* context, void* graph) {
+  LOG(ERROR) << "Feature not supported on ROCm platform (DestroyGraph)");
+}
+
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
                                     uint64 registers_per_thread,
                                     uint64 shared_memory_per_block,

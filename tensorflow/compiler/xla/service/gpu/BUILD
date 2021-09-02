@@ -560,6 +560,7 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "bef_thunk.cc",
+        "gpu_graph_util.cc",
         "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
@@ -583,6 +584,7 @@ cc_library(
     ]),
     hdrs = [
         "bef_thunk.h",
+        "gpu_graph_util.h",
         "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
@@ -663,6 +665,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

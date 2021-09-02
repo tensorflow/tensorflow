@@ -511,6 +511,20 @@ class StreamExecutor {
                       const BlockDim &block_dims, const KernelBase &kernel,
                       const KernelArgsArrayBase &args);
 
+  port::Status LaunchExecutableGraph(Stream *stream, void *exec_graph);
+
+  port::Status BeginGraphCapture(Stream *stream);
+
+  port::StatusOr<void *> EndGraphCapture(Stream *stream, void *graph);
+
+  port::StatusOr<void *> InstantiateGraph(void *graph, void *graph_exec);
+
+  port::Status UpdateExecutableGraph(void *graph, void *graph_exec);
+
+  void DestroyExecutableGraph(void *context, void *exec_graph);
+
+  void DestroyGraph(void *context, void *graph);
+  
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
   //

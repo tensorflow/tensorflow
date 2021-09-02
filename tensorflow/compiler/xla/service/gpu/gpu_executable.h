@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_graph_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -142,6 +143,18 @@ class GpuExecutable : public Executable {
                        bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
+  // Execute the sequence of thunks on a stream. During graph capture, the
+  // sequence of thunks is captured on a private capture stream. The GPU code
+  // isn't actually executed in capture phase. When graphs are not used, the
+  // thunks are executed on the main stream.
+  Status ExecuteThunkSequence(
+      const ServiceExecutableRunOptions* run_options,
+      const BufferAllocations& buffer_allocations,
+      HloExecutionProfiler& profiler, se::Stream* main_stream,
+      se::Stream* capture_stream,
+      const std::vector<StreamPool::Ptr>& sub_streams,
+      std::vector<std::function<void()>>& deferred_host_callbacks);
+
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
@@ -155,6 +168,10 @@ class GpuExecutable : public Executable {
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
+
+  // Returns whether GPU graph capture can safely be used for execution of
+  // this executable.
+  bool CanUseGpuGraphCapture();
 
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
@@ -215,6 +232,51 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
+
+  // The base address of the memory block that contains all temporary buffers.
+  se::DeviceMemoryBase temp_buffer_base_;
+
+  // The second element is the flag denoting whether graph capture is possible.
+  // The first element is used to identify whether this flag has been set once.
+  // This is to avoid recomputation of GpuExecutableSafeForGraphCapture.
+  std::pair<bool, bool> can_use_gpu_graph_capture_ =
+      std::make_pair(false, false);
+
+  void SetCanUseGraphCaptureFlag(bool b) {
+    can_use_gpu_graph_capture_.second = b;
+  }
+  bool GetCanUseGraphCaptureFlag() { return can_use_gpu_graph_capture_.second; }
+
+  // Flag to determine if using graphs is costly. If even after
+  // completely using the cache upto size specified by env var
+  // TF_XLA_GPU_EXEC_GRAPH_CACHE_SIZE, the hit rate is still less than 20%, it
+  // is not worth using graphs anymore.
+  bool is_graph_capture_costly_ = false;
+
+  se::internal::StreamExecutorInterface* executor_impl_ = nullptr;
+
+  void SetExecutor(se::internal::StreamExecutorInterface* executor_impl) {
+    executor_impl_ = executor_impl;
+  }
+
+  se::internal::StreamExecutorInterface* GetExecutor() {
+    return executor_impl_;
+  }
+
+  GraphCacheStats graph_stats_;
+
+  std::unordered_map<void*, MutexedGraphExecCache> gpu_exec_graphs_cache_
+      GUARDED_BY(module_handle_mutex_);
+
+  // If the temporary base ptr remains constant but the other pointers (input
+  // and output pointers) change, there can be multiple unique buffer address
+  // combinations corresponding to a single temp buffer ptr hash. This data
+  // structure is used to capture the unique buffer keys corresponding to a temp
+  // buffer key (using its hash value; it can be safely assumed that the number
+  // of temp buffer base ptrs will be low enough to not have hash collision).
+  // This data structure is maintained mainly for diagnostic purposes.
+  std::unordered_map<size_t, std::unordered_set<BufferAllocations::KeyType>>
+      temp_buffer_base_to_bufs_keys_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

@@ -31,6 +31,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace detail {
+inline uint64_t hash_combine(uint64_t a, uint64_t b) {
+  // Note: The magic number comes from the golden ratio
+  return a ^ (0x9E3779B97F4A7C17ull + b + (b >> 2) + (a << 6));
+}
+}  // namespace detail
+
 // A thread-compatible class that encapsulates the base addresses of the
 // allocated device buffers.
 class BufferAllocations {
@@ -82,6 +89,23 @@ class BufferAllocations {
     return out;
   }
 
+  struct KeyType {
+    std::vector<const void*> all_buffers_;
+    bool equal(const KeyType& rhs) const {
+      return all_buffers_ == rhs.all_buffers_;
+    }
+    size_t hash() const {
+      size_t result = 0;
+      for (const void* buf : all_buffers_) {
+        result = detail::hash_combine(result, std::hash<const void*>()(buf));
+      }
+      return result;
+    }
+  };
+  KeyType Key(se::DeviceMemoryBase temp_buffer) const;
+
+  KeyType TempBufferKey(se::DeviceMemoryBase temp_buffer) const;
+
  private:
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
@@ -96,8 +120,22 @@ class BufferAllocations {
 // initializers in LLVM IR and are later overwritten when the PTX/CUBIN is
 // loaded.
 bool ShouldEmitLiteralInLlvmIr(const Literal& literal);
-
+inline bool operator==(const xla::gpu::BufferAllocations::KeyType& lhs,
+                       const xla::gpu::BufferAllocations::KeyType& rhs) {
+  return lhs.equal(rhs);
+}
 }  // namespace gpu
 }  // namespace xla
+
+namespace std {
+
+template <>
+struct hash<xla::gpu::BufferAllocations::KeyType> {
+  size_t operator()(const xla::gpu::BufferAllocations::KeyType& key) const {
+    return key.hash();
+  }
+};
+
+}  // namespace std
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_

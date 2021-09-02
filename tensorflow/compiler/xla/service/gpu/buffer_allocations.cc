@@ -81,6 +81,26 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       buffer_slice.size());
 }
 
+BufferAllocations::KeyType BufferAllocations::Key(
+    se::DeviceMemoryBase temp_buffer_base) const {
+  KeyType key;
+  key.all_buffers_.reserve(1 + buffers_.size());
+  key.all_buffers_.push_back(temp_buffer_base.opaque());
+  for (const auto& buffer : buffers_) {
+    key.all_buffers_.push_back(buffer.opaque());
+  }
+  return key;
+}
+
+BufferAllocations::KeyType BufferAllocations::TempBufferKey(
+    se::DeviceMemoryBase temp_buffer_base) const {
+  KeyType key;
+  key.all_buffers_.reserve(1);
+  key.all_buffers_.push_back(temp_buffer_base.opaque());
+
+  return key;
+}
+
 bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
   // LLVM can sometimes do interesting optimizations using scalar constants.
   return ShapeUtil::IsScalar(literal.shape());

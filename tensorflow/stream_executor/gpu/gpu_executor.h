@@ -117,6 +117,21 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                       const BlockDim& block_dims, const KernelBase& k,
                       const KernelArgsArrayBase& args) override;
 
+  port::Status LaunchExecutableGraph(Stream* stream, void* exec_graph) override;
+
+  port::Status BeginGraphCapture(Stream* stream) override;
+
+  port::StatusOr<void*> EndGraphCapture(Stream* stream, void* graph) override;
+
+  port::StatusOr<void*> InstantiateGraph(void* graph,
+                                         void* graph_exec) override;
+
+  port::Status UpdateExecutableGraph(void* graph, void* graph_exec) override;
+
+  void DestroyExecutableGraph(void* context, void* exec_graph);
+
+  void DestroyGraph(void* context, void* graph);
+
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
                          uint64 registers_per_thread,

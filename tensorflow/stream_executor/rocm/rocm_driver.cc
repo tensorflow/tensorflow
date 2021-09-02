@@ -1325,6 +1325,55 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return port::Status::OK();
 }
 
+/* static */ bool GpuDriver::BeginGraphCaptureOnStream(
+    GpuContext* context, GpuStreamHandle stream, GpuStreamCaptureMode mode) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (BeginGraphCaptureOnStream)";
+  return false;
+}
+
+/* static */ bool GpuDriver::EndGraphCaptureOnStream(GpuContext* context,
+                                                     GpuStreamHandle stream,
+                                                     GpuGraph* graph) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (EndGraphCaptureOnStream)";
+  return false;
+}
+
+/* static */ void GpuDriver::DestroyGraph(GpuContext* context,
+                                          GpuGraph* graph) {
+  LOG(ERROR) << "Feature not supported on ROCm platform (DestroyGraph)";
+}
+
+/* static */ bool GpuDriver::InstantiateExecutableGraph(
+    GpuContext* context, GpuGraph graph, GpuGraphExec* graph_exec) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (InstantiateExecutableGraph)";
+  return false;
+}
+
+/* static */ bool GpuDriver::UpdateExecutableGraph(GpuContext* context,
+                                                   GpuGraphExec graph_exec,
+                                                   GpuGraph graph) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (UpdateExecutableGraph)";
+  return false;
+}
+
+/* static */ bool GpuDriver::LaunchExecutableGraph(GpuContext* context,
+                                                   GpuGraphExec graph_exec,
+                                                   GpuStreamHandle stream) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (LaunchExecutableGraph)";
+  return false;
+}
+
+/* static */ void GpuDriver::DestroyExecutableGraph(GpuContext* context,
+                                                    GpuGraphExec* graph_exec) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (DestroyExecutableGraph)";
+}
+
 /* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     GpuContext* context, hipFunction_t kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

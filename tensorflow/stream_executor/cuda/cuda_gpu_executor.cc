@@ -429,6 +429,103 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       kernel_params, nullptr /* = extra */);
 }
 
+port::Status GpuExecutor::LaunchExecutableGraph(Stream* main_stream,
+                                                void* graph_exec) {
+  CUstream main_cuda_stream = AsGpuStreamValue(main_stream);
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Launching executable graph " << exec_graph << " on stream "
+          << main_cuda_stream;
+  bool launch_success = GpuDriver::LaunchExecutableGraph(
+      gpu_context(), exec_graph, main_cuda_stream);
+  if (!launch_success) {
+    return port::InternalError("Failed to launch CUDA execution graph");
+  }
+
+  return port::Status::OK();
+}
+
+port::Status GpuExecutor::BeginGraphCapture(Stream* capture_stream) {
+  CUstream capture_cuda_stream = AsGpuStreamValue(capture_stream);
+
+  VLOG(1) << "Beginning GPU graph capture on stream " << capture_cuda_stream;
+  // Note: Relaxed capture mode because we use a private stream and always
+  // re-capture the graph.
+  if (!GpuDriver::BeginGraphCaptureOnStream(
+          gpu_context(), capture_cuda_stream,
+          CU_STREAM_CAPTURE_MODE_THREAD_LOCAL  // ToDo (amoitra): Check
+                                               // implications
+                                               // (including any
+                                               // performance related)
+                                               // of using this
+          /*CU_STREAM_CAPTURE_MODE_RELAXED*/)) {
+    return port::InternalError("Failed to begin GPU stream capture");
+  }
+  return port::Status::OK();
+}
+
+port::StatusOr<void*> GpuExecutor::EndGraphCapture(Stream* capture_stream,
+                                                   void* graph) {
+  CUstream capture_cuda_stream = AsGpuStreamValue(capture_stream);
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  if (!GpuDriver::EndGraphCaptureOnStream(gpu_context(), capture_cuda_stream,
+                                          &graph_handle)) {
+    return port::InternalError("GPU stream capture failed");
+  }
+  VLOG(1) << "End GPU graph capture for CUDA graph " << graph_handle
+          << " on stream " << capture_cuda_stream;
+  return graph_handle;
+}
+
+port::StatusOr<void*> GpuExecutor::InstantiateGraph(void* graph,
+                                                    void* graph_exec) {
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  bool instantiate_success = GpuDriver::InstantiateExecutableGraph(
+      gpu_context(), graph_handle, &exec_graph);
+  if (!instantiate_success) {
+    return port::InternalError("Failed to instantiate GPU execution graph");
+  }
+  VLOG(1) << "Instantiated CUDA graph " << graph_handle
+          << " returning executable graph " << exec_graph;
+  return exec_graph;
+}
+
+port::Status GpuExecutor::UpdateExecutableGraph(void* graph, void* graph_exec) {
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Update executable graph " << exec_graph << " with graph "
+          << graph_handle << " for conetxt " << gpu_context();
+  if (!GpuDriver::UpdateExecutableGraph(gpu_context(), exec_graph,
+                                        graph_handle)) {
+    LOG(WARNING) << "Failed to update GPU executable graph";
+    GpuDriver::DestroyExecutableGraph(gpu_context(), &exec_graph);
+  }
+  return port::Status::OK();
+}
+
+void GpuExecutor::DestroyExecutableGraph(void* context, void* graph_exec) {
+  auto* gpu_context = static_cast<stream_executor::gpu::GpuContext*>(context);
+  auto* exec_graph =
+      reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Destroy executable graph " << exec_graph << " for context "
+          << gpu_context;
+  GpuDriver::DestroyExecutableGraph(gpu_context, exec_graph);
+}
+
+void GpuExecutor::DestroyGraph(void* context, void* graph) {
+  auto* gpu_context = static_cast<stream_executor::gpu::GpuContext*>(context);
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  VLOG(1) << "Destroy graph " << graph_handle << " for context " << gpu_context;
+  GpuDriver::DestroyGraph(gpu_context, &graph_handle);
+}
+
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.

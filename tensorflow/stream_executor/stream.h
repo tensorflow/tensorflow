@@ -190,6 +190,15 @@ class Stream {
   Stream &ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                      const TypedKernel<Params...> &kernel, Args... args);
 
+  // Launch a task graph. For CUDA backend, launch a CUDA graph.
+  // See Documentation:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-graphs
+  Stream &ThenLaunchGraph(void *exec_graph);
+
+  Stream &ThenBeginGraphCapture();
+
+  Stream &ThenEndGraphCapture(void *&graph);
+
   // Record a "start" event for the interval timer at this point in the
   // stream's execution (relative to the previously and subsequently enqueued
   // items in the stream's execution). Streams may be started/stopped multiple

@@ -1631,6 +1631,163 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return port::Status::OK();
 }
 
+/* static */ bool GpuDriver::BeginGraphCaptureOnStream(
+    GpuContext* context, CUstream stream, CUstreamCaptureMode mode) {
+#if CUDA_VERSION >= 10000
+  ScopedActivateContext activation(context);
+  CUresult res = cuStreamBeginCapture(stream, mode);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "could not begin CUDA graph capture on stream: "
+               << ToString(res);
+    return false;
+  }
+
+  return true;
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(BeginGraphCaptureOnStream)";
+  return false;
+#endif
+}
+
+/* static */ bool GpuDriver::EndGraphCaptureOnStream(GpuContext* context,
+                                                     CUstream stream,
+                                                     CUgraph* graph) {
+#if CUDA_VERSION >= 10000
+  ScopedActivateContext activated{context};
+  CUresult res = cuStreamEndCapture(stream, graph);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "could not complete graph capture on stream for context "
+               << context->context() << ": " << ToString(res);
+    return false;
+  }
+
+  VLOG(1) << "successfully completed graph capture on stream " << stream
+          << " for context " << context->context() << " on thread";
+  return true;
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(EndGraphCaptureOnStream)";
+  return false;
+#endif
+}
+
+/* static */ void GpuDriver::DestroyGraph(GpuContext* context, CUgraph* graph) {
+#if CUDA_VERSION >= 10000
+  if (*graph == nullptr) {
+    return;
+  }
+
+  ScopedActivateContext activated{context};
+  CUresult res = cuGraphDestroy(*graph);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to destroy CUDA graph for context "
+               << context->context() << ": " << ToString(res);
+  } else {
+    VLOG(1) << "successfully destroyed graph " << *graph << " for context "
+            << context->context();
+    *graph = nullptr;
+  }
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version (DestroyGraph)";
+#endif
+}
+
+/* static */ bool GpuDriver::InstantiateExecutableGraph(
+    GpuContext* context, CUgraph graph, CUgraphExec* graph_exec) {
+#if CUDA_VERSION >= 10000
+  ScopedActivateContext activated{context};
+  char log_buffer[1024];
+  CUresult res = cuGraphInstantiate(graph_exec, graph,
+                                    /* error_node = */ nullptr, log_buffer,
+                                    sizeof(log_buffer));
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "could not instantiate executable graph for context "
+               << context->context() << ": " << ToString(res) << "\n"
+               << log_buffer;
+    return false;
+  }
+
+  VLOG(1) << "successfully instantiated executable graph for context "
+          << context->context() << " on thread";
+  return true;
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(InstantiateExecutableGraph)";
+  return false;
+#endif
+}
+
+/* static */ bool GpuDriver::UpdateExecutableGraph(GpuContext* context,
+                                                   CUgraphExec graph_exec,
+                                                   CUgraph graph) {
+#if CUDA_VERSION >= 10020
+  ScopedActivateContext activated{context};
+  CUresult res = cuGraphExecUpdate(graph_exec, graph,
+                                   /* error_node = */ nullptr,
+                                   /* update_result = */ nullptr);
+  if (res != CUDA_SUCCESS) {
+    // VLOG because updating a graph is often done optimistically before falling
+    // back to instantiating a new graph, so an ERROR is not appropriate.
+    VLOG(1) << "could not update executable graph for context "
+            << context->context() << ": " << ToString(res);
+    return false;
+  }
+
+  VLOG(1) << "successfully updated executable graph for context "
+          << context->context() << " on thread";
+  return true;
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(UpdateExecutableGraph)";
+  return false;
+#endif
+}
+
+/* static */ bool GpuDriver::LaunchExecutableGraph(GpuContext* context,
+                                                   CUgraphExec graph_exec,
+                                                   CUstream stream) {
+#if CUDA_VERSION >= 10000
+  ScopedActivateContext activation(context);
+  CUresult res = cuGraphLaunch(graph_exec, stream);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "Failed to launch CUDA graph for context "
+               << context->context() << ": " << ToString(res);
+    return false;
+  }
+  VLOG(1) << "successfully launched graph on stream " << stream;
+  return true;
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(LaunchExecutableGraph)";
+  return false;
+#endif
+}
+
+/* static */ void GpuDriver::DestroyExecutableGraph(GpuContext* context,
+                                                    CUgraphExec* graph_exec) {
+#if CUDA_VERSION >= 10000
+  if (*graph_exec == nullptr) {
+    return;
+  }
+
+  ScopedActivateContext activated{context};
+  CUresult res = cuGraphExecDestroy(*graph_exec);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to destroy CUDA executable graph for context "
+               << context->context() << ": " << ToString(res);
+  } else {
+    VLOG(1) << "successfully destroyed executable graph " << *graph_exec
+            << " for GpuContext " << context << " and context "
+            << context->context();
+    *graph_exec = nullptr;
+  }
+#else
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
+                "(DestroyExecutableGraph)";
+#endif
+}
+
 /* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     GpuContext* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

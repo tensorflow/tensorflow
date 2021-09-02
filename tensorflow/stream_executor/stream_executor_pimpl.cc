@@ -485,6 +485,38 @@ port::Status StreamExecutor::Launch(Stream *stream,
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
+port::Status StreamExecutor::LaunchExecutableGraph(Stream *stream,
+                                                   void *exec_graph) {
+  return implementation_->LaunchExecutableGraph(stream, exec_graph);
+}
+
+port::Status StreamExecutor::BeginGraphCapture(Stream *stream) {
+  return implementation_->BeginGraphCapture(stream);
+}
+
+port::StatusOr<void *> StreamExecutor::EndGraphCapture(Stream *stream,
+                                                       void *graph) {
+  return implementation_->EndGraphCapture(stream, graph);
+}
+
+port::StatusOr<void *> StreamExecutor::InstantiateGraph(void *graph,
+                                                        void *graph_exec) {
+  return implementation_->InstantiateGraph(graph, graph_exec);
+}
+
+port::Status StreamExecutor::UpdateExecutableGraph(void *graph,
+                                                   void *graph_exec) {
+  return implementation_->UpdateExecutableGraph(graph, graph_exec);
+}
+
+void StreamExecutor::DestroyExecutableGraph(void *context, void *exec_graph) {
+  implementation_->DestroyExecutableGraph(context, exec_graph);
+}
+
+void StreamExecutor::DestroyGraph(void *context, void *graph) {
+  implementation_->DestroyExecutableGraph(context, graph);
+}
+
 port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
   port::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
