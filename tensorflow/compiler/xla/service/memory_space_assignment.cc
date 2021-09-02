@@ -3203,6 +3203,25 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
       << tuple->ToString()
       << ", new_instruction = " << new_instruction->ToString()
       << ", shape_index = " << shape_index.ToString();
+  // Check if the new instruction is a get-tuple-element of the correct index of
+  // the tuple, and if so, simply return tuple.
+  const HloInstruction* instruction = new_instruction;
+  bool equivalent = true;
+  for (int i = shape_index.size() - 1; i >= 0; --i) {
+    int index = shape_index[i];
+    if (instruction->opcode() != HloOpcode::kGetTupleElement ||
+        instruction->tuple_index() != index) {
+      equivalent = false;
+      break;
+    }
+    instruction = instruction->operand(0);
+  }
+  if (equivalent && instruction == tuple) {
+    VLOG(4) << "Instruction " << new_instruction->ToShortString()
+            << " already exists at index " << shape_index.ToString() << " of "
+            << tuple->ToShortString();
+    return tuple;
+  }
 
   HloComputation* computation = new_instruction->parent();
   std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
