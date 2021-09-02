@@ -153,7 +153,7 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
         }
         if (has_control_dep) {
           printer.printGenericOp(op);
-          return success();
+          return;
         }
       }
       has_control_dep = false;
@@ -164,7 +164,7 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
         }
         if (has_control_dep) {
           printer.printGenericOp(op);
-          return success();
+          return;
         }
       }
     }
@@ -230,7 +230,7 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
         os << ")";
       }
     }
-    return success();
+    return;
   };
 }
 
