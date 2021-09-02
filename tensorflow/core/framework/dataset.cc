@@ -166,7 +166,7 @@ REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant")
                             .HostMemory("input_handle")
                             .HostMemory("output_handle")
-                            .Device(DEVICE_GPU),
+                            .Device(DEVICE_DEFAULT),
                         WrapDatasetVariantOp);
 
 class UnwrapDatasetVariantOp : public OpKernel {
@@ -196,7 +196,7 @@ REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant")
                             .HostMemory("input_handle")
                             .HostMemory("output_handle")
-                            .Device(DEVICE_GPU),
+                            .Device(DEVICE_DEFAULT),
                         UnwrapDatasetVariantOp);
 
 static Status WrappedDatasetVariantDeviceCopy(
