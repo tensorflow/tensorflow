@@ -1149,90 +1149,6 @@ class ConvertReduceOpToTfAll
   }
 };
 
-bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
-  Operation *iota_op = iota.getDefiningOp();
-  mhlo::BroadcastInDimOp iota_broadcast =
-      llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
-  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
-    return false;
-  if (!isa_and_nonnull<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
-    return false;
-  return true;
-}
-
-bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
-  if (dimensions.getNumElements() != 1) return false;
-  Operation *iota_op = iota.getDefiningOp();
-  auto iota_broadcast = llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
-  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
-    return false;
-  // Dimension should be the inner most dim.
-  // TODO(xuanyuanluo): Support more general dimensions.
-  auto iota_type = iota.getType().dyn_cast_or_null<ShapedType>();
-  if (!iota_type || !iota_type.hasRank()) return false;
-  auto rank = iota_type.getRank();
-  if (rank < 1) return false;
-  auto broadcast_dim = *dimensions.getIntValues().begin();
-
-  if (broadcast_dim.isNegative()) broadcast_dim += rank;
-  if (broadcast_dim != rank - 1) return false;
-  DenseElementsAttr range_const;
-  if (!matchPattern(iota_broadcast.operand(), m_Constant(&range_const)))
-    return false;
-  int index = 0;
-  for (auto value : range_const.getIntValues()) {
-    if (value != index++) return false;
-  }
-  return true;
-}
-
-// Currently it only supports the scenario where dimensions include only a
-// single number equal to iota.getRank() - 1.
-bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
-  DenseElementsAttr iota_const_attr;
-  if (matchPattern(iota, m_Constant(&iota_const_attr))) {
-    // The inner most dimension must match the reduce dimension.
-    auto iota_type = iota_const_attr.getType();
-    auto reduce_dim = *dimensions.getIntValues().begin();
-    if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
-    if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
-        (iota_type.getRank() - 1) != reduce_dim) {
-      return false;
-    }
-
-    // The inner dimension must match [0, 1, ...., size];
-    // TODO(renjieliu): Support non-inner dimension as well.
-    const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
-    if (inner_dim < 1) return false;
-
-    int64_t index = 0;
-    // We are checking whether the iota_const values are having the pattern
-    // like:
-    // 0 1 2 ... n - 1    <= inner most.   -------
-    // 0 1 2 ... n - 1                       |
-    //  ....                             outer_loop
-    //  ....                                 |
-    // 0 1 2 ... n - 1                    ---------
-    for (auto value : iota_const_attr.getIntValues()) {
-      if (value != index) return false;
-      index = (index + 1) % inner_dim;
-    }
-    return true;
-  }
-  return false;
-}
-
-// The following 3 different forms of mhlo::iota will be matched:
-// 1. IotaOp + BroadCastInDim.
-// 2. Constant (folded Iota) + BroadCastInDim.
-// 3. Constant (folded result).
-// Moreover, the dimensions has to match the iota_dimension.
-bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
-  if (MatchIotaBroadCastInDim(dimensions, iota)) return true;
-  if (MatchConstIotaBroadCastInDim(dimensions, iota)) return true;
-  return MatchIotaConst(dimensions, iota);
-}
-
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
@@ -1259,7 +1175,7 @@ class ConvertReduceOpToTfArgMinMax
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
     Value iota = reduce_op.inputs().back();
-    if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
+    if (!MatchIota(reduce_op, iota)) return failure();
 
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
@@ -1371,6 +1287,58 @@ class ConvertReduceOpToTfArgMinMax
   virtual const char *CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
+
+ private:
+  // It's possible the iota is passed as a constant or a `mhlo.iota` followed
+  // by a `mhlo.broadcast_in_dim`, we should match for both.
+  bool MatchIota(mhlo::ReduceOp reduce_op, Value iota) const {
+    Operation *iota_op = iota.getDefiningOp();
+    if (!iota_op) return false;
+
+    // Try to match for const first.
+    DenseElementsAttr iota_const_attr;
+    if (matchPattern(iota, m_Constant(&iota_const_attr))) {
+      // The inner most dimension must match the reduce dimension.
+      auto iota_type = iota_const_attr.getType();
+      auto reduce_dim = *reduce_op.dimensions().getIntValues().begin();
+      if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
+      if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
+          (iota_type.getRank() - 1) != reduce_dim) {
+        return false;
+      }
+
+      // The inner dimension must match [0, 1, ...., size];
+      // TODO(renjieliu): Support non-inner dimension as well.
+      const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
+      if (inner_dim < 1) return false;
+
+      int64_t index = 0;
+      // We are checking whether the iota_const values are having the pattern
+      // like:
+      // 0 1 2 ... n - 1    <= inner most.   -------
+      // 0 1 2 ... n - 1                       |
+      //  ....                             outer_loop
+      //  ....                                |
+      // 0 1 2 ... n - 1                    ---------
+      for (auto value : iota_const_attr.getIntValues()) {
+        if (value != index) return false;
+        index = (index + 1) % inner_dim;
+      }
+      return true;
+    }
+
+    // Continue to try to match for `mhlo.iota` -> `mhlo.broadcast_in_dim`.
+    mhlo::BroadcastInDimOp iota_broadcast =
+        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
+    if (!iota_broadcast ||
+        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
+      return false;
+    if (!isa_and_nonnull<mhlo::IotaOp>(
+            iota_broadcast.operand().getDefiningOp()))
+      return false;
+
+    return true;
+  }
 };
 
 class ConvertReduceOpToTfArgmax
