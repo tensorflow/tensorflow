@@ -2173,6 +2173,21 @@ func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32
   return %0 : tensor<4x128xf32>
 }
 
+// CHECK-LABEL: func @convert_gather_offset(
+// CHECK-SAME:                                      %[[VAL_0:.*]]: tensor<1x20xi32>,
+// CHECK-SAME:                                      %[[VAL_1:.*]]: tensor<1x1xi32>) -> tensor<1x1xi32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) : (tensor<1x20xi32>, tensor<2xi64>) -> tensor<20x1xi32>
+// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_3]], %[[VAL_1]]) : (tensor<20x1xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_6:.*]] = "tf.Transpose"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x1xi32>, tensor<2xi64>) -> tensor<1x1xi32>
+// CHECK:           return %[[VAL_6]] : tensor<1x1xi32>
+// CHECK:         }
+func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> tensor<1x1xi32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<1> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<0> : tensor<1xi64>, start_index_map = dense<1> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<1> : tensor<2xi64>} : (tensor<1x20xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+  return %0 : tensor<1x1xi32>
+}
+
 // CHECK-LABEL:   func @convert_dynamic_slice(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<7x3xf32>,
 // CHECK-SAME:                                %[[VAL_1:.*]]: tensor<i32>,
