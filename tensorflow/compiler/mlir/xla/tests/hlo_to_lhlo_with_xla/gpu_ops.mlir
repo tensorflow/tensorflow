@@ -1,14 +1,17 @@
 // RUN: xla-opt -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG0:.*]]: memref<3x3xi32>
-// CHECK-SAME: %[[ARG1:.*]]: memref<2xi32>
-// CHECK-SAME: %[[ARG2:.*]]: memref<2x3xi32>
-// CHECK-SAME: %[[ARG3:.*]]: memref<36xi8> {
-// CHECK: %[[VIEW0:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
+// CHECK-SAME: %[[ARG0:.*]]: memref<36xi8> {lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<8xi8>
+// CHECK-SAME: %[[ARG2:.*]]: memref<24xi8>
+// CHECK-SAME: %[[ARG3:.*]]: memref<36xi8>
+// CHECK: %[[VIEW0:.*]] = memref.view %[[ARG0]]{{.*}} : memref<36xi8> to memref<3x3xi32>
+// CHECK: %[[VIEW3:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
 // CHECK: %{{.*}} = "mhlo.copy"(%{{.*}})
-// CHECK: %[[VIEW1:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
-// CHECK:  "lmhlo.scatter"(%[[VIEW0]], %[[ARG1]], %[[ARG2]], %[[VIEW1]])
+// CHECK: %[[VIEW1:.*]] = memref.view %[[ARG1]]{{.*}} : memref<8xi8> to memref<2xi32>
+// CHECK: %[[VIEW2:.*]] = memref.view %[[ARG2]]{{.*}} : memref<24xi8> to memref<2x3xi32>
+// CHECK: %[[VIEW31:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
+// CHECK:  "lmhlo.scatter"(%[[VIEW3]], %[[VIEW1]], %[[VIEW2]], %[[VIEW31]])
 // CHECK:  mhlo.add
 // CHECK: indices_are_sorted = false
 // CHECK: index_vector_dim = 1 : i64
