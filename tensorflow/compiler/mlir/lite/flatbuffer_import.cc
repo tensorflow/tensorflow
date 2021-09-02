@@ -698,40 +698,64 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
-llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
-    tflite::BuiltinOptionsUnion options,
-    const std::vector<std::string>& func_names, Builder builder) {
+StatusOr<llvm::SmallVector<mlir::NamedAttribute, 4>>
+ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
+                                   const std::vector<std::string>& func_names,
+                                   Builder builder) {
   if (auto* opts = options.AsCallOnceOptions()) {
     uint32_t init_idx = opts->init_subgraph_index;
+    if (init_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     init_idx);
+    }
     auto init_attr = builder.getStringAttr(func_names.at(init_idx));
 
-    return {builder.getNamedAttr("session_init_function", init_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("session_init_function", init_attr)};
   }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
+    if (then_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     then_idx);
+    }
     auto then_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
+    if (else_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     else_idx);
+    }
     auto else_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
 
-    return {builder.getNamedAttr("then_branch", then_attr),
-            builder.getNamedAttr("else_branch", else_attr),
-            // TODO(b/139667752): Analyze statelessness correctly
-            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("then_branch", then_attr),
+        builder.getNamedAttr("else_branch", else_attr),
+        // TODO(b/139667752): Analyze statelessness correctly
+        builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
   }
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
+    if (cond_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     cond_idx);
+    }
     auto cond_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
+    if (body_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     body_idx);
+    }
     auto body_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
-    return {builder.getNamedAttr("cond", cond_attr),
-            builder.getNamedAttr("body", body_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("cond", cond_attr),
+        builder.getNamedAttr("body", body_attr)};
   }
-  return {};
+  return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
 Status AddOpIntermediatesForLstm(
@@ -897,8 +921,9 @@ StatusOr<Operation*> ConvertOp(
 
   // Handle the conversion from subgraph index to functions for If and While. We
   // will add CallOps in the region to call the functions later for While.
-  auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
-      op.builtin_options, func_names, builder);
+  TF_ASSIGN_OR_RETURN(auto function_ref_attrs,
+                      ConvertSubgraphIdxsToFunctionAttrs(op.builtin_options,
+                                                         func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
   return builder.createOperation(op_state);
