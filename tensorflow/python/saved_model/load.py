@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
@@ -34,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import handle_data_util
@@ -582,7 +582,7 @@ class Loader(object):
     return _UserObject(), setattr
 
   def _recreate_asset(self, proto):
-    filename = os.path.join(
+    filename = file_io.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
     asset = tracking.Asset(filename)
