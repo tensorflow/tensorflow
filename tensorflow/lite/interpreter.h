@@ -763,6 +763,9 @@ class Interpreter {
   // Returns true if delegates have been applied.
   bool HasDelegates();
 
+  // Returns true if the model has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
