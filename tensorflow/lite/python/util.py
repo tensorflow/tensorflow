@@ -460,7 +460,7 @@ def convert_bytes_to_c_source(data,
     if (len(array_line) + 4) > max_line_width:
       array_lines.append(array_line + "\n")
       array_line = starting_pad
-    array_line += " 0x%02x," % (value)
+    array_line += " 0x%02x," % (value,)
   if len(array_line) > len(starting_pad):
     array_lines.append(array_line + "\n")
   array_values = "".join(array_lines)
@@ -647,11 +647,23 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
 
 def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   """Modify model input type."""
-
   if inference_input_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_input_type_per_subgraph(model, 0, -1, inference_input_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_input_type_per_subgraph(model, signature_def.subgraphIndex,
+                                          signature_index, inference_input_type)
+
+
+def _modify_model_input_type_per_subgraph(model, subgraph_index,
+                                          signature_index,
+                                          inference_input_type):
+  """Modify model input type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -724,8 +736,8 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in input_quant_ops:
       subgraph.inputs[subgraph.inputs == op.inputs[0]] = op.outputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for i in range(len(signature_def.inputs)):
           if signature_def.inputs[i].tensorIndex == op.inputs[0]:
             signature_def.inputs[i].tensorIndex = op.outputs[0]
@@ -741,11 +753,24 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
 
 def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   """Modify model output type."""
-
   if inference_output_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_output_type_per_subgraph(model, 0, -1, inference_output_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_output_type_per_subgraph(model, signature_def.subgraphIndex,
+                                           signature_index,
+                                           inference_output_type)
+
+
+def _modify_model_output_type_per_subgraph(model, subgraph_index,
+                                           signature_index,
+                                           inference_output_type):
+  """Modify model output type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -834,8 +859,8 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in output_dequant_ops:
       subgraph.outputs[subgraph.outputs == op.outputs[0]] = op.inputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for i in range(len(signature_def.outputs)):
           if signature_def.outputs[i].tensorIndex == op.outputs[0]:
             signature_def.outputs[i].tensorIndex = op.inputs[0]
@@ -851,7 +876,20 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
 
 def _remove_redundant_quantize_ops(model):
   """Finds back to back quantize ops and remove the first quantize op."""
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _remove_redundant_quantize_ops_per_subgraph(model, 0, -1)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _remove_redundant_quantize_ops_per_subgraph(model,
+                                                signature_def.subgraphIndex,
+                                                signature_index)
+
+
+def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
+                                                signature_index):
+  """Remove redundant quantize ops per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -897,8 +935,8 @@ def _remove_redundant_quantize_ops(model):
     if output_tensor_idx in output_dequant_tensors:
       dequant_op = output_dequant_tensors[output_tensor_idx]
       subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for output in signature_def.outputs:
           if output.tensorIndex == dequant_op.outputs[0]:
             output.tensorIndex = op.inputs[0]

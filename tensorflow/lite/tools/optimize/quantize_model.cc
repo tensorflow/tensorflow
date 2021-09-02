@@ -491,7 +491,13 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-
+    SignatureDefT* signature_def = nullptr;
+    for (const auto& sig_def : model->signature_defs) {
+      if (sig_def->subgraph_index == subgraph_idx) {
+        signature_def = sig_def.get();
+        break;
+      }
+    }
     for (int i = 0; i < subgraph->inputs.size(); ++i) {
       TensorT* tensor = subgraph->tensors[subgraph->inputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
@@ -507,6 +513,14 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
           model, subgraph, subgraph->inputs[i], input_type, activations_type);
       if (input_idx < 0) {
         continue;
+      }
+      if (signature_def != nullptr) {
+        for (const auto& input : signature_def->inputs) {
+          if (input->tensor_index == subgraph->inputs[i]) {
+            input->tensor_index = input_idx;
+            break;
+          }
+        }
       }
       subgraph->inputs[i] = input_idx;
     }
@@ -525,6 +539,14 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
           model, subgraph, subgraph->outputs[i], output_type, activations_type);
       if (output_idx < 0) {
         continue;
+      }
+      if (signature_def != nullptr) {
+        for (const auto& output : signature_def->outputs) {
+          if (output->tensor_index == subgraph->outputs[i]) {
+            output->tensor_index = output_idx;
+            break;
+          }
+        }
       }
       subgraph->outputs[i] = output_idx;
     }
