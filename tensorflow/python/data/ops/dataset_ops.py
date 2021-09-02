@@ -3232,7 +3232,7 @@ name=None))
   @staticmethod
   def choose_from_datasets(datasets,
                            choice_dataset,
-                           stop_on_empty_dataset=False):
+                           stop_on_empty_dataset=True):
     """Creates a dataset that deterministically chooses elements from `datasets`.
 
     For example, given the following datasets:
@@ -3264,7 +3264,7 @@ name=None))
         to set it to `True`. Otherwise, the selected elements start off as
         the user intends, but may change as input datasets become empty.
         This can be difficult to detect since the dataset starts off looking
-        correct. Default to `False` for backward compatibility.
+        correct. Defaults to `True`.
 
     Returns:
       A dataset that interleaves elements from `datasets` according to the

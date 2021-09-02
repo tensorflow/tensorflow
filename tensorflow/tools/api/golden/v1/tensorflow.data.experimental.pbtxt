@@ -122,7 +122,7 @@ tf_module {
   }
   member_method {
     name: "choose_from_datasets"
-    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
   member_method {
     name: "copy_to_device"

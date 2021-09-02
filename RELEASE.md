@@ -43,6 +43,11 @@
   * Add experimental API `experimental_from_jax` to support conversion from Jax
     models to TensorFlow Lite.
 
+* `tf.data`:
+    *   The default value for `stop_on_empty_dataset` parameter in
+        `tf.data.Dataset.choose_from_datasets` API has been changed to `True`.
+        Set it to `False` for deprecated experimental behaviour.
+
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
         Previously, when called within `name_scope("")` or `name_scope(None)`
@@ -173,7 +178,8 @@
     *   Promoting
         `tf.data.experimental.choose_from_datasets` API to
         `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
-        endpoint.
+        endpoint. Additionally, the default value for `stop_on_empty_dataset` has
+        been changed to `True`. Set it to `False` for deprecated experimental behaviour.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
