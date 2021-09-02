@@ -44,8 +44,16 @@ const int NUM_SEVERITIES = 4;  // base_logging::NUM_SEVERITIES;
 
 namespace internal {
 
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+#if __has_builtin(__builtin_expect)
 #define DISC_PREDICT_FALSE(x) (__builtin_expect(x, 0))
 #define DISC_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
+#else
+#define DISC_PREDICT_FALSE(x) (x)
+#define DISC_PREDICT_TRUE(x) (x)
+#endif
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:
