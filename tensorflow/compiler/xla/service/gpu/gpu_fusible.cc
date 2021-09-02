@@ -316,9 +316,10 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 }
 
 // Returns shared memory usage for a given instruction in bytes.
-static int64_t SharedMemoryUsage(const HloInstruction& instr) {
+static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   // For now we are only fusing reductions.
-  if (IsReductionFromOrToContiguousDimensions(instr)) {
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
     int64_t primitive_size =
@@ -335,7 +336,7 @@ static int64_t SharedMemoryUsage(const HloInstruction& instr) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
          instr.fused_instructions_computation()->instructions()) {
-      sum += SharedMemoryUsage(*hlo);
+      sum += SharedMemoryUsageNoCache(*hlo);
     }
     return sum;
   }
@@ -343,24 +344,65 @@ static int64_t SharedMemoryUsage(const HloInstruction& instr) {
   return 0;
 }
 
+static int64_t SharedMemoryUsage(const HloInstruction& instr,
+                                 FusionInfoCache* cache = nullptr) {
+  if (!cache) {
+    return SharedMemoryUsageNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // SharedMemoryUsageNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->shared_memory_usage.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = SharedMemoryUsageNoCache(instr);
+  }
+  return it->second;
+}
+
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
 // combining many of those runs a high risk of spilling.
 constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
 
 // Returns the number of unnested reductions in the instruction output.
-static int64_t NumUnnestedReductions(const HloInstruction& instr) {
-  if (IsReductionFromOrToContiguousDimensions(instr)) {
+static int64_t NumUnnestedReductionsNoCache(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
     return 1;
   }
   if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
          instr.fused_instructions_computation()->instructions()) {
-      sum += NumUnnestedReductions(*hlo);
+      sum += NumUnnestedReductionsNoCache(*hlo);
     }
     return sum;
   }
   return 0;
+}
+
+static int64_t NumUnnestedReductions(const HloInstruction& instr,
+                                     FusionInfoCache* cache) {
+  if (!cache) {
+    return NumUnnestedReductionsNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->num_unnested_reductions.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = NumUnnestedReductionsNoCache(instr);
+  }
+  return it->second;
 }
 
 // This function limits the maximum number of operands to a fusion, and the
@@ -388,8 +430,9 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr) {
 // to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion) {
-  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+                           bool is_consumer_producer_fusion,
+                           FusionInfoCache* cache /*=nullptr*/) {
+  if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
       kSharedMemoryBudgetInBytes) {
     VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
             << " and " << instr2.ToString() << " would be over the budget of "
@@ -397,7 +440,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
     return true;
   }
 
-  if (NumUnnestedReductions(instr1) + NumUnnestedReductions(instr2) >
+  if (NumUnnestedReductions(instr1, cache) +
+          NumUnnestedReductions(instr2, cache) >
       kMaxUnnestedReductionOutputsPerFusion) {
     VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
             << " unnested reductions in fusion";
