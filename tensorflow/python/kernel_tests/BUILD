@@ -702,6 +702,7 @@ tf_py_test(
     size = "small",
     srcs = ["logging_ops_logging_level_test.py"],
     tags = [
+        "no_oss",  # b/198486357
         "no_windows",
     ],
     deps = [
