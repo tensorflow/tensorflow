@@ -290,6 +290,41 @@ cc_library(
 )
 
 cc_library(
+    name = "bounded_executor",
+    srcs = ["bounded_executor.cc"],
+    hdrs = ["bounded_executor.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:threadpool_interface",
+        "@com_google_absl//absl/functional:bind_front",
+    ],
+)
+
+tf_cc_test(
+    name = "bounded_executor_test",
+    size = "small",
+    srcs = ["bounded_executor_test.cc"],
+    deps = [
+        ":bounded_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:threadpool_interface",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "concat_split_util",
     hdrs = ["concat_split_util.h"],
     deps = [
