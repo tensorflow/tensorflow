@@ -515,6 +515,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -524,7 +525,6 @@ cc_library(
         "reference/tanh.h",
         "reference/transpose.h",
         "reference/transpose_conv.h",
-        "reference/slice.h",
     ] + select({
         "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
@@ -616,6 +616,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -625,7 +626,6 @@ cc_library(
         "reference/tanh.h",
         "reference/transpose.h",
         "reference/transpose_conv.h",
-        "reference/slice.h",
     ],
     copts = tflite_copts(),
     # We are disabling parse_headers for this header-only target so that the
