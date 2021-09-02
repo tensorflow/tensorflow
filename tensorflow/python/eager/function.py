@@ -2374,6 +2374,17 @@ class FunctionSpec(object):
       instance of FunctionSpec
     """
     fullargspec = tf_inspect.getfullargspec(python_function)
+    if (input_signature is not None and
+        set(fullargspec.kwonlyargs) - set(fullargspec.kwonlydefaults or ())):
+      nodefault_kwonlyargs = set(fullargspec.kwonlyargs)
+      if fullargspec.kwonlydefaults is not None:
+        nodefault_kwonlyargs -= set(fullargspec.kwonlydefaults)
+      raise ValueError("Cannot build TF function from "
+                       f"{python_function.__name__}: keyword-only arguments "
+                       "must have default values when input_signature is "
+                       "provided. Got keyword-only arguments without default "
+                       f"values: {sorted(nodefault_kwonlyargs)}.")
+
     # Checks if the `fullargspec` contains self or cls as its first argument.
     is_method = tf_inspect.isanytargetmethod(python_function)
 
@@ -2382,8 +2393,6 @@ class FunctionSpec(object):
     #   - remove the corresponding arguments,
     #   - remove the corresponding keywords.
     _, unwrapped = tf_decorator.unwrap(python_function)
-    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
-    # fullargspec.kwonlydefaults.
     if isinstance(unwrapped, functools.partial):
       # Also consider the Python3 case with kwonlydefaults.
       if fullargspec.defaults or fullargspec.kwonlydefaults:
@@ -2510,15 +2519,6 @@ class FunctionSpec(object):
     if input_signature is None:
       self._input_signature = None
     else:
-      if set(fullargspec.kwonlyargs) - set(fullargspec.kwonlydefaults or ()):
-        raise ValueError("Cannot define a TensorFlow function from a Python "
-                         "function with keyword-only arguments when "
-                         "input_signature is provided.")
-
-      if not isinstance(input_signature, (tuple, list)):
-        raise TypeError(f"input_signature must be either a tuple or a "
-                        f"list, got {type(input_signature)}.")
-
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
                                                       expand_composites=True))
@@ -2745,7 +2745,8 @@ class FunctionSpec(object):
       if kwargs and self._input_signature is not None:
         raise TypeError("Keyword arguments are not supported when "
                         "input_signature is provided. Signature: "
-                        f"{self.signature_summary()}.")
+                        f"{self.signature_summary()}. Keyword arguments: "
+                        f"{kwargs}.")
 
       if self._fullargspec.kwonlydefaults:
         for (kwarg, default) in self._fullargspec.kwonlydefaults.items():
@@ -2757,7 +2758,6 @@ class FunctionSpec(object):
       flat_inputs += flat_kwargs
       filtered_flat_inputs += filtered_flat_kwargs
     else:
-      assert not kwargs
       inputs, flat_inputs, filtered_flat_inputs = _convert_inputs_to_signature(
           inputs, self._input_signature, self._flat_input_signature)
 
@@ -3472,6 +3472,10 @@ def register(func, *args, **kwargs):
 
 
 def validate_signature(signature):
+  if not isinstance(signature, (tuple, list)):
+    raise TypeError("input_signature must be either a tuple or a list, got "
+                    f"{type(signature)}.")
+
   if any(not isinstance(arg, tensor_spec.DenseSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
     bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)

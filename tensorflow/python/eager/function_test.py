@@ -2169,18 +2169,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'incompatible'):
       func([['wrong dtype']])
 
-  def testNoKeywordOnlyArgumentsWithInputSignature(self):
-    if sys.version_info[0] < 3:
-      self.skipTest('keyword_only arguments only exist in Python 3.')
-
-    func = eval('lambda x, *, y: x')  # pylint: disable=eval-used
-    signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
-    with self.assertRaisesRegex(
-        ValueError, 'Cannot define a TensorFlow function from a Python '
-        'function with keyword-only arguments when input_signature is '
-        'provided.'):
-      def_function.function(func, signature)
-
   def testNestedInputSignatures(self):
 
     def expected_foo(a, b):
@@ -2507,6 +2495,60 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(v=v2)
     self.assertEqual(v1.numpy(), 1)
     self.assertEqual(v2.numpy(), 1)
+
+  def testInputSignatureWithKeywordOnlyArgs(self):
+
+    def f(a, b, c=3, *, d=4):
+      self.assertIsInstance(a, ops.Tensor)
+      self.assertIsInstance(b, ops.Tensor)
+      self.assertIsInstance(c, int)
+      self.assertIsInstance(d, (int, ops.Tensor))
+      return a + b + c + d
+
+    signature = [
+        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+    ]
+    defined = function.defun(f, input_signature=signature)
+    self.assertEqual(defined(1, 2).numpy(), 10)
+
+    defined = function.defun(
+        functools.partial(f, c=4), input_signature=signature)
+    self.assertEqual(defined(1, 2).numpy(), 11)
+
+    defined = function.defun(
+        functools.partial(f, d=5), input_signature=signature)
+    self.assertEqual(defined(1, 2).numpy(), 11)
+
+    defined = function.defun(
+        functools.partial(f, d=array_ops.constant(5)),
+        input_signature=signature)
+    self.assertEqual(defined(1, 2).numpy(), 11)
+
+    mod = module.Module()
+    save(mod, '/tmp/kwonlyf', defined.get_concrete_function(*signature))
+    loaded = load('/tmp/kwonlyf')
+    result = loaded.signatures['serving_default'](
+        a=array_ops.constant(1), b=array_ops.constant(2))
+    self.assertEqual(result['output_0'].numpy(), 11)
+
+  def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):
+    signature = [
+        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+    ]
+
+    def test_func(a, *, b):
+      return a + b
+
+    with self.assertRaisesRegex(
+        ValueError, "keyword-only arguments must have default values.*'b'"):
+      function.defun(test_func, input_signature=signature)
+
+    test_func_lambda = lambda a, *, b: a + b
+    with self.assertRaisesRegex(
+        ValueError, "keyword-only arguments must have default values.*'b'"):
+      function.defun(test_func_lambda, input_signature=signature)
 
   def testTensorKeywordArguments(self):
 
