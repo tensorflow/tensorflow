@@ -184,6 +184,23 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Get the list_size and total_size of the attribute names for this kernel.
+// list_size - the length of the list.
+// total_size - the cumulative byte size of all the names in the list.
+TF_CAPI_EXPORT extern void TF_OpkernelConstruction_GetAttrNamesSize(
+    TF_OpKernelConstruction* ctx, int32_t* list_size, int32_t* total_size);
+
+// Gets the list of attribute names for this kernel by filling in `values` and
+// `lengths`, each of which must point to an array of length at least
+// `max_values`. *status is set to TF_OK. The elements of values will point to
+// addresses in `storage` which must be at least `storage_size` bytes in length.
+// Ideally, max_values would be set to list_size and `storage` would be at least
+// total_size, obtained from TF_OpkernelConstruction_GetAttrNameSize(ctx,
+// list_size, total_size).
+TF_CAPI_EXPORT extern void TF_OpkernelConstruction_GetAttrNamesList(
+    TF_OpKernelConstruction* ctx, char** values, size_t* lengths,
+    int max_values, void* storage, size_t storage_size, TF_Status* status);
+
 // Get the list_size and total_size of the attribute `attr_name` of `oper`.
 // list_size - the length of the list.
 // total_size - total size of the list.

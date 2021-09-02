@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -228,6 +228,86 @@ class TestKernelAttr : public ::testing::Test {
     ASSERT_TRUE(delete_called);
   }
 };
+
+TEST_F(TestKernelAttr, AttributeNames) {
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    std::vector<string> attr_names = {"Attr1", "Attr2", "Attr3"};
+    int32_t expected_list_size = attr_names.size();
+    int32_t expected_total_size = 0;
+
+    for (const auto& s : attr_names) {
+      expected_total_size += s.size();
+    }
+
+    std::unique_ptr<char*[]> values(new char*[expected_list_size]);
+    std::unique_ptr<size_t[]> lens(new size_t[expected_list_size]);
+    std::unique_ptr<char[]> storage(new char[expected_total_size]);
+
+    int32_t actual_list_size, actual_total_size;
+    TF_OpkernelConstruction_GetAttrNamesSize(ctx, &actual_list_size,
+                                             &actual_total_size);
+    EXPECT_EQ(expected_list_size, actual_list_size);
+    EXPECT_EQ(expected_total_size, actual_total_size);
+
+    TF_Status* status = TF_NewStatus();
+    TF_OpkernelConstruction_GetAttrNamesList(ctx, values.get(), lens.get(),
+                                             actual_list_size, storage.get(),
+                                             actual_total_size, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    for (size_t i = 0; i < actual_list_size; ++i) {
+      EXPECT_EQ(attr_names[i].size(), lens[i]) << i;
+      EXPECT_EQ(attr_names[i],
+                string(static_cast<const char*>(values[i]), lens[i]))
+          << i;
+    }
+    TF_DeleteStatus(status);
+    return static_cast<void*>(s);
+  };
+
+  const char* op_name = "TestKernelAttrAttributeNames";
+
+  REGISTER_OP(op_name)                        
+      .Attr("Attr1: int")                                  
+      .Attr("Attr2: int")                                  
+      .Attr("Attr3: int")                                  
+      .SetShapeFn(tensorflow::shape_inference::UnknownShape);
+
+  std::string attr_names_in[] = {"Attr1", "Attr2", "Attr3"};
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, "FakeDevice", my_create_func, &MyComputeFunc, &MyDeleteFunc);
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder("FakeNode", builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_DeleteStatus(status);
+  }
+
+  NodeDef def;
+  def.set_op(op_name);
+  def.set_name("FakeNode");
+  def.set_device("FakeDevice");
+
+  for (int i = 0; i < ABSL_ARRAYSIZE(attr_names_in); ++i) {
+    AttrValue v;
+    SetAttrValue(i, &v);
+    (*def.mutable_attr())[attr_names_in[i]] = v;
+  }
+
+  Status status;
+  std::unique_ptr<OpKernel> kernel = CreateOpKernel(
+      DeviceType("FakeDevice"), nullptr, nullptr, def, 1, &status);
+  TF_EXPECT_OK(status);
+  ASSERT_NE(nullptr, kernel.get());
+  kernel->Compute(nullptr);
+
+  ASSERT_TRUE(delete_called);
+}
 
 TEST_F(TestKernelAttr, String) {
   auto my_create_func = [](TF_OpKernelConstruction* ctx) {

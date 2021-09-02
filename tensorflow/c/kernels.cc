@@ -351,6 +351,51 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
   }
 }
 
+void TF_OpkernelConstruction_GetAttrNamesSize(TF_OpKernelConstruction* ctx,
+                                              int32_t* list_size,
+                                              int32_t* total_size) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::AttrSlice attr_slice(cc_ctx->def());
+  *list_size = attr_slice.size();
+  *total_size = 0;
+
+  for (const auto& key_value : attr_slice) {
+    *total_size += key_value.first.size();
+  }
+}
+
+void TF_OpkernelConstruction_GetAttrNamesList(TF_OpKernelConstruction* ctx,
+                                              char** values, size_t* lengths,
+                                              int max_values, void* storage,
+                                              size_t storage_size,
+                                              TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::AttrSlice attr_slice(cc_ctx->def());
+  char* p = static_cast<char*>(storage);
+  int index = 0;
+
+  for (const auto& key_value : attr_slice) {
+    if (index >= max_values) {
+      break;
+    }
+    const std::string& s = key_value.first;
+    values[index] = p;
+    lengths[index] = key_value.first.size();
+    if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
+      ::tensorflow::Set_TF_Status_from_Status(
+          status,
+          InvalidArgument(
+              "Not enough storage to hold the requested list of strings"));
+      return;
+    }
+    memcpy(values[index], s.data(), s.size());
+    p += s.size();
+    ++index;
+  }
+
+  ::tensorflow::Set_TF_Status_from_Status(status, ::tensorflow::Status::OK());
+}
+
 #define DEFINE_TF_GETATTR(func, c_type, cc_type, attr_type, list_field)        \
   void TF_OpKernelConstruction_GetAttr##func(TF_OpKernelConstruction* ctx,     \
                                              const char* attr_name,            \
