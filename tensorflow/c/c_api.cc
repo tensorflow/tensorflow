@@ -75,6 +75,7 @@ limitations under the License.
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
 using tensorflow::AllocationDescription;
+using tensorflow::AttrValueMap;
 using tensorflow::DataType;
 using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
@@ -103,6 +104,7 @@ using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
+using tensorflow::errors::OutOfRange;
 using tensorflow::gtl::ArraySlice;
 using tensorflow::strings::StrCat;
 
@@ -1527,6 +1529,40 @@ void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
   const auto* attr = GetAttrValue(oper, attr_name, status);
   if (!status->status.ok()) return;
   status->status = MessageToBuffer(*attr, output_attr_value);
+}
+
+int TF_OperationGetNumAttrs(TF_Operation* oper) {
+  return oper->node.attrs().size();
+}
+
+int TF_OperationGetAttrNameLength(TF_Operation* oper, int i) {
+  auto attrs = oper->node.attrs();
+  int count = 0;
+  AttrValueMap::const_iterator it;
+  for (it = attrs.begin(); it != attrs.end(); it++) {
+    if (count == i) {
+      return it->first.length();
+    }
+    count++;
+  }
+  return -1;
+}
+
+void TF_OperationGetAttrName(TF_Operation* oper, int i, char* output,
+                             TF_Status* status) {
+  auto attrs = oper->node.attrs();
+  int count = 0;
+  AttrValueMap::const_iterator it;
+  for (it = attrs.begin(); it != attrs.end(); it++) {
+    if (count == i) {
+      strncpy(output, it->first.c_str(), it->first.length());
+      status->status = Status::OK();
+      return;
+    }
+    count++;
+  }
+  status->status = OutOfRange("Operation only has ", count,
+                              " attributes, can't get the ", i, "th");
 }
 
 void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
