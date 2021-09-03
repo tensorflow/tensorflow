@@ -94,7 +94,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       raise ValueError(
           "log_input and targets must have the same shape (%s vs %s)" %
           (log_input.get_shape(), targets.get_shape()))
-     
+
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
       # need to create constant tensors here so that their dtypes can be matched
