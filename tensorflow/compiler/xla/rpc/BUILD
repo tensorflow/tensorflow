@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
@@ -56,8 +56,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        tf_grpc_cc_dependency(),
-    ] + if_libtpu(
+    ] + tf_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),
@@ -79,6 +78,7 @@ tf_cc_test(
     ],
     deps = [
         ":grpc_stub",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -86,9 +86,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings:str_format",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -100,8 +98,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 # copybara:uncomment_begin(google-only)
