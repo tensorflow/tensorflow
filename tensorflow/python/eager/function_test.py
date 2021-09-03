@@ -3115,7 +3115,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                    constant_op.constant(2.)], constant_op.constant(3.)))
     self.assertLen(total_function_cache(defined), 2)
 
-  def testCacheKeyVariables(self):
+  def testDistinctVariablesNoRetracing(self):
     @function.defun
     def defined(a, b, c):
       return a + b + c
@@ -3124,62 +3124,103 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     y = resource_variable_ops.ResourceVariable(0.0)
     z = resource_variable_ops.ResourceVariable(0.0)
 
-    # If tensor equality is not enabled, we always get a cache miss if the
-    # function is called with different variables. With equality enabled we
-    # should only get a miss if the aliasing changed.
-    defined(x, y, z)
-    self.assertLen(total_function_cache(defined), 1)
+    # We generate cache keys based on unique combinations of resource ids.
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
 
-    # Re-arranging arguments causes cache miss
+    # Re-arranging arguments should not cause cache miss
+    # because the three inputs are still distinct
     defined(z, y, x)
-    self.assertLen(total_function_cache(defined), 2)
-    defined(z, y, x)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(total_function_cache(defined), 1)
 
-    # Aliasing causes cache miss
+  def testRetracingOnDifferentVaribleCombinationPatterns(self):
+    @function.defun
+    def defined(a, b, c):
+      return a + b + c
+
+    x = resource_variable_ops.ResourceVariable(0.0)
+    y = resource_variable_ops.ResourceVariable(0.0)
+    z = resource_variable_ops.ResourceVariable(0.0)
+
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Retracing because the first two arguments are the same
     defined(x, x, z)
+    self.assertLen(total_function_cache(defined), 2)
+
+    # Replacing x with y does not cause cache miss
+    # because the combination stays the same as (x, x, z)
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined), 2)
+
+    # A different combination pattern causes cache miss
+    defined(z, y, y)
     self.assertLen(total_function_cache(defined), 3)
-    defined(x, x, z)
+    defined(z, y, y)
     self.assertLen(total_function_cache(defined), 3)
 
-    # Re-arranging arguments causes cache miss
-    defined(y, y, z)
-    self.assertLen(total_function_cache(defined), 4)
-    defined(y, y, z)
-    self.assertLen(total_function_cache(defined), 4)
+  def testDeepcopyVariableNoRetracing(self):
+    @function.defun
+    def defined(a, b, c):
+      return a + b + c
 
-    # Different alias positions causes cache miss
-    defined(z, y, y)
-    self.assertLen(total_function_cache(defined), 5)
-    defined(z, y, y)
-    self.assertLen(total_function_cache(defined), 5)
+    x = resource_variable_ops.ResourceVariable(0.0)
+    y = resource_variable_ops.ResourceVariable(0.0)
+    z = resource_variable_ops.ResourceVariable(0.0)
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
 
     x_copy = copy.deepcopy(x)
-
-    # Deep copy causes cache miss
     defined(x_copy, y, z)
-    self.assertLen(total_function_cache(defined), 6)
-    defined(x_copy, y, z)
-    self.assertLen(total_function_cache(defined), 6)
+    self.assertLen(total_function_cache(defined), 1)
 
-  def testVariableRetracing(self):
-    v1 = variables.Variable(1.)
-    v2 = variables.Variable(1.)
-    v3 = copy.deepcopy(variables.Variable(1.))
+  def _total_function_cache_def_func(self, defined):
+    # pylint: disable=protected-access
+    return (set(defined._stateful_fn._function_cache.primary)
+            | set(defined._stateful_fn._function_cache.arg_relaxed))
+    # pylint: enable=protected-access
 
-    var_dict = {id(v1): constant_op.constant(1),
-                id(v2): constant_op.constant(2),
-                id(v3): constant_op.constant(3)}
+  def testVariableRetracingOnDtypeChanges(self):
 
-    @function.defun
-    def lookup_tensor(v):
-      return var_dict[id(v)]
+    @def_function.function
+    def defined(a, b):
+      return a + b
 
-    self.assertEqual(1, lookup_tensor(v1).numpy())
-    self.assertEqual(2, lookup_tensor(v2).numpy())
-    self.assertEqual(3, lookup_tensor(v3).numpy())
+    x1 = resource_variable_ops.ResourceVariable(0.0)
+    x2 = resource_variable_ops.ResourceVariable(0.0)
+
+    defined(x1, x2)
+    self.assertLen(self._total_function_cache_def_func(defined), 1)
+
+    # Should expect retracing for new dtypes
+    y1 = resource_variable_ops.ResourceVariable(0)
+    y2 = resource_variable_ops.ResourceVariable(1)
+    defined(y1, y2)
+    self.assertLen(self._total_function_cache_def_func(defined), 2)
+
+  def testVariableRetracingDtypeShape(self):
+
+    @def_function.function
+    def defined(a, b):
+      return a + b
+
+    x1 = resource_variable_ops.ResourceVariable(0.0)
+    x2 = resource_variable_ops.ResourceVariable(0.0)
+
+    defined(x1, x2)
+    self.assertLen(self._total_function_cache_def_func(defined), 1)
+
+    y1 = resource_variable_ops.ResourceVariable([0.0, 1.0])
+    y2 = resource_variable_ops.ResourceVariable([0.0, 1.0])
+
+    defined(y1, y2)
+    self.assertLen(self._total_function_cache_def_func(defined), 2)
+
+    z1 = resource_variable_ops.ResourceVariable([[0.0, 1.0]])
+    z2 = resource_variable_ops.ResourceVariable([[0.0, 1.0]])
+    defined(z1, z2)
+    self.assertLen(self._total_function_cache_def_func(defined), 3)
 
   def testDecoratedMethodInspect(self):
 

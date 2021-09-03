@@ -97,7 +97,7 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # Variable tracing behavior, hence we want to limit the potential blockers that
 # are not detected by Global TAP.
 # TODO(jiaweix): remove this flag and related args (b/198782192)
-ENCODE_VARIABLES_BY_RESOURCE_ID = False
+ENCODE_VARIABLES_BY_RESOURCE_ID = True
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
