@@ -410,10 +410,10 @@ class TensorListSetItem : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                         TensorListSetItem);
 
-#define REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(T)                      \
+#define REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(T)                  \
   REGISTER_KERNEL_BUILDER(Name("TensorListSetItem")               \
                               .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_DEFAULT)                 \
+                              .Device(DEVICE_DEFAULT)             \
                               .HostMemory("index"),               \
                           TensorListSetItem);
 
@@ -422,7 +422,6 @@ TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
 REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT
-
 
 class TensorListConcatLists : public OpKernel {
  public:
