@@ -96,8 +96,6 @@ void NormalizeNode(NodeDef* node) {
   const OpDef* op_def = nullptr;
   (void)tensorflow::OpRegistry::Global()->LookUpOpDef(node->op(), &op_def);
   if (op_def) StripDefaultsFromNodeDef(*op_def, node);
-  // TODO(aminim): Fix this
-  node->clear_experimental_debug_info();
 }
 
 void NormalizeTensorData(GraphDef& graphdef) {

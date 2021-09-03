@@ -159,6 +159,7 @@ class GraphImporter {
         builder_(context),
         context_(context),
         dialect_(context->getLoadedDialect<TFGraphDialect>()),
+        unknown_loc_(UnknownLoc::get(context)),
         debug_info_(debug_info),
         function_name_for_debug_info_(function_name_for_debug_info) {}
 
@@ -228,6 +229,7 @@ class GraphImporter {
   OpBuilder builder_;
   MLIRContext* context_;
   TFGraphDialect* dialect_;
+  UnknownLoc unknown_loc_;
   const GraphDebugInfo& debug_info_;
   llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
@@ -494,9 +496,7 @@ Location GraphImporter::GetLocation(const Node& node) {
   auto original_funcs =
       node_def.experimental_debug_info().original_func_names();
 
-  if (original_nodes.empty()) {
-    return create_location(node.name(), function_name_for_debug_info_);
-  } else {
+  if (!original_nodes.empty()) {
     // If the original nodes are defined, then we use them to get a list of
     // call sites, and then fuse them to a single fused location, with the name
     // of the node_def.
@@ -509,11 +509,9 @@ Location GraphImporter::GetLocation(const Node& node) {
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_locations.push_back(create_location(node_name, func_name));
     }
-    // store the name of the node_def
-    node_locations.push_back(
-        create_location(node.name(), function_name_for_debug_info_));
     return FusedLoc::get(context_, node_locations);
   }
+  return unknown_loc_;
 }
 
 Value GraphImporter::GetOperand(const Edge& edge) {
