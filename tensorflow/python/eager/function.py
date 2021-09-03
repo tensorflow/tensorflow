@@ -92,6 +92,12 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
+# A temporary flag. Turning this on will allow tf.function to aggressively avoid
+# retracing ResourceVariable inputs. This feature will change tf.function's
+# Variable tracing behavior, hence we want to limit the potential blockers that
+# are not detected by Global TAP.
+# TODO(jiaweix): remove this flag and related args (b/198782192)
+ENCODE_VARIABLES_BY_RESOURCE_ID = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
@@ -3175,8 +3181,8 @@ class Function(object):
       # This reduces ambiguity, for example, when args contains a dict and
       # kwargs is empty.
       inputs = (args, kwargs)
-      input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
-                                                    include_tensor_ranks_only)
+      input_signature = pywrap_tfe.TFE_Py_EncodeArg(
+          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
       hashable_input_signature = _make_input_signature_hashable(input_signature)
     else:
       del args, kwargs
