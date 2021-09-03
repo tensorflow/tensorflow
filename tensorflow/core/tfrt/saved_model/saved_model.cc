@@ -1224,19 +1224,15 @@ tensorflow::Status SavedModelImpl::RunInternal(
   llvm::SmallVector<RCReference<AsyncValue>, 4> chain_and_results;
   chain_and_results.resize(func.result_types().size());
 
-  if (run_options.force_bef_function_async) {
-    // Hand over the execution to thread pool.
-    std::array<RCReference<AsyncValue>, 1> executed = {
-        EnqueueWork(exec_ctx, [&]() -> Chain {
-          func.Execute(exec_ctx, arguments, chain_and_results);
-          return {};
-        })};
+  // Hand over the execution to thread pool.
+  std::array<RCReference<AsyncValue>, 1> executed = {
+      EnqueueWork(exec_ctx, [&]() -> Chain {
+        func.Execute(exec_ctx, arguments, chain_and_results);
+        return {};
+      })};
 
-    // Wait for the function execution before checking chain and results.
-    host->Await(executed);
-  } else {
-    func.Execute(exec_ctx, arguments, chain_and_results);
-  }
+  // Wait for the function execution before checking chain and results.
+  host->Await(executed);
 
   // Wait for all results including the side-effect chain. This ensures that all
   // side-effects are visible when SavedModel::Run() returns.

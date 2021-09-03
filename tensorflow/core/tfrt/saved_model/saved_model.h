@@ -144,10 +144,6 @@ class SavedModel {
     // Priority of the request. Larger number means higher priority.
     int priority = 0;
 
-    // If true, the bef function function will be executed within the working
-    // thread pool.
-    bool force_bef_function_async = false;
-
     // If true, the input specs will be checked before running, and an error
     // will be raised upon mismatch.
     bool validate_input_specs = false;
