@@ -131,6 +131,18 @@ class TFCompressionTestCase(test.TestCase):
 class TFRecordWriterTest(TFCompressionTestCase):
   """TFRecordWriter Test"""
 
+  def _CreateTestRecords(self):
+    """Create record with mix of random and repeated data"""
+    rnd = random.Random(123)
+    random_record = compat.as_bytes(
+        "".join(rnd.choice(string.digits) for _ in range(10000)))
+    repeated_record = compat.as_bytes(_TEXT)
+    for _ in range(10000):
+      start_i = rnd.randint(0, len(_TEXT))
+      length = rnd.randint(10, 200)
+      repeated_record += _TEXT[start_i:start_i + length]
+    return [random_record, repeated_record, random_record]
+
   def _AssertFilesEqual(self, a, b, equal):
     for an, bn in zip(a, b):
       with open(an, "rb") as af, open(bn, "rb") as bf:
@@ -218,6 +230,17 @@ class TFRecordWriterTest(TFCompressionTestCase):
     ]
     self._AssertFilesEqual(uncompressed_files, files, True)
 
+  def testWriteReadSnappyFiles(self):
+    """test Write Read Snappy Files"""
+    records = self._CreateTestRecords()
+
+    snappy_options = tf_record.TFRecordOptions(TFRecordCompressionType.SNAPPY, input_buffer_size=1000, output_buffer_size=1000)
+    uncompressed_file = self._WriteRecordsToFile(records, "uncompressed")
+    compressed_file = self._WriteRecordsToFile(records, "tfrecord_snappy", snappy_options)
+    self._AssertFilesEqual([uncompressed_file], [compressed_file], False)
+    read = list(tf_record.tf_record_iterator(compressed_file, options=snappy_options))
+    self.assertEqual(records, read)
+
   def testNoCompressionType(self):
     """test No Compression Type"""
     self.assertEqual(
@@ -256,17 +279,8 @@ class TFRecordWriterTest(TFCompressionTestCase):
             tf_record.TFRecordOptions(tf_record.TFRecordOptions(zlib_t))))
 
   def testCompressionOptions(self):
-    """Create record with mix of random and repeated data to test compression on."""
-    rnd = random.Random(123)
-    random_record = compat.as_bytes(
-        "".join(rnd.choice(string.digits) for _ in range(10000)))
-    repeated_record = compat.as_bytes(_TEXT)
-    for _ in range(10000):
-      start_i = rnd.randint(0, len(_TEXT))
-      length = rnd.randint(10, 200)
-      repeated_record += _TEXT[start_i:start_i + length]
-    records = [random_record, repeated_record, random_record]
-
+    """Use record with mix of random and repeated data to test compression on."""
+    records = self._CreateTestRecords()
     tests = [
         ("compression_level", 2, -1),  # Lower compression is worse.
         ("compression_level", 6, 0),  # Default compression_level is equal.

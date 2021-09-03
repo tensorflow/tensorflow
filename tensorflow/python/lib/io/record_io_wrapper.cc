@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/snappy/snappy_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/types.h"
@@ -47,6 +48,9 @@ class PyRecordReader {
         tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions(
             compression_type);
     options.buffer_size = kReaderBufferSize;
+    // Use the default buffer size for snappy options as well
+    options.snappy_options.input_buffer_size = kReaderBufferSize;
+    options.snappy_options.output_buffer_size = kReaderBufferSize;
     auto reader =
         absl::make_unique<tensorflow::io::RecordReader>(file.get(), options);
     *out = new PyRecordReader(std::move(file), std::move(reader));
@@ -281,11 +285,19 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
       .def_readwrite("compression_strategy",
                      &ZlibCompressionOptions::compression_strategy);
 
+  using tensorflow::io::SnappyCompressionOptions;
+  py::class_<SnappyCompressionOptions>(m, "SnappyCompressionOptions")
+      .def_readwrite("input_buffer_size",
+                     &SnappyCompressionOptions::input_buffer_size)
+      .def_readwrite("output_buffer_size",
+                     &SnappyCompressionOptions::output_buffer_size);
+
   using tensorflow::io::RecordWriterOptions;
   py::class_<RecordWriterOptions>(m, "RecordWriterOptions")
       .def(py::init(&RecordWriterOptions::CreateRecordWriterOptions))
       .def_readonly("compression_type", &RecordWriterOptions::compression_type)
-      .def_readonly("zlib_options", &RecordWriterOptions::zlib_options);
+      .def_readonly("zlib_options", &RecordWriterOptions::zlib_options)
+      .def_readonly("snappy_options", &RecordWriterOptions::snappy_options);
 
   using tensorflow::MaybeRaiseRegisteredFromStatus;
 

@@ -34,6 +34,7 @@ class TFRecordCompressionType(object):
   NONE = 0
   ZLIB = 1
   GZIP = 2
+  SNAPPY = 3
 
 
 @tf_export(
@@ -45,6 +46,7 @@ class TFRecordOptions(object):
   compression_type_map = {
       TFRecordCompressionType.ZLIB: "ZLIB",
       TFRecordCompressionType.GZIP: "GZIP",
+      TFRecordCompressionType.SNAPPY: "SNAPPY",
       TFRecordCompressionType.NONE: ""
   }
 
@@ -68,7 +70,7 @@ class TFRecordOptions(object):
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `"GZIP"`, `"ZLIB"`, or `""` (no compression).
+      compression_type: `"GZIP"`, `"ZLIB"`, `"SNAPPY"` or `""` (no compression).
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.
@@ -106,7 +108,7 @@ class TFRecordOptions(object):
       options: `TFRecordOption`, `TFRecordCompressionType`, or string.
 
     Returns:
-      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, or `''`).
+      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, `'SNAPPY'`, or `''`).
 
     Raises:
       ValueError: If compression_type is invalid.
@@ -126,26 +128,31 @@ class TFRecordOptions(object):
 
   def _as_record_writer_options(self):
     """Convert to RecordWriterOptions for use with PyRecordWriter."""
+    compression_type_str = self.get_compression_type_string(self.compression_type)
     options = _pywrap_record_io.RecordWriterOptions(
-        compat.as_bytes(
-            self.get_compression_type_string(self.compression_type)))
-
-    if self.flush_mode is not None:
-      options.zlib_options.flush_mode = self.flush_mode
-    if self.input_buffer_size is not None:
-      options.zlib_options.input_buffer_size = self.input_buffer_size
-    if self.output_buffer_size is not None:
-      options.zlib_options.output_buffer_size = self.output_buffer_size
-    if self.window_bits is not None:
-      options.zlib_options.window_bits = self.window_bits
-    if self.compression_level is not None:
-      options.zlib_options.compression_level = self.compression_level
-    if self.compression_method is not None:
-      options.zlib_options.compression_method = self.compression_method
-    if self.mem_level is not None:
-      options.zlib_options.mem_level = self.mem_level
-    if self.compression_strategy is not None:
-      options.zlib_options.compression_strategy = self.compression_strategy
+        compat.as_bytes(compression_type_str))
+    if compression_type_str == "SNAPPY":
+      if self.input_buffer_size is not None:
+        options.snappy_options.input_buffer_size = self.input_buffer_size
+      if self.output_buffer_size is not None:
+        options.snappy_options.output_buffer_size = self.output_buffer_size
+    else:
+      if self.flush_mode is not None:
+        options.zlib_options.flush_mode = self.flush_mode
+      if self.input_buffer_size is not None:
+        options.zlib_options.input_buffer_size = self.input_buffer_size
+      if self.output_buffer_size is not None:
+        options.zlib_options.output_buffer_size = self.output_buffer_size
+      if self.window_bits is not None:
+        options.zlib_options.window_bits = self.window_bits
+      if self.compression_level is not None:
+        options.zlib_options.compression_level = self.compression_level
+      if self.compression_method is not None:
+        options.zlib_options.compression_method = self.compression_method
+      if self.mem_level is not None:
+        options.zlib_options.mem_level = self.mem_level
+      if self.compression_strategy is not None:
+        options.zlib_options.compression_strategy = self.compression_strategy
     return options
 
 
