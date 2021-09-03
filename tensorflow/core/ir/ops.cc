@@ -110,7 +110,7 @@ struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
 // Dialect construction: there is one instance per context and it registers its
 // operations, types, and interfaces here.
 void TFGraphDialect::initialize() {
-  getContext()->getOrLoadDialect<TFTypeDialect>();
+  getContext()->getOrLoadDialect<tf_type::TFTypeDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
