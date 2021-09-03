@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -411,7 +412,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
   if (!scratch_) {
     DCHECK(stream_);
     size_t scratch_buffer_size = Eigen::kGpuScratchSize + sizeof(unsigned int);
-    ScopedMemoryDebugAnnotation op_annotation("ScratchBuffer");
+    profiler::ScopedMemoryDebugAnnotation op_annotation("ScratchBuffer");
     void* scratch_buffer = gpu_allocator_->AllocateRaw(
         Allocator::kAllocatorAlignment, scratch_buffer_size);
     if (scratch_buffer == nullptr) {
@@ -660,8 +661,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     }
   }
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
-  ScopedMemoryDebugAnnotation op_annotation(op_kernel->name_view().data(),
-                                            context->step_id());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
+      op_kernel->name_view().data(), context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
 
   if (should_log_inputs_and_outputs) {
@@ -822,7 +823,7 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                    tensor_proto.DebugString());
   }
 
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       "MakeTensorFromProto", "dynamic", parsed.dtype(),
       [&parsed]() { return parsed.shape().DebugString(); });
   if (parsed.dtype() == DT_VARIANT) {

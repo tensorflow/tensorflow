@@ -965,6 +965,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
+    "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//third_party/eigen3",
 ]
 

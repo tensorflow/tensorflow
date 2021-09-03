@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -1132,7 +1133,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->remote_func_params().has_value()
                          ? op->remote_func_params().value().step_id.value_or(0)
                          : 0);
@@ -1811,7 +1812,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->remote_func_params().has_value()
                          ? op->remote_func_params().value().step_id.value_or(0)
                          : 0);
