@@ -125,15 +125,16 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   });
 
   Status compile_status = ComputeInternal(ctx);
-  string status_payload;
+  absl::Cord status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
-          .empty()) {
+  if (!compile_status
+           .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
-    status_payload = proto.SerializeAsString();
+    status_payload = proto.SerializeAsCord();
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
@@ -344,8 +345,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  if (status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
-          .empty()) {
+  if (!status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
@@ -363,7 +364,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
     status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
-                      output.scalar<tstring>()());
+                      proto.SerializeAsCord());
   }
 
   if (status.ok()) {
