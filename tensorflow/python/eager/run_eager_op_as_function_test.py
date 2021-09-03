@@ -15,6 +15,7 @@
 """Tests for wrapping an eager op in a call op at runtime."""
 import time
 
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
@@ -127,6 +128,12 @@ class RunEagerOpAsFunctionTest(test.TestCase):
     # When a GPU is available, this would test that the wrapped call ops are
     # placed on the CPU (i.e. the device is selected using the unwrapped op).
     dataset_ops.Dataset.range(2).map(math_ops.square)
+
+  def testPrefetchToDevice(self):
+    if not context.num_gpus():
+      self.skipTest("No GPU available")
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
 
   def testMatmul(self):
     math_ops.matmul(self._m_2_by_2, self._m_2_by_2)
