@@ -54,7 +54,10 @@ def _unvec_by(y, num_col):
 
 def _rotate_last_dim(x, rotate_right=False):
   """Rotate the last dimension either left or right."""
-  ndims = array_ops.rank(x)
+  if x.shape.ndims is not None:
+    ndims = x.shape.ndims
+  else:
+    ndims = array_ops.rank(x)
   if rotate_right:
     transpose_perm = array_ops.concat(
         [[ndims - 1], math_ops.range(0, ndims - 1)], axis=0)
