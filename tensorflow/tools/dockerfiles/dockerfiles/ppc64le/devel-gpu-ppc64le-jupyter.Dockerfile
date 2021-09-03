@@ -78,7 +78,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs:/usr/local/cuda-11.1/lib64
 ENV TF_NEED_CUDA 1
 ENV TF_NEED_TENSORRT 1
 ENV TF_CUDA_VERSION=${CUDA}
@@ -148,7 +148,8 @@ RUN chmod a+rwx /etc/bash.bashrc
 
 RUN python3 -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+# Pin jedi; see https://github.com/ipython/ipython/issues/12740
+RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0 jedi==0.17.2
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
