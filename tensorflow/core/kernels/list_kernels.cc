@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -159,15 +159,11 @@ class EmptyTensorList : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList").Device(DEVICE_CPU),
                         EmptyTensorList);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("element_shape")
                             .HostMemory("max_num_elements"),
                         EmptyTensorList);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListPushBack : public OpKernel {
  public:
@@ -219,12 +215,8 @@ class TensorListPushBack : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_CPU),
                         TensorListPushBack);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_DEFAULT),
                         TensorListPushBack);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListLength : public OpKernel {
  public:
@@ -243,13 +235,9 @@ class TensorListLength : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListLength").Device(DEVICE_CPU),
                         TensorListLength);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(
-    Name("TensorListLength").Device(DEVICE_GPU).HostMemory("length"),
+    Name("TensorListLength").Device(DEVICE_DEFAULT).HostMemory("length"),
     TensorListLength);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListElementShape : public OpKernel {
  public:
@@ -283,14 +271,10 @@ class TensorListElementShape : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListElementShape").Device(DEVICE_CPU),
                         TensorListElementShape);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(Name("TensorListElementShape")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("element_shape"),
                         TensorListElementShape);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListReserve : public OpKernel {
  public:
@@ -324,15 +308,12 @@ class TensorListReserve : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve").Device(DEVICE_CPU),
                         TensorListReserve);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("element_shape")
                             .HostMemory("num_elements"),
                         TensorListReserve);
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 class TensorListResize : public OpKernel {
  public:
   explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {}
@@ -387,13 +368,9 @@ class TensorListResize : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
                         TensorListResize);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(
-    Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
+    Name("TensorListResize").Device(DEVICE_DEFAULT).HostMemory("size"),
     TensorListResize);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListSetItem : public OpKernel {
  public:
@@ -433,22 +410,19 @@ class TensorListSetItem : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                         TensorListSetItem);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#define REGISTER_TENSOR_LIST_SET_ITEM_GPU(T)                      \
+#define REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(T)                      \
   REGISTER_KERNEL_BUILDER(Name("TensorListSetItem")               \
                               .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
+                              .Device(DEVICE_DEFAULT)                 \
                               .HostMemory("index"),               \
                           TensorListSetItem);
 
-TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
-#undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
+TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
+TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
+TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
+REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(bfloat16)
+#undef REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListConcatLists : public OpKernel {
  public:
@@ -548,12 +522,8 @@ class TensorListConcatLists : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_CPU),
                         TensorListConcatLists);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_DEFAULT),
                         TensorListConcatLists);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_TENSOR_LIST_OPS_CPU(T)                                    \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \
@@ -625,4 +595,79 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
                                          TensorListZerosLike<CPUDevice>);
 
+#define REGISTER_TENSOR_LIST_OPS_DEFAULT(T)                                \
+  REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .HostMemory("element_shape")                 \
+                              .Device(DEVICE_DEFAULT),                     \
+                          TensorListStack<CPUDevice, T>)                   \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                         \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .HostMemory("indices")                       \
+                              .HostMemory("element_shape")                 \
+                              .Device(DEVICE_DEFAULT),                     \
+                          TensorListGather<CPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                         \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .HostMemory("lengths")                       \
+                              .Device(DEVICE_DEFAULT),                     \
+                          TensorListConcat<CPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")                       \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .HostMemory("leading_dims")                  \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("lengths")                       \
+                              .Device(DEVICE_DEFAULT),                     \
+                          TensorListConcat<CPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("index")                         \
+                              .HostMemory("element_shape"),                \
+                          TensorListGetItem<CPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPopBack")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("element_shape"),                \
+                          TensorListPopBack<CPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")                  \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT),                     \
+                          TensorListPushBackBatch<CPUDevice, T>)           \
+  REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")                     \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("element_shape"),                \
+                          TensorListFromTensor<CPUDevice, T>)              \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("indices"),                      \
+                          TensorListScatter<CPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")                      \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("num_elements")                  \
+                              .HostMemory("indices"),                      \
+                          TensorListScatter<CPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterIntoExistingList")        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("indices"),                      \
+                          TensorListScatterIntoExistingList<CPUDevice, T>) \
+  REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                          \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_DEFAULT)                      \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("lengths"),                      \
+                          TensorListSplit<CPUDevice, T>)
+
+TF_CALL_int32(REGISTER_TENSOR_LIST_OPS_DEFAULT);
+TF_CALL_int64(REGISTER_TENSOR_LIST_OPS_DEFAULT);
+TF_CALL_bfloat16(REGISTER_TENSOR_LIST_OPS_DEFAULT);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_OPS_DEFAULT);
+
+#undef REGISTER_TENSOR_LIST_OPS_DEFAULT
 }  // namespace tensorflow

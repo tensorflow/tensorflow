@@ -20,7 +20,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -37,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -54,6 +55,75 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
                                    int32_t output_index,
                                    const TensorList& input_list,
                                    TensorList** output_list);
+
+template <typename Device, typename T>
+void SetZero(OpKernelContext* ctx, Tensor& tensor) {
+  auto device_context = ctx->op_device_context();
+  if (device_context && device_context->IsPluggableDevice()) {
+    auto ptr =
+        se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
+    auto stream = ctx->op_device_context()->stream();
+    CHECK_EQ(true, stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok());
+  } else {
+    functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
+                                         tensor.flat<T>());
+  }
+}
+
+template <typename Device, typename T>
+void CopyTensor(OpKernelContext* ctx, Tensor& src, Tensor& dst) {
+  auto src_t = src.unaligned_flat<T>();
+  auto dst_t = dst.flat<T>();
+  if (ctx->op_device_context() &&
+      ctx->op_device_context()->IsPluggableDevice()) {
+    DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+    auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
+    auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
+    auto stream = ctx->op_device_context()->stream();
+    CHECK_EQ(true,
+             stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok());
+  } else {
+    dst_t.device(ctx->eigen_device<Device>()) = src_t;
+  }
+}
+
+template <typename T>
+void ConcatPluggableDevice(
+    OpKernelContext* context,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
+  DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+
+  se::Stream* stream = context->op_device_context()->stream();
+
+  size_t num_inputs = inputs.size();
+  std::vector<ptrdiff_t> sizes;
+  sizes.reserve(num_inputs);
+  int64 row_size = 0;
+  for (const auto& input : inputs) {
+    sizes.push_back(input->dimension(1));
+    row_size += sizes.back();
+  }
+
+  T* out = &(*output)(0, 0);
+  std::vector<const T*> inp;
+  inp.reserve(num_inputs);
+  for (const auto& input : inputs) {
+    inp.push_back(&(*input)(0, 0));
+  }
+  const int64 dim0 = output->dimension(0);
+  for (int64 i = 0; i < dim0; ++i) {
+    for (int64 j = 0; j < num_inputs; ++j) {
+      auto size = sizes[j];
+      se::DeviceMemoryBase out_base{out, size * sizeof(T)};
+      se::DeviceMemoryBase inp_base{const_cast<T*>(inp[j]), size * sizeof(T)};
+      stream->ThenMemcpy(&out_base, inp_base, size * sizeof(T));
+      out += size;
+      inp[j] += size;
+    }
+  }
+}
 
 template <typename Device, typename T>
 class TensorListStack : public OpKernel {
@@ -134,8 +204,7 @@ class TensorListStack : public OpKernel {
           }
           OP_REQUIRES_OK(
               c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                               zeros.flat<T>());
+          SetZero<Device, T>(c, zeros);
         }
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
@@ -150,7 +219,13 @@ class TensorListStack : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -214,8 +289,7 @@ class TensorListGetItem : public OpKernel {
         attr.set_on_host(true);
       }
       OP_REQUIRES_OK(c, c->allocate_output(0, element_shape, &result, attr));
-      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                           result->flat<T>());
+      SetZero<Device, T>(c, *result);
     }
   }
 
@@ -261,8 +335,7 @@ class TensorListPopBack : public OpKernel {
         attr.set_on_host(true);
       }
       OP_REQUIRES_OK(c, c->allocate_output(1, element_shape, &result, attr));
-      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                           result->flat<T>());
+      SetZero<Device, T>(c, *result);
     }
 
     TensorList* output_list = nullptr;
@@ -445,8 +518,7 @@ class TensorListConcat : public OpKernel {
         Tensor& zeros = zeros_vec.back();
         OP_REQUIRES_OK(
             c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-        functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                             zeros.flat<T>());
+        SetZero<Device, T>(c, zeros);
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
                 {1, zeros.NumElements()})));
@@ -460,7 +532,13 @@ class TensorListConcat : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -531,8 +609,7 @@ class TensorListSplit : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      aligned.flat<T>().device(c->eigen_device<Device>()) =
-          tmp.unaligned_flat<T>();
+      CopyTensor<Device, T>(c, tmp, aligned);
       output_list.tensors().emplace_back(aligned);
     }
     OP_REQUIRES(c, end == input_tensor.shape().dim_size(0),
@@ -620,8 +697,7 @@ class TensorListGather : public OpKernel {
           }
           OP_REQUIRES_OK(
               c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                               zeros.flat<T>());
+          SetZero<Device, T>(c, zeros);
         }
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
@@ -636,7 +712,13 @@ class TensorListGather : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -680,8 +762,7 @@ class TensorListFromTensor : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      aligned.flat<T>().device(c->eigen_device<Device>()) =
-          tmp.unaligned_flat<T>();
+      CopyTensor<Device, T>(c, tmp, aligned);
       output_list.tensors().push_back(aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
@@ -706,8 +787,7 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     TF_RETURN_IF_ERROR(c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
     // TODO(apassos) do all slices in a single kernel invocation instead of
     // many small ones.
-    aligned.flat<T>().device(c->eigen_device<Device>()) =
-        tmp.unaligned_flat<T>();
+    CopyTensor<Device, T>(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
   return Status::OK();
@@ -985,6 +1065,8 @@ class TensorListPushBackBatch : public OpKernel {
     auto input_t = input.flat_outer_dims<T, 2>();
     auto result_t = result->vec<Variant>();
 
+    auto is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
     for (int64_t b = 0; b < batch_size; ++b) {
       if (!ok_to_alias) {
         result_t(b) = tl_batch[b]->Copy();
@@ -996,7 +1078,21 @@ class TensorListPushBackBatch : public OpKernel {
           c, c->allocate_temp(element_dtype_, input_element_shape, &frame));
       if (input_element_shape.num_elements() > 0) {
         auto frame_t = frame.flat<T>();
-        frame_t.device(c->eigen_device<Device>()) = input_t.template chip<0>(b);
+        if (is_pluggable_device) {
+          // The chip method need Eigen Device, so need to use Tensor.Slice
+          // instead of chip for pluggable device. The input should be reshaped
+          // to 2-D and so can be sliced by batch dim.
+          auto input_t_shape =
+              TensorShape({input_t.dimension(0), input_t.dimension(1)});
+          auto input_reshaped = Tensor();
+          input_reshaped.CopyFrom(input, input_t_shape);
+
+          auto input_batch = input_reshaped.Slice(b, b + 1);
+          CopyTensor<Device, T>(c, input_batch, frame);
+        } else {
+          frame_t.device(c->eigen_device<Device>()) =
+              input_t.template chip<0>(b);
+        }
       }
       output->tensors().push_back(std::move(frame));
     }

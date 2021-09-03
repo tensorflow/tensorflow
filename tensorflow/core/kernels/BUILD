@@ -2894,6 +2894,7 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "//third_party/eigen3",
     ],
 )
