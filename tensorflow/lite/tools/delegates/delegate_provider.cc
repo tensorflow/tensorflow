@@ -32,6 +32,18 @@ void ProvidedDelegateList::AppendCmdlineFlags(std::vector<Flag>* flags) const {
   }
 }
 
+void ProvidedDelegateList::RemoveCmdlineFlag(std::vector<Flag>& flags,
+                                             const std::string& name) const {
+  decltype(flags.begin()) it;
+  for (it = flags.begin(); it < flags.end();) {
+    if (it->GetFlagName() == name) {
+      flags.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 std::vector<ProvidedDelegateList::ProvidedDelegate>
 ProvidedDelegateList::CreateAllRankedDelegates(const ToolParams& params) const {
   std::vector<ProvidedDelegateList::ProvidedDelegate> delegates;

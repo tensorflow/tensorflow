@@ -145,6 +145,10 @@ class ProvidedDelegateList {
   // 'params_'.
   void AppendCmdlineFlags(std::vector<Flag>* flags) const;
 
+  // Removes command-line parsable flag 'name' from 'flags'
+  void RemoveCmdlineFlag(std::vector<Flag>& flags,
+                         const std::string& name) const;
+
   // Return a list of TfLite delegates based on the provided 'params', and the
   // list has been already sorted in ascending order according to the rank of
   // the particular parameter that enables the creation of the delegate.
