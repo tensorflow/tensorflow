@@ -4706,6 +4706,10 @@ bool IsUnrollingColumnReductionBeneficial(
     return false;
   }
 
+  if (input_shape.dimensions()[input_shape.rank() - 1] < 64) {
+    return false;
+  }
+
   int64_t can_be_vectorized = 0;
   int64_t cannot_be_vectorized = 0;
   auto fusion_results = ToStdVector(fusion.getFusionResults());
@@ -4826,6 +4830,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       return kStridedIndexingX;
     }
   }();
+  VLOG(3) << "Each threads will produce " << num_partial_results
+          << " output(s)";
 
   int vector_size = 1;
   if (indexing_order == kStridedLinearIndexingX) {
