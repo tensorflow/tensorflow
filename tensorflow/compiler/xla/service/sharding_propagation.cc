@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/sharding_op_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1280,30 +1281,47 @@ bool RemoveShardingMetadata(HloModule* module) {
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
-StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
+// partially_specified will be populated with the converted copies if the custom
+// call is partially specified.
+StatusOr<bool> ProcessShardingInstruction(
+    HloModule* module,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
+        unspecified_dims) {
   bool changed = false;
 
   for (HloComputation* computation : module->computations()) {
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {
-      if (!instruction->IsCustomCall("Sharding")) {
+      const auto* ccall = DynCast<HloCustomCallInstruction>(instruction);
+      if (ccall == nullptr) {
+        continue;
+      }
+      if (ccall->custom_call_target() != "Sharding") {
         continue;
       }
       TF_RET_CHECK(instruction->has_sharding())
           << "Sharding instruction must have a sharding attribute";
       const HloSharding& sharding = instruction->sharding();
 
+      std::vector<int64_t> unspec_dims;
+      TF_RETURN_IF_ERROR(
+          sharding_op_util::ParseAttributes(ccall->opaque(), &unspec_dims));
       // If the operand has a different sharding from the current sharding
       // instruction, create a copy node. Otherwise, just remove the sharding
-      // instruction and set the operand sharding.
-      if (instruction->operand(0)->has_sharding() &&
-          instruction->operand(0)->sharding() != sharding) {
+      // instruction and set the operand sharding
+      if (!unspec_dims.empty() ||
+          (instruction->operand(0)->has_sharding() &&
+           instruction->operand(0)->sharding() != sharding)) {
         auto copy = computation->AddInstruction(
             HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
                                         instruction->mutable_operand(0)));
         TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
         copy->set_sharding(sharding);
+        if (!unspec_dims.empty()) {
+          absl::c_sort(unspec_dims);
+          unspecified_dims->emplace(copy, std::move(unspec_dims));
+        }
       } else {
         instruction->mutable_operand(0)->set_sharding(sharding);
         TF_RETURN_IF_ERROR(
@@ -1388,6 +1406,265 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
     }
   }
   return Status::OK();
+}
+
+// Refines a pair of auto/manual shardings based on auto sharding `to_merge`
+// along `unspecified_dims`. Returns if anything changed.
+bool RefineManualAutoShardingFromAuto(
+    const HloSharding& to_merge, absl::Span<const int64_t> unspecified_dims,
+    HloSharding* auto_sharding, HloSharding* manual_sharding) {
+  if (!manual_sharding->IsManualSubgroup() ||
+      auto_sharding->IsManualSubgroup() ||
+      !manual_sharding->HasPartialReplication() ||
+      manual_sharding->subgroup_types().size() != 2) {
+    // We do not support nested subgroup manual. man_conversion_op must have
+    // replication in order to be merged.
+    return false;
+  }
+  HloSharding partial_rep =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+          to_merge, unspecified_dims);
+  if (partial_rep.IsTileMaximal()) {
+    return false;
+  }
+
+  // Merge with the non-manual partial annotation.
+  if (!hlo_sharding_util::MergeShardingIfCompatible(
+          partial_rep, auto_sharding->NumTiles(), auto_sharding)) {
+    return false;
+  }
+
+  // Merge with the manual partial annotation.
+  const int64_t data_rank = partial_rep.TiledDataRank();
+  // We are also merging the non-manual sharding into the manual sharding. To
+  // leverage existing merging implementation, we treat the manual dim as a
+  // data dim, and add it right before the replication dim.
+  auto partial_tiling_for_manual = partial_rep.tile_assignment();
+  std::vector<int64_t> partial_manual_shape =
+      partial_tiling_for_manual.dimensions();
+  partial_manual_shape.insert(partial_manual_shape.begin() + data_rank, 1);
+  partial_tiling_for_manual.Reshape(partial_manual_shape);
+  HloSharding partial_rep_for_manual = HloSharding::PartialTile(
+      partial_tiling_for_manual, partial_rep.metadata());
+  Array<int64_t> man_tiling = manual_sharding->tile_assignment();
+  if (manual_sharding->subgroup_types().back() != OpSharding::REPLICATED) {
+    // Move the manual dim before replication dim.
+    std::vector<int64_t> transposed_dims = man_tiling.dimensions();
+    transposed_dims[data_rank] = transposed_dims.back();
+    transposed_dims.back() = man_tiling.dim(data_rank);
+    Array<int64_t> transposed(transposed_dims);
+    man_tiling.Each([&](absl::Span<const int64_t> indices, int64_t device) {
+      std::vector<int64_t> xposed_idx(indices.begin(), indices.end() - 2);
+      xposed_idx.push_back(indices.back());
+      xposed_idx.push_back(indices[data_rank]);
+      transposed(xposed_idx) = device;
+    });
+    man_tiling = std::move(transposed);
+  }
+  HloSharding tmp_sharding_for_merging =
+      HloSharding::PartialTile(man_tiling, manual_sharding->metadata());
+  if (!hlo_sharding_util::MergeShardingIfCompatible(
+          partial_rep_for_manual, tmp_sharding_for_merging.NumTiles(),
+          &tmp_sharding_for_merging)) {
+    return false;
+  }
+
+  std::vector<OpSharding::Type> subgroup_types;
+  subgroup_types.push_back(OpSharding::MANUAL);
+  if (tmp_sharding_for_merging.HasPartialReplication()) {
+    subgroup_types.push_back(OpSharding::REPLICATED);
+  }
+  *manual_sharding = HloSharding::Subgroup(
+      tmp_sharding_for_merging.tile_assignment(), subgroup_types,
+      tmp_sharding_for_merging.metadata());
+  return true;
+}
+
+// Refines a pair of auto/manual shardings based on manual sharding `to_merge`
+// along `unspecified_dims`. Returns if anything changed.
+bool RefineManualAutoShardingFromManual(
+    const HloSharding& to_merge, absl::Span<const int64_t> unspecified_dims,
+    HloSharding* auto_sharding, HloSharding* manual_sharding) {
+  if (!to_merge.IsManualSubgroup() || !manual_sharding->IsManualSubgroup() ||
+      !manual_sharding->HasPartialReplication() ||
+      auto_sharding->IsManualSubgroup() ||
+      manual_sharding->subgroup_types().size() != 2) {
+    return false;
+  }
+  HloSharding partial_rep =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+          to_merge, unspecified_dims);
+  if (partial_rep.IsTileMaximal()) {
+    return false;
+  }
+  if (!hlo_sharding_util::MergeShardingIfCompatible(
+          partial_rep, manual_sharding->NumTiles(), manual_sharding)) {
+    return false;
+  }
+  HloSharding partial_rep_for_auto = HloSharding::Subgroup(
+      partial_rep.tile_assignment(),
+      std::vector<OpSharding::Type>(partial_rep.subgroup_types().size(),
+                                    OpSharding::REPLICATED),
+      partial_rep.metadata());
+  if (!hlo_sharding_util::MergeShardingIfCompatible(
+          partial_rep_for_auto, auto_sharding->NumTiles(), auto_sharding)) {
+    return false;
+  }
+  return true;
+}
+
+bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
+                                     absl::Span<const int64_t> unspecified_dims,
+                                     HloInstruction** man_conversion_op_after) {
+  CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
+  if (!IsSpatiallyPartitioned(annotate_op->operand(0))) {
+    return false;
+  }
+  const HloSharding& operand_sharding = annotate_op->operand(0)->sharding();
+  if (operand_sharding.IsTileMaximal()) {
+    return false;
+  }
+  HloInstruction* man_conversion_op = nullptr;
+  if (annotate_op->user_count() == 1) {
+    HloInstruction* user = annotate_op->users()[0];
+    if (user->IsCustomCall("SPMDFullToShardShape") ||
+        user->IsCustomCall("SPMDShardToFullShape")) {
+      std::vector<int64_t> user_unspec_dims;
+      absl::c_sort(user_unspec_dims);
+      if (!sharding_op_util::ParseAttributes(
+               Cast<HloCustomCallInstruction>(user)->opaque(),
+               &user_unspec_dims)
+               .ok() ||
+          unspecified_dims != user_unspec_dims) {
+        // The manual/auto conversion op must have the same set of unspecified
+        // dims.
+        return false;
+      }
+      man_conversion_op = user;
+    }
+  }
+  *man_conversion_op_after = man_conversion_op;
+  if (man_conversion_op == nullptr) {
+    HloSharding partial_replicated =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+            operand_sharding, unspecified_dims);
+    HloSharding sharding = annotate_op->sharding();
+    if (!hlo_sharding_util::MergeShardingIfCompatible(
+            partial_replicated, sharding.NumTiles(), &sharding)) {
+      return false;
+    }
+    annotate_op->set_sharding(sharding);
+    return true;
+  }
+  if (man_conversion_op->IsCustomCall("SPMDFullToShardShape")) {
+    HloSharding auto_sharding = annotate_op->sharding();
+    HloSharding manual_sharding = man_conversion_op->sharding();
+    if (!RefineManualAutoShardingFromAuto(operand_sharding, unspecified_dims,
+                                          &auto_sharding, &manual_sharding)) {
+      return false;
+    }
+    annotate_op->set_sharding(auto_sharding);
+    man_conversion_op->set_sharding(manual_sharding);
+    return true;
+  }
+
+  CHECK(man_conversion_op->IsCustomCall("SPMDShardToFullShape"));
+  HloSharding manual_sharding = annotate_op->sharding();
+  HloSharding auto_sharding = man_conversion_op->sharding();
+  if (!RefineManualAutoShardingFromManual(operand_sharding, unspecified_dims,
+                                          &auto_sharding, &manual_sharding)) {
+    return false;
+  }
+  annotate_op->set_sharding(manual_sharding);
+  man_conversion_op->set_sharding(auto_sharding);
+  return true;
+}
+
+bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
+                                     const HloInstruction* user,
+                                     int64_t aggressiveness, bool is_spmd,
+                                     absl::Span<const int64_t> unspecified_dims,
+                                     HloInstruction* man_conversion_op) {
+  CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
+  if (!IsSpatiallyPartitioned(annotate_op->operand(0))) {
+    return false;
+  }
+  absl::optional<HloSharding> user_sharding =
+      ShardingPropagation::GetShardingFromUser(
+          man_conversion_op == nullptr ? *annotate_op : *man_conversion_op,
+          *user, aggressiveness, is_spmd);
+  if (!user_sharding.has_value() || user_sharding->IsTileMaximal()) {
+    return false;
+  }
+  if (man_conversion_op == nullptr) {
+    HloSharding partial_replicated =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+            *user_sharding, unspecified_dims);
+    HloSharding sharding = annotate_op->sharding();
+    if (!hlo_sharding_util::MergeShardingIfCompatible(
+            partial_replicated, sharding.NumTiles(), &sharding)) {
+      return false;
+    }
+    annotate_op->set_sharding(sharding);
+    return true;
+  }
+  if (man_conversion_op->IsCustomCall("SPMDFullToShardShape")) {
+    HloSharding auto_sharding = annotate_op->sharding();
+    HloSharding manual_sharding = man_conversion_op->sharding();
+    if (!RefineManualAutoShardingFromManual(*user_sharding, unspecified_dims,
+                                            &auto_sharding, &manual_sharding)) {
+      return false;
+    }
+    annotate_op->set_sharding(auto_sharding);
+    man_conversion_op->set_sharding(manual_sharding);
+    return true;
+  }
+  CHECK(man_conversion_op->IsCustomCall("SPMDShardToFullShape"));
+  HloSharding manual_sharding = annotate_op->sharding();
+  HloSharding auto_sharding = man_conversion_op->sharding();
+  if (!RefineManualAutoShardingFromAuto(*user_sharding, unspecified_dims,
+                                        &auto_sharding, &manual_sharding)) {
+    return false;
+  }
+  annotate_op->set_sharding(manual_sharding);
+  man_conversion_op->set_sharding(auto_sharding);
+  return true;
+}
+
+bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
+                                   absl::Span<const int64_t> unspecified_dims,
+                                   int64_t aggressiveness, bool is_spmd,
+                                   HloInstruction** man_conversion_op_after) {
+  HloInstruction* man_conversion_op = nullptr;
+  if (annotate_op->user_count() == 1) {
+    HloInstruction* user = annotate_op->users()[0];
+    if (user->IsCustomCall("SPMDFullToShardShape") ||
+        user->IsCustomCall("SPMDShardToFullShape")) {
+      std::vector<int64_t> user_unspec_dims;
+      absl::c_sort(user_unspec_dims);
+      if (!sharding_op_util::ParseAttributes(
+               Cast<HloCustomCallInstruction>(user)->opaque(),
+               &user_unspec_dims)
+               .ok() ||
+          unspecified_dims != user_unspec_dims) {
+        // The manual/auto conversion op must have the same set of unspecified
+        // dims.
+        return false;
+      }
+      man_conversion_op = user;
+    }
+  }
+  *man_conversion_op_after = man_conversion_op;
+
+  HloInstruction* op_for_users =
+      man_conversion_op == nullptr ? annotate_op : man_conversion_op;
+  bool changed = true;
+  for (HloInstruction* user : op_for_users->users()) {
+    changed |= InferUnspecifiedDimsFromOneUser(
+        annotate_op, user, aggressiveness, is_spmd, unspecified_dims,
+        man_conversion_op);
+  }
+  return changed;
 }
 
 }  // namespace
@@ -1724,8 +2001,10 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
 StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   bool any_changed = propagate_metadata_ ? AssignShardingMetadata(module)
                                          : RemoveShardingMetadata(module);
-
-  auto status_or_changed = ProcessShardingInstruction(module);
+  absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
+      unspecified_dims;
+  auto status_or_changed =
+      ProcessShardingInstruction(module, &unspecified_dims);
   if (!status_or_changed.ok()) return status_or_changed;
   any_changed |= status_or_changed.ValueOrDie();
 
@@ -1856,6 +2135,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
     absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
     absl::flat_hash_set<const HloInstruction*> already_inferred_from_users;
     bool changed_last_iter = true;
+    const bool may_merge_partial = is_spmd_ && aggressiveness > 0;
     while (changed_last_iter) {
       changed_last_iter = false;
       int64_t inferred_from_operand_counter = 0;
@@ -1870,19 +2150,40 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         for (const HloInstruction* instruction : instructions) {
           already_sharded_counter += (instruction->has_sharding() ? 1 : 0);
         }
-        auto clear_cache = [&](HloInstruction* hlo) {
+        auto clear_cache = [&](HloInstruction* hlo,
+                               HloInstruction* hlo_for_users = nullptr) {
           for (auto operand : hlo->operands()) {
             already_inferred_from_users.erase(operand);
           }
-          for (auto user : hlo->users()) {
+          if (hlo_for_users == nullptr) {
+            hlo_for_users = hlo;
+          }
+          for (auto user : hlo_for_users->users()) {
             already_inferred_from_operands.erase(user);
           }
         };
         // First iterate the HLO graph in post order taking shardings from
         // operands.
         for (HloInstruction* instruction : instructions) {
-          if (already_inferred_from_operands.contains(instruction) ||
-              provided_shardings.contains(instruction)) {
+          if (already_inferred_from_operands.contains(instruction)) {
+            continue;
+          }
+          if (provided_shardings.contains(instruction)) {
+            if (!may_merge_partial) {
+              continue;
+            }
+            auto it = unspecified_dims.find(instruction);
+            HloInstruction* man_conversion_op_after;
+            if (it != unspecified_dims.end() &&
+                InferUnspecifiedDimsFromOperand(instruction, it->second,
+                                                &man_conversion_op_after)) {
+              ++inferred_from_operand_counter;
+              VLOG(2) << "Refiend partial sharding (forward-pass): "
+                      << instruction->ToString();
+              clear_cache(instruction, man_conversion_op_after);
+              already_inferred_from_operands.insert(instruction);
+              changed_last_iter = true;
+            }
             continue;
           }
           already_inferred_from_operands.insert(instruction);
@@ -1905,8 +2206,38 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         // Then iterate the HLO graph in reverse post order taking shardings
         // from users.
         for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
-          if (already_inferred_from_users.contains(*it) ||
-              provided_shardings.contains(*it)) {
+          if ((*it)->IsCustomCall("SPMDFullToShardShape") ||
+              (*it)->IsCustomCall("SPMDShardToFullShape")) {
+            // The manual conversion op is processed together with the sharding
+            // op before it. If the conversion op is removed from cache, the
+            // sharding op should also be removed.
+            if (!already_inferred_from_users.contains(*it)) {
+              already_inferred_from_users.erase((*it)->operand(0));
+            }
+          }
+          if (already_inferred_from_users.contains(*it)) {
+            continue;
+          }
+          if (provided_shardings.contains(*it)) {
+            if (!may_merge_partial) {
+              continue;
+            }
+            auto uit = unspecified_dims.find(*it);
+            HloInstruction* man_conversion_op_after;
+            if (uit != unspecified_dims.end() &&
+                InferUnspecifiedDimsFromUsers(*it, uit->second, aggressiveness,
+                                              is_spmd_,
+                                              &man_conversion_op_after)) {
+              ++inferred_from_user_counter;
+              VLOG(2) << "Refiend partial sharding (backward-pass): "
+                      << (*it)->ToString();
+              clear_cache(*it, man_conversion_op_after);
+              already_inferred_from_users.insert(*it);
+              if (man_conversion_op_after != nullptr) {
+                already_inferred_from_users.insert(man_conversion_op_after);
+              }
+              changed_last_iter = true;
+            }
             continue;
           }
           already_inferred_from_users.insert(*it);
