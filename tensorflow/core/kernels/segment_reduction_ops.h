@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
+// This file requires the following include because it uses GpuAtomicMax:
+// #include "tensorflow/core/util/gpu_kernel_helper.h"
+
+// Unfortunately we can't add the #include, since it breaks compilation for
+// non-GPU targets. This only breaks in clang, because it's more strict for
+// template code and GpuAtomicMax is used in template context.
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -25,7 +32,6 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-bool UseNonDeterministicSegmentReductions();
 bool DisableSegmentReductionOpDeterminismExceptions();
 
 // Type of SparseSegmentReduction operation to perform gradient of.
@@ -34,51 +40,9 @@ enum class SparseSegmentReductionOperation { kSum, kMean, kSqrtN };
 namespace functor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// Note that we define this ourselves to avoid a dependency on gpuprim.
-struct Sum {
-  template <typename T>
-  __host__ __device__ T operator()(const T& a, const T& b) const {
-    return a + b;
-  }
-};
-
-struct Prod {
-  template <typename T>
-  __host__ __device__ T operator()(const T& a, const T& b) const {
-    return a * b;
-  }
-};
-
-// Note that we don't use gpuprim::Min/Max because they use operator<, which is
-// not implemented for AlignedVector types.
-struct Min {
-  template <typename T>
-  __host__ __device__ T operator()(const T& a, const T& b) const {
-    return min(a, b);
-  }
-};
-
-struct Max {
-  template <typename T>
-  __host__ __device__ T operator()(const T& a, const T& b) const {
-    return max(a, b);
-  }
-};
-
-template <typename ReduceOp, typename T>
-struct ReduceOpIsAssociative {};
-template <typename T>
-struct ReduceOpIsAssociative<functor::Sum, T> : std::is_integral<T> {};
-template <typename T>
-struct ReduceOpIsAssociative<functor::Prod, T> : std::is_integral<T> {};
-template <typename T>
-struct ReduceOpIsAssociative<functor::Max, T> : std::true_type {};
-template <typename T>
-struct ReduceOpIsAssociative<functor::Min, T> : std::true_type {};
-
 typedef Eigen::GpuDevice GPUDevice;
-// Functor for SegmentReductionGPUOp.
+// Functor for SegmentSumGPUOp & SegmentProdGPUOp & SegmentMaxGPUOp
+//             & SegmentMinGPUOp.
 // output_rows: the number of output segments (unique segment ids in
 //                'segment_ids').
 // segment_ids_shape: shape of 'segment_ids' tensor.
@@ -88,18 +52,18 @@ typedef Eigen::GpuDevice GPUDevice;
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename T, typename Index, typename InitialValueF,
-          typename EmptySegmentValueF, typename ReductionF>
+          typename ReductionF, typename AtomicReductionF>
 struct SegmentReductionFunctor {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
-                  bool is_mean, typename TTypes<Index>::ConstFlat segment_ids,
+                  typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output);
   static constexpr bool atomic_reduction_is_associative =
-      ReduceOpIsAssociative<ReductionF, T>::value;
+      AtomicReductionF::is_associative;
 };
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif
 
 template <typename Device, typename T, typename Index, typename InitialValueF,
           typename ReductionF>
@@ -109,6 +73,80 @@ struct UnsortedSegmentFunctor {
                   typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output);
 };
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Atomic reduction functors for the gpu.
+template <typename T>
+struct AtomicSumOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    GpuAtomicAdd(dest, value);
+  }
+  static constexpr bool is_associative = std::is_integral<T>::value;
+};
+
+template <typename T>
+struct AtomicProdOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    GpuAtomicMul(dest, value);
+  }
+  static constexpr bool is_associative = std::is_integral<T>::value;
+};
+
+template <typename T>
+struct AtomicMaxOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    GpuAtomicMax(dest, value);
+  }
+  static constexpr bool is_associative = true;
+};
+
+template <typename T>
+struct AtomicMinOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    GpuAtomicMin(dest, value);
+  }
+  static constexpr bool is_associative = true;
+};
+
+// Non-atomic reduction functors for the gpu.
+template <typename T>
+struct NonAtomicSumOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest += value;
+  }
+};
+
+template <typename T>
+struct NonAtomicProdOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest *= value;
+  }
+};
+
+template <typename T>
+struct NonAtomicMaxOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = max(*dest, value);
+  }
+};
+
+template <typename T>
+struct NonAtomicMinOpGpu {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = min(*dest, value);
+  }
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Initial value functors.
 template <typename T>
