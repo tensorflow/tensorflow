@@ -100,6 +100,12 @@ inline ::tensorflow::Status Create(
   return status;
 }
 
+// Returns a new Status, replacing its message with the given.
+inline ::tensorflow::Status CreateWithUpdatedMessage(
+    const ::tensorflow::Status& status, ::tensorflow::StringPiece message) {
+  return Create(status.code(), message, GetPayloads(status));
+}
+
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there
 // to be several layers of additional context.

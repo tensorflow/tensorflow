@@ -72,6 +72,15 @@ TEST(InsertPayloadsTest, PayloadsAreInserted) {
   EXPECT_EQ(status.GetPayload("key3"), "value3");
 }
 
+TEST(CreateWithUpdatedMessageTest, PayloadsAreCopied) {
+  Status status = errors::Aborted("Aborted Error Message");
+  status.SetPayload("payload_key", absl::Cord("payload_value"));
+  status = errors::CreateWithUpdatedMessage(status, "New Message");
+
+  EXPECT_EQ(status.error_message(), "New Message");
+  EXPECT_EQ(status.GetPayload("payload_key"), "payload_value");
+}
+
 TEST(AppendToMessageTest, PayloadsAreCopied) {
   Status status = errors::Aborted("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord("payload_value"));
