@@ -395,7 +395,8 @@ class IteratorContext {
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          interleave_depth(ctx->interleave_depth()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -475,6 +476,11 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree.
+    int64 interleave_depth = 0;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -532,6 +538,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  int64 interleave_depth() { return params_.interleave_depth; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
