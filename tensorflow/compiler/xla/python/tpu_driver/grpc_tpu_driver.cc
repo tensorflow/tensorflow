@@ -24,7 +24,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/grpc/include/grpcpp/grpcpp.h"
+#include "grpcpp/grpcpp.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/event_id.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
