@@ -1430,7 +1430,7 @@ bool RefineManualAutoShardingFromAuto(
 
   // Merge with the non-manual partial annotation.
   if (!hlo_sharding_util::MergeShardingIfCompatible(
-          partial_rep, auto_sharding->NumTiles(), auto_sharding)) {
+          partial_rep, auto_sharding->NumTiles() + 1, auto_sharding)) {
     return false;
   }
 
@@ -1464,7 +1464,7 @@ bool RefineManualAutoShardingFromAuto(
   HloSharding tmp_sharding_for_merging =
       HloSharding::PartialTile(man_tiling, manual_sharding->metadata());
   if (!hlo_sharding_util::MergeShardingIfCompatible(
-          partial_rep_for_manual, tmp_sharding_for_merging.NumTiles(),
+          partial_rep_for_manual, tmp_sharding_for_merging.NumTiles() + 1,
           &tmp_sharding_for_merging)) {
     return false;
   }
@@ -1498,7 +1498,7 @@ bool RefineManualAutoShardingFromManual(
     return false;
   }
   if (!hlo_sharding_util::MergeShardingIfCompatible(
-          partial_rep, manual_sharding->NumTiles(), manual_sharding)) {
+          partial_rep, manual_sharding->NumTiles() + 1, manual_sharding)) {
     return false;
   }
   HloSharding partial_rep_for_auto = HloSharding::Subgroup(
@@ -1507,7 +1507,7 @@ bool RefineManualAutoShardingFromManual(
                                     OpSharding::REPLICATED),
       partial_rep.metadata());
   if (!hlo_sharding_util::MergeShardingIfCompatible(
-          partial_rep_for_auto, auto_sharding->NumTiles(), auto_sharding)) {
+          partial_rep_for_auto, auto_sharding->NumTiles() + 1, auto_sharding)) {
     return false;
   }
   return true;
@@ -1586,7 +1586,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
                                      absl::Span<const int64_t> unspecified_dims,
                                      HloInstruction* man_conversion_op) {
   CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
-  if (!IsSpatiallyPartitioned(annotate_op->operand(0))) {
+  if (!IsSpatiallyPartitioned(annotate_op->operand(0)) ||
+      !user->sharding().IsTiled()) {
     return false;
   }
   absl::optional<HloSharding> user_sharding =
@@ -2178,7 +2179,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
                 InferUnspecifiedDimsFromOperand(instruction, it->second,
                                                 &man_conversion_op_after)) {
               ++inferred_from_operand_counter;
-              VLOG(2) << "Refiend partial sharding (forward-pass): "
+              VLOG(2) << "Refined partial sharding (forward-pass): "
                       << instruction->ToString();
               clear_cache(instruction, man_conversion_op_after);
               already_inferred_from_operands.insert(instruction);
@@ -2229,7 +2230,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
                                               is_spmd_,
                                               &man_conversion_op_after)) {
               ++inferred_from_user_counter;
-              VLOG(2) << "Refiend partial sharding (backward-pass): "
+              VLOG(2) << "Refined partial sharding (backward-pass): "
                       << (*it)->ToString();
               clear_cache(*it, man_conversion_op_after);
               already_inferred_from_users.insert(*it);
