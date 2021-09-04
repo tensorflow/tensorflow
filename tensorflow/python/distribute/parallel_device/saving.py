@@ -26,7 +26,6 @@ import wrapt
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 
 
@@ -110,11 +109,6 @@ class ParallelVariable(
               dtype=self.dtype,
               shape=self.shape))
     return component_saveables
-
-  def _gather_saveables_for_saved_model(self):
-    """Generate SaveableObjects for the original wrapped variable."""
-    if save_context.in_save_context():
-      return {"VARIABLE_VALUE": self.__wrapped__}
 
 
 def _variable_creator(next_creator, parallel_device, **kwargs):

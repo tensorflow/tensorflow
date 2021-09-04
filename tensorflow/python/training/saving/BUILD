@@ -70,7 +70,6 @@ py_library(
     deps = [
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
     ],
