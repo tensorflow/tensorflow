@@ -360,6 +360,7 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:versions",

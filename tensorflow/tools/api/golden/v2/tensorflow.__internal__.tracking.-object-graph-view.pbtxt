@@ -20,7 +20,7 @@ tf_class {
   }
   member_method {
     name: "frozen_saveable_objects"
-    argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "list_dependencies"
