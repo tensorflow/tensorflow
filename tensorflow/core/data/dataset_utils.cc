@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -84,6 +85,7 @@ constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
+constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -109,6 +111,9 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kShuffleAndRepeatFusion) {
       optimization_default->insert(kShuffleAndRepeatFusionOpt);
     }
+  }
+  if (OpDeterminismRequired()) {
+    optimization_enabled->insert(kMakeDeterministicOpt);
   }
   if (optimization_options.optional_filter_fusion_case() ==
       OptimizationOptions::kFilterFusion) {

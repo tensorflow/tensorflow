@@ -24,6 +24,7 @@ cc_library(
         ":enable_gradient_descent",
         ":filter_fusion",
         ":inject_prefetch",
+        ":make_deterministic",
         ":make_sloppy",
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",
@@ -408,6 +409,45 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:testlib",
     ] + tf_protos_all(),
+)
+
+cc_library(
+    name = "make_deterministic",
+    srcs = ["make_deterministic.cc"],
+    hdrs = [
+        "make_deterministic.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "make_deterministic_test",
+    size = "small",
+    srcs = ["make_deterministic_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":make_deterministic",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
 )
 
 cc_library(
