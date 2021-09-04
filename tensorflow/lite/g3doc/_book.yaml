@@ -258,17 +258,28 @@ upper_tabs:
       contents:
       - title: "API Reference"
         path: /lite/api_docs/
-      - heading: "Python"
-      - include: /lite/api_docs/python/tf/lite/_toc.yaml
-      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
-      - heading: "Android (Java)"
-      - include: /lite/api_docs/java/_toc.yaml
-      - heading: "Swift"
-      - include: /lite/api_docs/swift/_toc.yaml
-      - heading: "C++"
-      - title: "Overview"
-        path: /lite/api_docs/cc/
-      - include: /lite/api_docs/cc/_doxygen.yaml
+      - title: "Python"
+        style: accordion
+        section:
+        - include: /lite/api_docs/python/tf/lite/_toc.yaml
+        - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
+      - title: "Android (Java)"
+        platform: android
+        style: accordion
+        section:
+        - include: /lite/api_docs/java/_toc.yaml
+      - title: "Swift"
+        platform: ios
+        style: accordion
+        section:
+        - include: /lite/api_docs/swift/_toc.yaml
+      - title: "C++"
+        platform: cpp
+        style: accordion
+        section:
+        - title: "Overview"
+          path: /lite/api_docs/cc/
+        - include: /lite/api_docs/cc/_doxygen.yaml
 
 - include: /api_docs/_upper_tabs_api.yaml
 - include: /resources/_upper_tabs_resources.yaml
