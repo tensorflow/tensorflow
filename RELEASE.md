@@ -42,6 +42,7 @@
     for the migration.
   * Add experimental API `experimental_from_jax` to support conversion from Jax
     models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
