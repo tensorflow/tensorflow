@@ -539,9 +539,10 @@ def relu_layer(x, weights, biases, name=None):
 @tf_export("nn.silu", "nn.swish")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
-def swish(features):
+def swish(features, beta = 0.1):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(βx)`.
+  β: Hyperparamter for Swish activation function. Default value 1.0.
 
   The SiLU activation function was introduced in "Gaussian Error Linear Units
   (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
@@ -553,12 +554,14 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
+    beta: A 'Tensor' representing value of β hyperparameter.
 
   Returns:
     The activation value.
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
+  beta = ops.convert_to_tensor(beta, name="beta")
 
   def grad(dy):
     """Gradient for the Swish activation function"""
@@ -569,12 +572,12 @@ def swish(features):
     # forward pass) and we can free the sigmoid(features) expression immediately
     # after use during the forward pass.
     with ops.control_dependencies([dy]):
-      sigmoid_features = math_ops.sigmoid(features)
+      sigmoid_features = math_ops.sigmoid(beta * features)
     activation_grad = (
-        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+        sigmoid_features * (beta + features * (1.0 - sigmoid_features)))
     return dy * activation_grad
 
-  return features * math_ops.sigmoid(features), grad
+  return features * math_ops.sigmoid(beta * features), grad
 
 
 # pylint: disable=redefined-builtin
