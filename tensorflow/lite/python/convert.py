@@ -855,7 +855,7 @@ def convert_saved_model(saved_model_dir=None,
 
 @convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
                SubComponent.CONVERT_JAX_HLO)
-def convert_jax_hlo(input_content, is_proto_format, **kwargs):
+def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
   """Converts a Jax hlo-based model using TF Lite converter."""
   model_flags = _model_flags_pb2.ModelFlags()
   model_flags.use_hlo_import = True
@@ -863,6 +863,12 @@ def convert_jax_hlo(input_content, is_proto_format, **kwargs):
     model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_PROTO
   else:
     model_flags.hlo_file_type = _model_flags_pb2.ModelFlags.HLO_TEXT
+
+  # Build input names.
+  for input_name in input_names:
+    input_array = _model_flags_pb2.InputArray()
+    input_array.name = input_name
+    model_flags.input_arrays.append(input_array)
 
   toco_flags = build_toco_flags(**kwargs)
   data = toco_convert_protos(

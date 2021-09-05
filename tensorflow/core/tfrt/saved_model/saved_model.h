@@ -118,7 +118,7 @@ class FunctionMetadata {
 class SavedModel {
  public:
   struct Options {
-    explicit Options(tensorflow::tfrt_stub::Runtime* rt) : runtime(rt) {
+    explicit Options(const tensorflow::tfrt_stub::Runtime* rt) : runtime(rt) {
       DCHECK(runtime);
     }
 
@@ -129,7 +129,7 @@ class SavedModel {
 
     // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
     // more details. It must not be nullptr;
-    tensorflow::tfrt_stub::Runtime* runtime = nullptr;
+    const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
 
     // Model metadata used for monitoring and tracing.
     ModelMetadata model_metadata;
@@ -144,10 +144,6 @@ class SavedModel {
     // Priority of the request. Larger number means higher priority.
     int priority = 0;
 
-    // If true, the bef function function will be executed within the working
-    // thread pool.
-    bool force_bef_function_async = false;
-
     // If true, the input specs will be checked before running, and an error
     // will be raised upon mismatch.
     bool validate_input_specs = false;
@@ -157,13 +153,16 @@ class SavedModel {
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
   };
 
-  explicit SavedModel(tensorflow::tfrt_stub::Runtime* runtime)
+  explicit SavedModel(const tensorflow::tfrt_stub::Runtime* runtime)
       : runtime_(runtime) {
     DCHECK(runtime_);
   }
   virtual ~SavedModel();
 
-  tensorflow::tfrt_stub::Runtime* runtime() const { return runtime_; }
+  const tensorflow::tfrt_stub::Runtime& runtime() const {
+    DCHECK(runtime_);
+    return *runtime_;
+  }
   HostContext* GetHostContext() const;
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
@@ -213,7 +212,7 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  private:
-  tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
+  const tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
 };
 
 class SavedModelImpl final : public SavedModel {
@@ -290,7 +289,7 @@ class SavedModelImpl final : public SavedModel {
   //
   // TODO(b/178227859): Remove the need for the special handling for TPU here.
   static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-      tensorflow::tfrt_stub::Runtime* runtime,
+      const tensorflow::tfrt_stub::Runtime& runtime,
       tensorflow::TfrtTpuInfraTarget tpu_target);
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,

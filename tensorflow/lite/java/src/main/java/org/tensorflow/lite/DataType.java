@@ -83,11 +83,7 @@ public enum DataType {
       }
     }
     throw new IllegalArgumentException(
-        "DataType error: DataType "
-            + c
-            + " is not recognized in Java (version "
-            + TensorFlowLite.runtimeVersion()
-            + ")");
+        "DataType error: DataType " + c + " is not recognized in Java.");
   }
 
   /** Gets string names of the data type. */

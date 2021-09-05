@@ -2031,8 +2031,10 @@ LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
   // Replace device cluster with a cpurt.call operation.
   auto module_name = *compiled_module.module.sym_name();
   auto func_name = compiled_func.sym_name();
-  auto func_flat_ref = builder.getSymbolRefAttr(func_name);
-  auto func_ref = builder.getSymbolRefAttr(module_name, {func_flat_ref});
+  auto func_flat_ref =
+      mlir::SymbolRefAttr::get(builder.getContext(), func_name);
+  auto func_ref = mlir::SymbolRefAttr::get(builder.getContext(), module_name,
+                                           {func_flat_ref});
 
   auto cluster_func_op = builder.create<tfrt::cpu::jit::CallOp>(
       loc, cluster.getResultTypes(), func_ref,

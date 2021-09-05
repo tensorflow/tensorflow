@@ -59,7 +59,7 @@ def parse_saved_model_with_debug_info(export_dir):
   """
   saved_model = _parse_saved_model(export_dir)
 
-  debug_info_path = os.path.join(
+  debug_info_path = file_io.join(
       saved_model_utils.get_debug_dir(export_dir),
       constants.DEBUG_INFO_FILENAME_PB)
   debug_info = graph_debug_info_pb2.GraphDebugInfo()
@@ -88,11 +88,11 @@ def parse_saved_model(export_dir):
     IOError: If the file does not exist, or cannot be successfully parsed.
   """
   # Build the path to the SavedModel in pbtxt format.
-  path_to_pbtxt = os.path.join(
+  path_to_pbtxt = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
   # Build the path to the SavedModel in pb format.
-  path_to_pb = os.path.join(
+  path_to_pb = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
@@ -155,14 +155,14 @@ def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
       asset_protos.append(asset_proto)
 
   # Location of the assets for SavedModel.
-  assets_directory = os.path.join(
+  assets_directory = file_io.join(
       compat.as_bytes(export_dir), compat.as_bytes(constants.ASSETS_DIRECTORY))
   # Process each asset and add it to the asset tensor dictionary.
   for asset_proto in asset_protos:
     tensor_name = asset_proto.tensor_info.name
     if import_scope:
       tensor_name = "%s/%s" % (import_scope, tensor_name)
-    asset_tensor_dict[tensor_name] = os.path.join(
+    asset_tensor_dict[tensor_name] = file_io.join(
         compat.as_bytes(assets_directory),
         compat.as_bytes(asset_proto.filename))
 
@@ -249,8 +249,8 @@ def maybe_saved_model_directory(export_dir):
   Returns:
     True if the export directory contains SavedModel files, False otherwise.
   """
-  txt_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
-  pb_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
+  txt_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
+  pb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 

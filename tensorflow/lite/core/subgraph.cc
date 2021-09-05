@@ -1570,6 +1570,14 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
 
 bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
 
+bool Subgraph::IsFullyDelegated() const {
+  for (const int nid : execution_plan_) {
+    const TfLiteNode& node = nodes_and_registration_[nid].first;
+    if (node.delegate == nullptr) return false;
+  }
+  return true;
+}
+
 void Subgraph::EnsureTensorsVectorCapacity() {
   const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
   if (required_capacity > tensors_.capacity()) {

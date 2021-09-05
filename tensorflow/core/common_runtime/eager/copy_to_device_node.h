@@ -18,9 +18,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -50,7 +50,7 @@ class CopyToDeviceNode : public EagerNode {
 
   Status Run() override {
     tensorflow::Tensor tensor;
-    ScopedMemoryDebugAnnotation op_annotation(
+    profiler::ScopedMemoryDebugAnnotation op_annotation(
         "eager::CopyToDeviceNode", "dynamic", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));

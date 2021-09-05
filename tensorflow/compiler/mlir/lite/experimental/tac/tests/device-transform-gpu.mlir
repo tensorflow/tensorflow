@@ -125,7 +125,7 @@ func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1x384x
 // CHECK:       func @sub(%[[VAL_0:.*]]: tensor<1x384x384x3xf32>, %[[VAL_1:.*]]: tensor<3xf32>) -> tensor<1x384x384x3xf32> {
 // CHECK:           %[[VAL_2:.*]] = constant dense<-1.000000e+00> : tensor<f32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Mul"(%[[VAL_1]], %[[VAL_2]]) : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
-// CHECK:           %[[VAL_4:.*]] = "tfl.add"(%[[VAL_0]], %[[VAL_3]]) {fused_activation_function = "NONE"} : (tensor<1x384x384x3xf32>, tensor<3xf32>) -> tensor<1x384x384x3xf32>
+// CHECK:           %[[VAL_4:.*]] = tfl.add(%[[VAL_0]], %[[VAL_3]]) {fused_activation_function = "NONE"} : (tensor<1x384x384x3xf32>, tensor<3xf32>) -> tensor<1x384x384x3xf32>
 // CHECK:           return %[[VAL_4]] : tensor<1x384x384x3xf32>
 // CHECK:         }
 

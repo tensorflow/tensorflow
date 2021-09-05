@@ -223,6 +223,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -270,6 +279,8 @@ filegroup(
         "device_profiler_session.h",
         "profiler_interface.h",
         "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
     ],

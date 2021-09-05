@@ -371,6 +371,10 @@ Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
 // Adds default values to *node_def for unspecified attrs from op_def.
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def);
 
+// Remove attributes from node_def when the value is the default from the
+// op_def.
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def);
+
 // Validates the syntax of a NodeDef provided externally.
 //
 // The following is an EBNF-style syntax for NodeDef objects. Note that

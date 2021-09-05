@@ -79,7 +79,10 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
+    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
 
 
 def enable_run_eager_op_as_function():

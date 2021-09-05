@@ -2209,19 +2209,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     TF_RET_CHECK(operand_shapes.size() == 4);
     return ShapeUtil::MakeTupleShape(
         {*(operand_shapes[0]), *(operand_shapes[1]),
-         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {}),
-         ShapeUtil::MakeShape(S32, {})});
+         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   }
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteDoneShape(
     const Shape& operand_shape) {
   TF_RET_CHECK(operand_shape.IsTuple());
-  if (operand_shape.tuple_shapes_size() == 4) {
-    return ShapeUtil::GetTupleElementShape(operand_shape, 0);
-  } else {
-    return ShapeUtil::GetTupleElementShape(operand_shape, 1);
-  }
+  return ShapeUtil::GetTupleElementShape(operand_shape, 1);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(

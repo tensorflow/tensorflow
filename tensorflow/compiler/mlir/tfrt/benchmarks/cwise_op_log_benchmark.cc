@@ -29,19 +29,19 @@ using f32 = float;
 
 #define EXPR_BUILDER [](auto& in) { return in.log(); }
 
-BM_TFMlir(Log, mlir_input, "log_1d", 1, f32, 1.0, 1.0)
+BM_TFMlir(Log, mlir_input, "log_1d", 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenScalar(Log, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenScalar(Log, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenVectorized(Log, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenVectorized(Log, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

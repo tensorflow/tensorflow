@@ -342,9 +342,8 @@ LogicalResult DispatchOpToLLVMPattern::matchAndRewrite(
   // the third argument is the args for target function
   callOpOperands.push_back(packedArgs);
 
-  rewriter.create<LLVM::CallOp>(loc, llvm::None,
-                                rewriter.getSymbolRefAttr(dispatch_func),
-                                callOpOperands);
+  rewriter.create<LLVM::CallOp>(
+      loc, llvm::None, mlir::SymbolRefAttr::get(dispatch_func), callOpOperands);
 
   SmallVector<Value, 1> results;
   llvm::transform(resultPtrs, std::back_inserter(results), [&](Value v) {

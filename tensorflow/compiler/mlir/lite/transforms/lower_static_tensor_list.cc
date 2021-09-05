@@ -737,8 +737,10 @@ struct ConvertTensorListResize
         op, result_type, if_cond,
         /*input=*/
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
-        /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
-        /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
+        /*then_branch=*/
+        mlir::SymbolRefAttr::get(then_branch_op),
+        /*else_branch=*/
+        mlir::SymbolRefAttr::get(else_branch_op),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }

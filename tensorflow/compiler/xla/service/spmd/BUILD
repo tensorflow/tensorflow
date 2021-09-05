@@ -55,6 +55,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",
+        "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:numbers",

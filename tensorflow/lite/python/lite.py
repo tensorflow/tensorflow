@@ -1413,11 +1413,15 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     if not isinstance(self._inputs[0], (tuple, list)):
       raise ValueError("The input placeholders are not a dictionary.")
+
+    input_names = []
+    ordered_inputs = []
+    for input_name, tensor in self._inputs[0]:
+      input_names.append(input_name)
+      ordered_inputs.append(tensor)
+
     try:
       xla_compuation = _xla_computation(self._serving_funcs[0], backend="cpu")
-      ordered_inputs = []
-      for input_tuple in self._inputs[0]:
-        ordered_inputs.append(input_tuple[1])
       hlo_proto = xla_compuation(
           *ordered_inputs).as_serialized_hlo_module_proto()
     except Exception:  # pylint: disable=broad-except
@@ -1425,7 +1429,11 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     # We need to set the hlo proto, and here we use serialized proto format
     # since it's more compact.
-    converter_kwargs = {"input_content": hlo_proto, "is_proto_format": True}
+    converter_kwargs = {
+        "input_content": hlo_proto,
+        "input_names": input_names,
+        "is_proto_format": True
+    }
     converter_kwargs.update(self._get_base_converter_args())
 
     # Get quantization options and do some checks.

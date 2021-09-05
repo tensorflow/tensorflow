@@ -1272,7 +1272,7 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
 
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  return builder_.getSymbolRefAttr(mlir_func_name);
+  return mlir::SymbolRefAttr::get(builder_.getContext(), mlir_func_name);
 }
 
 StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
@@ -1372,7 +1372,8 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto gradient_attr = builder_.getSymbolRefAttr(mlir_grad_func_name);
+    auto gradient_attr =
+        mlir::SymbolRefAttr::get(builder_.getContext(), mlir_grad_func_name);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_.getNamedAttr(grad_string, gradient_attr));
   }
@@ -2106,7 +2107,8 @@ Status ImporterBase::ConvertNode(const Node& node) {
   // as an attribute.
   if (convert_to_legacy_call) {
     result.name = mlir::OperationName(get_full_op_name("LegacyCall"), context_);
-    mlir::SymbolRefAttr val = builder_.getSymbolRefAttr(node_type_name);
+    mlir::SymbolRefAttr val =
+        mlir::SymbolRefAttr::get(builder_.getContext(), node_type_name);
     result.addAttribute("f", val);
 
     if (!result.attributes.get("_disable_call_shape_inference")) {
@@ -3270,7 +3272,7 @@ Status CreateSavedModelIR(
         mlir::OpBuilder body_builder(&func.getBody());
         auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
             func.getLoc(), orig_func.getType().getResults(), args_as_values,
-            builder.getSymbolRefAttr(orig_func.getName()),
+            mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
             /*executor_type=*/builder.getStringAttr(""));
@@ -3317,7 +3319,8 @@ Status CreateSavedModelIR(
       for (auto& bound_input :
            llvm::enumerate(concrete_function.bound_inputs())) {
         int arg_index = bound_input_base + bound_input.index();
-        auto symbol_ref = builder.getSymbolRefAttr(
+        auto symbol_ref = mlir::SymbolRefAttr::get(
+            builder.getContext(),
             object_names.GetSymbolTableName(bound_input.value()));
         func.setArgAttr(arg_index, "tf_saved_model.bound_input", symbol_ref);
       }
@@ -3771,8 +3774,9 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   DCHECK_EQ(init_func_op.getNumArguments(), assets.size());
   for (const auto& iter : llvm::enumerate(assets)) {
     auto asset_op = iter.value().op;
-    init_func_op.setArgAttr(iter.index(), "tf_saved_model.bound_input",
-                            builder.getSymbolRefAttr(asset_op.getName()));
+    init_func_op.setArgAttr(
+        iter.index(), "tf_saved_model.bound_input",
+        mlir::SymbolRefAttr::get(builder.getContext(), asset_op.getName()));
   }
 
   // Set the exported name of init function to an reserved name for
@@ -3958,7 +3962,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
         input_.meta_graph_def().saver_def().restore_op_name();
     TF_RETURN_IF_ERROR(
         ConvertInitializer(restore_op_name, variable_and_assets));
-    init_sym_refs.push_back(builder.getSymbolRefAttr(restore_op_name));
+    init_sym_refs.push_back(
+        mlir::SymbolRefAttr::get(builder.getContext(), restore_op_name));
   }
 
   std::string init_op_name;
@@ -3966,7 +3971,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
       internal::GetInitOp("", input_.meta_graph_def(), &init_op_name));
   if (!init_op_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertInitializer(init_op_name, assets));
-    init_sym_refs.push_back(builder.getSymbolRefAttr(init_op_name));
+    init_sym_refs.push_back(
+        mlir::SymbolRefAttr::get(builder.getContext(), init_op_name));
   }
 
   builder.create<mlir::tf_saved_model::SessionInitializerOp>(

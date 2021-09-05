@@ -2446,6 +2446,24 @@ TEST_F(CApiAttributesTest, EmptyList) {
   EXPECT_TF_META("v", 0, TF_ATTR_INT, -1);
 }
 
+TEST_F(CApiAttributesTest, Names) {
+  auto desc = init("string");
+  TF_SetAttrString(desc, "v", "bunny", 5);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_STRING, 5);
+
+  ASSERT_EQ(1, TF_OperationGetNumAttrs(oper));
+  ASSERT_EQ(1, TF_OperationGetAttrNameLength(oper, 0));
+
+  std::unique_ptr<char[]> value(new char[1]);
+
+  TF_OperationGetAttrName(oper, 0, value.get(), s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ("v", string(static_cast<const char*>(value.get()), 1));
+}
+
 TEST_F(CApiAttributesTest, Errors) {
   auto desc = init("int");
   TF_SetAttrInt(desc, "v", 3);

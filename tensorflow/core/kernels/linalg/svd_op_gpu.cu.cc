@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -93,6 +94,9 @@ class SvdOpGpu : public AsyncOpKernel {
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                errors::Unimplemented("Determinism is not yet supported "
+                                      "for Svd."));
   }
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,

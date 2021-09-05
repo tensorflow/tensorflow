@@ -965,6 +965,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
+    "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//third_party/eigen3",
 ]
 
@@ -6170,6 +6171,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
         "//tensorflow/core/kernels/data:finalize_dataset_op.h",
+        "//tensorflow/core/kernels/data:filter_dataset_op.h",
         "//tensorflow/core/kernels/data:flat_map_dataset_op.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
         "//tensorflow/core/kernels/data:take_dataset_op.h",
@@ -6521,6 +6523,7 @@ filegroup(
         "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
+        "//tensorflow/core/kernels/data:filter_dataset_op.cc",
         "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
         "//tensorflow/core/kernels/data:flat_map_dataset_op.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",

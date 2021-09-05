@@ -1275,11 +1275,11 @@ def replace_tensors_with_placeholders(value):
 
 @contextlib.contextmanager
 def temporarily_add_dispatch(op, typ, fn):
-  n = len(op._tf_dispatchers)
+  n = len(op._tf_fallback_dispatchers)
   dispatch.dispatch_for_types(op, typ)(fn)
   yield
-  assert len(op._tf_dispatchers) == n + 1
-  del op._tf_dispatchers[-1]
+  assert len(op._tf_fallback_dispatchers) == n + 1
+  del op._tf_fallback_dispatchers[-1]
 
 
 @contextlib.contextmanager

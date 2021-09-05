@@ -33,7 +33,7 @@ include "mlir/IR/OpAsmInterface.td"
 
 def TFGraph_GraphOp : TFGraph_Op<"graph",
     [HasOnlyGraphRegion, SingleBlock, IsolatedFromAbove,
-     OpTraitList<GraphRegionNoTerminator.traits>]> {
+     OpAsmOpInterface, OpTraitList<GraphRegionNoTerminator.traits>]> {
   let summary = "Define a flat graph of operations";
   let description = [{
     This operation is modeling a unordered list of nodes forming a TensorFlow
@@ -46,6 +46,16 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
     TFGraphDialect *getDialect() {
       return cast<TFGraphDialect>((*this)->getDialect());
     }
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface
+    //===------------------------------------------------------------------===//
+
+    // This will filter the `tfg.` prefix in front of operations inside the
+    // graph body.
+    static StringRef getDefaultDialect() {
+      return "tfg";
+    }
   }];
 
   // Make the assembly pretty!
@@ -57,7 +67,7 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
 
 def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
-    FunctionLike, IsolatedFromAbove, Symbol]> {
+    FunctionLike, IsolatedFromAbove, Symbol, OpAsmOpInterface]> {
   let summary = "Define a function as modeled by FunctionDef.";
   let description = [{
     This operation is modeling a function definition, corresponding to the
@@ -90,6 +100,16 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     // Returns true if this function is marked for JIT compilation.
     bool isMarkedForCompilation();
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface
+    //===------------------------------------------------------------------===//
+
+    // This will filter the `tfg.` prefix in front of operations inside the
+    // func body.
+    static StringRef getDefaultDialect() {
+      return "tfg";
+    }
 
     //===------------------------------------------------------------------===//
     // CallableOpInterface
@@ -159,7 +179,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
 
   // Use the dialect printer/parser like other unregistered op in this dialect.
   let parser = [{ return parseCustomTfOp(parser, result); }];
-  let printer = [{ (void)(*this)->getDialect()->printOperation(*this, p); }];
+  let printer = [{ (void)(*this)->getDialect()->getOperationPrinter(*this)(*this, p); }];
 }
 
 

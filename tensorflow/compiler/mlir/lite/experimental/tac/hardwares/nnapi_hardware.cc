@@ -37,7 +37,8 @@ mlir::OwningRewritePatternList NNAPIHardware::GetTransformations(
     MLIRContext* context) const {
   mlir::OwningRewritePatternList patterns(context);
 
-  patterns.insert<SquaredDifference, LowerPackIntoConcatReshape>(context);
+  patterns.insert<SquaredDifference, LowerPackIntoConcatReshape,
+                  ReduceMeanToAvgPool, InsertRequantForReduceMean>(context);
   return patterns;
 }
 

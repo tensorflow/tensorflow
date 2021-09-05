@@ -335,6 +335,12 @@ class FunctionInstantiationHelper {
       (*gnode->mutable_attr())[p.first] = p.second;
     }
 
+    // Experimental_debug_info.
+    if (fnode.has_experimental_debug_info()) {
+      gnode->mutable_experimental_debug_info()->MergeFrom(
+          fnode.experimental_debug_info());
+    }
+
     return Status::OK();
   }
 
@@ -709,7 +715,6 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
-// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
@@ -1836,6 +1841,14 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   }
   if (!this->device.empty()) {
     n.set_device(this->device);
+  }
+  if (!this->original_node_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_node_names() = {
+        this->original_node_names.begin(), this->original_node_names.end()};
+  }
+  if (!this->original_func_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_func_names() = {
+        this->original_func_names.begin(), this->original_func_names.end()};
   }
   return n;
 }

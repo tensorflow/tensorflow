@@ -42,6 +42,7 @@
     for the migration.
   * Add experimental API `experimental_from_jax` to support conversion from Jax
     models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -117,6 +118,9 @@
         Static sharding (auto-sharding) requires the number of tf.data service
         workers be fixed. Users need to specify the worker addresses in
         `tensorflow.data.experimental.DispatcherConfig`.
+    *   `tf.data.experimental.service.register_dataset` now accepts optional
+        `compression` argument.
+
 *  Keras:
   *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
       This method can be used to simplify the implementation of Conv subclasses.
@@ -178,6 +182,7 @@
       https://www.tensorflow.org/xla/custom_call for details.
     * XLA:GPU reductions are deterministic by default (reductions within
       `jit_compile=True` are now deterministic).
+    * XLA:GPU works with Horovod (OSS contribution by Trent Lo from NVidia)
 *   `tf.saved_model.save`:
     *   When saving a model, not specifying a namespace whitelist for custom
         ops with a namespace will now default to allowing rather than rejecting

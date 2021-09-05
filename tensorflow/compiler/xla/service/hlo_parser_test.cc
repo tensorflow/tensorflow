@@ -1882,7 +1882,7 @@ ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
   constant.2 = s32[] constant(64)
   tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
-  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,128]{0,1}, u32[], u32[], s32[]) collective-permute-start(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32}}
+  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,128]{0,1}, u32[], u32[]) collective-permute-start(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32}}
   ROOT collective-permute-done.1 = f32[128,128]{0,1} collective-permute-done(collective-permute-start.1)
 }
 
@@ -2983,13 +2983,13 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
 TEST_F(HloParserTest, ParseShardingSubGroup) {
   const string original =
       "{devices=[2,2,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 "
-      "last_tile_dims={replicated, manual}}";
+      "last_tile_dims={manual, replicated}}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
   Array<int64_t> tile_assignment({2, 2, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> subgroup_types = {OpSharding::REPLICATED,
-                                                  OpSharding::MANUAL};
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
   EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
             original);
 }

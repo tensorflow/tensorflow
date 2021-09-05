@@ -268,7 +268,7 @@ static bool IsUnnestedReductionFasterThanElemental(
 // Whether we can/should use the unnested emitter for reduction.
 static bool IsReductionFromOrToContiguousDimensionsHelper(
     const Shape& operand_shape, absl::Span<int64_t const> dims_to_reduce) {
-  std::vector<int64_t> dims_to_keep;
+  DimensionVector dims_to_keep;
   for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
       dims_to_keep.push_back(dim);

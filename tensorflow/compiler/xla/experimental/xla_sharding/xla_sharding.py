@@ -209,17 +209,21 @@ class Sharding(object):
   def apply_to_tensor(self,
                       tensor,
                       assign_tuple_sharding=False,
-                      use_sharding_op=False):
+                      use_sharding_op=False,
+                      unspecified_dims=None):
     """Applies this Sharding attribute to `tensor`.
 
     Args:
       tensor: A tf.Tensor to split.
       assign_tuple_sharding: If the sharding type should be a tuple.
-      use_sharding_op: whether to create a sharding op on `tensor`.
+      use_sharding_op: Whether to create a sharding op on `tensor`.
+      unspecified_dims: An optional list of dimensions unspecified.
 
     Returns:
       The tensor with Sharding attribute.
     """
+    if unspecified_dims:
+      assert use_sharding_op and not assign_tuple_sharding
     proto = self._proto
     if use_sharding_op:
       if assign_tuple_sharding:
@@ -227,7 +231,9 @@ class Sharding(object):
         tensor = tf2xla.sharding(tensor, sharding=proto.SerializeToString())
       else:
         tensor = tf2xla.sharding(
-            tensor, sharding=proto.SerializeToString())
+            tensor,
+            sharding=proto.SerializeToString(),
+            unspecified_dims=unspecified_dims or [])
     elif assign_tuple_sharding or len(tensor.op.outputs) > 1:
       proto = self._get_or_create_tuple_proto(tensor.op)
       # We can't mutate an element of old_proto.tuple_shardings, so create
@@ -324,7 +330,8 @@ def assign_device(tensor,
 def tile(tensor,
          tile_assignment,
          assign_tuple_sharding=False,
-         use_sharding_op=False):
+         use_sharding_op=False,
+         unspecified_dims=None):
   """Returns a tensor that has tiled sharding.
 
   Args:
@@ -333,11 +340,13 @@ def tile(tensor,
       which device will compute which part of the topology.
     assign_tuple_sharding: If the sharding type should be a tuple.
     use_sharding_op: If true, adds a sharding op to set the sharding.
+    unspecified_dims: An optional list of dimensions unspecified.
   """
   return Sharding.tile(tile_assignment).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding,
-      use_sharding_op=use_sharding_op)
+      use_sharding_op=use_sharding_op,
+      unspecified_dims=unspecified_dims or [])
 
 
 def split(tensor,
@@ -363,7 +372,10 @@ def split(tensor,
                             use_sharding_op=use_sharding_op)
 
 
-def partial_tile(tensor, tile_assignment, use_sharding_op=False):
+def partial_tile(tensor,
+                 tile_assignment,
+                 use_sharding_op=False,
+                 unspecified_dims=None):
   """Returns a tensor that has tiled sharding.
 
   Args:
@@ -373,9 +385,12 @@ def partial_tile(tensor, tile_assignment, use_sharding_op=False):
       more dimension than tensor, and the last dimension represents partially
       replicated tiles.
     use_sharding_op: If true, adds a sharding op to set the sharding.
+    unspecified_dims: An optional list of dimensions unspecified.
   """
   return Sharding.partial_tile(tile_assignment).apply_to_tensor(
-      tensor, use_sharding_op=use_sharding_op)
+      tensor,
+      use_sharding_op=use_sharding_op,
+      unspecified_dims=unspecified_dims or [])
 
 
 def get_op_sharding(op):
@@ -434,7 +449,10 @@ def get_sharding_tile_shape(sharding):
     return None
 
 
-def auto_to_manual_spmd_partition(tensor, manual_sharding, single_dim=-1):
+def auto_to_manual_spmd_partition(tensor,
+                                  manual_sharding,
+                                  single_dim=-1,
+                                  unspecified_dims=None):
   """Switches from automatic SPMD partitioning to manual partitioning.
 
   Converts a full-shaped tensor (to be automatically partitioned by SPMD
@@ -447,18 +465,23 @@ def auto_to_manual_spmd_partition(tensor, manual_sharding, single_dim=-1):
       partitioning.
     single_dim: If >= 0, the conversion will happen only on this dim in
       subgroups.
+    unspecified_dims: An optional list of dimensions unspecified.
 
   Returns:
     A shard-shaped tensor to be consumed by manually partitioned ops.
   """
   return tf2xla.spmd_full_to_shard_shape(
-      tensor, manual_sharding=manual_sharding, dim=single_dim)
+      tensor,
+      manual_sharding=manual_sharding,
+      dim=single_dim,
+      unspecified_dims=unspecified_dims or [])
 
 
 def manual_to_auto_spmd_partition(tensor,
                                   manual_sharding,
                                   full_shape,
-                                  single_dim=-1):
+                                  single_dim=-1,
+                                  unspecified_dims=None):
   """Switches from manual partitioning to automatic SPMD partitioning.
 
   Converts a shard-shaped tensor (manually partitioned in SPMD-style) to a
@@ -471,6 +494,7 @@ def manual_to_auto_spmd_partition(tensor,
     full_shape: the shape of tensor before partitioning.
     single_dim: If >= 0, the conversion will happen only on this dim in
       subgroups.
+    unspecified_dims: An optional list of dimensions unspecified.
 
   Returns:
     A full-shaped tensor to be partitioned automatically by the SPMD
@@ -480,10 +504,13 @@ def manual_to_auto_spmd_partition(tensor,
       tensor,
       manual_sharding=manual_sharding,
       full_shape=full_shape,
-      dim=single_dim)
+      dim=single_dim,
+      unspecified_dims=unspecified_dims or [])
 
 
-def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
+def mesh_split_sharding(device_mesh,
+                        tensor_split_dims_mapping,
+                        manual_mesh_dims=None):
   """Returns a Sharding object representing sharding along multiple dimensions.
 
   Args:
@@ -493,12 +520,15 @@ def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
       the device mesh axis along which it is sharded. Its length is the tensor
       rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
       dimension i. Use -1 for tensor dimensions that are not sharded.
+    manual_mesh_dims: An optional list of mesh dims for manual subgroups.
 
   Raises:
     ValueError: The number of tensor split dimensions is larger than device mesh
       rank.
   """
-  permutation = [d for d in tensor_split_dims_mapping if d >= 0]
+  manual_mesh_dims = manual_mesh_dims or []
+  permutation = [d for d in tensor_split_dims_mapping if d >= 0
+                ] + manual_mesh_dims
   if len(permutation) > len(device_mesh.shape):
     raise ValueError(
         'Number of tensor split dimensions (%r) is larger than device mesh '
@@ -511,12 +541,18 @@ def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
   ]
   tile_assignment = _np.transpose(device_mesh, transpose_permutation)
   tile_shape = [
-      1 if d < 0 else device_mesh.shape[d] for d in tensor_split_dims_mapping
+      1 if d < 0 else device_mesh.shape[d]
+      for d in (tensor_split_dims_mapping + manual_mesh_dims)
   ]
+  subgroup_modes = [xla_data_pb2.OpSharding.MANUAL] * len(manual_mesh_dims)
   partial = len(permutation) < len(device_mesh.shape)
   if partial:
     tile_shape.append(_np.prod(device_mesh.shape) // _np.prod(tile_shape))
+    subgroup_modes.append(xla_data_pb2.OpSharding.REPLICATED)
   tile_assignment = _np.reshape(tile_assignment, tile_shape)
+
+  if manual_mesh_dims:
+    return Sharding.subgroup_tile(tile_assignment, subgroup_modes)
 
   if partial:
     return Sharding.partial_tile(tile_assignment)
@@ -526,7 +562,9 @@ def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
 def mesh_split(tensor,
                device_mesh,
                tensor_split_dims_mapping,
-               use_sharding_op=False):
+               use_sharding_op=False,
+               manual_mesh_dims=None,
+               unspecified_dims=None):
   """Returns a tensor that is split along multiple dimensions in a device mesh.
 
   Args:
@@ -538,10 +576,16 @@ def mesh_split(tensor,
       rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
       dimension i. Use -1 for tensor dimensions that are not sharded.
     use_sharding_op: If true, adds a sharding op to set the sharding.
+    manual_mesh_dims: An optional list of mesh dims for manual subgroups.
+    unspecified_dims: An optional list of dimensions unspecified.
 
   Raises:
     ValueError: The number of tensor split dimensions is larger than device mesh
       rank.
   """
-  sharding = mesh_split_sharding(device_mesh, tensor_split_dims_mapping)
-  return sharding.apply_to_tensor(tensor, use_sharding_op=use_sharding_op)
+  sharding = mesh_split_sharding(device_mesh, tensor_split_dims_mapping,
+                                 manual_mesh_dims)
+  return sharding.apply_to_tensor(
+      tensor,
+      use_sharding_op=use_sharding_op,
+      unspecified_dims=unspecified_dims or [])

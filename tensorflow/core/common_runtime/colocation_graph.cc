@@ -740,8 +740,8 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
     // This is needed to get around the issue in b/135705778.
     if (input_type == DT_VARIANT &&
-        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
-        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+        data::DatasetOpKernel::IsDatasetOp(src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(dst->op_def())) {
       TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
       continue;
     }
@@ -794,11 +794,15 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
 
   for (Node* node : graph_.nodes()) {
     // Skip nodes that do not have DT_VARIANT inputs.
-    if (absl::c_none_of(node->input_types(), is_variant)) continue;
+    if (absl::c_none_of(node->input_types(), is_variant)) {
+      continue;
+    }
 
     // Skip nodes that can't be placed on GPU anyway.
     Member& root = members_[FindAndUpdateRoot(node->id())];
-    if (absl::c_all_of(root.supported_device_types(), is_cpu_device)) continue;
+    if (absl::c_all_of(root.supported_device_types(), is_cpu_device)) {
+      continue;
+    }
 
     // Stop DFS traversal when found the underlying data type of a variant.
     absl::optional<bool> is_host_data_type;
@@ -815,11 +819,22 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     };
 
     auto enter = [&](Node* n) -> void {
-      DataType element_type = GetElementDataType(*n);
-      // To handle nested lists continue traversal after finding a TensorList
-      // operation that uses DT_VARIANT for element type.
-      if (element_type == DT_INVALID || element_type == DT_VARIANT) return;
-      is_host_data_type = DataTypeAlwaysOnHost(element_type);
+      if (data::DatasetOpKernel::IsDatasetOp(n->op_def())) {
+        // NOTE: Datasets are expected to live on the host. This code should be
+        // updated if that changes. Under this assumption, however, we must
+        // locate some ops on the host when the input is a dataset variant.
+        if (node->IsRetval() || node->IsIdentity()) {
+          is_host_data_type = true;
+        }
+      } else {
+        DataType element_type = GetElementDataType(*n);
+        // To handle nested lists continue traversal after finding a TensorList
+        // operation that uses DT_VARIANT for element type.
+        if (element_type == DT_INVALID || element_type == DT_VARIANT) {
+          return;
+        }
+        is_host_data_type = DataTypeAlwaysOnHost(element_type);
+      }
     };
 
     ReverseDFSFrom(graph_, {node}, enter, /*leave=*/nullptr,

@@ -1353,7 +1353,6 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                 define_value_at(/*index=*/{1, i});
               }
             }
-            define_value_at(/*index=*/{4});
           }
           break;
         case HloOpcode::kCollectivePermuteDone:
