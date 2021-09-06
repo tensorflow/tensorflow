@@ -573,8 +573,8 @@ def swish(features, beta = 0.1):
     # after use during the forward pass.
     with ops.control_dependencies([dy]):
       sigmoid_features = math_ops.sigmoid(beta * features)
-    activation_grad = (
-        sigmoid_features * (beta + features * (1.0 - sigmoid_features)))
+      activation_grad = (
+        sigmoid_features * (1.0 + (beta * features) * (1.0 - sigmoid_features)))
     return dy * activation_grad
 
   return features * math_ops.sigmoid(beta * features), grad
