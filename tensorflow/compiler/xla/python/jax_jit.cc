@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1120,6 +1119,14 @@ py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
                              std::move(static_argnames),
                              std::move(donate_argnums), std::move(cache));
   return obj;
+}
+
+// Helpers for building Python properties
+template <typename Func>
+py::object property_readonly(Func&& get) {
+  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
+                  py::none(), "");
 }
 
 // Version numbers for the pickled representations of
