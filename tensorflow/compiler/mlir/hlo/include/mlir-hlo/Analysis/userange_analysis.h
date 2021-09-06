@@ -63,9 +63,10 @@ struct UseInterval {
   }
 
   /// Performs an interval subtraction => A = A - B.
-  /// Note: This assumes that all intervals of b are included in some interval
-  ///       of a.
   static void intervalSubtract(Vector &a, const Vector &b);
+
+  /// Performs an interval intersection => A = A ^ B.
+  static void intervalIntersect(Vector &a, const Vector &b);
 
   /// Performs an interval merge => A = A u B.
   /// Note: All overlapping and contiguous UseIntervals are merged.

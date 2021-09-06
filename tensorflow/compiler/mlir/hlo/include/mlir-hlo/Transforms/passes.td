@@ -37,6 +37,12 @@ def ReshapeSimplifier : FunctionPass<"reshape-simplifier"> {
   let constructor = "createReshapeSimplifierPass()";
 }
 
+def CopyRemoval : FunctionPass<"copy-removal"> {
+  let summary = "Removes operations that implements a CopyOpInterface, if the "
+                "userange of the source ends with that operation.";
+  let constructor = "createCopyRemovalPass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";
