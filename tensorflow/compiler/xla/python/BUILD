@@ -165,6 +165,22 @@ cc_library(
 )
 
 cc_library(
+    name = "python_utils",
+    hdrs = ["python_utils.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "traceback",
     srcs = ["traceback.cc"],
     hdrs = ["traceback.h"],
@@ -207,6 +223,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
+        ":python_utils",
         ":traceback",
         ":types",
         "//tensorflow/compiler/xla:comparison_util",
@@ -276,6 +293,7 @@ cc_library(
     deps = [
         ":py_client",
         ":python_ref_manager",
+        ":python_utils",
         ":pytree",
         ":types",
         "//tensorflow/compiler/xla:shape_util",

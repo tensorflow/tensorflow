@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
@@ -426,93 +428,24 @@ PyBufferProcs PyBuffer_tp_as_buffer = []() {
   return procs;
 }();
 
-// Helpers for building Python properties
-template <typename Func>
-py::object property_readonly(Func&& get) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
-                  py::none(), "");
-}
-
-template <typename GetFunc, typename SetFunc>
-py::object property(GetFunc&& get, SetFunc&& set) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<GetFunc>(get)),
-                  py::cpp_function(std::forward<SetFunc>(set)), py::none(), "");
-}
-
 }  // namespace
 
 PyObject* PyBuffer::base_type_ = nullptr;
 PyObject* PyBuffer::type_ = nullptr;
 
 Status PyBuffer::RegisterTypes(py::module& m) {
-  // We do not use pybind11::class_ to build Python wrapper objects because
-  // creation, destruction, and casting of buffer objects is performance
-  // critical. By using hand-written Python classes, we can avoid extra C heap
-  // allocations, and we can avoid pybind11's slow cast<>() implementation
-  // during jit dispatch.
-
-  // We need to use heap-allocated type objects because we want to add
-  // additional methods dynamically.
-  {
-    py::str name = py::str("DeviceArrayBase");
-    py::str qualname = py::str("DeviceArrayBase");
-    PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
-        PyType_Type.tp_alloc(&PyType_Type, 0));
-    // Caution: we must not call any functions that might invoke the GC until
-    // PyType_Ready() is called. Otherwise the GC might see a half-constructed
-    // type object.
-    if (!heap_type) {
-      return Internal("Unable to create heap type object");
-    }
-    heap_type->ht_name = name.release().ptr();
-    heap_type->ht_qualname = qualname.release().ptr();
-    PyTypeObject* type = &heap_type->ht_type;
-    type->tp_name = "DeviceArrayBase";
-    type->tp_basicsize = sizeof(PyBufferBasePyObject);
-    type->tp_flags =
-        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_BASETYPE;
-    TF_RET_CHECK(PyType_Ready(type) == 0);
-    base_type_ = reinterpret_cast<PyObject*>(type);
-  }
+  TF_ASSIGN_OR_RETURN(
+      base_type_,
+      jax::CreateHeapPythonBaseClass<PyBufferBasePyObject>("DeviceArrayBase"));
   py::object base_type = py::reinterpret_borrow<py::object>(base_type_);
   base_type.attr("__module__") = m.attr("__name__");
-
   m.attr("DeviceArrayBase") = base_type;
-  {
-    py::tuple bases = py::make_tuple(base_type);
-    py::str name = py::str("DeviceArray");
-    py::str qualname = py::str("DeviceArray");
-    PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
-        PyType_Type.tp_alloc(&PyType_Type, 0));
-    // Caution: we must not call any functions that might invoke the GC until
-    // PyType_Ready() is called below. Otherwise the GC might see a
-    // half-constructed type object.
-    if (!heap_type) {
-      return Internal("Unable to create heap type object");
-    }
-    heap_type->ht_name = name.release().ptr();
-    heap_type->ht_qualname = qualname.release().ptr();
-    PyTypeObject* type = &heap_type->ht_type;
-    type->tp_name = "DeviceArray";
-    type->tp_basicsize = sizeof(PyBufferPyObject);
-    type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE;
-    type->tp_bases = bases.release().ptr();
-    type->tp_dealloc = PyBuffer_tp_dealloc;
-    type->tp_new = PyBuffer_tp_new;
-    // Supported protocols
-    type->tp_as_number = &heap_type->as_number;
-    type->tp_as_sequence = &heap_type->as_sequence;
-    type->tp_as_mapping = &heap_type->as_mapping;
-    type->tp_as_buffer = &PyBuffer_tp_as_buffer;
 
-    // Allow weak references to DeviceArray objects.
-    type->tp_weaklistoffset = offsetof(PyBufferPyObject, weakrefs);
-
-    TF_RET_CHECK(PyType_Ready(type) == 0);
-    type_ = reinterpret_cast<PyObject*>(type);
-  }
+  TF_ASSIGN_OR_RETURN(type_, jax::CreateDeviceArrayLike<PyBufferPyObject>(
+                                 "DeviceArray", /*base_type=*/base_type,
+                                 /*tp_new=*/PyBuffer_tp_new,
+                                 /*tp_dealloc=*/PyBuffer_tp_dealloc,
+                                 /*tp_as_buffer=*/&PyBuffer_tp_as_buffer));
   py::object type = py::reinterpret_borrow<py::object>(type_);
   m.attr("DeviceArray") = type;
   m.attr("PyLocalBuffer") = type;
@@ -523,6 +456,9 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // pybind11's casting logic. This is most likely slightly slower than
   // hand-writing bindings, but most of these methods are not performance
   // critical.
+  using jax::property;
+  using jax::property_readonly;
+
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(

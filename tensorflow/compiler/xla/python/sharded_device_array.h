@@ -194,9 +194,6 @@ H AbslHashValue(H h, const ShardingSpec& key) {
   return h;
 }
 
-// Empty base-class to support isinstance(x, ShardedDeviceArrayBase) with both
-// the C++ and Python ShardedDeviceArray.
-class ShardedDeviceArrayBase {};
 
 // A ShardedDeviceArray is an ndarray sharded across devices.
 //
@@ -212,36 +209,23 @@ class ShardedDeviceArrayBase {};
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray : public ShardedDeviceArrayBase {
+class ShardedDeviceArray {
  public:
-  // Buffers are expected to be xla::PyBuffer objects, but as there are
-  // alternative backend implementations, this may not be guaranteed.
-  // TODO(jblespiau): As soon as PjRtBuffer is supported by all
-  // implementations, we should be able to store this with the C++ objects.
-  ShardedDeviceArray(pybind11::object aval, ShardingSpec sharding_spec,
-                     pybind11::list device_buffers, pybind11::object indices,
-                     bool weak_type)
-      : aval_(std::move(aval)),
-        sharding_spec_(std::move(sharding_spec)),
-        indices_(std::move(indices)),
-        device_buffers_(std::move(device_buffers)),
-        weak_type_(weak_type) {}
   ShardedDeviceArray(const ShardedDeviceArray&) = delete;
   ShardedDeviceArray& operator=(const ShardedDeviceArray&) = delete;
   ShardedDeviceArray(ShardedDeviceArray&&) = default;
   ShardedDeviceArray& operator=(ShardedDeviceArray&&) = default;
 
-  const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
-  // Returns an error status iff the object has been deleted.
-  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> GetPjRtBuffers();
-
   // Delete all the underlying buffers (freeing memory on device).
   // The Numpy value on the host, if it exists, will also be deleted.
   void Delete();
 
+  const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
+  // Returns an error status iff the object has been deleted.
+  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> GetPjRtBuffers();
+
   bool is_deleted() const { return is_deleted_; }
   bool weak_type() const { return weak_type_; }
-  // Accessors and mutators for Python values are named like the variables.
   absl::optional<pybind11::list> device_buffers() const {
     return device_buffers_;
   }
@@ -258,7 +242,59 @@ class ShardedDeviceArray : public ShardedDeviceArrayBase {
     one_replica_buffer_indices_ = obj;
   }
 
+  // Python-wrapper definitions.
+
+  // pybind11::object typed subclass for PyBuffer objects.
+  class pyobject : public pybind11::object {
+   public:
+    PYBIND11_OBJECT(pyobject,  // NOLINT
+                    pybind11::object, ShardedDeviceArray::IsShardedDeviceArray);
+    pyobject() = default;
+    ShardedDeviceArray* sda() const {
+      return ShardedDeviceArray::AsShardedDeviceArrayUnchecked(*this);
+    }
+  };
+  using object = pyobject;
+
+  // Returns true if `handle` is a IsShardedDeviceArray.
+  static bool IsShardedDeviceArray(pybind11::handle handle);
+  // Converts `handle` to a PyBuffer*. Does not do any checking.
+  static ShardedDeviceArray* AsShardedDeviceArrayUnchecked(
+      pybind11::handle handle);
+  // Converts `handle` to a PyBuffer*. Returns an error status if
+  // !IsPyBuffer(handle)
+  static xla::StatusOr<ShardedDeviceArray*> AsShardedDeviceArray(
+      pybind11::handle handle);
+
+  // Gets a Python handle to an existing ShardedDeviceArray. Assumes the
+  // PyObject was allocated on the Python heap, which is the case if Make() was
+  // used.
+  pybind11::handle AsHandle();
+
+  static object Make(pybind11::object aval, ShardingSpec sharding_spec,
+                     pybind11::list device_buffers, pybind11::object indices,
+                     bool weak_type);
+
+  static xla::Status RegisterTypes(pybind11::module& m);
+  static PyObject* base_type() { return base_type_; }
+  static PyObject* type() { return type_; }
+
  private:
+  // Buffers are expected to be xla::PyBuffer objects, but as there are
+  // alternative backend implementations, this may not be guaranteed.
+  // TODO(jblespiau): As soon as PjRtBuffer is supported by all
+  // implementations, we should be able to store this with the C++ objects.
+  ShardedDeviceArray(pybind11::object aval, ShardingSpec sharding_spec,
+                     pybind11::list device_buffers, pybind11::object indices,
+                     bool weak_type)
+      : aval_(std::move(aval)),
+        sharding_spec_(std::move(sharding_spec)),
+        indices_(std::move(indices)),
+        device_buffers_(std::move(device_buffers)),
+        weak_type_(weak_type) {}
+  static PyObject* base_type_;
+  static PyObject* type_;
+
   // A ShapedArray indicating the shape and dtype of this array.
   pybind11::object aval_;
   // Describes how this array is sharded across `device_buffers`.

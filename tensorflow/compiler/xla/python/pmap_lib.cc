@@ -107,11 +107,9 @@ xla::StatusOr<ShardArgResult> ShardArg(
     py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
-  static PyObject* sda_type = []() {
-    return py::type::handle_of<ShardedDeviceArray>().ptr();
-  }();
-  if (arg.get_type().ptr() == sda_type) {
-    ShardedDeviceArray* sda = py::cast<ShardedDeviceArray*>(arg);
+  if (ShardedDeviceArray::IsShardedDeviceArray(arg)) {
+    ShardedDeviceArray* sda =
+        ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
     const ShardingSpec& sharding_spec = input_spec.sharding_spec;
     if (sharding_spec == sda->GetShardingSpec()) {
       const int num_devices = devices.size();
@@ -482,12 +480,12 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   flat_sharded_device_arrays.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     const ResultSpec& result_spec = output_specs[i];
-    flat_sharded_device_arrays.push_back(py::cast(
-        ShardedDeviceArray(/*aval=*/result_spec.out_aval,
-                           /*sharding_spec=*/result_spec.out_spec,
-                           /*device_buffers=*/py::cast(std::move(outputs[i])),
-                           /*indices=*/result_spec.out_indices,
-                           /*weak_type=*/result_spec.weak_type)));
+    flat_sharded_device_arrays.push_back(ShardedDeviceArray::Make(
+        /*aval=*/result_spec.out_aval,
+        /*sharding_spec=*/result_spec.out_spec,
+        /*device_buffers=*/py::cast(std::move(outputs[i])),
+        /*indices=*/result_spec.out_indices,
+        /*weak_type=*/result_spec.weak_type));
   }
   py::object out =
       cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
@@ -590,49 +588,7 @@ void BuildPmapSubmodule(py::module& m) {
         return py::int_(hash);
       });
 
-  py::class_<ShardedDeviceArrayBase> sda_base(pmap_lib,
-                                              "ShardedDeviceArrayBase");
-  sda_base.def(py::init<>());
-
-  py::class_<ShardedDeviceArray, ShardedDeviceArrayBase> sda(
-      pmap_lib, "ShardedDeviceArray");
-  sda.def(py::init<py::object, ShardingSpec, py::list, py::object, bool>(),
-          py::arg("aval"), py::arg("sharding_spec"), py::arg("device_buffers"),
-          py::arg("indices"), py::arg("weak_type"))
-      .def_property_readonly("aval", &ShardedDeviceArray::aval)
-      .def_property_readonly("indices", &ShardedDeviceArray::indices)
-      .def_property_readonly("sharding_spec",
-                             &ShardedDeviceArray::GetShardingSpec)
-      .def_property_readonly("device_buffers",
-                             &ShardedDeviceArray::device_buffers)
-      .def_property("_npy_value", &ShardedDeviceArray::npy_value,
-                    &ShardedDeviceArray::set_npy_value)
-      .def_property("_one_replica_buffer_indices",
-                    &ShardedDeviceArray::one_replica_buffer_indices,
-                    &ShardedDeviceArray::set_one_replica_buffer_indices)
-      .def_property_readonly("shape",
-                             [](const ShardedDeviceArray& self) {
-                               return self.aval().attr("shape");
-                             })
-      .def_property_readonly("dtype",
-                             [](const ShardedDeviceArray& self) {
-                               return self.aval().attr("dtype");
-                             })
-      .def_property_readonly(
-          "size",
-          [](const ShardedDeviceArray& self) {
-            py::tuple shape = py::cast<py::tuple>(self.aval().attr("shape"));
-            int size = 1;
-            for (auto dim : shape) {
-              size *= py::cast<int>(dim);
-            }
-            return size;
-          })
-      .def_property_readonly("ndim",
-                             [](const ShardedDeviceArray& self) {
-                               return py::len(self.aval().attr("shape"));
-                             })
-      .def("delete", &ShardedDeviceArray::Delete);
+  TF_CHECK_OK(ShardedDeviceArray::RegisterTypes(pmap_lib));
 
   py::class_<PmapFunction, std::unique_ptr<PmapFunction>> cfun(pmap_lib,
                                                                "PmapFunction");
