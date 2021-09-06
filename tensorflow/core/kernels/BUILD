@@ -2372,6 +2372,31 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "while_op_test",
+    srcs = ["while_op_test.cc"],
+    deps = [
+        ":control_flow_ops",
+        "//tensorflow/c/experimental/stream_executor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:functional_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 tf_kernel_library(
     name = "ctc_ops",
     prefix = "ctc",
