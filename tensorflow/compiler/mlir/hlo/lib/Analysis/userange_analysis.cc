@@ -32,7 +32,7 @@ struct UserangeInfoBuilder {
   using OperationListT = Liveness::OperationListT;
   using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
 
- public:
+public:
   /// Constructs an Userange builder.
   UserangeInfoBuilder(Liveness liveness, ValueSetT values,
                       OperationListT opList)
@@ -63,7 +63,7 @@ struct UserangeInfoBuilder {
     return currentUserange;
   }
 
- private:
+private:
   /// Find the top most Region of all values stored in the values set.
   Region *findTopRegion() const {
     Region *topRegion = nullptr;
@@ -245,8 +245,6 @@ UseInterval::UseInterval()
       end(std::numeric_limits<size_t>::min()) {}
 
 /// Performs an interval subtraction => A = A - B.
-/// Note: This assumes that all intervals of b are included in some interval
-///       of a.
 void UseInterval::intervalSubtract(UseInterval::Vector &a,
                                    const UseInterval::Vector &b) {
   auto iterB = b.begin();
@@ -255,25 +253,21 @@ void UseInterval::intervalSubtract(UseInterval::Vector &a,
     // iterA is strictly before iterB => increment iterA.
     if (*iterA < *iterB) {
       ++iterA;
-    } else if (iterA->start == iterB->start && iterA->end > iterB->end) {
-      // Usually, we would expect the case of iterB beeing strictly before
-      // iterA. However, due to the initial assumption that all intervals of b
-      // are included in some interval of a, we do not need to check if iterB is
-      // strictly before iterA.
-      // iterB is at the start of iterA, but iterA has some values that go
-      // beyond those of iterB. We have to set the lower bound of iterA to the
-      // upper bound of iterB + 1 and increment iterB.
-      // A(3, 100) - B(3, 5) => A(6,100)
+      // iterB is strictly before iterA => increment iterB.
+    } else if (*iterA > *iterB) {
+      ++iterB;
+    } else if (iterA->start >= iterB->start && iterA->end > iterB->end) {
+      // iterB overlaps with the start of iterA, but iterA has some values that
+      // go beyond those of iterB. We have to set the start of iterA to the end
+      // of iterB + 1 and increment iterB. A(3, 100) - B(3, 5) => A(6,100)
       iterA->start = iterB->end + 1;
       ++iterB;
-    } else if (iterA->end == iterB->end && iterA->start < iterB->start) {
-      // iterB is at the end of iterA, but iterA has some values that come
-      // before iterB. We have to set the end of iterA to the start of iterB - 1
-      // and increment both iterators.
-      // A(4, 50) - B(40, 50) => A(4, 39)
+    } else if (iterA->end <= iterB->end && iterA->start < iterB->start) {
+      // iterB overlaps with the end of iterA, but iterA has some values that
+      // come before iterB. We have to set the end of iterA to the start of
+      // iterB - 1 and increment iterA. A(4, 50) - B(40, 50) => A(4, 39)
       iterA->end = iterB->start - 1;
       ++iterA;
-      ++iterB;
     } else if (iterA->start < iterB->start && iterA->end > iterB->end) {
       // iterB is in the middle of iterA. We have to split iterA and increment
       // iterB.
@@ -286,6 +280,47 @@ void UseInterval::intervalSubtract(UseInterval::Vector &a,
       // Both intervals are equal. We have to erase the whole interval.
       // A(5, 5) - B(5, 5) => {}
       iterA = a.erase(iterA);
+      ++iterB;
+    }
+  }
+}
+
+/// Performs an interval intersection => A = A ^ B.
+void UseInterval::intervalIntersect(UseInterval::Vector &a,
+                                    const UseInterval::Vector &b) {
+  auto iterB = b.begin();
+  auto endB = b.end();
+  for (auto iterA = a.begin(); iterA != a.end() && iterB != endB;) {
+    // iterA is strictly before iterB => erase iterA.
+    if (*iterA < *iterB) {
+      iterA = a.erase(iterA);
+      // iterB is strictly before iterA => increment iterB.
+    } else if (*iterA > *iterB) {
+      ++iterB;
+      // iterA overlaps with the start of iterB. Set the start of iterA to the
+      // start of iterB and increment iterA.
+    } else if (iterA->start < iterB->start && iterA->end <= iterB->end) {
+      iterA->start = iterB->start;
+      ++iterA;
+      // iterA overlaps with the end of iterB.
+    } else if (iterA->end > iterB->end) {
+      // If iterA overlaps with the start of iterB, the start of iterA must be
+      // set to the start of iterB.
+      if (iterA->start < iterB->start)
+        iterA->start = iterB->start;
+      // The end of iterA must be set to the end of iterB. In addition, if iterB
+      // is not the end-pointer, the remaining interval of iterA must be added
+      // to vector A, because the next UseInterval of B can intersect with the
+      // remaining Interval.
+      size_t currentEndA = iterA->end;
+      iterA->end = iterB->end;
+      if (std::next(iterB) != endB)
+        iterA = a.insert(std::next(iterA),
+                         UseInterval(iterB->end + 1, currentEndA));
+      ++iterB;
+      // Both intervals are equal.
+    } else {
+      ++iterA;
       ++iterB;
     }
   }
