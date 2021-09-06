@@ -26,6 +26,7 @@ COMMON_PROTO_SRCS = [
     "config.proto",
     "cluster.proto",
     "debug.proto",
+    "status.proto",
     "device_filters.proto",
     "device_properties.proto",
     "graph_debug_info.proto",
