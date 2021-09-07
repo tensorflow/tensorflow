@@ -669,6 +669,7 @@ cc_library(
 cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
+    hdrs = ["batch_kernels.h"],
     deps = [
         ":ops_util_hdrs",
         "//tensorflow/core:core_cpu_internal",
@@ -1596,6 +1597,24 @@ tf_cc_test(
     ],
     deps = [
         ":batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_test",
+    size = "small",
+    srcs = ["batch_kernels_test.cc"],
+    deps = [
+        ":batch_kernels",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
