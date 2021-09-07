@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -1105,8 +1106,8 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
-        Status(s.code(),
-               absl::StrCat(
+        errors::CreateWithUpdatedMessage(
+            s, absl::StrCat(
                    "Failed to restore dataset iterator from checkpoint: ",
                    s.error_message(),
                    ". Make sure the dataset definition has not changed between "
