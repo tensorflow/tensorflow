@@ -502,6 +502,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           }
           result.end_of_input = reader->Contains(full_name(strings::StrCat(
               kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
+          RecordBufferEnqueue(ctx, result.return_values);
           result.notification.Notify();
         }
         return Status::OK();

@@ -225,7 +225,9 @@ class InstantiatedCapturedFunction {
   // the tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
   // ownership of the `args`. Pass non-null `node` to record processing time
-  // for modeling Iterator's GetNext() resource usage.
+  // for modeling Iterator's GetNext() resource usage. When non-null node is
+  // provided, the pre-requisite is that the calling thread has previously
+  // called `DatasetBaseIterator::RecordStart().
   Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
              std::vector<Tensor>* rets,
              const std::shared_ptr<model::Node>& node) const;
@@ -240,7 +242,9 @@ class InstantiatedCapturedFunction {
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
   // possible. Pass non-null `node` to record processing time for modeling
-  // Iterator's GetNext() resource usage.
+  // Iterator's GetNext() resource usage. When non-null node is provided, the
+  // pre-requisite is that the calling thread has previously called
+  // `DatasetBaseIterator::RecordStart().
   Status RunWithBorrowedArgs(IteratorContext* ctx,
                              const std::vector<Tensor>& args,
                              std::vector<Tensor>* rets,
@@ -260,6 +264,8 @@ class InstantiatedCapturedFunction {
   // returns. This method takes ownership of the tensors in `args`, in order to
   // be able to deallocate them as early as possible. Pass non-null `node` to
   // record processing time for modeling Iterator's GetNext() resource usage.
+  // When non-null node is provided, the pre-requisite is that the calling
+  // thread has previously called `DatasetBaseIterator::RecordStart().
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
