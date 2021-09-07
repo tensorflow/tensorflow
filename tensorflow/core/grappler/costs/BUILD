@@ -290,6 +290,7 @@ tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
+        ":graph_properties",
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -2586,6 +2587,33 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   // should be zero.
   EXPECT_EQ(cpu_state_0.memory_usage, 0);
   EXPECT_EQ(cpu_state_1.memory_usage, 0);
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageWithExecutionCount) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Repeat execution for each node.
+  for (auto& node : *graph.mutable_node()) {
+    (*node.mutable_attr())[kExecutionCount].set_i(10000);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
+  // Max memory usage does not rely on the number of executions.
+  EXPECT_EQ(expected_names.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
