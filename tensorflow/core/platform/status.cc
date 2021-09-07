@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/protobuf/status.pb.h"
 
 namespace tensorflow {
 
@@ -128,7 +127,7 @@ const std::vector<StackFrame>& Status::empty_stack_trace() {
   return *empty;
 }
 
-static std::string error_name(error::Code code) {
+std::string error_name(error::Code code) {
   switch (code) {
     case tensorflow::error::OK:
       return "OK";
@@ -254,24 +253,21 @@ std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
   return new std::string(r);
 }
 
-static constexpr const char kDerivedStatusProtoUrl[] =
-    "type.googleapis.com/tensorflow.core.status.DerivedStatus";
+// kDerivedMarker is appended to the Status message string to indicate whether a
+// Status object is the root cause of an error or if it has been triggered by
+// cancelling/aborting a step.
+static const char* kDerivedMarker = "[_Derived_]";
 
 Status StatusGroup::MakeDerived(const Status& s) {
   if (IsDerived(s)) {
     return s;
   } else {
-    Status derived(s);
-    derived.SetPayload(
-        kDerivedStatusProtoUrl,
-        absl::Cord(
-            tensorflow::core::status::DerivedStatus().SerializeAsString()));
-    return derived;
+    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
   }
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
-  return s.GetPayload(kDerivedStatusProtoUrl).has_value();
+  return s.error_message().find(kDerivedMarker) != std::string::npos;
 }
 
 void StatusGroup::ConfigureLogHistory() {

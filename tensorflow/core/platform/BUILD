@@ -713,7 +713,6 @@ cc_library(
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
