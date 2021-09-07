@@ -262,10 +262,10 @@ Status StatusGroup::MakeDerived(const Status& s) {
     return s;
   } else {
     Status derived(s);
-    // derived.SetPayload(
-    //     kDerivedStatusProtoUrl,
-    //     absl::Cord(
-    //         tensorflow::core::status::DerivedStatus().SerializeAsString()));
+    derived.SetPayload(
+        kDerivedStatusProtoUrl,
+        absl::Cord(
+            tensorflow::core::status::DerivedStatus().SerializeAsString()));
     return derived;
   }
 }
