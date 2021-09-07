@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 
+#include <sys/types.h>
+
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -396,9 +398,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
+      bool increase_min =
+          GetExperiments().contains("min_outer_interleave_parallelism") &&
+          (ctx_->interleave_depth() == 0);
+      double min = increase_min ? dataset()->cycle_length_ : 1;
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
-          {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/1,
+          {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
                                 /*max=*/dataset()->cycle_length_)});
     }
 
