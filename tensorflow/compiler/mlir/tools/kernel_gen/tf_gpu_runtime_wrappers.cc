@@ -34,33 +34,38 @@ static void ReportInternalError(tensorflow::OpKernelContext *ctx,
       tensorflow::Status{tensorflow::error::INTERNAL, msg});
 }
 
-#if GOOGLE_CUDA
-using GPUResult = CUresult;
-#endif
-#if TENSORFLOW_USE_ROCM
-using GPUResult = hipError_t;
-#endif
+#define CUDA_REPORT_IF_ERROR_WITH_CTX(expr, context)                          \
+  [](CUresult result, tensorflow::OpKernelContext *ctx) {                     \
+    if (!result) return;                                                      \
+    const char *name = nullptr;                                               \
+    cuGetErrorName(result, &name);                                            \
+    if (!name) name = "<unknown>";                                            \
+    std::string msg = absl::StrCat("'", #expr, "' failed with '", name, "'"); \
+    if (ctx != nullptr) {                                                     \
+      ctx->CtxFailureWithWarning(                                             \
+          tensorflow::Status{tensorflow::error::INTERNAL, msg});              \
+    } else {                                                                  \
+      LOG(WARNING) << msg << "\n";                                            \
+    }                                                                         \
+  }(expr, context)
 
-void GPUReportIfError(GPUResult result, tensorflow::OpKernelContext *ctx,
-                      const char *expr_str) {
-  if (!result) return;
+#define CUDA_REPORT_IF_ERROR(expr) CUDA_REPORT_IF_ERROR_WITH_CTX(expr, nullptr)
 
-#if GOOGLE_CUDA
-  const char *name = nullptr;
-  cuGetErrorName(result, &name);
-#endif
-#if TENSORFLOW_USE_ROCM
-  const char *name = hipGetErrorName(result);
-#endif
+#define HIP_REPORT_IF_ERROR_WITH_CTX(expr, context)                           \
+  [](hipError_t result, tensorflow::OpKernelContext *ctx) {                   \
+    if (!result) return;                                                      \
+    const char *name = hipGetErrorName(result);                               \
+    if (!name) name = "<unknown>";                                            \
+    std::string msg = absl::StrCat("'", #expr, "' failed with '", name, "'"); \
+    if (ctx != nullptr) {                                                     \
+      ctx->CtxFailureWithWarning(                                             \
+          tensorflow::Status{tensorflow::error::INTERNAL, msg});              \
+    } else {                                                                  \
+      LOG(WARNING) << msg << "\n";                                            \
+    }                                                                         \
+  }(expr, context)
 
-  if (!name) name = "<unknown>";
-  std::string msg = absl::StrCat("'", expr_str, "' failed with '", name, "'");
-  ReportInternalError(ctx, msg);
-}
-
-#define GPU_REPORT_IF_ERROR_WITH_CTX(expr, ctx) \
-  GPUReportIfError(expr, ctx, #expr)
-#define GPU_REPORT_IF_ERROR(expr) GPU_REPORT_IF_ERROR_WITH_CTX(expr, nullptr)
+#define HIP_REPORT_IF_ERROR(expr) HIP_REPORT_IF_ERROR_WITH_CTX(expr, nullptr)
 
 // Implement the GPU module cache and share what can be shared.
 
@@ -72,10 +77,10 @@ GPURuntimeCache::~GPURuntimeCache() {
   tensorflow::mutex_lock lock(mu_);
   for (auto it : gpu_module_by_data_ptr_) {
 #if GOOGLE_CUDA
-    GPU_REPORT_IF_ERROR(cuModuleUnload(it.second));
+    CUDA_REPORT_IF_ERROR(cuModuleUnload(it.second));
 #endif
 #if TENSORFLOW_USE_ROCM
-    GPU_REPORT_IF_ERROR(hipModuleUnload(it.second));
+    HIP_REPORT_IF_ERROR(hipModuleUnload(it.second));
 #endif
   }
 }
@@ -92,10 +97,10 @@ GPURuntimeCache::GPUModule GPURuntimeCache::LookupOrLoadModule(void *data) {
   GPUModule &module = gpu_module_by_data_ptr_[data];
 
 #if GOOGLE_CUDA
-  if (!module) GPU_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
+  if (!module) CUDA_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
 #endif
 #if TENSORFLOW_USE_ROCM
-  if (!module) GPU_REPORT_IF_ERROR(hipModuleLoadData(&module, data));
+  if (!module) HIP_REPORT_IF_ERROR(hipModuleLoadData(&module, data));
 #endif
 
   return module;
@@ -138,9 +143,9 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
 
 #if GOOGLE_CUDA
   CUfunction function;
-  GPU_REPORT_IF_ERROR_WITH_CTX(
+  CUDA_REPORT_IF_ERROR_WITH_CTX(
       cuModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
-  GPU_REPORT_IF_ERROR_WITH_CTX(
+  CUDA_REPORT_IF_ERROR_WITH_CTX(
       cuLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY, blockZ,
                      /*sharedMemBytes=*/0, reinterpret_cast<CUstream>(stream),
                      params, nullptr),
@@ -148,9 +153,9 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
 #endif
 #if TENSORFLOW_USE_ROCM
   hipFunction_t function;
-  GPU_REPORT_IF_ERROR_WITH_CTX(
+  HIP_REPORT_IF_ERROR_WITH_CTX(
       hipModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
-  GPU_REPORT_IF_ERROR_WITH_CTX(
+  HIP_REPORT_IF_ERROR_WITH_CTX(
       hipModuleLaunchKernel(
           function, gridX, gridY, gridZ, blockX, blockY, blockZ,
           /*sharedMemBytes=*/0, reinterpret_cast<hipStream_t>(stream), params,
