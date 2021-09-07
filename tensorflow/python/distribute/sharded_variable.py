@@ -45,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('distribute.experimental.partitioners.Partitioner', v1=[])
 class Partitioner(object):
-  """Partitioner base class: all partitiners inherit from this class.
+  """Partitioner base class: all partitioners inherit from this class.
 
   Partitioners should implement a `__call__` method with the following
   signature:
