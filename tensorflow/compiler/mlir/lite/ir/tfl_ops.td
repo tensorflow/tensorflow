@@ -3197,6 +3197,11 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
     OpBuilder<(ins "Value":$input, "Value":$perm),
     [{ BuildTransposeOp(&$_builder, $_state, input, perm); }]>
   ];
+
+  let extraClassDeclaration = [{
+    // Quantized axes are verified in the Verify function.
+    bool RequiredSameQuantizedAxes() { return false; }
+  }];
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [
