@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1121,14 +1122,6 @@ py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
   return obj;
 }
 
-// Helpers for building Python properties
-template <typename Func>
-py::object property_readonly(Func&& get) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
-                  py::none(), "");
-}
-
 // Version numbers for the pickled representations of
 // CompiledFunction/CompiledFunctionCache. Increment these if changing them.
 const int kCompiledFunctionCachePickleVersion = 1;
@@ -1244,7 +1237,9 @@ void BuildJaxjitSubmodule(py::module& m) {
         int version = py::cast<int>(pickle["version"]);
         if (version != kCompiledFunctionPickleVersion) {
           throw std::invalid_argument(absl::StrFormat(
-              "Invalid CompiledFunction pickle version, got %d, expected %d",
+              "Invalid CompiledFunction pickle version, got %d, expected %d. "
+              "Pickling/Unpickling jitted functions using different JAX "
+              "versions is not supported.",
               version, kCompiledFunctionPickleVersion));
         }
         py::function fun = py::cast<py::function>(pickle["fun"]);

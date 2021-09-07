@@ -37,10 +37,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -107,11 +109,9 @@ xla::StatusOr<ShardArgResult> ShardArg(
     py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
-  static PyObject* sda_type = []() {
-    return py::type::handle_of<ShardedDeviceArray>().ptr();
-  }();
-  if (arg.get_type().ptr() == sda_type) {
-    ShardedDeviceArray* sda = py::cast<ShardedDeviceArray*>(arg);
+  if (ShardedDeviceArray::IsShardedDeviceArray(arg)) {
+    ShardedDeviceArray* sda =
+        ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
     const ShardingSpec& sharding_spec = input_spec.sharding_spec;
     if (sharding_spec == sda->GetShardingSpec()) {
       const int num_devices = devices.size();
@@ -199,6 +199,8 @@ class PmapFunction {
         static_argnums_(std::move(static_argnums)),
         python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
+
+    function_name_ = py::str(py::getattr(fun_, "__name__", fun));
   }
   PmapFunction(const PmapFunction&) = delete;
   PmapFunction& operator=(const PmapFunction& other) = delete;
@@ -219,7 +221,43 @@ class PmapFunction {
   }
 
   int cache_size() const { return executables_.size(); }
+  const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
+  const std::string& function_name() const { return function_name_; }
+  const py::function& python_shard_arg_fallback() const {
+    return python_shard_arg_fallback_;
+  }
+  const std::vector<int>& static_argnums() const { return static_argnums_; }
+
+  // pybind11::object typed subclass for PmapFunction objects.
+  class pyobject : public py::object {
+   public:
+    PYBIND11_OBJECT(pyobject,  // NOLINT
+                    py::object, PmapFunction::IsPmapFunction);
+    pyobject() = default;
+    PmapFunction* func() const {
+      return PmapFunction::AsPmapFunctionUnchecked(*this);
+    }
+  };
+  // Alias as ::object; outside the scope above we won't confuse pybind11's
+  // macros.
+  using object = pyobject;
+
+  py::handle AsPyHandle();
+  // Returns true if `h` is a PmapFunction.
+  static bool IsPmapFunction(py::handle handle);
+  // Converts `handle` to a PmapFunction*. Does not do any checking.
+  static PmapFunction* AsPmapFunctionUnchecked(py::handle handle);
+
+  // Helper function used by the tp_clear GC method.
+  void ClearPythonReferences() {
+    py::function fun, cache_miss, python_shard_arg_fallback;
+    // Swap values for nulls before they are destroyed. See the Python
+    // Py_CLEAR() documentation for a discussion of this topic.
+    std::swap(fun_, fun);
+    std::swap(cache_miss_, cache_miss);
+    std::swap(python_shard_arg_fallback_, python_shard_arg_fallback);
+  }
 
  private:
   void PopulateCacheEntry(PmapCacheEntry* cache_entry,
@@ -228,9 +266,10 @@ class PmapFunction {
 
   bool always_fallback_to_python_ = false;
 
-  const py::function fun_;  // The Python function to pmap.
+  py::function fun_;  // The Python function to pmap.
+  std::string function_name_;
   // See JAX _cpp_pmap in api.py for documentation.
-  const py::function cache_miss_;
+  py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyExecutable. In sorted order.
@@ -482,12 +521,12 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   flat_sharded_device_arrays.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     const ResultSpec& result_spec = output_specs[i];
-    flat_sharded_device_arrays.push_back(py::cast(
-        ShardedDeviceArray(/*aval=*/result_spec.out_aval,
-                           /*sharding_spec=*/result_spec.out_spec,
-                           /*device_buffers=*/py::cast(std::move(outputs[i])),
-                           /*indices=*/result_spec.out_indices,
-                           /*weak_type=*/result_spec.weak_type)));
+    flat_sharded_device_arrays.push_back(ShardedDeviceArray::Make(
+        /*aval=*/result_spec.out_aval,
+        /*sharding_spec=*/result_spec.out_spec,
+        /*device_buffers=*/py::cast(std::move(outputs[i])),
+        /*indices=*/result_spec.out_indices,
+        /*weak_type=*/result_spec.weak_type));
   }
   py::object out =
       cache_entry->out_pytree_def.Unflatten(flat_sharded_device_arrays);
@@ -496,11 +535,184 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   absl::optional<py::object> post_hook =
       tls.post_hook.has_value() ? tls.post_hook : global_state.post_hook;
   if (post_hook) {
-    (*post_hook)(py::cast(*this), args, kwargs, out);
+    (*post_hook)(this->AsPyHandle(), args, kwargs, out);
   }
 
   return out;
 }
+
+struct JaxPmapFunctionObject {
+  PyObject_HEAD;
+  PyObject* dict;      // Dictionary for __dict__
+  PyObject* weakrefs;  // Weak references; for use by the Python interpreter.
+  PmapFunction fun;
+};
+
+PyObject* JaxPmapFunction_Type = nullptr;
+
+bool PmapFunction::IsPmapFunction(py::handle handle) {
+  return handle.get_type() == JaxPmapFunction_Type;
+}
+
+PmapFunction* PmapFunction::AsPmapFunctionUnchecked(py::handle handle) {
+  return &(reinterpret_cast<JaxPmapFunctionObject*>(handle.ptr())->fun);
+}
+
+xla::StatusOr<PmapFunction*> AsPmapFunction(py::handle handle) {
+  if (!PmapFunction::IsPmapFunction(handle)) {
+    return xla::InvalidArgument("Expected a PmapFunction");
+  }
+  return PmapFunction::AsPmapFunctionUnchecked(handle);
+}
+
+py::handle PmapFunction::AsPyHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(JaxPmapFunctionObject, fun));
+}
+
+namespace {
+
+extern "C" {
+
+PyObject* JaxPmapFunction_tp_new(PyTypeObject* subtype, PyObject* args,
+                                 PyObject* kwds) {
+  JaxPmapFunctionObject* self =
+      reinterpret_cast<JaxPmapFunctionObject*>(subtype->tp_alloc(subtype, 0));
+  if (!self) return nullptr;
+  self->dict = nullptr;
+  self->weakrefs = nullptr;
+  return reinterpret_cast<PyObject*>(self);
+}
+
+void JaxPmapFunction_tp_dealloc(PyObject* self) {
+  PyTypeObject* tp = Py_TYPE(self);
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  if (o->weakrefs) {
+    PyObject_ClearWeakRefs(self);
+  }
+  Py_CLEAR(o->dict);
+  o->fun.~PmapFunction();
+  tp->tp_free(self);
+  Py_DECREF(tp);
+}
+
+int JaxPmapFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  Py_VISIT(o->dict);
+  Py_VISIT(o->fun.fun().ptr());
+  Py_VISIT(o->fun.cache_miss().ptr());
+  return 0;
+}
+
+int JaxPmapFunction_tp_clear(PyObject* self) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  Py_CLEAR(o->dict);
+  o->fun.ClearPythonReferences();
+  return 0;
+}
+
+// Implements the Python descriptor protocol so PMAP-compiled functions can be
+// used as bound methods. See:
+// https://docs.python.org/3/howto/descriptor.html#functions-and-methods
+PyObject* JaxPmapFunction_tp_descr_get(PyObject* self, PyObject* obj,
+                                       PyObject* type) {
+  if (obj == nullptr || obj == Py_None) {
+    Py_INCREF(self);
+    return self;
+  }
+  return PyMethod_New(self, obj);
+}
+
+// Support d = instance.__dict__.
+PyObject* JaxPmapFunction_get_dict(PyObject* self, void*) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  if (!o->dict) {
+    o->dict = PyDict_New();
+  }
+  Py_XINCREF(o->dict);
+  return o->dict;
+}
+
+int JaxPmapFunction_set_dict(PyObject* self, PyObject* new_dict, void*) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  if (!PyDict_Check(new_dict)) {
+    PyErr_Format(PyExc_TypeError,
+                 "__dict__ must be set to a dictionary, not a '%s'",
+                 Py_TYPE(new_dict)->tp_name);
+    return -1;
+  }
+  Py_INCREF(new_dict);
+  Py_CLEAR(o->dict);
+  o->dict = new_dict;
+  return 0;
+}
+
+static PyGetSetDef JaxPmapFunction_tp_getset[] = {
+    // Having a __dict__ seems necessary to allow !functool.wraps to override
+    // __doc__.
+    {const_cast<char*>("__dict__"), JaxPmapFunction_get_dict,
+     JaxPmapFunction_set_dict, nullptr, nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}};
+
+PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
+                                  PyObject* kwargs) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
+  });
+  py::kwargs py_kwargs;
+  if (kwargs) {
+    py_kwargs = py::reinterpret_borrow<py::kwargs>(kwargs);
+  }
+  try {
+    xla::StatusOr<py::object> out = o->fun.Call(
+        py::reinterpret_borrow<py::args>(args), std::move(py_kwargs));
+    if (!out.ok()) {
+      PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
+      return nullptr;
+    }
+    return out.ValueOrDie().release().ptr();
+  } catch (py::error_already_set& e) {
+    e.restore();
+    return nullptr;
+  } catch (py::cast_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (std::invalid_argument& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  }
+}
+
+void InitializePmapFunction(JaxPmapFunctionObject* cfun, py::function fun,
+                            py::function cache_miss,
+                            std::vector<int> static_argnums,
+                            py::function python_shard_arg_fallback) {
+  new (&cfun->fun) PmapFunction(std::move(fun), std::move(cache_miss),
+                                std::move(static_argnums),
+                                std::move(python_shard_arg_fallback));
+}
+
+}  // extern "C"
+
+py::object MakePmapFunction(py::function fun, py::function cache_miss,
+                            std::vector<int> static_argnums,
+                            py::function python_shard_arg_fallback) {
+  py::object obj = py::reinterpret_steal<py::object>(JaxPmapFunction_tp_new(
+      reinterpret_cast<PyTypeObject*>(JaxPmapFunction_Type), nullptr, nullptr));
+  JaxPmapFunctionObject* buf =
+      reinterpret_cast<JaxPmapFunctionObject*>(obj.ptr());
+  InitializePmapFunction(buf, std::move(fun), std::move(cache_miss),
+                         std::move(static_argnums),
+                         std::move(python_shard_arg_fallback));
+  return obj;
+}
+
+// Version numbers for the pickled representations.
+// Increment these if changing them.
+const int kPmapFunctionPickleVersion = 1;
+
+}  // namespace
 
 void BuildPmapSubmodule(py::module& m) {
   py::module pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
@@ -590,67 +802,107 @@ void BuildPmapSubmodule(py::module& m) {
         return py::int_(hash);
       });
 
-  py::class_<ShardedDeviceArrayBase> sda_base(pmap_lib,
-                                              "ShardedDeviceArrayBase");
-  sda_base.def(py::init<>());
+  TF_CHECK_OK(ShardedDeviceArray::RegisterTypes(pmap_lib));
 
-  py::class_<ShardedDeviceArray, ShardedDeviceArrayBase> sda(
-      pmap_lib, "ShardedDeviceArray");
-  sda.def(py::init<py::object, ShardingSpec, py::list, py::object, bool>(),
-          py::arg("aval"), py::arg("sharding_spec"), py::arg("device_buffers"),
-          py::arg("indices"), py::arg("weak_type"))
-      .def_property_readonly("aval", &ShardedDeviceArray::aval)
-      .def_property_readonly("indices", &ShardedDeviceArray::indices)
-      .def_property_readonly("sharding_spec",
-                             &ShardedDeviceArray::GetShardingSpec)
-      .def_property_readonly("device_buffers",
-                             &ShardedDeviceArray::device_buffers)
-      .def_property("_npy_value", &ShardedDeviceArray::npy_value,
-                    &ShardedDeviceArray::set_npy_value)
-      .def_property("_one_replica_buffer_indices",
-                    &ShardedDeviceArray::one_replica_buffer_indices,
-                    &ShardedDeviceArray::set_one_replica_buffer_indices)
-      .def_property_readonly("shape",
-                             [](const ShardedDeviceArray& self) {
-                               return self.aval().attr("shape");
-                             })
-      .def_property_readonly("dtype",
-                             [](const ShardedDeviceArray& self) {
-                               return self.aval().attr("dtype");
-                             })
-      .def_property_readonly(
-          "size",
-          [](const ShardedDeviceArray& self) {
-            py::tuple shape = py::cast<py::tuple>(self.aval().attr("shape"));
-            int size = 1;
-            for (auto dim : shape) {
-              size *= py::cast<int>(dim);
-            }
-            return size;
-          })
-      .def_property_readonly("ndim",
-                             [](const ShardedDeviceArray& self) {
-                               return py::len(self.aval().attr("shape"));
-                             })
-      .def("delete", &ShardedDeviceArray::Delete);
+  // We need to use heap-allocated type objects because we want to add
+  // additional methods dynamically.
+  py::object cfun;
+  {
+    py::str name = py::str("PmapFunction");
+    py::str qualname = py::str("PmapFunction");
+    PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
+        PyType_Type.tp_alloc(&PyType_Type, 0));
+    // Caution: we must not call any functions that might invoke the GC until
+    // PyType_Ready() is called. Otherwise the GC might see a half-constructed
+    // type object.
+    CHECK(heap_type) << "Unable to create heap type object";
+    heap_type->ht_name = name.release().ptr();
+    heap_type->ht_qualname = qualname.release().ptr();
+    PyTypeObject* type = &heap_type->ht_type;
+    type->tp_name = "PmapFunction";
+    type->tp_basicsize = sizeof(JaxPmapFunctionObject);
+    type->tp_flags =
+        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_HAVE_GC;
+    type->tp_new = JaxPmapFunction_tp_new;
+    type->tp_dealloc = JaxPmapFunction_tp_dealloc;
+    type->tp_dictoffset = offsetof(JaxPmapFunctionObject, dict);
+    type->tp_traverse = JaxPmapFunction_tp_traverse;
+    type->tp_clear = JaxPmapFunction_tp_clear;
+    type->tp_weaklistoffset = offsetof(JaxPmapFunctionObject, weakrefs);
+    type->tp_getset = JaxPmapFunction_tp_getset;
+    type->tp_descr_get = JaxPmapFunction_tp_descr_get;
+    type->tp_call = JaxPmapFunction_tp_call;
+    CHECK_EQ(PyType_Ready(type), 0);
+    JaxPmapFunction_Type = reinterpret_cast<PyObject*>(type);
+    cfun = py::reinterpret_borrow<py::object>(JaxPmapFunction_Type);
+  }
+  py::object cfun_type =
+      py::reinterpret_borrow<py::object>(JaxPmapFunction_Type);
 
-  py::class_<PmapFunction, std::unique_ptr<PmapFunction>> cfun(pmap_lib,
-                                                               "PmapFunction");
-  cfun.def("__call__", &PmapFunction::Call);
-  cfun.def_property_readonly("__signature__", &PmapFunction::PythonSignature);
-  cfun.def_property_readonly("_cache_miss", &PmapFunction::cache_miss);
-  // All private members are only for testing/debugging purposes
-  cfun.def("_cache_size", &PmapFunction::cache_size);
+  // Add PmapFunction to the xla_extension module so it can be pickled.
+  m.attr("PmapFunction") = cfun_type;
+
+  cfun.attr("__signature__") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return fun->PythonSignature();
+      });
+  // Required by `post_hook`.
+  cfun.attr("_cache_miss") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return fun->cache_miss();
+      });
+  cfun.attr("__getstate__") = py::cpp_function(
+      [](const PmapFunction::object& self) {
+        PmapFunction* fn = self.func();
+        py::dict pickle;
+        pickle["version"] = kPmapFunctionPickleVersion;
+        pickle["fun"] = fn->fun();
+        pickle["cache_miss"] = fn->cache_miss();
+        pickle["static_argnums"] = fn->static_argnums();
+        pickle["python_shard_arg_fallback"] = fn->python_shard_arg_fallback();
+        return pickle;
+      },
+      py::is_method(cfun_type));
+  cfun.attr("__setstate__") = py::cpp_function(
+      [](PmapFunction::object& self, const py::dict& pickle) {
+        int version = py::cast<int>(pickle["version"]);
+        if (version != kPmapFunctionPickleVersion) {
+          throw std::invalid_argument(absl::StrFormat(
+              "Invalid PmapFunction pickle version, got %d, expected %d. "
+              "Pickling/Unpickling jitted functions using different JAX "
+              "versions is not supported.",
+              version, kPmapFunctionPickleVersion));
+        }
+        py::function fun = py::cast<py::function>(pickle["fun"]);
+        py::function cache_miss = py::cast<py::function>(pickle["cache_miss"]);
+        std::vector<int> static_argnums =
+            py::cast<std::vector<int>>(pickle["static_argnums"]);
+        py::function python_shard_arg_fallback =
+            py::cast<py::function>(pickle["python_shard_arg_fallback"]);
+
+        InitializePmapFunction(
+            reinterpret_cast<JaxPmapFunctionObject*>(self.ptr()),
+            std::move(fun), std::move(cache_miss), std::move(static_argnums),
+            std::move(python_shard_arg_fallback));
+      },
+      py::is_method(cfun_type));
+
+  // This is only for testing/debugging purposes
+  cfun.attr("_cache_size") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return py::cast<int>(fun->cache_size());
+      });
 
   pmap_lib.def("pmap",
                [](py::function fun, py::function cache_miss,
                   std::vector<int> static_argnums,
-                  py::function python_shard_arg_fallback)
-                   -> std::unique_ptr<PmapFunction> {
-                 return std::make_unique<PmapFunction>(
-                     std::move(fun), std::move(cache_miss),
-                     std::move(static_argnums),
-                     std::move(python_shard_arg_fallback));
+                  py::function python_shard_arg_fallback) -> py::object {
+                 return MakePmapFunction(std::move(fun), std::move(cache_miss),
+                                         std::move(static_argnums),
+                                         std::move(python_shard_arg_fallback));
                });
 }
 
