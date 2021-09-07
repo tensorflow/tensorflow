@@ -116,26 +116,23 @@ class TableConfig(
         `None`.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
-      raise ValueError(
-          f'vocabulary_size must >= 1. '
-          f'Received: {vocabulary_size}.')
+      raise ValueError(f'vocabulary_size must >= 1. '
+                       f'Received: {vocabulary_size}.')
 
     if not isinstance(dimension, int) or dimension < 1:
       raise ValueError(
           f'dimension must be a positive int. Received: {dimension}.')
 
     if (initializer is not None) and (not callable(initializer)):
-      raise ValueError(
-          f'initializer must be callable if specified. '
-          f'Received: {initializer}.')
+      raise ValueError(f'initializer must be callable if specified. '
+                       f'Received: {initializer}.')
     if initializer is None:
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=1 / math.sqrt(dimension))
 
     if combiner not in ('mean', 'sum', 'sqrtn', None):
-      raise ValueError(
-          f'combiner must be "mean", "sum", "sqrtn" or None. '
-          f'Received: {combiner}.')
+      raise ValueError(f'combiner must be "mean", "sum", "sqrtn" or None. '
+                       f'Received: {combiner}.')
 
     if learning_rate is not None and learning_rate_fn is not None:
       raise ValueError('At most one of learning_rate and learning_rate_fn '
@@ -179,9 +176,8 @@ class FeatureConfig(
       ValueError: if `max_sequence_length` non-integer or negative.
     """
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
-      raise ValueError(
-          f'max_sequence_length must be zero or a positive int, '
-          f'got {max_sequence_length}.')
+      raise ValueError(f'max_sequence_length must be zero or a positive int, '
+                       f'got {max_sequence_length}.')
 
     return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
                                              weight_key)
@@ -502,6 +498,7 @@ class AdagradMomentumParameters(_OptimizationParameters):
       momentum: float,
       use_nesterov: bool = False,
       exponent: float = 2,
+      beta2: float = 1,
       initial_accumulator: float = 0.1,
       use_gradient_accumulation: bool = True,
       clip_weight_min: Optional[float] = None,
@@ -515,9 +512,11 @@ class AdagradMomentumParameters(_OptimizationParameters):
 
     Args:
       learning_rate: used for updating embedding table.
-      momentum: a floating point value.  The momentum.
-      use_nesterov: If `True` use Nesterov Momentum. See Sutskever et al., 2013.
-      exponent: Exponent for the preconditioner.
+      momentum: Moving average parameter for the momentum accumulator.
+      use_nesterov: Whether to use the Nesterov variant of momentum. See
+        Sutskever et al., 2013.
+      exponent: Exponent for the Adagrad accumulator.
+      beta2: Moving average parameter for the Adagrad accumulator.
       initial_accumulator: initial accumulator for Adagrad accumulator.
       use_gradient_accumulation: setting this to `False` makes embedding
         gradients calculation less accurate but faster. Please see
@@ -551,6 +550,7 @@ class AdagradMomentumParameters(_OptimizationParameters):
     self.momentum = momentum
     self.use_nesterov = use_nesterov
     self.exponent = exponent
+    self.beta2 = beta2
     self.initial_accumulator = initial_accumulator
 
 
@@ -612,9 +612,8 @@ class ProximalAdagradParameters(_OptimizationParameters):
         clip_gradient_max=clip_gradient_max,
     )
     if initial_accumulator <= 0:
-      raise ValueError(
-          f'Adagrad initial_accumulator must be positive. '
-          f'Received: {initial_accumulator}.')
+      raise ValueError(f'Adagrad initial_accumulator must be positive. '
+                       f'Received: {initial_accumulator}.')
     if l1_regularization_strength < 0.:
       raise ValueError('l1_regularization_strength must be greater than or '
                        'equal to 0. got {}.'.format(l1_regularization_strength))
@@ -1375,9 +1374,8 @@ class TPUEmbedding(object):
       ValueError: if any input is invalid.
     """
     if partition_strategy not in ('div', 'mod'):
-      raise ValueError(
-          f'partition_strategy must be "div" or "mod". '
-          f'Received: {partition_strategy}.')
+      raise ValueError(f'partition_strategy must be "div" or "mod". '
+                       f'Received: {partition_strategy}.')
     self._partition_strategy = partition_strategy
 
     self._profile_data_directory = profile_data_directory
@@ -2203,6 +2201,8 @@ class _AdagradMomentumHandler(_OptimizerHandler):
         self._optimization_parameters.use_nesterov)
     table_descriptor.optimization_parameters.adagrad_momentum.exponent = (
         self._optimization_parameters.exponent)
+    table_descriptor.optimization_parameters.adagrad_momentum.beta2 = (
+        self._optimization_parameters.beta2)
 
   def get_default_slot_variable_names(self, table):
     return AdagradMomentumSlotVariableNames(
