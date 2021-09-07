@@ -11,11 +11,12 @@
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>) {
+func @gemm(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>>, %rhs: memref<4x5xf32>, %output:memref<100xi8>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK-NOT: memref.view
 
+  %lhs_view = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [5, 4] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
   %c0 = constant 0 : index
   %view = memref.view %output[%c0][] : memref<100xi8> to memref<5x5xf32>
 
@@ -37,7 +38,7 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
   // CHECK-SAME: %arg4, CUDA_R_32F, [[LDC]],
   // CHECK-SAME: CUDA_R_32F, [[ALGO]], %arg0
 
-  "lmhlo_gpu.gemm"(%lhs, %rhs, %view) { dot_dimension_numbers = {
+  "lmhlo_gpu.gemm"(%lhs_view, %rhs, %view) { dot_dimension_numbers = {
        lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
        rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
        lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,

@@ -656,7 +656,6 @@ xla_test(
     name = "bef_executable_test",
     srcs = ["bef_executable_test.cc"],
     backends = ["gpu"],
-    tags = ["notap"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",
