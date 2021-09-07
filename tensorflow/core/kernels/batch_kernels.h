@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 
-#include <optional>
-
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -683,6 +683,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
