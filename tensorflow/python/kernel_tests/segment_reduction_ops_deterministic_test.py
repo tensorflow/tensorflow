@@ -34,8 +34,14 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def UsingNonDeterministicSegmentReductions():
-  return bool(int(os.getenv("TF_USE_NONDETERMINISTIC_SEGMENT_REDUCTIONS", "0")))
+def PlatformIsWindows():
+  return os.name == 'nt'
+
+
+def DeterministicSegmentReductionsSupported():
+  # See comment in segment_reduction_ops_gpu_0.cu.cc for why deterministic
+  # segment reduction kernels are disabled on Windows.
+  return not PlatformIsWindows()
 
 
 class SegmentReductionDeterminismExceptionsTest(test.TestCase):
@@ -69,7 +75,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
         for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
           with self.cached_session(force_gpu=True):
             data, segment_ids, _ = self._input(data_type, segment_ids_type)
-            if (UsingNonDeterministicSegmentReductions() and
+            if (not DeterministicSegmentReductionsSupported() and
                 should_throw_for_float):
               with self.assertRaisesRegex(
                   errors_impl.UnimplementedError,
@@ -106,7 +112,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
               continue
             data, segment_ids, num_segments = self._input(
                 data_type, segment_ids_type)
-            if (UsingNonDeterministicSegmentReductions() and
+            if (not DeterministicSegmentReductionsSupported() and
                 (data_type != dtypes.int32) and should_throw_for_float):
               with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                           self._UNSORTED_ERROR_MESSAGE):
@@ -129,7 +135,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
           with self.cached_session(force_gpu=True):
             data, segment_ids, num_segments = self._input(
                 data_type, segment_ids_type)
-            if UsingNonDeterministicSegmentReductions():
+            if not DeterministicSegmentReductionsSupported():
               with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                           self._UNSORTED_ERROR_MESSAGE):
                 result = op(data, segment_ids, num_segments)
@@ -150,7 +156,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
           values, indices, _ = self._input(data_type, segment_ids_type)
           sparse_value = indexed_slices.IndexedSlices(
               values, indices, dense_shape=values.shape)
-          if UsingNonDeterministicSegmentReductions():
+          if not DeterministicSegmentReductionsSupported():
             with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                         self._UNSORTED_ERROR_MESSAGE):
               # convert_to_tensor with IndexedSlices uses unsorted_segment_sum
@@ -174,7 +180,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
             tape.watch(params)
             op_output = array_ops.gather(params, indices)
           gradient = tape.gradient(op_output, params)
-          if UsingNonDeterministicSegmentReductions():
+          if not DeterministicSegmentReductionsSupported():
             with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                         self._UNSORTED_ERROR_MESSAGE):
               # convert_to_tensor on IndexedSlices

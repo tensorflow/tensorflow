@@ -712,11 +712,22 @@ void SegmentReductionFunctor<
   const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
   const Index num_segments = output.size() / input_inner_dim_size;
 
+    bool use_deterministic_kernels =
+#if defined(PLATFORM_WINDOWS)
+        // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
+        // build error.
+        false;
+#else
+        UseDeterministicSegmentReductions() ||
+        (OpDeterminismRequired() &&
+         !ReduceOpIsAssociative<ReductionF, T>::value);
+#endif
+
   // TODO(benbarsdell): If there are no performance concerns with the new
   // deterministic kernels, remove this runtime check and only compile the old
   // non-deterministic kernels on Windows (as a workaround for the build failure
   // issue).
-  if (UseNonDeterministicSegmentReductions()) {
+  if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
     const T InitialValue = InitialValueF()();
@@ -774,8 +785,8 @@ void SegmentReductionFunctor<
             /*indices=*/static_cast<const Index*>(nullptr),
             /*weights=*/static_cast<T*>(nullptr), output.data()));
 #else
-    // Note: Shouldn't reach here because UseNonDeterministicSegmentReductions()
-    // always returns true on Windows.
+    // Note: Shouldn't reach here because use_deterministic_kernels is always
+    // false on Windows.
     OP_REQUIRES(ctx, false,
                 errors::Unimplemented("Deterministic segment reductions are "
                                       "not implemented on Windows."));
@@ -794,8 +805,19 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
       return;
     }
 
+    bool use_deterministic_kernels =
+#if defined(PLATFORM_WINDOWS)
+        // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
+        // build error.
+        false;
+#else
+        UseDeterministicSegmentReductions() ||
+        (!ReduceOpIsAssociative<ReductionF, T>::value &&
+         OpDeterminismRequired());
+#endif
+
     bool determinism_requirement_met =
-        !UseNonDeterministicSegmentReductions() ||
+        use_deterministic_kernels ||
         ReduceOpIsAssociative<ReductionF, T>::value ||
         !OpDeterminismRequired() ||
         DisableSegmentReductionOpDeterminismExceptions();
@@ -819,7 +841,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // deterministic kernels, remove this runtime check and only compile the old
     // non-deterministic kernels on Windows (as a workaround for the build
     // failure issue).
-    if (UseNonDeterministicSegmentReductions()) {
+    if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
       GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
@@ -876,8 +898,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
               /*segment_ids=*/segment_ids_ptr, /*indices=*/sorted_indices_ptr,
               /*weights=*/static_cast<T*>(nullptr), output.data()));
 #else
-      // Note: Shouldn't reach here because
-      // UseNonDeterministicSegmentReductions() always returns true on Windows.
+      // Note: Shouldn't reach here because use_deterministic_kernels is always
+      // false on Windows.
       OP_REQUIRES(
           ctx, false,
           errors::Unimplemented("Deterministic unsorted segment reductions are "

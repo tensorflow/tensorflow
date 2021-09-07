@@ -20,19 +20,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool UseNonDeterministicSegmentReductions() {
+bool UseDeterministicSegmentReductions() {
   // See comment below regarding CI build error on Windows.
 #if !defined(PLATFORM_WINDOWS)
   static bool cached_result = [] {
     bool result = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_USE_NONDETERMINISTIC_SEGMENT_REDUCTIONS",
+        "TF_USE_DETERMINISTIC_SEGMENT_REDUCTIONS",
         /*default_val=*/false, &result));
     return result;
   }();
   return cached_result;
 #else
-  return true;
+  return false;
 #endif
 }
 

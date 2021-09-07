@@ -296,11 +296,22 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(0, output_shape, &output), done);
 
+      bool use_deterministic_kernels =
+#if defined(PLATFORM_WINDOWS)
+          // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows
+          // CI build error.
+          false;
+#else
+          UseDeterministicSegmentReductions() ||
+          (!SegmentReductionFunctor::atomic_reduction_is_associative &&
+           OpDeterminismRequired());
+#endif
+
       // The determinism check is here, rather than inside the functor (as it is
       // for the unsorted segment reduction ops) because the done callback
       // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
       bool determinism_requirement_met =
-          !UseNonDeterministicSegmentReductions() ||
+          use_deterministic_kernels ||
           SegmentReductionFunctor::atomic_reduction_is_associative ||
           !OpDeterminismRequired() ||
           DisableSegmentReductionOpDeterminismExceptions();

@@ -25,7 +25,7 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-bool UseNonDeterministicSegmentReductions();
+bool UseDeterministicSegmentReductions();
 bool DisableSegmentReductionOpDeterminismExceptions();
 
 // Type of SparseSegmentReduction operation to perform gradient of.
