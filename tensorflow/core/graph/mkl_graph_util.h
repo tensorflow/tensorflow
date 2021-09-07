@@ -149,8 +149,8 @@ static const char* const kMklEagerOpPrefix = "_MklEager";
 static const char* const kMklNativeOpPrefix = "_MklNative";
 
 // Map used to store kernel registration status
-thread_local static std::unordered_map<std::string, bool>
-    registered_kernels_map;
+thread_local static auto* registered_kernels_map =
+    new absl::flat_hash_map<string, bool>();
 
 // Get the name of Mkl Native (does not depend on layout propagation) op
 // from original TensorFlow op.
@@ -211,10 +211,10 @@ static inline bool IsMklOp(const string& op_name, DataType T,
   string label = is_native_op ? kMklNameChangeOpLabelPattern
                               : kMklLayoutDependentOpLabelPattern;
   string registered_kernels_key = op_name + label + std::to_string(T);
-  auto kernel_element = registered_kernels_map.find(registered_kernels_key);
+  auto kernel_element = registered_kernels_map->find(registered_kernels_key);
   bool kernel_registered = false;
 
-  if (kernel_element == registered_kernels_map.end()) {
+  if (kernel_element == registered_kernels_map->end()) {
     string kernel = KernelsRegisteredForOp(op_name);
     // String returned by KernelsRegisteredForOp looks like below:
     //
@@ -253,7 +253,7 @@ static inline bool IsMklOp(const string& op_name, DataType T,
         }
       }
     }
-    registered_kernels_map.insert(
+    registered_kernels_map->insert(
         std::make_pair(registered_kernels_key, kernel_registered));
   } else {
     // Kernel is visited at least once. Return stored registration result.
