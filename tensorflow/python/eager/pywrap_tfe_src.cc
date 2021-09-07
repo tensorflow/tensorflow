@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
@@ -3881,15 +3882,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (!status->status.ok()) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
-    std::vector<tensorflow::StackFrame> stack_trace =
-        status->status.stack_trace();
-    status->status = tensorflow::Status(
-        status->status.code(),
-        tensorflow::strings::StrCat(
-            TF_Message(status),
-            " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]"),
-        std::move(stack_trace));
-
+    status->status = tensorflow::errors::CreateWithUpdatedMessage(
+        status->status, tensorflow::strings::StrCat(
+                            TF_Message(status), " [Op:",
+                            TFE_GetPythonString(op_exec_info.op_name), "]"));
     MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;
   }
