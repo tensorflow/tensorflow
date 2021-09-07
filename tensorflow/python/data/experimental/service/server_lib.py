@@ -28,6 +28,22 @@ from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _get_time_or_placeholder(value):
+  """Modifies time-based config values to account for special behaviors."""
+
+  # Servers interpret time values of 0 to mean "choose a reasonable
+  # default". However, the Python API uses `None` for this, and allows 0 as a
+  # normal value. To account for this, if a user explicitly configures the
+  # interval/timeout to 0, we interpret it to mean "a very small number", and
+  # replace it with 1.
+  if value == 0:
+    return 1
+  # `None` indicates that the user wants to leave the behavior to the runtime.
+  if value is None:
+    return 0
+  return value
+
+
 @tf_export("data.experimental.service.DispatcherConfig")
 class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
@@ -77,10 +93,9 @@ class DispatcherConfig(
               job_gc_timeout_ms=None):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
-    if job_gc_check_interval_ms is None:
-      job_gc_check_interval_ms = 10 * 60 * 1000  # 10 minutes.
-    if job_gc_timeout_ms is None:
-      job_gc_timeout_ms = 5 * 60 * 1000  # 5 minutes.
+    job_gc_check_interval_ms = _get_time_or_placeholder(
+        job_gc_check_interval_ms)
+    job_gc_timeout_ms = _get_time_or_placeholder(job_gc_timeout_ms)
     return super(DispatcherConfig,
                  cls).__new__(cls, port, protocol, work_dir,
                               fault_tolerant_mode, worker_addresses,
@@ -261,10 +276,8 @@ class WorkerConfig(
       worker_address = "localhost:%port%"
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
-    if heartbeat_interval_ms is None:
-      heartbeat_interval_ms = 30 * 1000  # 30 seconds
-    if dispatcher_timeout_ms is None:
-      dispatcher_timeout_ms = 60 * 60 * 1000  # 1 hour
+    heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)
+    dispatcher_timeout_ms = _get_time_or_placeholder(dispatcher_timeout_ms)
 
     return super(WorkerConfig,
                  cls).__new__(cls, dispatcher_address, worker_address, port,
