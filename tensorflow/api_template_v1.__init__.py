@@ -14,12 +14,12 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-import distutils as _distutils
 import inspect as _inspect
 import os as _os
 import site as _site
 import six as _six
 import sys as _sys
+import sysconfig as _sysconfig
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -165,8 +165,7 @@ _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if 'sysconfig' in dir(_distutils):
-  _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
+_site_packages_dirs += [_sysconfig.get_path('purelib')]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

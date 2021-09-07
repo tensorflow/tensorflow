@@ -26,13 +26,13 @@ only a placeholder to enable test cases to run. The TensorFlow build replaces
 this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
 """
 
-import distutils as _distutils
 import inspect as _inspect
 import logging as _logging
 import os as _os
 import site as _site
 import six as _six
 import sys as _sys
+import sysconfig as _sysconfig
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
@@ -124,8 +124,7 @@ _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if 'sysconfig' in dir(_distutils):
-  _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
+_site_packages_dirs += [_sysconfig.get_path('purelib')]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 
