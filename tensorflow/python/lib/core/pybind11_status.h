@@ -53,10 +53,11 @@ inline PyObject* TFStatusToPyExc(const TF_Status* status) {
 inline pybind11::dict StatusPayloadToDict(const Status& status) {
   pybind11::dict dict;
   const auto& payloads = errors::GetPayloads(status);
-  for (auto& [payload_key, payload_value] : payloads) {
-    std::string payload_value_string(payload_value);
+  for (auto& payload : payloads) {
+    const auto& payload_key = payload.first;
+    std::string payload_value = std::string(payload.second);
     dict[PyBytes_FromString(payload_key.c_str())] =
-        PyBytes_FromString(payload_value_string.c_str());
+        PyBytes_FromString(payload_value.c_str());
   }
   return dict;
 }
