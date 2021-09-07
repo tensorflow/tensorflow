@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -95,11 +96,34 @@ const string& GetModelName(OpKernelContext* ctx) {
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
 
-static thread::ThreadPool* GetOrCreateBatchThreadsPool(
-    const string& thread_name, int num_batch_threads) {
-  static thread::ThreadPool* pool =
-      new thread::ThreadPool(Env::Default(), thread_name, num_batch_threads);
-  return pool;
+int32 NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
+  int32_t num;
+  const char* val = std::getenv("TF_NUM_BATCH_THREADS");
+
+  return (val && strings::safe_strto32(val, &num)) ? num
+                                                   : default_num_batch_threads;
+}
+
+static thread::ThreadPool* GetOrCreateBatchThreadsPool() {
+  static thread::ThreadPool* shared_thread_pool = [&]() -> thread::ThreadPool* {
+    serving::BoundedExecutor::Options options;
+
+    options.num_threads =
+        NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize);
+
+    options.thread_name = std::string("adaptive_batch_threads");
+
+    auto status_or_executor = serving::BoundedExecutor::Create(options);
+    if (!status_or_executor.ok()) {
+      LOG(WARNING) << "Failed to create a batch threads pool with error "
+                   << status_or_executor.status();
+      return nullptr;
+    }
+    static serving::BoundedExecutor* executor =
+        status_or_executor.ValueOrDie().release();
+    return new thread::ThreadPool(executor);
+  }();
+  return shared_thread_pool;
 }
 
 // A class encapsulating the state and logic for batching tensors.
@@ -283,8 +307,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
       adaptive_shared_batch_scheduler_options.num_batch_threads =
           adaptive_batch_scheduler_options_->max_in_flight_batches_limit;
       adaptive_shared_batch_scheduler_options.thread_pool =
-          GetOrCreateBatchThreadsPool(std::string("adaptive_batch_threads"),
-                                      kBatchThreadPoolSize);
+          GetOrCreateBatchThreadsPool();
       // adaptive_shared_batch_scheduler_options.full_batch_scheduling_boost_micros
       // is 0 (default value) intentionally, so tasks are scheduled in a FIFO
       // way.
@@ -481,6 +504,17 @@ void BatchFunctionKernel::SetAdaptiveBatchSchedulerOptions(
     OP_REQUIRES_OK(c, c->GetAttr(kMaxInflightBatchesAttr,
                                  &options.max_in_flight_batches_limit));
   }
+
+  // At this point, the batch kernel is configured to use adaptive scheduling.
+  // To validate or return error at kernel construction time, invokes
+  // `GetOrCreateBatchThreadsPool` and validates returned `thread_pool` is
+  // valid.
+  // Note`GetOrCreateBatchThreadsPool` creates the thread pool once and
+  // re-uses the thread-pool instance afterwards.
+  thread::ThreadPool* thread_pool = GetOrCreateBatchThreadsPool();
+  OP_REQUIRES(
+      c, thread_pool != nullptr,
+      errors::FailedPrecondition("Failed to create batch threads pool"));
 
   adaptive_batch_scheduler_options_ = options;
 }

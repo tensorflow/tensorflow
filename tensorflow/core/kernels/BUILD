@@ -678,6 +678,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/platform:numbers",
@@ -1609,21 +1610,44 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "batch_kernel_test_util",
+    testonly = 1,
+    srcs = ["batch_kernel_test_util.cc"],
+    hdrs = ["batch_kernel_test_util.h"],
+    deps = [
+        ":batch_kernels",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "batch_kernels_test",
     size = "small",
     srcs = ["batch_kernels_test.cc"],
     deps = [
+        ":batch_kernel_test_util",
         ":batch_kernels",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_env_test",
+    size = "small",
+    srcs = ["batch_kernels_env_test.cc"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
