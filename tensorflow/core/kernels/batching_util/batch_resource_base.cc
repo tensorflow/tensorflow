@@ -128,28 +128,30 @@ void RecordProcessedBatchSizeV2(int32_t batch_size, const string& model_name,
 
 // TODO(b/181883417): Replace with RecordBatchDelayUsV2.
 void RecordBatchDelayUs(int64_t batch_delay_us, const string& model_name,
-                        const string& op_name) {
-  static auto* cell = monitoring::PercentileSampler<2>::New(
+                        const string& op_name, int32_t batch_size) {
+  static auto* cell = monitoring::PercentileSampler<3>::New(
       {"/tensorflow/serving/batching/batch_delay_us",
        "Tracks the batching delay (in microseconds) for inputs by model_name "
        "(if available).",
-       "model_name", "op_name"},
+       "model_name", "op_name", "processed_batch_size"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
-  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
+  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+      ->Add(static_cast<double>(batch_delay_us));
 }
 
 void RecordBatchDelayUsV2(int64_t batch_delay_us, const string& model_name,
-                          const string& op_name) {
-  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+                          const string& op_name, int32_t batch_size) {
+  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
       {"/tensorflow/serving/batching/batch_delay_us_v2",
        "Tracks the batching delay (in microseconds) for inputs by model_name "
        "(if available).",
-       "model_name", "op_name"},
+       "model_name", "op_name", "processed_batch_size"},
       // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
       // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
       monitoring::Buckets::Exponential(1, 2, 27));
-  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
+  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+      ->Add(static_cast<double>(batch_delay_us));
 }
 
 void RecordBatchParamBatchTimeoutMicros(int64_t batch_timeout_micros,
@@ -704,10 +706,11 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   const string& model_name = GetModelName(last_task_context);
   for (int i = 0; i < batch->num_tasks(); ++i) {
     RecordBatchDelayUs((current_time - batch->task(i).start_time) * 1e-3,
-                       model_name,
-                       last_task_context->op_kernel().name_view().data());
+                       model_name, last_task_context->op_kernel().name(),
+                       processed_size);
     RecordBatchDelayUsV2((current_time - batch->task(i).start_time) * 1e-3,
-                         model_name, last_task_context->op_kernel().name());
+                         model_name, last_task_context->op_kernel().name(),
+                         processed_size);
   }
   // Releases the cleanup method here, because the callback of the function
   // library runtime will handle it now.
