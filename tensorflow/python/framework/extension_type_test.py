@@ -52,6 +52,10 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
+POSITIONAL_OR_KEYWORD = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
+KEYWORD_ONLY = tf_inspect.Parameter.KEYWORD_ONLY
+
+
 class MaskedTensorV1(extension_type.ExtensionType):
   """Example subclass of ExtensionType, used for testing."""
   values: ops.Tensor
@@ -226,21 +230,35 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter(
-            'x',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            annotation=ops.Tensor),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
         tf_inspect.Parameter(
             'y',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            POSITIONAL_OR_KEYWORD,
             annotation=tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)),
         tf_inspect.Parameter(
             'z',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            POSITIONAL_OR_KEYWORD,
             annotation=typing.Tuple[typing.Union[int, str], ...],
             default=(1, 'two', 3)),
+    ]
+    expected_sig = tf_inspect.Signature(
+        expected_parameters, return_annotation=MyType)
+    self.assertEqual(expected_sig, tf_inspect.signature(MyType.__init__))
+
+  def testConstructorSignatureWithKeywordOnlyArgs(self):
+
+    class MyType(extension_type.ExtensionType):
+      a: int
+      b: str = 'Hello world'
+      c: ops.Tensor
+
+    expected_parameters = [
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('a', POSITIONAL_OR_KEYWORD, annotation=int),
+        tf_inspect.Parameter(
+            'b', POSITIONAL_OR_KEYWORD, annotation=str, default='Hello world'),
+        tf_inspect.Parameter('c', KEYWORD_ONLY, annotation=ops.Tensor),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=MyType)
@@ -278,7 +296,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     y: typing.Optional[str] = None
     children: typing.Tuple['ExtensionTypeTest.Node', ...] = ()
 
-  def testCustomConstructorWithDefaultValues(self):
+  def testConstructorWithDefaultValues(self):
     a = ExtensionTypeTest.Node(5)
     self.assertAllEqual(a.x, 5)
     self.assertIsNone(a.y)
@@ -293,18 +311,6 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(c.x, 7)
     self.assertIsNone(c.y)
     self.assertEqual(c.children, (a, b))
-
-  def testCustomConstructorNondefaultCanotFollowDefault(self):
-    with self.assertRaisesRegex(
-        ValueError, "Field without default 'd' follows field with default 'c'"):
-
-      class MyType(extension_type.ExtensionType):
-        a: int
-        b: str = 'Hello world'
-        c: typing.Optional[ops.Tensor] = None
-        d: ops.Tensor
-
-      del MyType
 
   def testCustomConstrutorCantMutateNestedValues(self):
 
@@ -792,17 +798,14 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Check the signature.
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
         tf_inspect.Parameter(
             'x',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            POSITIONAL_OR_KEYWORD,
             annotation=typing.Tuple[typing.Union['ForwardRefA', 'ForwardRefB'],
                                     ...]),
         tf_inspect.Parameter(
-            'y',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            annotation='ForwardRefB'),
+            'y', POSITIONAL_OR_KEYWORD, annotation='ForwardRefB'),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=A)
@@ -895,6 +898,60 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'ExtensionTypes must have a __name__ field in order to be packed.'):
       extension_type.pack(mt4)
 
+  def testSubclassing(self):
+
+    class Instrument(extension_type.ExtensionType):
+      name: ops.Tensor
+      weight: ops.Tensor
+      needs_case: bool
+
+    class StringInstrument(Instrument):
+      num_strings: int  # Add a new field
+      needs_case: bool = True  # Override default value.
+
+    class Violin(StringInstrument):
+      maker: ops.Tensor
+      num_strings: int = 4  # Override default value.
+      name: str = 'violin'  # Override field type and default value.
+
+    self.assertEqual(
+        list(
+            tf_inspect.signature(
+                StringInstrument.__init__).parameters.values()), [
+                    tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+                    tf_inspect.Parameter(
+                        'name', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
+                    tf_inspect.Parameter(
+                        'weight', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
+                    tf_inspect.Parameter(
+                        'needs_case',
+                        POSITIONAL_OR_KEYWORD,
+                        annotation=bool,
+                        default=True),
+                    tf_inspect.Parameter(
+                        'num_strings', KEYWORD_ONLY, annotation=int),
+                ])
+    self.assertEqual(
+        list(tf_inspect.signature(Violin.__init__).parameters.values()), [
+            tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+            tf_inspect.Parameter(
+                'name', POSITIONAL_OR_KEYWORD, annotation=str,
+                default='violin'),
+            tf_inspect.Parameter('weight', KEYWORD_ONLY, annotation=ops.Tensor),
+            tf_inspect.Parameter(
+                'needs_case', KEYWORD_ONLY, annotation=bool, default=True),
+            tf_inspect.Parameter(
+                'num_strings', KEYWORD_ONLY, annotation=int, default=4),
+            tf_inspect.Parameter('maker', KEYWORD_ONLY, annotation=ops.Tensor),
+        ])
+
+    violin = Violin(weight=28, maker='Amati')
+    self.assertAllEqual(violin.name, 'violin')
+    self.assertAllEqual(violin.weight, 28)
+    self.assertAllEqual(violin.needs_case, True)
+    self.assertAllEqual(violin.num_strings, 4)
+    self.assertAllEqual(violin.maker, 'Amati')
+
 
 # integration test to test compatibility with high level api like Dataset
 # and Keras
@@ -976,11 +1033,10 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('x', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('y', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('z', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('y', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('z', POSITIONAL_OR_KEYWORD),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=MyType.Spec)

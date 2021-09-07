@@ -170,7 +170,7 @@ class ExtensionType(
       A list of `ExtensionTypeField` objects.  Forward references are resolved
       if possible, or left unresolved otherwise.
     """
-    if cls._tf_extension_type_cached_fields is not None:
+    if '_tf_extension_type_cached_fields' in cls.__dict__:  # do not inherit.
       return cls._tf_extension_type_cached_fields
 
     try:
@@ -584,28 +584,32 @@ def _wrap_user_constructor(cls):
   cls.__init__ = tf_decorator.make_decorator(user_constructor, wrapped_init)
 
 
+_NO_DEFAULT = extension_type_field.ExtensionTypeField.NO_DEFAULT
+
+
 # TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_extension_type_constructor(cls):
   """Builds a constructor for tf.ExtensionType subclass `cls`."""
   fields = cls._tf_extension_type_fields()  # pylint: disable=protected-access
 
-  # Check that no-default fields don't follow default fields.  (Otherwise, we
-  # can't build a well-formed constructor.)
-  default_fields = []
-  for field in fields:
-    if field.default is not extension_type_field.ExtensionTypeField.NO_DEFAULT:
-      default_fields.append(field.name)
-    elif default_fields:
-      raise ValueError(
-          f'In definition for {cls.__name__}: Field without default '
-          f'{field.name!r} follows field with default {default_fields[-1]!r}.  '
-          f'Either add a default value for {field.name!r}, or move it before '
-          f'{default_fields[0]!r} in the field annotations.')
+  # Mark any no-default fields that follow default fields as keyword_only.
+  got_default = False
+  keyword_only_start = len(fields)
+  for i in range(len(fields)):
+    if got_default:
+      if fields[i].default is _NO_DEFAULT:
+        keyword_only_start = i
+        break
+    elif fields[i].default is not _NO_DEFAULT:
+      got_default = True
 
   params = []
-  kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
-  for field in fields:
-    if field.default is extension_type_field.ExtensionTypeField.NO_DEFAULT:
+  for i, field in enumerate(fields):
+    if i < keyword_only_start:
+      kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
+    else:
+      kind = tf_inspect.Parameter.KEYWORD_ONLY
+    if field.default is _NO_DEFAULT:
       default = tf_inspect.Parameter.empty
     else:
       default = field.default
