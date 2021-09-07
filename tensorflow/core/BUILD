@@ -863,6 +863,7 @@ filegroup(
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
+        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
     ] + glob(
         [
             "client/**/*.cc",
@@ -897,7 +898,7 @@ filegroup(
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/nccl:mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/profiler:mobile_srcs_only_runtime",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
         "//tensorflow/core/util/tensor_bundle:mobile_srcs",
