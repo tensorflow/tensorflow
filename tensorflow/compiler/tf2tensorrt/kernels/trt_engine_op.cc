@@ -772,6 +772,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {
       // Add current shape if we did not collect any shapes so far.
       if (!cache_res->profiles_.HasShape()) {
+        VLOG(2) << "Collecting shapes because no shape given so "
+                   "far";
+        OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
+                             dummy_async_helper);
         cache_res->profiles_.AddShape(input_concrete_shapes);
       }
       // Create profiles out of collected shapes during profile generation.

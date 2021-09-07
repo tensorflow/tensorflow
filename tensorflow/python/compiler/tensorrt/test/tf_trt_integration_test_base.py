@@ -1154,7 +1154,7 @@ def _AddTestsFor(test_class, is_v2):
 
 def _AddTests(test_class):
   """Adds test methods to TfTrtIntegrationTestBase."""
-  _AddTestsFor(test_class, is_v2=False)
+  #_AddTestsFor(test_class, is_v2=False)
   _AddTestsFor(test_class, is_v2=True)
 
 

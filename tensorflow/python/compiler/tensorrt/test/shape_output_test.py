@@ -38,7 +38,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     return self.BuildParamsWithMask(self.GraphFn, dtypes.float32,
-                            [[2, 2, 5, 3]], [[4]],
+                            [[1, 2, 5, 3]], [[4]],
                             extra_inputs=[], # [[[1, 1, 2, 3]]],
                             extra_outputs=[], #[[[4]]],
                             input_mask=[[False, False, False, False]],

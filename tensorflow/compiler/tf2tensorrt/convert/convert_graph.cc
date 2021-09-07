@@ -48,9 +48,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
@@ -744,6 +744,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
   for (const auto& node : *(params.output_names)) {
+    VLOG(2) << "Adding output node" << node << " to exclude node list";
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;

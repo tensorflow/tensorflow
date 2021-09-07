@@ -150,6 +150,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       is_shape_tensor_[i] = IsTrtShapeTensorCompatible(ctx->input(i));
     }
   }
+  VLOG(2) << "Running CollectShapeValues";
   int n_shape_val = 0;
   // First copy all the shape value candidates into actual_shape_values_ vector.
   for (int i = 0; i < ctx->num_inputs(); i++) {
@@ -168,6 +169,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       VLOG(2) << "Input " << i << " is (probably) a shape tensor, n_values="
               << input.NumElements();
     } else {
+      VLOG(2) << "Input " << i << " is not a  shape tensor";
       actual_shape_values_[i] = {0, {}};
     }
   }
@@ -509,6 +511,7 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
   int K = n_bindings / n_profiles;
 #endif
   int n_inputs = GetNumberOfEngineInputs(engine);
+  need_profiles_ &= n_inputs > 0;
   VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
           << n_inputs << " inputs";
   SetShapeTensorMask(engine, n_inputs);
