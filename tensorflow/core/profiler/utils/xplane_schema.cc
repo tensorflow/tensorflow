@@ -231,11 +231,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
-<<<<<<< HEAD
-      {"dev_manufacturer", kDevManufacturer},
-=======
       {"device_vendor", kDevVendor},
->>>>>>> google_upstream/master
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},

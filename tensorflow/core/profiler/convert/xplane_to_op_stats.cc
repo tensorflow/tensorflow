@@ -73,13 +73,8 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
       case kDevCapComputeCapMinor:
         cap.mutable_compute_capability()->set_minor(stat.IntValue());
         break;
-<<<<<<< HEAD
-      case kDevManufacturer:
-        cap.set_dev_manufacturer(string(stat.StrOrRefValue()));
-=======
       case kDevVendor:
         cap.set_device_vendor(std::string(stat.StrOrRefValue()));
->>>>>>> google_upstream/master
         break;
     }
   });

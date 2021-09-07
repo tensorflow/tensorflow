@@ -29,12 +29,7 @@ namespace {
 // cycle per streaming multiprocessor.
 // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions__throughput-native-arithmetic-instructions
 uint32 GetFmaMaxThroughputPerSMPerCycle(const DeviceCapabilities& device_cap) {
-<<<<<<< HEAD
-  if (device_cap.dev_manufacturer() == "Nvidia") {
-    // return 128;
-=======
   if (device_cap.device_vendor() == kDeviceVendorNvidia) {
->>>>>>> google_upstream/master
     uint32 n_fp32_cores = 0;
     uint32 n_tc_cores = 0;
     switch (device_cap.compute_capability().major()) {
@@ -83,11 +78,7 @@ uint32 GetFmaMaxThroughputPerSMPerCycle(const DeviceCapabilities& device_cap) {
     // GPU TensorCore can execute 64 FMAs per cycle.
     // https://devblogs.nvidia.com/programming-tensor-cores-cuda-9/
     return n_fp32_cores + n_tc_cores * 64;
-<<<<<<< HEAD
-  } else if (device_cap.dev_manufacturer() == "AMD") {
-=======
   } else if (device_cap.device_vendor() == kDeviceVendorAMD) {
->>>>>>> google_upstream/master
     uint32_t n_xdlops = 0;
     uint32_t n_fp32_cores = 0;
 
@@ -96,20 +87,11 @@ uint32 GetFmaMaxThroughputPerSMPerCycle(const DeviceCapabilities& device_cap) {
     } else {
       n_fp32_cores = 32;
     }
-<<<<<<< HEAD
-    // TODO(rocm-profiler):
-    return n_fp32_cores + n_xdlops * 1;
-  } else {
-    LOG(ERROR) << "Unknown device manufacturer "
-               << device_cap.dev_manufacturer();
-    return {};
-=======
     // TODO(rocm-profiler): verify with new devices
     return n_fp32_cores + n_xdlops * 1;
   } else {
     LOG(ERROR) << "Unknown device vendor " << device_cap.device_vendor();
     return 0;
->>>>>>> google_upstream/master
   }
 }
 
@@ -122,11 +104,7 @@ double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap) {
 }
 
 absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
-<<<<<<< HEAD
-  if (device_cap.dev_manufacturer() == "Nvidia") {
-=======
   if (device_cap.device_vendor() == kDeviceVendorNvidia) {
->>>>>>> google_upstream/master
     switch (device_cap.compute_capability().major()) {
       case 2:
         return "Nvidia GPU (Fermi)";
@@ -147,11 +125,7 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
       default:
         return "Nvidia GPU";
     }
-<<<<<<< HEAD
-  } else if (device_cap.dev_manufacturer() == "AMD") {
-=======
   } else if (device_cap.device_vendor() == kDeviceVendorAMD) {
->>>>>>> google_upstream/master
     switch (device_cap.compute_capability().major()) {
       case 9:
         return "AMD GPU - gfx-9XX series";
@@ -163,13 +137,8 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
         return "AMD GPU";
     }
   } else {
-<<<<<<< HEAD
-    LOG(ERROR) << "Unknown device manufacturer " << device_cap.dev_manufacturer();
-    return {};
-=======
     LOG(ERROR) << "Unknown device vendor " << device_cap.device_vendor();
     return "";
->>>>>>> google_upstream/master
   }
 }
 

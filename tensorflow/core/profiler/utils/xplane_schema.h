@@ -224,11 +224,7 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
-<<<<<<< HEAD
-  kDevManufacturer,
-=======
   kDevVendor,
->>>>>>> google_upstream/master
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,
