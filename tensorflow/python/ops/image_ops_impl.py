@@ -2200,7 +2200,7 @@ def adjust_contrast(images, contrast_factor):
   ...       [4.0, 5.0, 6.0]],
   ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.adjust_contrast(x, 2)
+  >>> tf.image.adjust_contrast(x, 2.)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
   array([[[-3.5, -2.5, -1.5],
           [ 2.5,  3.5,  4.5]],
@@ -4671,7 +4671,7 @@ def crop_and_resize_v2(image,
                        box_indices,
                        crop_size,
                        method='bilinear',
-                       extrapolation_value=0,
+                       extrapolation_value=.0,
                        name=None):
   """Extracts crops from the input image tensor and resizes them.
 
@@ -4717,7 +4717,7 @@ def crop_and_resize_v2(image,
       can be either `"bilinear"` or `"nearest"` and default to `"bilinear"`.
       Currently two sampling methods are supported: Bilinear and Nearest
         Neighbor.
-    extrapolation_value: An optional `float`. Defaults to `0`. Value used for
+    extrapolation_value: An optional `float`. Defaults to `0.0`. Value used for
       extrapolation, when applicable.
     name: A name for the operation (optional).
 

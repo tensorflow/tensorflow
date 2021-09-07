@@ -142,7 +142,7 @@ class DilationTest(test.TestCase):
     image = [[[[.1], [.2], [.3]], [[.4], [.5], [.6]], [[.7], [.8], [.9]]]]
     # [2, 2, 1]
     kernel = [[[.4], [.3]], [[.1], [.2]]]
-    # Because rate = 2, the effective kernel is [3, 3, 1]:
+    # Because rate = 2.0, the effective kernel is [3, 3, 1]:
     # kernel_eff = [[[.4], [.0], [.3]],
     #               [[.0], [.0], [.0]],
     #               [[.1], [.0], [.2]]]
@@ -448,7 +448,7 @@ class ErosionTest(test.TestCase):
     image = [[[[.1], [.2], [.3]], [[.4], [.5], [.6]], [[.7], [.8], [.9]]]]
     # [2, 2, 1]
     kernel = [[[.4], [.3]], [[.1], [.2]]]
-    # Because rate = 2, the effective kernel is [3, 3, 1]:
+    # Because rate = 2.0, the effective kernel is [3, 3, 1]:
     # kernel_eff = [[[.4], [.0], [.3]],
     #               [[.0], [.0], [.0]],
     #               [[.1], [.0], [.2]]]
