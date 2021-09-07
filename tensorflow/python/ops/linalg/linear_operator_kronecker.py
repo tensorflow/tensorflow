@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -52,7 +54,10 @@ def _unvec_by(y, num_col):
 
 def _rotate_last_dim(x, rotate_right=False):
   """Rotate the last dimension either left or right."""
-  ndims = array_ops.rank(x)
+  if x.shape.ndims is not None:
+    ndims = x.shape.ndims
+  else:
+    ndims = array_ops.rank(x)
   if rotate_right:
     transpose_perm = array_ops.concat(
         [[ndims - 1], math_ops.range(0, ndims - 1)], axis=0)
@@ -328,8 +333,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       x = linalg.adjoint(x)
 
     # Always add a batch dimension to enable broadcasting to work.
-    batch_shape = array_ops.concat(
-        [array_ops.ones_like(self.batch_shape_tensor()), [1, 1]], 0)
+    batch_shape = self._compute_ones_matrix_shape()
     x += array_ops.zeros(batch_shape, dtype=x.dtype.base_dtype)
 
     # x has shape [B, R, C], where B represent some number of batch dimensions,
@@ -444,8 +448,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       rhs = linalg.adjoint(rhs)
 
     # Always add a batch dimension to enable broadcasting to work.
-    batch_shape = array_ops.concat(
-        [array_ops.ones_like(self.batch_shape_tensor()), [1, 1]], 0)
+    batch_shape = self._compute_ones_matrix_shape()
     rhs += array_ops.zeros(batch_shape, dtype=rhs.dtype.base_dtype)
 
     # rhs has shape [B, R, C], where B represent some number of batch
@@ -593,3 +596,10 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  def _compute_ones_matrix_shape(self):
+    if self.batch_shape.is_fully_defined():
+      batch_shape = self.batch_shape.concatenate([1, 1])
+      return np.ones_like(batch_shape, dtype=np.int32)
+    return array_ops.concat(
+        [array_ops.ones_like(self.batch_shape_tensor()), [1, 1]], 0)

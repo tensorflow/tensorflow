@@ -769,6 +769,10 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   SmallVector<FunctionType, 2> branch_types;
   branch_types.reserve(branches.size());
 
+  if (llvm::any_of(op->getOperands(),
+                   [](Value value) { return value == nullptr; }))
+    return op->emitOpError("operation has null operand");
+
   // Functions have one less operand compared to op as first operand is elided
   // (`cond` of `tf.If` and `branch_index` of `tf.Case`).
   TypeRangeWithDesc input{op->getOperands().drop_front().getTypes(), "input"};

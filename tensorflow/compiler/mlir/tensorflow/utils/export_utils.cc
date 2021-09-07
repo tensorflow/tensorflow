@@ -289,8 +289,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   llvm::SmallString<64> op_name;
   if (IsLegacyCallInstruction(inst)) {
     // The op_name is the name of the function.
-    op_name.append(
-        inst->getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference());
+    op_name.append(inst->getAttrOfType<mlir::SymbolRefAttr>("f")
+                       .getLeafReference()
+                       .getValue());
     // Remove the attribute from the instruction as it is already converted to
     // op_name.
     auto attr_id = mlir::Identifier::get("f", inst->getContext());

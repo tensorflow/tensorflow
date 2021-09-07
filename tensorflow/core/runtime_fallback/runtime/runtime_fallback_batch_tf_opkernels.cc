@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/platform/random.h"
@@ -166,19 +167,10 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
           tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
     }
 
-    // If shared_name is not supplied, use function name instead (prevent
-    // collisions by default).
-    if (shared_name_.empty()) {
-      shared_name_ = bef_func_->name().str();
-      VLOG(1) << "BatchFunctionFallbackKernel(" << this
-              << ") updated the empty shared_name to BEF function name: \""
-              << shared_name_ << "\"";
-    } else {
-      VLOG(1) << "BatchFunctionFallbackKernel(" << this
-              << ") shared_name attribute: \"" << shared_name_ << "\"";
-    }
+    DCHECK(!shared_name_.empty());
     VLOG(1) << "BatchFunctionFallbackKernel(" << this
             << ") container attribute: \"" << container_
+            << "\", shared_name attribute: \"" << shared_name_
             << "\", batching_queue attribute: \"" << batcher_queue_ << "\"";
 
     if (c->HasAttr("enable_large_batch_splitting")) {

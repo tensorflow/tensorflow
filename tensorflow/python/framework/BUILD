@@ -764,6 +764,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(
@@ -1999,6 +2000,7 @@ tf_python_pybind_extension(
     module_name = "_errors_test_helper",
     deps = [
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/strings:cord",
         "@pybind11",
     ],
 )

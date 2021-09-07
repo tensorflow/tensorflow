@@ -62,16 +62,16 @@ def get_base_dirs_and_prefixes(code_url_prefix):
   if distutils.version.LooseVersion(tf.__version__) >= "2.6":
     code_url_prefixes = (
         code_url_prefix,
-        "https://github.com/keras-team/keras/tree/master/keras",
-        "https://github.com/keras-team/keras-preprocessing/tree/master/keras_preprocessing",
-        "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+        f"https://github.com/keras-team/keras/tree/v{keras.__version__}/keras",
+        f"https://github.com/keras-team/keras-preprocessing/tree/{keras_preprocessing.__version__}/keras_preprocessing",
+        f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
         "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
     )
   else:
     code_url_prefixes = (
         code_url_prefix,
-        "https://github.com/keras-team/keras-preprocessing/tree/master/keras_preprocessing",
-        "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+        f"https://github.com/keras-team/keras-preprocessing/tree/{keras_preprocessing.__version__}/keras_preprocessing",
+        f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
         "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
     )
 

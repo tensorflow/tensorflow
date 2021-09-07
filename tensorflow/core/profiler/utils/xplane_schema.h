@@ -57,6 +57,10 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
+// GPU device vendors.
+TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
+TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
+
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
   kFirstHostEventType = 0,
@@ -220,7 +224,11 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+<<<<<<< HEAD
   kDevManufacturer,
+=======
+  kDevVendor,
+>>>>>>> google_upstream/master
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,

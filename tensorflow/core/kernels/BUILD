@@ -965,6 +965,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
+    "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//third_party/eigen3",
 ]
 
@@ -4738,7 +4739,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     prefix = "sparse_concat_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -6183,6 +6187,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
         "//tensorflow/core/kernels/data:finalize_dataset_op.h",
+        "//tensorflow/core/kernels/data:filter_dataset_op.h",
         "//tensorflow/core/kernels/data:flat_map_dataset_op.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
         "//tensorflow/core/kernels/data:take_dataset_op.h",
@@ -6535,6 +6540,7 @@ filegroup(
         "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
+        "//tensorflow/core/kernels/data:filter_dataset_op.cc",
         "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
         "//tensorflow/core/kernels/data:flat_map_dataset_op.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",

@@ -106,9 +106,15 @@ namespace wrap {
   __macro(hipMemcpyHtoD)                            \
   __macro(hipMemcpyHtoDAsync)                       \
   __macro(hipMemset)                                \
+<<<<<<< HEAD
   __macro(hipMemsetD8)                             \
   __macro(hipMemsetD16)                             \
   __macro(hipMemsetD32)                              \
+=======
+  __macro(hipMemsetD8)                              \
+  __macro(hipMemsetD16)                             \
+  __macro(hipMemsetD32)                             \
+>>>>>>> google_upstream/master
   __macro(hipMemsetAsync)                           \
   __macro(hipMemsetD8Async)                         \
   __macro(hipMemsetD16Async)                        \
@@ -122,7 +128,7 @@ namespace wrap {
   __macro(hipSetDevice)                             \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamCreateWithFlags)                 \
-  __macro(hipStreamCreateWithPriority)		    \
+  __macro(hipStreamCreateWithPriority)              \
   __macro(hipStreamDestroy)                         \
   __macro(hipStreamQuery)                           \
   __macro(hipStreamSynchronize)                     \

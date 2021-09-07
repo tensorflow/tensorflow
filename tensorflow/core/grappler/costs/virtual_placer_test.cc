@@ -111,7 +111,7 @@ TEST(VirtualPlacerTest, PlacementOnNonDefaultDevice) {
 TEST(VirtualPlacerTest, EmptyJobName) {
   // Virtual placer choose job name from the devices in cluster if a device name
   // of an op is empty. In case there are more than one kind of job name
-  // or job names are missin in the devices in cluster, we use local_host.
+  // or job names are missing in the devices in cluster, we use local_host.
   for (const string& job_name : {"localhost", "worker", "worker_train"}) {
     std::unordered_map<string, DeviceProperties> devices;
     DeviceProperties cpu_device;

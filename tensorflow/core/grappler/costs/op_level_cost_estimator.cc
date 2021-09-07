@@ -1008,7 +1008,7 @@ int64_t OpLevelCostEstimator::CountConv2DOperations(
   DCHECK(op_info.op() == kConv2d || op_info.op() == kDepthwiseConv2dNative)
       << "Invalid Operation: not Conv2D nor DepthwiseConv2dNative";
 
-  if (op_info.inputs_size() < 2) {  // Unexpect inputs.
+  if (op_info.inputs_size() < 2) {  // Unexpected inputs.
     *found_unknown_shapes = true;
     return 0;
   }
@@ -2566,7 +2566,7 @@ Status OpLevelCostEstimator::PredictResizeBilinear(
   const auto ceil_cost = EIGEN_COST(scalar_ceil_op<float>);
 #undef EIGEN_COST
 
-  // Ops calcualted from tensorflow/core/kernels/image/resize_bilinear_op.cc.
+  // Ops calculated from tensorflow/core/kernels/image/resize_bilinear_op.cc.
 
   // Op counts taken from resize_bilinear implementation on 07/21/2020.
   // Computed op counts may become inaccurate if resize_bilinear implementation
@@ -2604,7 +2604,7 @@ Status OpLevelCostEstimator::PredictResizeBilinear(
     // Ops for LegacyScaler.
     interp_weight_cost += cast_to_float_cost + mul_cost;
   }
-  // Cost for the interpolation is multipled by (H2 + w2), as mentioned above.
+  // Cost for the interpolation is multiplied by (H2 + w2), as mentioned above.
   ops += interp_weight_cost * (output_height + output_width);
 
   // Ops for computing the new values, done for every element. Logic is from

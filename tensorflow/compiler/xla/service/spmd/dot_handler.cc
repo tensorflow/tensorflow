@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/spmd/convolution_handler.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
@@ -385,21 +386,69 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64_t rhs_batch_partitions, int64_t lhs_contracting_partitions,
     int64_t lhs_non_contracting_partitions, int64_t lhs_batch_partitions,
     int64_t rhs_shape_size, int64_t lhs_shape_size, int64_t output_shape_size,
-    int64_t einsum_threshold_mib,
+    const SpmdPartitionerOptions& options,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_lhs,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_rhs,
     const HloSharding& lhs_sharding, const HloSharding& rhs_sharding,
-    const HloInstruction* lhs = nullptr, const HloInstruction* rhs = nullptr) {
-  // Hard limit on iteration count based on empirical data (above this amount
-  // there's pretty significant overhead).
-  const int64_t kPartitionLimit = 32;
-  if (num_partitions >= kPartitionLimit) {
+    int64_t max_iterations = INT64_MAX,
+    const HloInstruction* original_hlo = nullptr) {
+  if (num_partitions >= max_iterations) {
     return absl::nullopt;
   }
+  const HloInstruction* lhs = nullptr;
+  const HloInstruction* rhs = nullptr;
+  if (original_hlo) {
+    lhs = original_hlo->operand(0);
+    rhs = original_hlo->operand(1);
+  }
+  // Determine if any of the users users have the same shardings that can allow
+  // reuse of the resharding for the operand with original_hlo.
+  auto check_users_sharding = [original_hlo](
+                                  const HloInstruction* to_loop_over) {
+    if (to_loop_over->users().size() <= 1) {
+      return true;
+    }
+    constexpr int kAggressiveness = 3;
+    absl::optional<HloSharding> original_ideal_sharding =
+        ShardingPropagation::GetShardingFromUser(*to_loop_over, *original_hlo,
+                                                 kAggressiveness,
+                                                 /*is_spmd=*/true);
+    // Default to perform collective matmul if GetShardingFromUser() couldn't
+    // determine the sharding.
+    if (!original_ideal_sharding) {
+      return true;
+    }
+    for (const HloInstruction* user : to_loop_over->users()) {
+      if (user == original_hlo) {
+        continue;
+      }
+      absl::optional<HloSharding> from_user =
+          ShardingPropagation::GetShardingFromUser(*to_loop_over, *user,
+                                                   kAggressiveness,
+                                                   /*is_spmd=*/true);
+      // Could't determine sharding. Skip to next one and pretend it wouldn't
+      // share the resharding.
+      if (!from_user) {
+        continue;
+      }
+      // This user doesn't require resharding, so even if has different sharding
+      // than original_hlo its ok to do collective matmul.
+      if (*from_user == to_loop_over->sharding()) {
+        continue;
+      }
+      // Same sharding needed, so we would share the resharding. Do not do
+      // collective matmul.
+      if (*original_ideal_sharding == *from_user) {
+        return false;
+      }
+    }
+    return true;
+  };
   if (output_lhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      rhs_shape_size >= einsum_threshold_mib * 1024 * 1024 &&
-      (!rhs || rhs->users().size() == 1)) {
+      rhs_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      (!rhs || check_users_sharding(rhs))) {
     if (rhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -424,8 +473,9 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      lhs_shape_size >= einsum_threshold_mib * 1024 * 1024 &&
-      (!lhs || lhs->users().size() == 1)) {
+      lhs_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      (!lhs || check_users_sharding(lhs))) {
     if (lhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
@@ -452,7 +502,8 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       lhs_contracting_partitions == num_partitions &&
       (output_lhs_non_contracting_partitions == num_partitions ||
        output_rhs_non_contracting_partitions == num_partitions) &&
-      output_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      output_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024) {
     if (output_lhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -1570,6 +1621,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
     return result;
   };
+  // Hard limit on iteration count based on empirical data (above this amount
+  // there's pretty significant overhead).
+  constexpr int64_t kMaxIterations = 32;
   absl::optional<WindowedEinsumConfig> e_config =
       GetWindowedEinsumConfiguration(
           num_partitions, output_lhs_non_contracting_partitions,
@@ -1578,11 +1632,10 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           lhs_contracting_partitions, lhs_non_contracting_partitions,
           lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
           ShapeSizeInBytes(lhs.base_shape()),
-          ShapeSizeInBytes(output_base_shape),
-          options.threshold_for_windowed_einsum_mib,
+          ShapeSizeInBytes(output_base_shape), options,
           output_sharding_transposed_to_match_lhs,
           output_sharding_transposed_to_match_rhs, lhs_sharding, rhs_sharding,
-          original_hlo->operand(0), original_hlo->operand(1));
+          kMaxIterations, original_hlo);
   if (e_config) {
     return emit_windowed_dot_general(*e_config);
   }
@@ -2619,8 +2672,7 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
                 matching_non_contracting_partitions,
             ShapeSizeInBytes(
                 GetPerGroupBaseShape(output_grouped, output_base_shape)),
-            options.threshold_for_windowed_einsum_mib,
-            output_sharding_transposed_to_match_matching,
+            options, output_sharding_transposed_to_match_matching,
             output_sharding_transposed_to_match_other,
             matching_grouped.sharding, other_grouped->sharding);
     return e_config ? new_num_partitions
@@ -2773,8 +2825,7 @@ bool PrioritizeContractingDimensionsPartitioning(
           lhs_non_contracting_partitions, lhs_batch_partitions,
           ShapeSizeInBytes(GetPerGroupBaseShape(rhs_grouped, rhs.base_shape())),
           ShapeSizeInBytes(GetPerGroupBaseShape(lhs_grouped, lhs.base_shape())),
-          ShapeSizeInBytes(inner_output_base_shape),
-          options.threshold_for_windowed_einsum_mib,
+          ShapeSizeInBytes(inner_output_base_shape), options,
           output_sharding_transposed_to_match_lhs,
           output_sharding_transposed_to_match_rhs, lhs_grouped.sharding,
           rhs_grouped.sharding);

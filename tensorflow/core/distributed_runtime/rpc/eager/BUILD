@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -16,8 +16,7 @@ cc_library(
     deps = [
         "//tensorflow/core/protobuf:eager_service_proto_cc",
         "//tensorflow/stream_executor/platform",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -35,8 +34,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -54,8 +52,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 tf_cc_test(

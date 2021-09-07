@@ -29,6 +29,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/google/xla/mlir/...",
         "//learning/brain/mlir/...",
+        "//learning/pathways/data_parallel/serving/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/...",
         "//platforms/xla/...",
@@ -150,6 +151,10 @@ cc_library(
     name = "init_mlir",
     srcs = ["init_mlir.cc"],
     hdrs = ["init_mlir.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",

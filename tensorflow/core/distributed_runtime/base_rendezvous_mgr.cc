@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -260,7 +261,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -311,7 +312,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
+  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.

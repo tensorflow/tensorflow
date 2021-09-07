@@ -90,16 +90,14 @@ static ParseResult parseKNFBExecThinOp(OpAsmParser &parser,
 }
 
 static void print(OpAsmPrinter &p, ExecuteOp op) {
-  p << "tfrt_fallback_sync.executeop " << op->getAttr("op_name") << '('
-    << op.operands() << ')';
+  p << " " << op->getAttr("op_name") << '(' << op.operands() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
 static void print(OpAsmPrinter &p, KNFBExecThinOp op) {
-  p << "tfrt_fallback_sync.knfb_exec_thin " << op->getAttr("op_name") << '('
-    << op.operands() << ')';
+  p << " " << op->getAttr("op_name") << '(' << op.operands() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   if (!op.results().empty()) p << " : " << op.results().size();

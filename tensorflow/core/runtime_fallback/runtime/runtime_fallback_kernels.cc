@@ -144,7 +144,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
         host, tfrt::StrCat("error getting rank from TF tensor handle: ",
                            status.error_message()));
 
-  SmallVector<ssize_t, 4> dims;
+  SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
     int64_t dim;
     status = th->Dim(i, &dim);
@@ -318,7 +318,7 @@ static void TfdInitEagerContext(Argument<Chain> in_chain,
 }
 
 OwnedTFTensor MoveDHTToTFTensor(DenseHostTensor&& dht, HostContext* host) {
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   dht.shape().GetDimensions(&dims);
 
   HostBuffer* host_buffer = dht.ReleaseBuffer().release();

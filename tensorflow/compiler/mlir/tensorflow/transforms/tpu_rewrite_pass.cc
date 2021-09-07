@@ -131,7 +131,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     if (clone.getName() == entry_func.getName()) {
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
-      clone.setName("main");
+      clone.setName(StringAttr::get(clone.getContext(), "main"));
       clone.setPublic();
     } else {
       clone.setPrivate();

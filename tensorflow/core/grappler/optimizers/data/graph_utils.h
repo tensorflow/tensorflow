@@ -176,6 +176,17 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
                                   const MutableGraphView& graph_view);
 
+// Copies the attributes `output_shapes`, `output_types` from node `from` to
+// node `to_node` if they exist. The method will return `true` if attributes
+// copied successfully, otherwise it will return `false`.
+//
+// Some tf.data transformations set `Toutput_types` instead of `output_types`
+// when the attribute describes type of tensor inputs (e.g. TensorDataset,
+// TensorSliceDataset, and PaddedBatchDataset). In this case the method copies
+// the attribute `Toutput_types` of node `from` to the attribute `output_types`
+// of node `to_node`.
+bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node);
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

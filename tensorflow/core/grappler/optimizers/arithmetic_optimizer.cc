@@ -2713,8 +2713,8 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
 
     if (NumNonControlOutputs(*tile, *ctx().node_map) != 1) {
       // Optimization is only worthwile when there is a single output from Tile.
-      // Otherwise, we need to insert addtional Reshape ops that can't be easily
-      // removed.
+      // Otherwise, we need to insert additional Reshape ops that can't be
+      // easily removed.
       return Status::OK();
     }
 
@@ -2757,7 +2757,7 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
     }
 
     // At this point the graph is validated and can be updated
-    // Note: We can assume shape/multiples are DT_INT32 ony at this point since
+    // Note: We can assume shape/multiples are DT_INT32 only at this point since
     // they're checked in CreateUpdated*Proto()
 
     // 1. Create the constant nodes used by the new Reshape/Tile nodes

@@ -365,6 +365,12 @@ def _parse_service(service):
   return (protocol, address)
 
 
+def _decide_compression(compression, data_transfer_protocol):
+  if compression == COMPRESSION_AUTO and data_transfer_protocol is not None:
+    return COMPRESSION_NONE
+  return compression
+
+
 def _distribute(processing_mode,
                 service,
                 job_name=None,
@@ -436,8 +442,8 @@ def _distribute(processing_mode,
     raise ValueError(
         "Invalid compression argument: {}. Must be one of {}".format(
             compression, valid_compressions))
-  if compression == COMPRESSION_AUTO and data_transfer_protocol is not None:
-    compression = COMPRESSION_NONE
+  compression = _decide_compression(compression, data_transfer_protocol)
+
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
     dataset_id = _register_dataset(service, dataset, compression=compression)
     return _from_dataset_id(
@@ -757,7 +763,7 @@ def _register_dataset(service, dataset, compression):
 
 
 @tf_export("data.experimental.service.register_dataset")
-def register_dataset(service, dataset):
+def register_dataset(service, dataset, compression="AUTO"):
   """Registers a dataset with the tf.data service.
 
   `register_dataset` registers a dataset with the tf.data service so that
@@ -791,14 +797,18 @@ def register_dataset(service, dataset):
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
+    compression: (Optional.) How to compress the dataset's elements before
+      transferring them over the network. "AUTO" leaves the decision of how to
+      compress up to the tf.data service runtime. `None` indicates not to
+      compress.
 
   Returns:
     A scalar int64 tensor of the registered dataset's id.
   """
-  return _register_dataset(service, dataset, compression="AUTO")
+  return _register_dataset(service, dataset, compression)
 
 
 def _from_dataset_id(processing_mode,
@@ -921,6 +931,7 @@ def _from_dataset_id(processing_mode,
     element_spec = coder.decode_proto(struct_pb)
 
   # If we compress, the data service side dataset will produce scalar variants.
+  compression = _decide_compression(compression, data_transfer_protocol)
   data_service_element_spec = (
       tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
       if compression == COMPRESSION_AUTO else element_spec)

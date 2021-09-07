@@ -377,6 +377,34 @@ struct PostorderDFSVisitor {
     return false;
   }
 
+  // Checks the size of outputs and inputs. Returns true if any of them has size
+  // beyond kLargeShapeElementLimit and the instruction needs evaluation (e.g.,
+  // kGetDimensionSize or kSetDimensionSize doesn't need evaluation).
+  bool IsInstructionOverLimit(const HloInstructionProto* proto,
+                              InferenceContext context) {
+    Shape subshape =
+        ShapeUtil::GetSubshape(Shape(proto->shape()), context.shape_index);
+
+    if (subshape.IsArray() &&
+        ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+      return true;
+    }
+    HloOpcode opcode = StringToHloOpcode(proto->opcode()).ValueOrDie();
+    for (int64_t operand_id : proto->operand_ids()) {
+      const HloInstructionProto* operand =
+          handle_to_instruction(operand_id).ValueOrDie();
+      Shape operand_shape = Shape(operand->shape());
+
+      if (operand_shape.IsArray() &&
+          ShapeUtil::ElementsIn(operand_shape) > kLargeShapeElementLimit &&
+          opcode != HloOpcode::kGetDimensionSize &&
+          opcode != HloOpcode::kSetDimensionSize) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   struct CacheKey {
     CacheKey(int64_t handle, InferenceContext context,
              PostorderDFSNodeType type)
@@ -407,8 +435,8 @@ struct PostorderDFSVisitor {
   absl::flat_hash_map<CacheKey, Literal> evaluated;
   HandleToInstruction handle_to_instruction;
   HandleToComputation handle_to_computation;
-  // Give up when dealing with more than 10k elements.
-  static constexpr int64_t kLargeShapeElementLimit = 100 * 100;
+  // Give up when dealing with more than 1M elements.
+  static constexpr int64_t kLargeShapeElementLimit = 1000 * 1000;
 };
 
 // Returns a result representing that value is fully dynamic and can't be
@@ -606,8 +634,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
   Shape subshape =
       ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
 
-  if (subshape.IsArray() &&
-      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+  if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
                                   PostorderDFSNodeType::kConstantUpperBound);
   }
@@ -767,8 +794,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   Shape subshape =
       ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
-  if (subshape.IsArray() &&
-      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+  if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
                                   PostorderDFSNodeType::kConstantLowerBound);
   }
@@ -845,8 +871,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
   HloOpcode opcode = StringToHloOpcode(root->opcode()).ValueOrDie();
   Shape subshape =
       ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
-  if (subshape.IsArray() &&
-      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+  if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
                                   PostorderDFSNodeType::kConstantValue);
   }
@@ -946,8 +971,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
   VLOG(1) << "Analyzing IsDynamic on " << root->DebugString();
   Shape subshape =
       ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
-  if (subshape.IsArray() &&
-      ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+  if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape, type);
   }
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));

@@ -2809,9 +2809,16 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
                            log->shape(), HloOpcode::kAbs, a));
     auto new_log = computation_->AddInstruction(
         HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, abs_a));
+    auto non_zero_b = computation_->AddInstruction(HloInstruction::CreateBinary(
+        log->shape(), HloOpcode::kMultiply, new_log, b));
+    TF_ASSIGN_OR_RETURN(
+        auto b_is_zero,
+        MakeCompareHlo(Comparison::Direction::kEq, b, MakeScalarLike(b, 0.0)));
+    simplifier_->UpdateLayout(b_is_zero->mutable_shape());
     return ReplaceWithNewInstruction(
-        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
-                                          new_log, b));
+        log, HloInstruction::CreateTernary(log->shape(), HloOpcode::kSelect,
+                                           b_is_zero, MakeScalarLike(log, 0.0),
+                                           non_zero_b));
   }
 
   if (Match(log, m::Log(m::Sqrt(m::Op(&a))))) {
@@ -3748,7 +3755,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {
-    VLOG(10) << "deleting no-op reshape";
+    VLOG(3) << "deleting no-op reshape";
     return ReplaceInstruction(reshape, operand);
   }
 
@@ -5832,8 +5839,6 @@ Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
 }
 
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
-  XLA_VLOG_LINES(2,
-                 "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
   AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations()) {
@@ -5841,8 +5846,6 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2,
-                 "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
   return changed;
 }
 

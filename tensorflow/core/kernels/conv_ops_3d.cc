@@ -599,7 +599,7 @@ struct LaunchConvOp<GPUDevice, T> {
         } else if (CudnnUseFrontend()) {
           // When CuDNN frontend APIs are used, we need to make sure the
           // profiling results are one-to-one mapping of the "plans". So, we
-          // insert dummy results when the excution fails.
+          // insert dummy results when the execution fails.
           results.emplace_back();
           auto& result = results.back();
           result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);

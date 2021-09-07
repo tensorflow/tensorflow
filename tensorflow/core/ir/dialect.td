@@ -61,8 +61,9 @@ def TFGraphDialect : Dialect {
       override;
 
     // Print an operation that belongs to this dialect if unregistered.
-    LogicalResult printOperation(Operation *op,
-                                 OpAsmPrinter &printer) const override;
+    llvm::unique_function<void(Operation *, OpAsmPrinter &)>
+    getOperationPrinter(Operation *op) const override;
+
   private:
     // Cached identifier for efficiency purpose.
     llvm::Optional<Identifier> name_key_;

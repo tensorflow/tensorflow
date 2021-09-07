@@ -11,6 +11,7 @@ py_library(
     srcs = ["cluster_coordinator.py"],
     srcs_version = "PY3",
     deps = [
+        ":coordinator_context",
         ":metric_utils",
         ":utils",
         ":values",
@@ -31,6 +32,15 @@ py_library(
         "//tensorflow/python/eager:remote",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "coordinator_context",
+    srcs = [
+        "coordinator_context.py",
+    ],
+    srcs_version = "PY3",
+    deps = [],
 )
 
 py_library(

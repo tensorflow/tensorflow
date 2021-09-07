@@ -297,6 +297,40 @@ func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
   "lmhlo.terminator"() : () -> ()
 }
 
+// CHECK:      func @all_to_all_split_dimension(
+// CHECK-SAME:   %arg0: !tfrt.chain,
+// CHECK-SAME:   %arg1: !tfrt_gpu.stream,
+// CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg5: !tfrt_gpu.buffer
+// CHECK-SAME: ) -> !tfrt.chain
+func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+  // CHECK-NOT: cast
+  // CHECK-NOT: async.execute
+
+  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: [[HANDLE:%[0-9]+]] = xlir.ccl.create [[CONTEXT]]
+  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.ccl.all_to_all [[HANDLE]],
+  // CHECK-SAME: %arg2, %arg4, ncclFloat32, %arg0
+  // CHECK: [[CHAIN2:%[0-9]+]] = tfrt_gpu.ccl.all_to_all [[HANDLE]],
+  // CHECK-SAME: %arg3, %arg5, ncclFloat32, [[CHAIN1]]
+  // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
+  // CHECK-SAME: [[CHAIN2]]
+
+  "lmhlo.all_to_all"(%operand0, %operand1, %result0, %result1) {
+      replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>,
+      channel_id = {handle = 1 : i64, type = 0 : i64},
+      constrain_layout = false,
+      use_global_device_ids = false,
+      split_dimension = 0
+  } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+
+  // CHECK-NOT: cast
+  // CHECK: tfrt.return [[CHAIN3]] : !tfrt.chain
+  "lmhlo.terminator"() : () -> ()
+}
+
 // CHECK:      func @two_ops(
 // CHECK-SAME:   %arg0: !tfrt.chain,
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,

@@ -512,8 +512,12 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
+  """Gradient for XlaSharding op."""
   sharding_attr = op.get_attr("sharding")
-  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
+  grad_sharding = gen_xla_ops.xla_sharding(
+      grad,
+      sharding=sharding_attr,
+      unspecified_dims=op.get_attr("unspecified_dims"))
   # pylint: disable=protected-access
   grad_sharding.op._set_attr("_XlaSharding",
                              attr_value_pb2.AttrValue(s=sharding_attr))
@@ -530,7 +534,8 @@ def _spmd_full_to_shard_shape_grad(op, grad):
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
       full_shape=op.inputs[0].shape.as_list(),
-      dim=op.get_attr("dim"))
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [s2f]
 
 
@@ -539,7 +544,8 @@ def _spmd_shard_to_full_shape_grad(op, grad):
   f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
-      dim=op.get_attr("dim"))
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [f2s]
 
 

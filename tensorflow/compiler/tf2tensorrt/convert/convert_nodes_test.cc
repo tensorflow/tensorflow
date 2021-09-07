@@ -768,8 +768,7 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   TF_EXPECT_OK(GetInputs(node_def, &inputs));
 
   EXPECT_EQ(4, inputs.size());
-  EXPECT_EQ(inputs[0].tensor()->simple_tensor(),
-            inputs[1].tensor()->simple_tensor());
+  EXPECT_EQ(inputs[0].tensor()->trt_tensor(), inputs[1].tensor()->trt_tensor());
 
   EXPECT_EQ(nvinfer1::DataType::kFLOAT, inputs[0].tensor()->getType());
   EXPECT_EQ(nvinfer1::DataType::kINT32, inputs[2].tensor()->getType());

@@ -562,12 +562,12 @@ func @broadcast_in_dim_ui32(%operand: tensor<5x7x1xui32>) -> tensor<7x10x6x4x5xu
          : (tensor<5x7x1xui32>) -> tensor<7x10x6x4x5xui32>
   return %0 : tensor<7x10x6x4x5xui32>
 }
-// CHECK: unrealized_conversion_cast %{{.*}} : tensor<5x7x1xui32> to tensor<5x7x1xi32>
+// CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<5x7x1xui32> to tensor<5x7x1xi32>
 // CHECK: linalg.init_tensor [7, 10, 6, 4, 5] : tensor<7x10x6x4x5xi32>
 // CHECK: %[[RES:.*]] = linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: i32, %{{.*}}: i32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : i32
-// CHECK: unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
+// CHECK: builtin.unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
 
 // -----
 
@@ -891,7 +891,7 @@ func @convert_ui8_to_f32(%input: tensor<2x2xui8>) -> tensor<2x2xf32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xui8>) -> tensor<2x2xf32>
   return %result : tensor<2x2xf32>
 }
-// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui8> to tensor<2x2xi8>
+// CHECK: builtin.unrealized_conversion_cast %arg0 : tensor<2x2xui8> to tensor<2x2xi8>
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i8, %{{.*}}: f32):
@@ -931,7 +931,7 @@ func @convert_ui32_to_f32(%input: tensor<2x2xui32>) -> tensor<2x2xf32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xui32>) -> tensor<2x2xf32>
   return %result : tensor<2x2xf32>
 }
-// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK: builtin.unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: f32):
@@ -958,7 +958,7 @@ func @convert_ui16_to_i32(%input: tensor<2x2xui16>) -> tensor<2x2xi32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xui16>) -> tensor<2x2xi32>
   return %result : tensor<2x2xi32>
 }
-// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui16> to tensor<2x2xi16>
+// CHECK: builtin.unrealized_conversion_cast %arg0 : tensor<2x2xui16> to tensor<2x2xi16>
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %{{.*}}: i32):
@@ -1025,7 +1025,7 @@ func @convert_ui32_to_i1(%input: tensor<2x2xui32>) -> tensor<2x2xi1> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xui32>) -> tensor<2x2xi1>
   return %result : tensor<2x2xi1>
 }
-// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK: builtin.unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: i1):
@@ -1124,7 +1124,7 @@ func @iota_ui32() -> tensor<7x10xui32> {
 // CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
 // CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
-// CHECK: unrealized_conversion_cast %{{.*}} : tensor<7x10xi32> to tensor<7x10xui32>
+// CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<7x10xi32> to tensor<7x10xui32>
 
 // -----
 
@@ -1168,7 +1168,7 @@ func @dyanmic_iota_ui32(%shape: tensor<?xi32>) -> tensor<?x?x8xui32> {
 // CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : i32
-// CHECK: unrealized_conversion_cast %{{.*}} : tensor<?x?x8xi32> to tensor<?x?x8xui32>
+// CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<?x?x8xi32> to tensor<?x?x8xui32>
 
 // -----
 

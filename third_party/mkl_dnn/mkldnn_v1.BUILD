@@ -105,13 +105,15 @@ _TEXTUAL_HDRS_LIST = glob([
 # Large autogen files take too long time to compile with usual optimization
 # flags. These files just generate binary kernels and are not the hot spots,
 # so we factor them out to lower compiler optimizations in ":dnnl_autogen".
+# Using -O1 to enable optimizations to reduce stack consumption. (With -O0,
+# compiler doesn't clean up stack from temporary objects.)
 cc_library(
     name = "onednn_autogen",
     srcs = glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
-    copts = select({
-        "@org_tensorflow//tensorflow:macos": ["-O0"],
-        "//conditions:default": ["-O1"],
-    }) + ["-U_FORTIFY_SOURCE"] + _COPTS_LIST,
+    copts = [
+        "-O1",
+        "-U_FORTIFY_SOURCE",
+    ] + _COPTS_LIST,
     includes = _INCLUDES_LIST,
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],

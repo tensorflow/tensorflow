@@ -703,6 +703,7 @@ tf_py_test(
     size = "small",
     srcs = ["logging_ops_logging_level_test.py"],
     tags = [
+        "no_oss",  # b/198486357
         "no_windows",
     ],
     deps = [
@@ -1008,7 +1009,10 @@ cuda_py_test(
     name = "segment_reduction_ops_deterministic_test",
     size = "small",
     srcs = ["segment_reduction_ops_deterministic_test.py"],
-    tags = ["no_cuda_asan"],  # b/195247538
+    tags = [
+        "no_cuda_asan",  # b/195247538
+        "no_windows",  # TODO(reedwm): Fix this
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
@@ -1730,7 +1734,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
     shard_count = 20,
-    tags = ["no_cuda_asan"],  # TODO(b/3)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

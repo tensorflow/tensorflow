@@ -825,6 +825,107 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(output_details[0]['dtype'], expected_dtype)
     self.assertEqual(output_details[1]['dtype'], expected_ceil_dtype)
 
+  def _getIntegerQuantizationModelWithControlFlow(self):
+    def true_fn(x):
+      return x
+
+    def false_fn(x):
+      return x
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, 2], dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.bool)
+    ])
+    def model(x, b):
+      x = x + x
+      x = tf.cond(b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
+      return x + x
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(
+                1,
+                2,
+            )).astype(np.float32),
+            tf.constant(True),
+        ]
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(
+                1,
+                2,
+            )).astype(np.float32),
+            tf.constant(False),
+        ]
+
+    return (model, model.get_concrete_function(), calibration_gen)
+
+  @parameterized.named_parameters(
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      # TODO(b/198231624): Support control flow ops in MLIR quantizer
+      # ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      # ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True),
+  )
+  @test_util.run_v2_only
+  def testIntegerQuantizationWithControlFlow(self,
+                                             is_int_only,
+                                             is_int16_quantize,
+                                             inference_input_output_type,
+                                             enable_mlir_quantizer=False):
+    root, func, calib_gen = self._getIntegerQuantizationModelWithControlFlow()
+
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func], root)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calib_gen
+    if is_int_only:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8, lite.OpsSet.TFLITE_BUILTINS
+        ]
+    else:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEqual(input_details[0]['dtype'], expected_dtype)
+    self.assertEqual(input_details[1]['dtype'], dtypes.bool)
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(output_details[0]['dtype'], expected_dtype)
+
   @parameterized.named_parameters(
       ('_BlocklistedNoneWithLowering', None, None, True),
       ('_BlocklistedNoneWithoutLowering', None, None, False),
@@ -1672,8 +1773,23 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
 
+  @parameterized.named_parameters(
+      ('_Default', False, False, dtypes.float32, False),
+      ('_DefaultMlirQuant', False, False, dtypes.float32, True),
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
   @test_util.run_v2_only
-  def testMultipleFunctionQuantizedModel(self):
+  def testMultipleFunctionQuantizedModel(self,
+                                         is_int_only,
+                                         is_int16_quantize,
+                                         inference_input_output_type,
+                                         enable_mlir_quantizer=False):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
     input_data = tf.constant(1., shape=[1])
@@ -1698,7 +1814,25 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    if is_int_only:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    else:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS]
+    converter.inference_input_type = inference_input_output_type
+    converter.inference_output_type = inference_input_output_type
+    converter.experimental_new_quantizer = enable_mlir_quantizer
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
@@ -1717,26 +1851,33 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
 
     # Verify the Signature runner executions.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1,)).astype(
+            inference_input_output_type.as_numpy_dtype))
     add_signature_runner = interpreter.get_signature_runner('add')
     add_output = add_signature_runner(x=input_data)
     self.assertIsNotNone(add_output['output_0'])
     input_details = add_signature_runner.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('add_x:0', input_details['x']['name'])
-    self.assertEqual(np.float32, input_details['x']['dtype'])
+    self.assertStartsWith(input_details['x']['name'], 'add_x:0')
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details['x']['dtype'])
     self.assertTrue(([1] == input_details['x']['shape']).all())
-    self.assertEqual((0.0, 0), input_details['x']['quantization'])
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), input_details['x']['quantization'])
 
     sub_signature_runner = interpreter.get_signature_runner('sub')
     sub_output = sub_signature_runner(x=input_data)
     self.assertIsNotNone(sub_output['output_0'])
     output_details = sub_signature_runner.get_output_details()
     self.assertLen(output_details, 1)
-    self.assertEqual('StatefulPartitionedCall:0',
-                     output_details['output_0']['name'])
-    self.assertEqual(np.float32, output_details['output_0']['dtype'])
+    self.assertStartsWith(output_details['output_0']['name'],
+                          'StatefulPartitionedCall:0')
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details['output_0']['dtype'])
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
-    self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
 
   @test_util.run_v2_only
   def testMultipleFunctionModelWithSharedWeight(self):

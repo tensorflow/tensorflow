@@ -108,7 +108,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // a remote file) with other computation.
 constexpr double kDefaultCyclePrefetchFactor = 2.0L;
 
-// `kPerIteratorPrefetchFactor * block_length + 1` is the defualt number of
+// `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
 // match the behavior of the original implementation.
 constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;
@@ -346,6 +346,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       cancellation_manager_ = absl::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
+      params.interleave_depth += 1;
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
@@ -1029,8 +1030,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
         element->inputs =
             absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+        IteratorContext::Params params(ctx_.get());
+        params.interleave_depth += 1;
+        IteratorContext ctx(params);
         status = MakeIteratorFromInputElement(
-            ctx_.get(), this, *element->inputs, element->id,
+            &ctx, this, *element->inputs, element->id,
             *instantiated_captured_func_, prefix(), &element->iterator,
             model_node());
         if (!status.ok()) {
@@ -1324,8 +1328,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
+        IteratorContext::Params params(ctx);
+        params.interleave_depth += 1;
+        IteratorContext ctx_copy(params);
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-            ctx, this, *element->inputs, element->id,
+            &ctx_copy, this, *element->inputs, element->id,
             *instantiated_captured_func_.get(), prefix(), &iterator,
             model_node()));
       }
