@@ -640,5 +640,32 @@ TEST_F(InstructionFusionTest, GpuIsExpensiveBroadcastS32) {
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rem));
 }
 
+TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] exponential(p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+      << module->ToString();
+}
+
 }  // namespace gpu
 }  // namespace xla
