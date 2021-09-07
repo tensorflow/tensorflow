@@ -35,116 +35,128 @@ namespace {
 
 class Add : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
-    const auto& attr =
-        absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
-    auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-    auto scalar = absl::get_if<float>(&attr.param);
+    absl::Status GenerateCode(const GenerationContext& ctx,
+        GeneratedCode* generated_code) const final {
+        const auto& attr =
+            absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
+        auto adds =
+            absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+        auto scalar = absl::get_if<float>(&attr.param);
 
-    const auto* hwc_tensor =
-        absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+        const auto* hwc_tensor =
+            absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
 
-    if (!adds && !scalar && !hwc_tensor) {
-      // check if it is a broadcast
-      if (ctx.input_shapes.size() == 2 &&
-          ctx.input_shapes[0] != ctx.input_shapes[1] &&
-          ctx.input_shapes[1][1] == 1 && ctx.input_shapes[1][2] == 1 &&
-          ctx.input_shapes[0][3] == ctx.input_shapes[1][3]) {
-        // TODO(b/147771327): investigate why input_data_1[gid.z] worked before
+        if (hwc_tensor) {
+            *generated_code = {
+                /*parameters=*/{},
+                /*objects=*/
+                {{"hwc_buffer",
+                MakeReadonlyObject(
+                    uint3(static_cast<int>(ctx.input_shapes[0][2]),
+                        static_cast<int>(ctx.input_shapes[0][1]),
+                        DivideRoundUp(
+                            static_cast<int>(ctx.input_shapes[0][3]), 4)),
+                    ConvertToPHWC4(
+                        absl::get<Tensor<HWC, DataType::FLOAT32>>(
+                            attr.param)))}},
+                /*shared_variables=*/{},
+                // Declare workload explicitly because shader depends on //
+                // gid.z. //
+                /*workload=*/
+                uint3(static_cast<int>(ctx.input_shapes[0][2]),
+                    static_cast<int>(ctx.input_shapes[0][1]),
+                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]),
+                                                   4)),
+                /*workgroup=*/uint3(),
+                /*source_code=*/"value_0 += "
+                    "$hwc_buffer[gid.x, gid.y, gid.z]$;",
+                /*input=*/IOStructure::AUTO,
+                /*output=*/IOStructure::AUTO,
+            };
+            return absl::OkStatus();
+        }
+
+        if (!adds && !scalar) {
+            // check if it is a broadcast
+            if (ctx.input_shapes.size() == 2 &&
+                ctx.input_shapes[0] != ctx.input_shapes[1] &&
+                ctx.input_shapes[1][1] == 1 &&
+                ctx.input_shapes[1][2] == 1 &&
+                ctx.input_shapes[0][3] == ctx.input_shapes[1][3]) {
+                // TODO(b/147771327): investigate why input_data_1[gid.z]
+                // worked before
+                *generated_code = {
+                    /*parameters=*/{},
+                    /*objects=*/{},
+                    /*shared_variables=*/{},
+                    /*workload=*/uint3(),
+                    /*workgroup=*/uint3(),
+                    /*source_code=*/
+                    "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
+                    "          $input_data_1[0, 0, gid.z]$;",
+                    /*input=*/IOStructure::ONLY_DEFINITIONS,
+                    /*output=*/IOStructure::AUTO,
+                };
+                return absl::OkStatus();
+            }
+
+            std::string code = "value_0 = value_0";
+            for (int index = 1; index < ctx.input_shapes.size(); ++index) {
+                if (ctx.input_shapes[index] != ctx.input_shapes[0]) {
+                    return absl::InvalidArgumentError(
+                        "Shapes are not equal");
+                }
+                absl::StrAppend(&code, " + value_", index);
+            }
+            absl::StrAppend(&code, ";");
+            *generated_code = {
+                /*parameters=*/{},
+                /*objects=*/{},
+                /*shared_variables=*/{},
+                /*workload=*/uint3(),
+                /*workgroup=*/uint3(),
+                /*source_code=*/std::move(code),
+                /*input=*/IOStructure::AUTO,
+                /*output=*/IOStructure::AUTO,
+            };
+            return absl::OkStatus();
+        }
+
+        if (scalar) {
+            *generated_code = {
+                /*parameters=*/{{"scalar", *scalar}},
+                /*objects=*/{},
+                /*shared_variables=*/{},
+                /*workload=*/uint3(),
+                /*workgroup=*/uint3(),
+                /*source_code=*/"value_0 += $scalar$;",
+                /*input=*/IOStructure::AUTO,
+                /*output=*/IOStructure::AUTO,
+            };
+            return absl::OkStatus();
+        }
+
         *generated_code = {
             /*parameters=*/{},
-            /*objects=*/{},
+            /*objects=*/{{"add_buffer", MakeReadonlyObject(adds->data)}},
             /*shared_variables=*/{},
-            /*workload=*/uint3(),
-            /*workgroup=*/uint3(),
-            /*source_code=*/
-            "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
-            "          $input_data_1[0, 0, gid.z]$;",
-            /*input=*/IOStructure::ONLY_DEFINITIONS,
-            /*output=*/IOStructure::AUTO,
+            // Declare workload explicitly because shader depends on gid.z.
+            /*workload=*/
+            uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
+                    DivideRoundUp(ctx.input_shapes[0][3], 4)),
+                    /*workgroup=*/uint3(),
+                    /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
+                    /*input=*/IOStructure::AUTO,
+                    /*output=*/IOStructure::AUTO,
         };
         return absl::OkStatus();
-      }
-
-      std::string code = "value_0 = value_0";
-      for (int index = 1; index < ctx.input_shapes.size(); ++index) {
-        if (ctx.input_shapes[index] != ctx.input_shapes[0]) {
-          return absl::InvalidArgumentError("Shapes are not equal");
-        }
-        absl::StrAppend(&code, " + value_", index);
-      }
-      absl::StrAppend(&code, ";");
-      *generated_code = {
-          /*parameters=*/{},
-          /*objects=*/{},
-          /*shared_variables=*/{},
-          /*workload=*/uint3(),
-          /*workgroup=*/uint3(),
-          /*source_code=*/std::move(code),
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
-      return absl::OkStatus();
     }
-
-    if (scalar) {
-      *generated_code = {
-          /*parameters=*/{{"scalar", *scalar}},
-          /*objects=*/{},
-          /*shared_variables=*/{},
-          /*workload=*/uint3(),
-          /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 += $scalar$;",
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
-    } else if (hwc_tensor) {
-      *generated_code = {
-        /*parameters=*/{},
-        /*objects=*/
-        {{"hwc_buffer",
-          MakeReadonlyObject(
-              uint3(static_cast<int>(ctx.input_shapes[0][2]),
-                    static_cast<int>(ctx.input_shapes[0][1]),
-                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
-              ConvertToPHWC4(
-                  absl::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
-        /*shared_variables=*/{},
-        // Declare workload explicitly because shader depends on gid.z.
-        /*workload=*/
-        uint3(static_cast<int>(ctx.input_shapes[0][2]),
-              static_cast<int>(ctx.input_shapes[0][1]),
-              DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
-        /*workgroup=*/uint3(),
-        /*source_code=*/"value_0 += $hwc_buffer[gid.x, gid.y, gid.z]$;",
-        /*input=*/IOStructure::AUTO,
-        /*output=*/IOStructure::AUTO,
-        };
-    } else {
-      *generated_code = {
-          /*parameters=*/{},
-          /*objects=*/{{"add_buffer", MakeReadonlyObject(adds->data)}},
-          /*shared_variables=*/{},
-          // Declare workload explicitly because shader depends on gid.z.
-          /*workload=*/
-          uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
-                DivideRoundUp(ctx.input_shapes[0][3], 4)),
-          /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
-    }
-
-    return absl::OkStatus();
-  }
 };
 
 }  // namespace
 
 std::unique_ptr<NodeShader> NewAddNodeShader() {
-  return absl::make_unique<Add>();
+    return absl::make_unique<Add>();
 }
 
 }  // namespace gl
