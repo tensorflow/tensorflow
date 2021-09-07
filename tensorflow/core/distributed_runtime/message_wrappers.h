@@ -495,7 +495,6 @@ class MutableRunGraphResponseWrapper {
   virtual void AddPartitionGraph(const GraphDef& partition_graph) = 0;
 
   // Returned status if requested.
-  virtual Status status() const = 0;
   virtual errors::Code status_code() const = 0;
   virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
@@ -529,7 +528,6 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   size_t num_partition_graphs() const override;
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
@@ -563,7 +561,6 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   size_t num_partition_graphs() const override;
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
@@ -591,7 +588,6 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   size_t num_partition_graphs() const override;
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
@@ -645,7 +641,6 @@ class MutableRunStepResponseWrapper {
   virtual RunMetadata* mutable_metadata() = 0;
 
   // Returned status if requested.
-  virtual Status status() const = 0;
   virtual errors::Code status_code() const = 0;
   virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
@@ -677,7 +672,6 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
@@ -707,7 +701,6 @@ class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
@@ -733,7 +726,6 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
-  Status status() const override;
   errors::Code status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
