@@ -50,7 +50,7 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
     DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
                   ->GetDescriptor()
                   ->field_count(),
-              6)
+              7)
         << "The NodeDef format has changed, and the attr-stripping code may "
            "need to be updated.";
   }
