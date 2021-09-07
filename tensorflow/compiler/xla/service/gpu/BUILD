@@ -682,6 +682,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":custom_call_thunk",
         "@llvm-project//llvm:Support",
     ] + if_nccl([
         ":virtual_nccl",

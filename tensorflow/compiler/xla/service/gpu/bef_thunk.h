@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Operation.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -45,6 +46,13 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
 StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions);
+
+// Creates a Thunk that uses TFRT BEF execution to perform CustomCall.
+StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
+    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs,
+    CustomCallThunk::CustomCallTarget call_target);
 
 }  // namespace gpu
 }  // namespace xla

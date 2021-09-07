@@ -15,6 +15,7 @@
 // This file implements the XLIR kernels.
 
 #include "llvm/Support/Error.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
@@ -74,8 +75,67 @@ tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
   return xccl_ctx->ccl_handle.CopyRef();
 }
 
+// TODO(hanbinyoon): Consider using the TFRT_KERNEL_WITH_CHAIN_RESULT macro.
+// This needs visibility to tf_runtime/backends/gpu/lib/kernels/kernels_detail.h
+static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
+    const tfrt::gpu::GpuStream& stream, tfrt::Chain chain,
+    tfrt::RemainingArguments buffers,
+    // Needs to be sorted alphabetically by attribute name!
+    tfrt::ArrayAttr args_to_target_args,
+    tfrt::ArrayAttr results_to_target_results,
+    tfrt::Attribute<int64_t> target_args_count,
+    tfrt::Attribute<int64_t> target_results_count,
+    const tfrt::ExecutionContext& exec_ctx) {
+  auto* custom_call_ctx =
+      exec_ctx.request_ctx()->GetDataIfExists<CustomCallContext>();
+  if (!custom_call_ctx) {
+    return tfrt::MakeErrorAsyncValueRef("Failed to get CustomCallContext.");
+  }
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context());
+  if (!current) {
+    return tfrt::MakeErrorAsyncValueRef(llvm::toString(current.takeError()));
+  }
+
+  const int64_t total_target_params_count =
+      *target_args_count + *target_results_count;
+  llvm::SmallVector<void*, 16> target_buffers;
+  target_buffers.reserve(total_target_params_count);
+
+  if (args_to_target_args.GetNumElements() == 0 &&
+      results_to_target_results.GetNumElements() == 0) {
+    assert(buffers.size() == total_target_params_count);
+    for (const auto& arg : buffers.values()) {
+      assert(arg->IsType<tfrt::gpu::GpuBuffer>());
+      auto pointer = arg->get<tfrt::gpu::GpuBuffer>().pointer();
+      target_buffers.push_back(pointer.raw(current->platform()));
+    }
+  } else {
+    std::fill_n(std::back_inserter(target_buffers), total_target_params_count,
+                nullptr);
+    tfrt::AsyncValue* buffer_ptr = buffers[0];
+    for (auto target_index : args_to_target_args.GetValue<int64_t>())
+      target_buffers[target_index] = buffer_ptr++;
+    for (auto target_index : results_to_target_results.GetValue<int64_t>())
+      target_buffers[*target_args_count + target_index] = buffer_ptr++;
+  }
+
+  XlaCustomCallStatus custom_call_status;
+  custom_call_ctx->call_target(
+      stream.get(), target_buffers.data(), custom_call_ctx->opaque.data(),
+      custom_call_ctx->opaque.size(), &custom_call_status);
+  auto message = CustomCallStatusGetMessage(&custom_call_status);
+  if (message) {
+    return tfrt::MakeErrorAsyncValueRef(
+        absl::StrCat("CustomCall failed: ", *message));
+  }
+
+  return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
+}
+
 void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
+  kernel_reg->AddKernel("xlir.custom_call", TFRT_KERNEL(CustomCall));
 }
 
 namespace kernels {

@@ -1493,6 +1493,8 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   CustomCallThunk::CustomCallTarget custom_call_target;
 
+  // TODO(hanbinyoon): Move this to a location that will serve both
+  // ir_emitter_unnested and BEF Executable.
   // For information about this calling convention, see
   // xla/g3doc/custom_call.md.
   switch (custom_call.api_version()) {
@@ -1522,9 +1524,33 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
                            custom_call.api_version());
   }
 
-  AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-      GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
-      std::move(results), custom_call.backend_config().str()));
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled()) {
+    auto values_to_non_optional_slices = [&](mlir::ValueRange values)
+        -> StatusOr<std::vector<BufferAllocation::Slice>> {
+      std::vector<BufferAllocation::Slice> slices;
+      for (mlir::Value value : values) {
+        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                            GetAllocationSlice(value));
+        slices.push_back(slice);
+      }
+      return slices;
+    };
+
+    TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> inputs,
+                        values_to_non_optional_slices(custom_call.args()));
+    TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> outputs,
+                        values_to_non_optional_slices(custom_call.output()));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefCustomCallThunk(GetThunkInfo(op), op, std::move(inputs),
+                                        std::move(outputs),
+                                        std::move(custom_call_target)));
+  } else {
+    thunk = absl::make_unique<CustomCallThunk>(
+        GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
+        std::move(results), custom_call.backend_config().str());
+  }
+  AddThunkToThunkSequence(std::move(thunk));
   return Status::OK();
 }
 

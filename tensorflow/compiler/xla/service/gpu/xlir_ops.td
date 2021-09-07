@@ -57,4 +57,31 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let results = (outs GPU_CclHandleType);
 }
 
+def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
+  let description = [{
+    xlir.custom_call invokes a host function, supplied in the ExecutionContext
+    (CustomCallContext), using 'buffers' for the purposes of enqueuing
+    operations on the GPU device.
+
+    Optionally specify an 'args_to_target_args' and/or
+    'results_to_target_results' to rearrange 'buffers' supplied to the host
+    function. Example:
+        buffers = [ A, B ]
+        args_to_target_args = [ 0, 2 ]
+        target_args_count = 5
+        (rearranged buffers = [ A, nullptr, B, nulltpr, nullptr ])
+  }];
+  let arguments = (ins GPU_StreamType:$stream, TFRT_ChainType:$chain,
+                   Variadic<GPU_BufferType>:$buffers,
+                   I64ArrayAttr:$args_to_target_args,
+                   I64ArrayAttr:$results_to_target_results,
+                   I64Attr:$target_args_count, I64Attr:$target_results_count);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $chain`,` $buffers`,` $args_to_target_args`,`
+    $results_to_target_results`,` $target_args_count`,` $target_results_count
+    attr-dict
+  }];
+}
+
 #endif  // XLIR_OPS
