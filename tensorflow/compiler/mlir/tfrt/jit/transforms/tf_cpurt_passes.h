@@ -38,6 +38,9 @@ std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialCopyRemovalPass();
 // Pass to tile, promote and vectorize linalg.matmul on buffers.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForMatMulPass();
 
+// Pass to optimize padding in tiled loops by peeling the final loop iteration.
+std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
+
 // Pass to specialize linalg.matmul to dot, matvec or vecmat.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 

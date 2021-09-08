@@ -70,6 +70,14 @@ def LinalgMatmulSpecialization
   }];
 }
 
+def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
+  let summary = "Optimize away padding in tiled loops";
+  let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+  ];
+}
+
 def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
   let summary = "Tile-promote-vectorize linalg.matmul on buffers";
   let constructor = "tensorflow::CreateCodegenStrategyForMatMulPass()";
