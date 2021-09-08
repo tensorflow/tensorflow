@@ -364,7 +364,8 @@ def _parse_service(service):
 
 
 def _decide_compression(compression, data_transfer_protocol):
-  if compression == COMPRESSION_AUTO and data_transfer_protocol is not None:
+  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
+      data_transfer_protocol is not None):
     return COMPRESSION_NONE
   return compression
 
