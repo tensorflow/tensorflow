@@ -105,10 +105,6 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
     value.real.convert(llvm::APFloat::IEEEdouble(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
     return builder.create<tfrt::compiler::ConstantF64Op>(loc, type, value.real);
-  } else if (type.isF16()) {
-    value.real.convert(llvm::APFloat::IEEEhalf(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantF16Op>(loc, type, value.real);
   } else if (type == mlir::ComplexType::get(builder.getF32Type())) {
     value.real.convert(llvm::APFloat::IEEEsingle(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
