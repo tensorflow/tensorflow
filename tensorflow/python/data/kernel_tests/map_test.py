@@ -167,8 +167,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/117581999): add eager coverage
-  @combinations.generate(_test_combinations_with_mode("graph"))
+  @combinations.generate(_test_combinations())
   def testMapDatasetMultiThreaded(self, apply_map):
     # Test multi-threaded access to the same iterator.
     components = (np.arange(7),
@@ -245,10 +244,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/117581999): add eager coverage
   @combinations.generate(
       combinations.times(
-          _test_combinations_with_mode("graph"),
+          _test_combinations(),
           combinations.combine(num_parallel_calls=1, buffer_size=1) +
           combinations.combine(num_parallel_calls=1, buffer_size=2) +
           combinations.combine(num_parallel_calls=2, buffer_size=2) +
