@@ -31,6 +31,7 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import extension_type_field
 from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -835,6 +836,30 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       class MyType2(extension_type.ExtensionType):  # pylint: disable=unused-variable
         xyz: typing.Union[typing.Tuple[complex, ...], int]
 
+  def testCantUseReservedName(self):
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType1 are invalid. '
+        "Field '_to_components' is reserved"):
+
+      class MyType1(extension_type.ExtensionType):  # pylint: disable=unused-variable
+        _to_components: int
+
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType2 are invalid. '
+        "Field '_tf_extension_type_foo' is reserved"):
+
+      class MyType2(extension_type.ExtensionType):  # pylint: disable=unused-variable
+        _tf_extension_type_foo: int
+
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType3 are invalid. '
+        "Field 'is_compatible_with' is reserved"):
+
+      class MyType3(extension_type.ExtensionType):  # pylint: disable=unused-variable
+
+        def is_compatible_with(self, other):
+          return False
+
   def testExtensionTypeBaseClassHasNoSpec(self):
     self.assertFalse(hasattr(extension_type.ExtensionType, 'Spec'))
 
@@ -1144,6 +1169,75 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
     self.assertEqual(copy.copy(mt_spec), mt_spec)
     self.assertEqual(copy.deepcopy(mt_spec), mt_spec)
     self.assertEqual(pickle.loads(pickle.dumps(mt_spec)), mt_spec)
+
+  def testCustomizeSpecTest(self):
+
+    class WeightedTensor(extension_type.ExtensionType):
+      """ExtensionType with a customized TypeSpec.
+
+      * Custom constructor.
+      * Custom __validate__.
+      * Add properties (shape, dtype, weight_dtype).
+      * Add method (with_shape).
+      """
+      values: ops.Tensor
+      weight: ops.Tensor  # scalar
+
+      shape = property(lambda self: self.shape)
+      dtype = property(lambda self: self.dtype)
+      weight_dtype = property(lambda self: self.weight.dtype)
+
+      def __validate__(self):
+        self.weight.shape.assert_has_rank(0)
+
+      class Spec:
+
+        def __init__(self, shape, dtype, weight_dtype=dtypes.float32):
+          self.values = tensor_spec.TensorSpec(shape, dtype)
+          self.weight = tensor_spec.TensorSpec([], weight_dtype)
+
+        def __validate__(self):
+          self.weight.shape.assert_has_rank(0)
+
+        shape = property(lambda self: self.values.shape)
+        dtype = property(lambda self: self.values.dtype)
+        weight_dtype = property(lambda self: self.weight.dtype)
+
+        def with_shape(self, shape):
+          return WeightedTensor.Spec(shape, self.dtype, self.weight_dtype)
+
+    wt = WeightedTensor([1, 2], 0.3)
+    wt_spec = WeightedTensor.Spec.from_value(wt)
+    self.assertEqual(wt_spec.shape, tensor_shape.TensorShape([2]))
+    self.assertEqual(wt_spec.dtype, dtypes.int32)
+
+    self.assertEqual(wt_spec, WeightedTensor.Spec([2], dtypes.int32))
+
+    wt2 = WeightedTensor([[1, 2], [3, 4]], 0.5)
+    wt2_spec = WeightedTensor.Spec.from_value(wt2)
+    self.assertEqual(wt_spec.with_shape([2, 2]), wt2_spec)
+
+  def testNestedSpecMustBeAClass(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r'BrokenExtensionType\.Spec must be a nested class; got 12.'):
+
+      class BrokenExtensionType(extension_type.ExtensionType):
+
+        Spec = 12  # pylint: disable=invalid-name
+
+      del BrokenExtensionType
+
+  def testNestedSpecMayNotHaveBaseClasses(self):
+    with self.assertRaisesRegex(
+        ValueError, r'BrokenExtensionType\.Spec may not have base classes.'):
+
+      class BrokenExtensionType(extension_type.ExtensionType):
+
+        class Spec(type_spec.TypeSpec):
+          pass
+
+      del BrokenExtensionType
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -544,21 +544,32 @@ def _change_nested_mappings_to(value, new_type):
 
 def _check_field_annotations(cls):
   """Validates the field annotations for tf.ExtensionType subclass `cls`."""
+  annotations = getattr(cls, '__annotations__', {})
+
   # Check that no fields use reserved names.
-  for name in cls.__dict__:
+  for name, value in cls.__dict__.items():
+    if name == 'Spec':
+      if not isinstance(value, type):
+        raise ValueError(f'{cls.__qualname__}.Spec must be a nested class; '
+                         f'got {value}.')
+      if len(value.__mro__) > 2:
+        raise ValueError(f'{cls.__qualname__}.Spec may not have base classes.')
+    elif extension_type_field.ExtensionTypeField.is_reserved_name(name):
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f"invalid. Field '{name}' is reserved.")
+  for name in annotations:
     if extension_type_field.ExtensionTypeField.is_reserved_name(name):
-      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
-                       f"Field '{name}' is reserved.")
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f"invalid. Field '{name}' is reserved.")
 
   # Check that all fields have type annotaitons.
-  annotations = getattr(cls, '__annotations__', {})
   for (key, value) in cls.__dict__.items():
     if not (key in annotations or callable(value) or key.startswith('_abc_') or
             key == '_tf_extension_type_fields' or
             key.startswith('__') and key.endswith('__') or
             isinstance(value, (property, classmethod, staticmethod))):
-      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
-                       f'Field {key} is missing a type annotation.')
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f'invalid. Field {key} is missing a type annotation.')
 
 
 def _add_extension_type_constructor(cls):
@@ -667,18 +678,38 @@ def _build_spec_constructor(cls):
 
 def _add_type_spec(cls):
   """Creates a nested TypeSpec class for tf.ExtensionType subclass `cls`."""
-  # Build the TypeSpec class for this ExtensionType, and add it as a
-  # nested class.
   spec_name = cls.__name__ + '.Spec'
+  spec_qualname = cls.__qualname__ + '.Spec'
+
   # Set __module__ explicitly as a dynamic created class has module='abc'
   # by default.
   spec_dict = {'value_type': cls, '__module__': cls.__module__}
+
+  # Copy user-supplied customizations into the TypeSpec.
+  user_spec = cls.__dict__.get('Spec', None)
+  if user_spec is not None:
+    for (name, value) in user_spec.__dict__.items():
+      if extension_type_field.ExtensionTypeField.is_reserved_name(name):
+        raise ValueError(f'TypeSpec {spec_qualname} uses reserved '
+                         f"name '{name}'.")
+      if cls._tf_extension_type_has_field(name):  # pylint: disable=protected-access
+        raise ValueError(f"TypeSpec {spec_qualname} defines a variable '{name}'"
+                         f' which shadows a field in {cls.__qualname__}')
+      if name in ('__module__', '__dict__', '__weakref__'):
+        continue
+
+      spec_dict[name] = value
+
+  # Build and return the TypeSpec.
   spec = type(spec_name, (ExtensionTypeSpec,), spec_dict)
-  spec.__qualname__ = cls.__qualname__ + '.Spec'
+  spec.__qualname__ = spec_qualname
   setattr(cls, 'Spec', spec)
 
   # Build a constructor for the TypeSpec class.
-  _build_spec_constructor(spec)
+  if '__init__' in spec.__dict__:
+    _wrap_user_constructor(spec)
+  else:
+    _build_spec_constructor(spec)
 
   cls.__abstractmethods__ -= {'_type_spec'}
 
