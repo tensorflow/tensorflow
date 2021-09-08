@@ -971,6 +971,25 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     self.assertIn(math_ops.add, dispatch.binary_elementwise_apis())
     self.assertIn(math_ops.multiply, dispatch.binary_elementwise_apis())
 
+  def testUpdateDocstringsWithAPILists(self):
+    dispatch.update_docstrings_with_api_lists()
+    self.assertRegex(
+        dispatch.dispatch_for.__doc__,
+        r"(?s)  The TensorFlow APIs that may be overridden "
+        r"by `@dispatch_for` are:\n\n.*"
+        r"  \* `tf\.concat\(values, axis, name='concat'\)`\n.*"
+        r"  \* `tf\.math\.add\(x, y, name=None\)`\n.*")
+    self.assertRegex(
+        dispatch.dispatch_for_unary_elementwise_apis.__doc__,
+        r"(?s)  The unary elementwise APIs are:\n\n.*"
+        r"  \* `tf\.math\.abs\(x, name=None\)`\n.*"
+        r"  \* `tf\.math\.cos\(x, name=None\)`\n.*")
+    self.assertRegex(
+        dispatch.dispatch_for_binary_elementwise_apis.__doc__,
+        r"(?s)  The binary elementwise APIs are:\n\n.*"
+        r"  \* `tf\.math\.add\(x, y, name=None\)`\n.*"
+        r"  \* `tf\.math\.multiply\(x, y, name=None\)`\n.*")
+
 
 if __name__ == "__main__":
   googletest.main()

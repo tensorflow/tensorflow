@@ -70,6 +70,7 @@ import typing  # pylint: disable=unused-import (used in doctests)
 from tensorflow.python.framework import _pywrap_python_api_dispatcher as _api_dispatcher
 from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_export as tf_export_lib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util import type_annotations
@@ -335,6 +336,12 @@ def dispatch_for(api, *signatures):
 
   Returns:
     A decorator that overrides the default implementation for `api`.
+
+  #### Registered APIs
+
+  The TensorFlow APIs that may be overridden by `@dispatch_for` are:
+
+  <<API_LIST>>
   """
   dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR, None)
   if dispatcher is None:
@@ -708,6 +715,12 @@ def dispatch_for_unary_elementwise_apis(x_type):
 
   Returns:
     A decorator.
+
+  #### Registered APIs
+
+  The unary elementwise APIs are:
+
+  <<API_LIST>>
   """
 
   def decorator(handler):
@@ -760,6 +773,12 @@ def dispatch_for_binary_elementwise_apis(x_type, y_type):
 
   Returns:
     A decorator.
+
+  #### Registered APIs
+
+  The binary elementwise APIs are:
+
+  <<API_LIST>>
   """
 
   def decorator(handler):
@@ -916,6 +935,35 @@ def unregister_elementwise_api_handler(api_handler):
       unregister_dispatch_target(api, target)
     del _ELEMENTWISE_API_HANDLERS[key]
     del _ELEMENTWISE_API_TARGETS[key]
+
+
+def update_docstrings_with_api_lists():
+  """Updates the docstrings of dispatch decorators with API lists.
+
+  Updates docstrings for `dispatch_for`, `dispatch_for_unary_elementwise_apis`,
+  and `dispatch_for_binary_elementwise_apis`, by replacing the string
+  '<<API_LIST>>' with a list of APIs that have been registered for that
+  decorator.
+  """
+  _update_docstring_with_api_list(dispatch_for_unary_elementwise_apis,
+                                  _UNARY_ELEMENTWISE_APIS)
+  _update_docstring_with_api_list(dispatch_for_binary_elementwise_apis,
+                                  _BINARY_ELEMENTWISE_APIS)
+  _update_docstring_with_api_list(dispatch_for,
+                                  _TYPE_BASED_DISPATCH_SIGNATURES)
+
+
+def _update_docstring_with_api_list(target, api_list):
+  """Replaces `<<API_LIST>>` in target.__doc__ with the given list of APIs."""
+  lines = []
+  for func in api_list:
+    name = tf_export_lib.get_canonical_name_for_symbol(
+        func, add_prefix_to_v1_names=True)
+    if name is not None:
+      signature = tf_inspect.signature(func)
+      lines.append(f"  * `tf.{name}{signature}`")
+  lines.sort()
+  target.__doc__ = target.__doc__.replace("  <<API_LIST>>", "\n".join(lines))
 
 
 ################################################################################
