@@ -3977,10 +3977,11 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeConstants(*properties));
     TF_RETURN_IF_ERROR(
         FoldGraph(*properties, optimized_graph, &nodes_to_not_simplify));
-    node_map_.reset(new NodeMap(optimized_graph));
   } else {
     *optimized_graph = *graph_;
   }
+  node_map_.reset(new NodeMap(optimized_graph));
+
   TF_RETURN_IF_ERROR(
       SimplifyGraph(optimized_graph, properties, &nodes_to_not_simplify));
 
