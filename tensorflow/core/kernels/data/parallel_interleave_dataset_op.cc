@@ -317,9 +317,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           deterministic_(deterministic),
           current_elements_(params.dataset->cycle_length_) {}
 
-    ~ParallelInterleaveIterator() override {
-      CancelThreads(/*wait=*/true);
-    }
+    ~ParallelInterleaveIterator() override { CancelThreads(/*wait=*/true); }
 
     // TODO(jsimsa): Register cancellation callback once the implementation is
     // refactored not to hold mu_ while calling `GetNext` on the input.
@@ -400,7 +398,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         IteratorContext* ctx, model::Node::Args args) const override {
       bool increase_min =
           GetExperiments().contains("min_outer_interleave_parallelism") &&
-          (ctx_->interleave_depth() == 0);
+          (ctx->interleave_depth() == 0);
       double min = increase_min ? dataset()->cycle_length_ : 1;
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
@@ -1419,27 +1417,26 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status s = Status::OK();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
-        thread_pool_->Schedule(
-            [this, ctx, reader, idx, name, &s, &counter, elements] {
-              RecordStart(ctx);
-              auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
-                RecordStop(ctx);
-                counter.DecrementCount();
-              });
-              std::shared_ptr<Element> elem;
-              Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
-              mutex_lock l(*mu_);
-              if (cancelled_) {
-                s.Update(
-                    errors::Cancelled("Cancelled in ReadElementsParallel"));
-                return;
-              }
-              if (!ret_status.ok()) {
-                s.Update(ret_status);
-                return;
-              }
-              (*elements)[idx] = elem;
-            });
+        thread_pool_->Schedule([this, ctx, reader, idx, name, &s, &counter,
+                                elements] {
+          RecordStart(ctx);
+          auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
+            RecordStop(ctx);
+            counter.DecrementCount();
+          });
+          std::shared_ptr<Element> elem;
+          Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
+          mutex_lock l(*mu_);
+          if (cancelled_) {
+            s.Update(errors::Cancelled("Cancelled in ReadElementsParallel"));
+            return;
+          }
+          if (!ret_status.ok()) {
+            s.Update(ret_status);
+            return;
+          }
+          (*elements)[idx] = elem;
+        });
       }
       counter.Wait();
       return s;
