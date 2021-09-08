@@ -276,8 +276,19 @@ def _convert_value(value, expected_type, path, for_spec=False):
   elif (isinstance(expected_type, type) and
         issubclass(expected_type, composite_tensor.CompositeTensor)):
     return _convert_composite_tensor(value, expected_type, path, for_spec)
-  elif expected_type in (int, float, bool, str, bytes, _NoneType, dtypes.DType,
-                         tensor_shape.TensorShape):
+  elif expected_type is tensor_shape.TensorShape:
+    try:
+      return tensor_shape.as_shape(value)
+    except TypeError as e:
+      raise TypeError(
+          f'{"".join(path)}: expected tf.TensorShape, got {value!r}') from e
+  elif expected_type is dtypes.DType:
+    try:
+      return dtypes.as_dtype(value)
+    except TypeError as e:
+      raise TypeError(
+          f'{"".join(path)}: expected tf.DType, got {value!r}') from e
+  elif expected_type in (int, float, bool, str, bytes, _NoneType):
     if not isinstance(value, expected_type):
       raise TypeError(f'{"".join(path)}: expected '
                       f'{expected_type.__name__}, got {value!r}')

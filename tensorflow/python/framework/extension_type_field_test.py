@@ -16,6 +16,7 @@
 
 import typing
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -48,6 +49,8 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       ('seq', typing.Tuple[typing.Union[int, float], ...], (33, 12.8, 9, 0)),
       ('seq', typing.Tuple[typing.Union[int, float],
                            ...], [33, 12.8, 9, 0], (33, 12.8, 9, 0)),
+      ('s', tensor_shape.TensorShape, [1, 2], tensor_shape.TensorShape([1, 2])),
+      ('dtype', dtypes.DType, np.int32, dtypes.int32),
   ])
   def testConstruction(
       self,
@@ -215,6 +218,11 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       ({
           'a': (12, 3.0)
       }, typing.Mapping[str, typing.Tuple[int, float]]),
+      (tensor_shape.TensorShape([1, 2]), tensor_shape.TensorShape,
+       tensor_shape.TensorShape([1, 2])),
+      ([1, 2], tensor_shape.TensorShape, tensor_shape.TensorShape([1, 2])),
+      (dtypes.int32, dtypes.DType, dtypes.int32),
+      (np.int32, dtypes.DType, dtypes.int32),
   ])
   def testConvertValue(self, value, value_type, expected=None):
     if callable(value):
@@ -246,6 +254,11 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       ({
           'a': (12, 3.0)
       }, typing.Mapping[str, typing.Tuple[int, float]]),
+      (tensor_shape.TensorShape([1, 2]), tensor_shape.TensorShape,
+       tensor_shape.TensorShape([1, 2])),
+      ([1, 2], tensor_shape.TensorShape, tensor_shape.TensorShape([1, 2])),
+      (dtypes.int32, dtypes.DType, dtypes.int32),
+      (np.int32, dtypes.DType, dtypes.int32),
   ])
   def testConvertValueForSpec(self, value, value_type, expected=None):
     if callable(value):
@@ -263,6 +276,9 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       (12.3, int, 'x: expected int, got 12.3'),
       (12, float, 'x: expected float, got 12'),
       ([1, 2, 3.0], typing.Tuple[int, ...], r'x\[2\]: expected int, got 3.0'),
+      ('foo', tensor_shape.TensorShape,
+       "x: expected tf.TensorShape, got 'foo'"),
+      ('foo', dtypes.DType, "x: expected tf.DType, got 'foo'"),
   ])
   def testConvertValueError(self, value, value_type, error):
     if callable(value):
