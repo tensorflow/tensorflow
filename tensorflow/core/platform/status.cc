@@ -19,11 +19,9 @@ limitations under the License.
 
 #include <deque>
 #include <map>
-#include <string>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
@@ -97,7 +95,7 @@ Status::Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
-  state_->msg = std::string(msg);
+  state_->msg = string(msg);
   state_->stack_trace = std::move(stack_trace);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
@@ -117,8 +115,8 @@ void Status::SlowCopyFrom(const State* src) {
   }
 }
 
-const std::string& Status::empty_string() {
-  static std::string* empty = new std::string;
+const string& Status::empty_string() {
+  static string* empty = new string;
   return *empty;
 }
 
@@ -127,7 +125,7 @@ const std::vector<StackFrame>& Status::empty_stack_trace() {
   return *empty;
 }
 
-std::string error_name(error::Code code) {
+string error_name(error::Code code) {
   switch (code) {
     case tensorflow::error::OK:
       return "OK";
@@ -188,16 +186,18 @@ std::string error_name(error::Code code) {
   }
 }
 
-std::string Status::ToString() const {
+string Status::ToString() const {
   if (state_ == nullptr) {
     return "OK";
   } else {
-    std::string result =
-        absl::StrFormat("%s: %s", error_name(code()), state_->msg);
+    string result(error_name(code()));
+    result += ": ";
+    result += state_->msg;
 
-    for (const auto& payload : state_->payloads) {
-      absl::StrAppendFormat(&result, " [%s='%s']", payload.first,
-                            absl::CHexEscape(std::string(payload.second)));
+    for (const std::pair<const std::string, std::string>& element :
+         state_->payloads) {
+      absl::StrAppend(&result, " [", element.first, "='",
+                      absl::CHexEscape(element.second), "']");
     }
 
     return result;
@@ -208,34 +208,39 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(tensorflow::StringPiece type_url, absl::Cord payload) {
+void Status::SetPayload(tensorflow::StringPiece type_url,
+                        tensorflow::StringPiece payload) {
   if (ok()) return;
-  state_->payloads[type_url] = std::move(payload);
+  state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-absl::optional<absl::Cord> Status::GetPayload(
+tensorflow::StringPiece Status::GetPayload(
     tensorflow::StringPiece type_url) const {
-  if (ok()) return absl::nullopt;
-  auto payload_iter = state_->payloads.find(type_url);
-  if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return payload_iter->second;
+  if (ok()) return tensorflow::StringPiece();
+  auto payload_iter = state_->payloads.find(std::string(type_url));
+  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
+  return tensorflow::StringPiece(payload_iter->second);
 }
 
 bool Status::ErasePayload(tensorflow::StringPiece type_url) {
   if (ok()) return false;
-  auto payload_iter = state_->payloads.find(type_url);
+  auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return false;
   state_->payloads.erase(payload_iter);
   return true;
 }
 
-void Status::ForEachPayload(
-    const std::function<void(absl::string_view, const absl::Cord&)>& visitor)
+const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
     const {
-  if (ok()) return;
-  for (const auto& payload : state_->payloads) {
-    visitor(payload.first, payload.second);
-  }
+  if (ok()) return {};
+  return state_->payloads;
+}
+
+void Status::ReplaceAllPayloads(
+    const std::unordered_map<std::string, std::string>& payloads) {
+  if (ok() || payloads.empty()) return;
+  if (state_ == nullptr) state_ = std::make_unique<State>();
+  state_->payloads = payloads;
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& x) {
@@ -243,14 +248,14 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
-std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
-                                      const char* msg) {
-  std::string r("Non-OK-status: ");
+string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
+                                 const char* msg) {
+  string r("Non-OK-status: ");
   r += msg;
   r += " status: ";
   r += v.ToString();
   // Leaks string but this is only to be used in a fatal error message
-  return new std::string(r);
+  return new string(r);
 }
 
 // kDerivedMarker is appended to the Status message string to indicate whether a

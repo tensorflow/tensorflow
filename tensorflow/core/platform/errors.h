@@ -20,8 +20,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -62,21 +60,18 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 }  // namespace internal
 
 // Returns all payloads from a Status as a key-value map.
-inline absl::flat_hash_map<std::string, absl::Cord> GetPayloads(
+inline std::unordered_map<std::string, std::string> GetPayloads(
     const ::tensorflow::Status& status) {
-  absl::flat_hash_map<std::string, absl::Cord> payloads;
-  status.ForEachPayload(
-      [&payloads](absl::string_view key, const absl::Cord& value) {
-        payloads[key] = value;
-      });
-  return payloads;
+  // TODO(b/197552541): Update with Status API.
+  return status.GetAllPayloads();
 }
 
 // Inserts all given payloads into the given status. Will overwrite existing
 // payloads if they exist with the same key.
 inline void InsertPayloads(
     ::tensorflow::Status& status,
-    const absl::flat_hash_map<std::string, absl::Cord>& payloads) {
+    const std::unordered_map<std::string, std::string>& payloads) {
+  // TODO(b/197552541): Update with Status API.
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);
   }
@@ -86,15 +81,14 @@ inline void InsertPayloads(
 // payloads in the destination if they exist with the same key.
 inline void CopyPayloads(const ::tensorflow::Status& from,
                          ::tensorflow::Status& to) {
-  from.ForEachPayload([&to](absl::string_view key, const absl::Cord& value) {
-    to.SetPayload(key, value);
-  });
+  // TODO(b/197552541): Update with Status API.
+  InsertPayloads(to, from.GetAllPayloads());
 }
 
 // Creates a new status with the given code, message and payloads.
 inline ::tensorflow::Status Create(
     Code code, ::tensorflow::StringPiece message,
-    const absl::flat_hash_map<std::string, absl::Cord>& payloads) {
+    const std::unordered_map<std::string, std::string>& payloads) {
   Status status(code, message);
   InsertPayloads(status, payloads);
   return status;
@@ -153,7 +147,7 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
   template <typename... Args>                                             \
   ::tensorflow::Status FUNC##WithPayloads(                                \
       const ::tensorflow::StringPiece& message,                           \
-      const absl::flat_hash_map<std::string, absl::Cord>& payloads) {     \
+      const std::unordered_map<std::string, std::string>& payloads) {     \
     return errors::Create(::tensorflow::error::CONST, message, payloads); \
   }                                                                       \
   inline bool Is##FUNC(const ::tensorflow::Status& status) {              \

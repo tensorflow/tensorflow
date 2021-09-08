@@ -313,7 +313,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_internal",
-        "@com_google_absl//absl/strings:cord",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -527,7 +526,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings:cord",
     ],
 )
 
