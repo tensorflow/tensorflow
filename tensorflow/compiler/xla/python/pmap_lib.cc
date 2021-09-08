@@ -359,6 +359,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   ParsedArgumentsAsBuffers arguments;
+  arguments.signature.function_name = function_name_;
   xla::Status status = ParseArguments(args, kwargs, static_argnums_,
                                       /*static_argnames=*/{}, arguments);
   if (!status.ok()) {

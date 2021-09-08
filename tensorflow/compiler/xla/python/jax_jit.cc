@@ -139,14 +139,14 @@ bool CallSignature::operator==(const CallSignature& other) const {
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),
              other.static_args.end(),
-             [](const py::object& a, const py::object& b) {
+             [this](const py::object& a, const py::object& b) {
                try {
                  return a.equal(b);
                } catch (const py::error_already_set& e) {
                  throw std::invalid_argument(absl::StrCat(
                      "static arguments should be comparable using __eq__."
-                     "The following error was raised when comparing two "
-                     "objects of types ",
+                     "The following error was raised during a call to '",
+                     function_name, "' when comparing two objects of types ",
                      py::cast<std::string>(py::str(py::type::of(a))), " and ",
                      py::cast<std::string>(py::str(py::type::of(b))),
                      ". The error was:\n", e.what()));
@@ -176,7 +176,8 @@ H AbslHashValue(H h, const CallSignature& s) {
     } catch (const py::error_already_set& e) {
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occured "
-          "while trying to hash an object of type ",
+          "during a call to '",
+          s.function_name, "' while trying to hash an object of type ",
           py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
           py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
           e.what(), "\n"));
@@ -804,6 +805,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   }
 
   ParsedArgumentsAsBuffers arguments;
+  arguments.signature.function_name = function_name_;
   xla::Status status = ParseArguments(args, kwargs, static_argnums_,
                                       static_argnames_, arguments);
   if (!status.ok()) {
