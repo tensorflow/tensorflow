@@ -819,6 +819,192 @@ class ConvertDynamicUpdateSliceOp
   };
 };
 
+// It returns "true" when Value $iota is obtained from the following mlir code:
+//
+// $iota = "mhlo.iota"(){iota_dimension = $dimensions[0]},
+//
+// where $dimensions must have size 1 and iota can have rank>=1.
+// It usually used for mathcing rank 1 iota since the iotaOp will be folded to
+// IotaOp + BroadCastInDimOp except for the case when result shape is rank 1.
+bool MatchSingleIota(DenseIntElementsAttr dimensions, Value iota) {
+  auto iota_op = dyn_cast_or_null<mhlo::IotaOp>(iota.getDefiningOp());
+  if (!iota_op || dimensions.getNumElements() != 1) return false;
+  auto dim = *dimensions.getIntValues().begin();
+  return dim == iota_op.iota_dimension();
+}
+
+// It matches %iota generated from the following mlir codes:
+//
+// %iota_r1 = "mhlo.iota"(){iota_dimension = 0} :() -> tensor<Lxi32>
+// %iota = "mhlo.broadcast_in_dim(%iota_r1){
+//    broadcast_dimensions = dense<[$dimensions[0]]>},
+//
+// where %dimensions is of size 1. It ususally comes from an IotaOp that is
+// folded to IotaOp (rank1) + BroadCastInDimOp.
+bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  auto iota_broadcast =
+      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  if (!isa_and_nonnull<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
+    return false;
+  return true;
+}
+
+// It matches %iota generated from the following mlir codes:
+//
+// %iota_r1 = mhlo.constant dense<[0, 1, 2, ..., L]>
+// %iota = "mhlo.broadcast_in_dim(%iota_r1){
+//    broadcast_dimensions = dense<[$dimensions[0]]>},
+//
+// where $dimensions is of size 1. It ususally comes from an IotaOp that is
+// folded to ConstOp (folded rank1 iota) + BroadCastInDimOp.
+bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  if (dimensions.getNumElements() != 1) return false;
+  auto iota_broadcast =
+      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  DenseElementsAttr range_const;
+  if (!matchPattern(iota_broadcast.operand(), m_Constant(&range_const)))
+    return false;
+  int index = 0;
+  for (auto value : range_const.getIntValues()) {
+    if (value != index++) return false;
+  }
+  return true;
+}
+
+// It matches %iota generated from the following mlir codes (rank 2 example):
+//
+// %iota = mhlo.constant dense<[[0, 1, 2, ..., L],
+//                              [0, 1, 2, ..., L]
+//                              ...
+//                              [0, 1, 2, ..., L]]>,
+// where $dimensions is of size 1 and iota dimension = dimensions[0] = rank - 1.
+// In other words, %iota[s1][s2]...[sr][i] = i holds for each i in 0, ..., L.
+// It ususally comes from a fully folded IotaOp.
+// Currently we only support the case where dimensions[0] = rank - 1.
+// TODO(renjieliu): Support non-inner dimension as well.
+bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
+  DenseElementsAttr iota_const_attr;
+  if (matchPattern(iota, m_Constant(&iota_const_attr))) {
+    // The inner most dimension must match the reduce dimension.
+    auto iota_type = iota_const_attr.getType();
+    auto reduce_dim = *dimensions.getIntValues().begin();
+    if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
+    if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
+        (iota_type.getRank() - 1) != reduce_dim) {
+      return false;
+    }
+
+    // The inner dimension must match [0, 1, ...., size];
+    const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
+    if (inner_dim < 1) return false;
+
+    int64_t index = 0;
+    // We are checking whether the iota_const values are having the pattern
+    // like:
+    // 0 1 2 ... n - 1    <= inner most.   -------
+    // 0 1 2 ... n - 1                       |
+    //  ....                             outer_loop
+    //  ....                                 |
+    // 0 1 2 ... n - 1                    ---------
+    for (auto value : iota_const_attr.getIntValues()) {
+      if (value != index) return false;
+      index = (index + 1) % inner_dim;
+    }
+    return true;
+  }
+  return false;
+}
+
+// The following 4 different forms of mhlo::iota will be matched:
+// 1. IotaOp.
+// 2. IotaOp + BroadCastInDim.
+// 3. Constant (folded Iota) + BroadCastInDim.
+// 4. Constant (folded result).
+// Moreover, the dimensions has to match the iota_dimension.
+bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
+  return MatchSingleIota(dimensions, iota) ||
+         MatchIotaBroadCastInDim(dimensions, iota) ||
+         MatchConstIotaBroadCastInDim(dimensions, iota) ||
+         MatchIotaConst(dimensions, iota);
+}
+
+bool MatchTopKComparator(Region &comparator) {
+  if (!comparator.hasOneBlock()) return false;
+  Block &comparator_blk = comparator.front();
+  using OpListType = llvm::iplist<Operation>;
+  OpListType &operations = comparator_blk.getOperations();
+  if (operations.size() != 2) return false;
+  auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
+  auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
+  if (!compare_op || !return_op) return false;
+  // TODO(xuanyuanluo): Support "LT" direction.
+  if (compare_op.comparison_direction() != "GT") return false;
+  if (compare_op.lhs() != comparator_blk.getArgument(0) ||
+      compare_op.rhs() != comparator_blk.getArgument(1))
+    return false;
+  return return_op.getOperands().front() == compare_op.getResult();
+}
+
+// In general, we convert the following form of sort to tf.TopK:
+//
+// %result = "mhlo.sort" (%keys, %indices) ({
+//  ^bb0(%key_0, %key_1, %index_0, %index_1):
+//     %1 = "mhlo.compare"(%key_0, %key_1) {"GT"} -> tensor<i1>
+//  }),
+//
+// where the indices is obtained by an IotaOp (maybe folded).
+class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SortOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (op->getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(
+          op, "only match for the case where operands is of size 2");
+    auto keys = op.operands()[0];
+    auto indices = op.operands()[1];
+    auto keys_ty = keys.getType().dyn_cast_or_null<ShapedType>();
+    auto indices_ty = indices.getType().dyn_cast_or_null<ShapedType>();
+    if (!keys_ty || !keys_ty.hasStaticShape() ||
+        !keys_ty.getElementType().isIntOrFloat())
+      return rewriter.notifyMatchFailure(
+          op,
+          "only match for the case where the first operand has a static "
+          "int/float shapeType");
+    if (!indices_ty || !indices_ty.hasStaticShape() ||
+        !indices_ty.getElementType().isInteger(32))
+      return rewriter.notifyMatchFailure(
+          op,
+          "only match for the case where the second operand an I32 shapeType");
+    auto sort_dim = op.dimension();
+    auto k = indices_ty.getDimSize(sort_dim);
+    auto rank = keys_ty.getRank();
+    if (sort_dim != rank - 1 || k < 1)
+      return rewriter.notifyMatchFailure(
+          op, "only match for sort dim = rank - 1 and DimSize >= 1");
+
+    // In the following, we'll check indices is obtained by a iota.
+    auto sort_dim_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getI64Type()), {sort_dim});
+    if (!MatchIota(sort_dim_attr, indices))
+      return rewriter.notifyMatchFailure(
+          op, "the second operand is supposed to be obtained from IOTA");
+    if (!MatchTopKComparator(op.comparator()))
+      return rewriter.notifyMatchFailure(op, "only match for GT comparator");
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
+    rewriter.replaceOpWithNewOp<TopKV2Op>(op, keys.getType(), indices.getType(),
+                                          keys, k_cst);
+    return success();
+  };
+};
+
 // A struct to hold information about dimensions of dot_general operands.
 class DotDimensionsInfo {
  public:
@@ -1175,7 +1361,7 @@ class ConvertReduceOpToTfArgMinMax
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
     Value iota = reduce_op.inputs().back();
-    if (!MatchIota(reduce_op, iota)) return failure();
+    if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
@@ -1287,58 +1473,6 @@ class ConvertReduceOpToTfArgMinMax
   virtual const char *CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
-
- private:
-  // It's possible the iota is passed as a constant or a `mhlo.iota` followed
-  // by a `mhlo.broadcast_in_dim`, we should match for both.
-  bool MatchIota(mhlo::ReduceOp reduce_op, Value iota) const {
-    Operation *iota_op = iota.getDefiningOp();
-    if (!iota_op) return false;
-
-    // Try to match for const first.
-    DenseElementsAttr iota_const_attr;
-    if (matchPattern(iota, m_Constant(&iota_const_attr))) {
-      // The inner most dimension must match the reduce dimension.
-      auto iota_type = iota_const_attr.getType();
-      auto reduce_dim = *reduce_op.dimensions().getIntValues().begin();
-      if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
-      if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
-          (iota_type.getRank() - 1) != reduce_dim) {
-        return false;
-      }
-
-      // The inner dimension must match [0, 1, ...., size];
-      // TODO(renjieliu): Support non-inner dimension as well.
-      const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
-      if (inner_dim < 1) return false;
-
-      int64_t index = 0;
-      // We are checking whether the iota_const values are having the pattern
-      // like:
-      // 0 1 2 ... n - 1    <= inner most.   -------
-      // 0 1 2 ... n - 1                       |
-      //  ....                             outer_loop
-      //  ....                                |
-      // 0 1 2 ... n - 1                    ---------
-      for (auto value : iota_const_attr.getIntValues()) {
-        if (value != index) return false;
-        index = (index + 1) % inner_dim;
-      }
-      return true;
-    }
-
-    // Continue to try to match for `mhlo.iota` -> `mhlo.broadcast_in_dim`.
-    mhlo::BroadcastInDimOp iota_broadcast =
-        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
-    if (!iota_broadcast ||
-        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
-      return false;
-    if (!isa_and_nonnull<mhlo::IotaOp>(
-            iota_broadcast.operand().getDefiningOp()))
-      return false;
-
-    return true;
-  }
 };
 
 class ConvertReduceOpToTfArgmax
@@ -2228,7 +2362,7 @@ static PassRegistration<LegalizeHloToTf> pass;
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
   patterns->insert<
-      ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+      ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp, ConvertConvOp,
       ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
       ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
       ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
