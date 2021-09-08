@@ -65,10 +65,11 @@ class XlaDebugInfoManager {
       std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
 
   // Register when the module start execution on certain device.
-  // TODO(jiesun): Do we need to track which device this is?
-  void OnModuleStart(ModuleIdentifier module_id);
+  // TODO(jiesun): Although we now track both running and compile time
+  // metadata, let's keep the interface for now.
+  void OnModuleStart(ModuleIdentifier module_id) {}
   // Register when the module stop execution on certain device.
-  void OnModuleStop(ModuleIdentifier module_id);
+  void OnModuleStop(ModuleIdentifier module_id) {}
 
   // Start tracing, began to collecting debug information for all the running
   // modules during the tracing period.
@@ -85,15 +86,6 @@ class XlaDebugInfoManager {
  private:
   XlaDebugInfoManager() {}
 
-  // Test accessors.
-  std::set<ModuleIdentifier> GetRunningModules() {
-    tensorflow::mutex_lock lock(mutex_);
-    std::set<ModuleIdentifier> running;
-    for (const auto& id : running_module_ids_) {
-      running.insert(id.first);
-    }
-    return running;
-  }
   std::set<ModuleIdentifier> GetActiveModules() {
     tensorflow::mutex_lock lock(mutex_);
     std::set<ModuleIdentifier> active;
@@ -126,11 +118,6 @@ class XlaDebugInfoManager {
 
   tensorflow::mutex mutex_;
   bool tracing_active_ TF_GUARDED_BY(mutex_) = false;
-  // Modules that was running currently. Because multiple instances of the
-  // modules can be running in the same time, a reference count is maintained
-  // as map value.
-  absl::flat_hash_map<ModuleIdentifier, int> running_module_ids_
-      TF_GUARDED_BY(mutex_);
   // Active modules are those still tracked by us. There could be much more
   // active modules than running modules, we will try to reduce the trace size
   // by only transfer those modules that were running during tracing period.
