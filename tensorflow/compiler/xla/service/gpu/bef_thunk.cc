@@ -128,7 +128,6 @@ class BefThunk : public Thunk {
     if (auto custom_call_op =
             mlir::dyn_cast_or_null<mlir::lmhlo::CustomCallOp>(op)) {
       custom_call_target_ = std::move(call_target);
-      custom_call_opaque_ = custom_call_op.backend_config().str();
     }
   }
 
@@ -144,7 +143,6 @@ class BefThunk : public Thunk {
 
   // Used only when performing CustomCall.
   CustomCallThunk::CustomCallTarget custom_call_target_;
-  absl::optional<std::string> custom_call_opaque_;  // Support empty string.
 
   // The module data will be set in the execution context for kernel thunk to
   // use during execution.
@@ -564,21 +562,16 @@ CreateKernelExecutionContext(absl::optional<llvm::StringRef> gpu_module_data) {
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateCustomCallExecutionContext(
-    CustomCallThunk::CustomCallTarget& custom_call_target,
-    const absl::optional<std::string>& custom_call_opaque) {
+    CustomCallThunk::CustomCallTarget& custom_call_target) {
   if (!custom_call_target) {
     return tensorflow::errors::FailedPrecondition(
         "Custom call target is not set for a CustomCall thunk.");
-  }
-  if (!custom_call_opaque.has_value()) {
-    return tensorflow::errors::FailedPrecondition(
-        "Custom call opaque data is not set for a CustomCall thunk.");
   }
 
   return CreateExecutionContext(
       [&](tfrt::RequestContextBuilder& request_context_builder) {
         request_context_builder.context_data().emplace<CustomCallContext>(
-            custom_call_target, *custom_call_opaque);
+            custom_call_target);
         return Status::OK();
       });
 }
@@ -621,8 +614,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
                         CreateKernelExecutionContext(gpu_module_data_));
   } else if (kind() == Thunk::kCustomCall) {
     TF_ASSIGN_OR_RETURN(exec_ctx,
-                        CreateCustomCallExecutionContext(custom_call_target_,
-                                                         custom_call_opaque_));
+                        CreateCustomCallExecutionContext(custom_call_target_));
   } else {
     TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
   }

@@ -82,6 +82,7 @@ struct CustomCallRewritePattern
             .create<xla::gpu::CustomCallOp>(
                 op.getLoc(), chain_type, stream, chain, operands,
                 rewriter.getI64ArrayAttr(args_to_target_args),
+                op.backend_config().str(),
                 rewriter.getI64ArrayAttr(results_to_target_results),
                 target_args_count, target_results_count)
             .getResult();

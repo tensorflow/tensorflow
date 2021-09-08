@@ -61,7 +61,8 @@ def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   let description = [{
     xlir.custom_call invokes a host function, supplied in the ExecutionContext
     (CustomCallContext), using 'buffers' for the purposes of enqueuing
-    operations on the GPU device.
+    operations on the GPU device. 'opaque' is used to supply an arbitrary string
+    of bytes to the host function call.
 
     Optionally specify an 'args_to_target_args' and/or
     'results_to_target_results' to rearrange 'buffers' supplied to the host
@@ -73,7 +74,7 @@ def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   }];
   let arguments = (ins GPU_StreamType:$stream, TFRT_ChainType:$chain,
                    Variadic<GPU_BufferType>:$buffers,
-                   I64ArrayAttr:$args_to_target_args,
+                   I64ArrayAttr:$args_to_target_args, StrAttr:$opaque,
                    I64ArrayAttr:$results_to_target_results,
                    I64Attr:$target_args_count, I64Attr:$target_results_count);
   let results = (outs TFRT_ChainType);

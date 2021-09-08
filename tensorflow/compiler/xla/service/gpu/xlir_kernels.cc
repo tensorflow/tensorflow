@@ -81,7 +81,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
     const tfrt::gpu::GpuStream& stream, tfrt::Chain chain,
     tfrt::RemainingArguments buffers,
     // Needs to be sorted alphabetically by attribute name!
-    tfrt::ArrayAttr args_to_target_args,
+    tfrt::ArrayAttr args_to_target_args, tfrt::StringAttribute opaque,
     tfrt::ArrayAttr results_to_target_results,
     tfrt::Attribute<int64_t> target_args_count,
     tfrt::Attribute<int64_t> target_results_count,
@@ -121,9 +121,9 @@ static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
   }
 
   XlaCustomCallStatus custom_call_status;
-  custom_call_ctx->call_target(
-      stream.get(), target_buffers.data(), custom_call_ctx->opaque.data(),
-      custom_call_ctx->opaque.size(), &custom_call_status);
+  custom_call_ctx->call_target(stream.get(), target_buffers.data(),
+                               opaque.get().data(), opaque.get().size(),
+                               &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
     return tfrt::MakeErrorAsyncValueRef(
