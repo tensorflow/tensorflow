@@ -506,11 +506,11 @@ absl::flat_hash_set<string> GetExperiments(
 
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiments. "
-               "Please see `go/tf-data-experiments` for more details.";
+    LOG(INFO) << "The input pipeline is subject to tf.data experiments. "
+                 "Please see `go/tf-data-experiments` for more details.";
   }
   for (auto& experiment : experiments) {
-    VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+    LOG(INFO) << "The experiment \"" << experiment << "\" is applied.";
     metrics::RecordTFDataExperiment(experiment);
   }
 }
