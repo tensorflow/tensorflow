@@ -1216,6 +1216,14 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "op_kernel_test_base",
+    testonly = True,
+    textual_hdrs = [
+        "op_kernel_test_base.h",
+    ],
+)
+
 tf_cc_tests(
     name = "higher_level_tests",
     size = "small",
@@ -1228,6 +1236,7 @@ tf_cc_tests(
         "common_shape_fns_test.cc",
         "dataset_test.cc",
         "device_base_test.cc",
+        "disable_jit_test.cc",
         "function_test.cc",
         "graph_def_util_test.cc",
         "graph_to_functiondef_test.cc",
@@ -1269,6 +1278,7 @@ tf_cc_tests(
         "//tensorflow/core:__pkg__",
     ],
     deps = [
+        ":op_kernel_test_base",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
