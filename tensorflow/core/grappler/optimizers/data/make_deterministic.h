@@ -23,14 +23,20 @@ namespace grappler {
 
 constexpr char kAutotune[] = "autotune";
 
-// Transforms ParallelInterleave datasets into Interleave datasets if the
-// ParallelInterleave function can introduce nondeterminism when run in
-// parallel. In particular, if the function can mutate state, it is considered
-// nondeterministic.
+// Transforms ParallelInterleave and ParallelMap datasets into Interleave and
+// Map datasets respectively, if the interleave/map function can introduce
+// nondeterminism when run in parallel. In particular, if the function can
+// mutate state, it is considered nondeterministic.
 //
-// Note even if the "deterministic" attribute of ParallelInterleave is set,
-// nondeterminism may still occur if the function mutates state. This Optimizer
-// removes this source of nondeterminism.
+// Note even if the "deterministic" attribute is set, nondeterminism may still
+// occur if the function mutates state. This Optimizer removes this source of
+// nondeterminism.
+//
+// Map datasets are often rewritten, as map functions which distort images
+// typically use random ops (which are stateful). Unfortunately, this rewrite
+// usually causes a large performance penalty in such cases by forcing the map
+// function to run in serial.
+// TODO(reedwm): Reduce the performance penalty.
 class MakeDeterministic : public TFDataOptimizerBase {
  public:
   MakeDeterministic() = default;

@@ -52,7 +52,7 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(
               use_function=[False, True], use_legacy_interleave=[False, True])))
-  def test_stateful_ops(self, use_function, use_legacy_interleave):
+  def test_stateful_ops_interleave(self, use_function, use_legacy_interleave):
     with test_util.deterministic_ops():
 
       v = variables.Variable(0.)
@@ -90,8 +90,38 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
+              use_function=[False, True])))
+  def test_stateful_ops_map(self, use_function):
+    with test_util.deterministic_ops():
+
+      v = variables.Variable(0.)
+
+      def map_fn(x):
+        v.assign_add(1.)
+        return (x, v.read_value())
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset.with_options(options)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = list(zip(range(0, 5), range(1, 6)))
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
               use_function=[False, True], use_legacy_interleave=[False, True])))
-  def test_no_stateful_ops(self, use_function, use_legacy_interleave):
+  def test_no_stateful_ops_interleave(self, use_function,
+                                      use_legacy_interleave):
     self._set_seed()
     with test_util.deterministic_ops():
 
@@ -117,6 +147,29 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       self.assertDatasetProduces(dataset, expected_output=[0] * 5 + [1] * 5)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(use_function=[False, True])))
+  def test_no_stateful_ops_map(self, use_function):
+    self._set_seed()
+    with test_util.deterministic_ops():
+      def map_fn(x):
+        return x + 1
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.apply(testing.assert_next(["ParallelMap"]))
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset.with_options(options)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = range(1, 6)
+      self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
