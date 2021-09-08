@@ -32,6 +32,7 @@ from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as embedding_pb2
+from tensorflow.python import tf2
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -1537,10 +1538,14 @@ def split_compile_and_replicate(
       from tensorflow.python.tpu import tensor_tracer
       # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
-      tt = tensor_tracer.TensorTracer()
-      output_tensors = tt.trace_tpu(ops.get_default_graph(),
-                                    output_tensors, control_deps,
-                                    num_replicas)
+      if tf2.enabled():
+        logging.warn("TF API ver >= 2.0 detected. "
+                     "Tensor Tracer v1 is not enabled.")
+      else:
+        tt = tensor_tracer.TensorTracer()
+        output_tensors = tt.trace_tpu(ops.get_default_graph(),
+                                      output_tensors, control_deps,
+                                      num_replicas)
 
     context.ExitResult(output_tensors)
   finally:
