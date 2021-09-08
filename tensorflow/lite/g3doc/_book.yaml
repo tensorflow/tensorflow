@@ -245,6 +245,9 @@ upper_tabs:
       - title: "Audio classification"
         path: /lite/examples/audio_classification/overview
       - heading: "Others"
+      - title: "Jax Model Conversion"
+        path: /lite/examples/jax_conversion/overview
+        status: nightly
       - title: "On-device training"
         path: /lite/examples/on_device_training/overview
         status: nightly
