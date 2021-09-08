@@ -630,6 +630,9 @@ class Subgraph {
   // Returns true if the subgraph has delegates applied.
   bool HasDelegates();
 
+  // Returns true if the subgraph has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);

@@ -106,7 +106,7 @@ func @dyn_reshape_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
 // CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 
 // CHECK: %[[RESHAPED:.*]] = memref.reshape %[[COPERAND]](%[[BSHAPE]]) : (memref<?x?xi32>, memref<3xi64>) -> memref<?x?x?xi32>
-// CHECK: %[[RESULT:.*]] = builtin.unrealized_conversion_cast %[[RESHAPED]] : memref<?x?x?xi32> to memref<?x?x?xui32>
+// CHECK: %[[RESULT:.*]] =  builtin.unrealized_conversion_cast %[[RESHAPED]] : memref<?x?x?xi32> to memref<?x?x?xui32>
 // CHECK: %[[TRESULT:.*]] = memref.tensor_load %[[RESULT]] : memref<?x?x?xui32>
 // CHECK: return %[[TRESULT]]
 

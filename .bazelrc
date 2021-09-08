@@ -79,6 +79,8 @@
 #     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
 #     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
 #
+#     rbe_lite_linux: RBE options to build TF Lite.
+#
 # Embedded Linux options (experimental and only tested with TFLite build yet)
 #     elinux:          General Embedded Linux options shared by all flavors.
 #     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
@@ -407,13 +409,14 @@ test:rbe --test_env=USER=anon
 # workers:
 build:rbe --remote_download_toplevel
 
-build:rbe_linux --config=rbe
-build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
-build:rbe_linux --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
-build:rbe_linux --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
+build:rbe_linux_base --config=rbe
+build:rbe_linux_base --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+build:rbe_linux_base --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
+build:rbe_linux_base --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
+build:rbe_linux_base --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
+build:rbe_linux_base --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
+build:rbe_linux --config=rbe_linux_base
 # Non-rbe settings we should include because we do not run configure
 build:rbe_linux --config=avx_linux
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
@@ -424,13 +427,20 @@ build:rbe_linux --host_linkopt=-lm
 
 # Use the GPU toolchain until the CPU one is ready.
 # https://github.com/bazelbuild/bazel/issues/13623
+build:rbe_cpu_linux_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_cpu_linux_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+
 build:rbe_cpu_linux --config=rbe_linux
-build:rbe_cpu_linux --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_cpu_linux --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux --config=rbe_cpu_linux_base
+
+build:rbe_lite_linux --config=rbe_linux_base
+build:rbe_lite_linux --config=rbe_cpu_linux_base
+build:rbe_lite_linux --config=rbe_linux_py3_base
+build:rbe_lite_linux --noexperimental_check_desugar_deps
 
 build:rbe_linux_cuda_base --config=rbe_linux
 build:rbe_linux_cuda_base --config=cuda
@@ -498,8 +508,9 @@ build:rbe_linux_rocm_py3.9 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CON
 # Linux CPU
 
 build:rbe_linux_py3 --config=rbe_linux
-build:rbe_linux_py3 --python_path="/usr/local/bin/python3.9"
-build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_py3 --config=rbe_linux_py3_base
+build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
+build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
 build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_06242021:toolchain"

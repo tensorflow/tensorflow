@@ -262,6 +262,7 @@ tf_py_test(
     name = "dispatch_test",
     srcs = ["dispatch_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":util",
         "//tensorflow/python:client_testlib",

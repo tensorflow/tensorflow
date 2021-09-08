@@ -53,6 +53,7 @@ cc_library(
     hdrs = ["hardware_type_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "@com_google_absl//absl/strings",

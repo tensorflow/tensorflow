@@ -215,7 +215,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       TF event. For most of the activities, we need to enable the corresponding
       API callsbacks (we call them auxiliary API callbacks) to capture the
       necessary fields from them using the correlation id. The purpose of this
-      function is to let APIs and activities exchange informaion to reach a
+      function is to let APIs and activities exchange information to reach a
       state very similar to TF CUDA and getting ready to dump the event.
     */
 
@@ -254,7 +254,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                            kernel_activity_op.end_time_ns);
             }
           }
-        } break;
+          break;
+        }
         case RocmTracerEventType::MemcpyD2D:
         case RocmTracerEventType::MemcpyH2D:
         case RocmTracerEventType::MemcpyD2H:
@@ -288,7 +289,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               }
             }
           }
-        } break;
+          break;
+        }
         default:
           // nothing to do for the rest
           result = true;
@@ -317,7 +319,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         /*KERNEL API*/
         case RocmTracerEventType::Kernel: {
           aggregated_events.push_back(api_event);
-        } break;
+          break;
+        }
         /*MEMCPY API*/
         case RocmTracerEventType::MemcpyD2H:
         case RocmTracerEventType::MemcpyH2D:
@@ -335,8 +338,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 api_event.correlation_id);
             DumpRocmTracerEvent(api_event, 0, 0, ". Dropped!");
           }
-
-        } break;
+          break;
+        }
         /*MEMSET API*/
         case RocmTracerEventType::Memset: {
           if (iter != activity_api_events_map_.end()) {
@@ -350,19 +353,21 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 api_event.correlation_id);
             DumpRocmTracerEvent(api_event, 0, 0, ". Dropped!");
           }
-
-        } break;
+          break;
+        }
         /*MALLOC API, FREE API*/
         case RocmTracerEventType::MemoryAlloc:
         case RocmTracerEventType::MemoryFree: {
           // no missing info
           aggregated_events.push_back(api_event);
-        } break;
+          break;
+        }
         /*SYNCHRONIZATION API*/
         case RocmTracerEventType::Synchronization: {
           // no missing info
           aggregated_events.push_back(api_event);
-        } break;
+          break;
+        }
         default:
           OnEventsDropped("Missing API-Activity information exchange. Dropped!",
                           api_event.correlation_id);
@@ -401,7 +406,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 activity_event.correlation_id);
             DumpRocmTracerEvent(activity_event, 0, 0, ". Dropped!");
           }
-        } break;
+          break;
+        }
         /*MEMCPY ACTIVITY*/
         case RocmTracerEventType::MemcpyD2H:
         case RocmTracerEventType::MemcpyH2D:
@@ -418,8 +424,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 activity_event.correlation_id);
             DumpRocmTracerEvent(activity_event, 0, 0, ". Dropped!");
           }
-
-        } break;
+          break;
+        }
         /*MEMSET ACTIVITY*/
         case RocmTracerEventType::Memset: {
           if (iter != api_events_map_.end() ||
@@ -434,8 +440,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 activity_event.correlation_id);
             DumpRocmTracerEvent(activity_event, 0, 0, ". Dropped!");
           }
-
-        } break;
+          break;
+        }
         /*MALLOC ACTIVITY, FREE ACTIVITY*/
         case RocmTracerEventType::MemoryAlloc:
         case RocmTracerEventType::MemoryFree: {
@@ -450,7 +456,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 activity_event.correlation_id);
             DumpRocmTracerEvent(activity_event, 0, 0, ". Dropped!");
           }
-        } break;
+          break;
+        }
         /*SYNCHRONIZATION ACTIVITY*/
         case RocmTracerEventType::Synchronization: {
           if (iter != api_events_map_.end() ||
@@ -460,7 +467,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
             // CuptiTracerEvent.
             // RocmTracerEvent type, set device by default to an unvalid
             // device-id value. To be consistent with CUDA (in terms of having a
-            // logically valid value for device id) we update the devce-id to
+            // logically valid value for device id) we update the device-id to
             // its correct value
             activity_event.device_id = iter->second.device_id;
             aggregated_events.push_back(activity_event);
@@ -471,8 +478,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 activity_event.correlation_id);
             DumpRocmTracerEvent(activity_event, 0, 0, ". Dropped!");
           }
-
-        } break;
+          break;
+        }
         default:
           OnEventsDropped("Missing API-Activity information exchange. Dropped!",
                           activity_event.correlation_id);
@@ -524,11 +531,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   struct PerDeviceCollector {
     void GetDeviceCapabilities(int32_t device_ordinal,
                                XPlaneBuilder* device_plane) {
-      std::string device_manfacturer = "AMD";
-      device_plane->AddStatValue(
-          *device_plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kDevManufacturer)),
-          device_manfacturer);
+      device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                     GetStatTypeStr(StatType::kDevVendor)),
+                                 kDeviceVendorAMD);
 
       if (hipGetDeviceProperties(&device_properties_, device_ordinal) !=
           hipSuccess)
@@ -602,7 +607,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     }
     OccupancyStats GetOccupancy(const RocmDeviceOccupancyParams& params) const {
       // TODO(rocm-profiler): hipOccupancyMaxActiveBlocksPerMultiprocessor only
-      // return hipSucess for HIP_API_ID_hipLaunchKernel
+      // return hipSuccess for HIP_API_ID_hipLaunchKernel
 
       OccupancyStats stats;
       int number_of_active_blocks;
@@ -969,7 +974,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipMemcpyHtoDAsync,
       HIP_API_ID_hipMemcpyPeer,
       HIP_API_ID_hipMemcpyPeerAsync,
-      
+
       // MEMSet
       HIP_API_ID_hipMemsetD32,
       HIP_API_ID_hipMemsetD32Async,
@@ -988,27 +993,30 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       // GENERIC
       HIP_API_ID_hipStreamSynchronize,
   };
+  // clang-format on
 
-  options.api_tracking_set = std::set<uint32_t>(hip_api_domain_ops.begin(), hip_api_domain_ops.end());
+  options.api_tracking_set =
+      std::set<uint32_t>(hip_api_domain_ops.begin(), hip_api_domain_ops.end());
 
   // These are the list of APIs we track since roctracer activity
-  // does not provide all the information necessary to fully populate the 
+  // does not provide all the information necessary to fully populate the
   // TF events. We need to track the APIs for those activities in API domain but
   // we only use them for filling the missing items in their corresponding
   // activity (using correlation id).
+  // clang-format off
   std::vector<uint32_t> hip_api_aux_ops{
     HIP_API_ID_hipStreamWaitEvent,
-    //TODO(rocm-profiler): finding device ID from hipEventSynchronize need some extra work
-    //we ignore it for now 
-    //HIP_API_ID_hipEventSynchronize,
-    HIP_API_ID_hipHostFree, 
-    HIP_API_ID_hipHostMalloc, 
+    // TODO(rocm-profiler): finding device ID from hipEventSynchronize need some
+    // extra work, we ignore it for now.
+    // HIP_API_ID_hipEventSynchronize,
+    HIP_API_ID_hipHostFree,
+    HIP_API_ID_hipHostMalloc,
     HIP_API_ID_hipSetDevice  //  added to track default device
   };
-
-  hip_api_domain_ops.insert(hip_api_domain_ops.end(), hip_api_aux_ops.begin(), hip_api_aux_ops.end());
-
   // clang-format on
+
+  hip_api_domain_ops.insert(hip_api_domain_ops.end(), hip_api_aux_ops.begin(),
+                            hip_api_aux_ops.end());
 
   options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
   // options.api_callbacks.emplace(ACTIVITY_DOMAIN_ROCTX, empty_vec);

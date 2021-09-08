@@ -56,8 +56,8 @@ import os
 import os.path
 import pathlib
 import platform
+import re
 import subprocess
-
 
 parser = argparse.ArgumentParser(
     usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -117,7 +117,6 @@ size.add_argument(
     type=int,
     help="Manually set the recorded size instead of providing an artifact.")
 FLAGS = parser.parse_args()
-
 
 NOW = datetime.datetime.now(
     datetime.timezone.utc).replace(microsecond=0).isoformat()
@@ -203,6 +202,23 @@ def git_pretty(commit_range, pretty_format, n=None):
     print(e.stdout)
     raise e
   out = ret.stdout.replace("\n", "")
+  # Unique case: Old versions of git do not expand the special parts of the
+  # trailers formatter. In that case, the entire formatter remains, and we
+  # need to extract the information in another way. The %trailers general
+  # formatter is available, so we'll use that and regex over it.
+  t = "%(trailers:key=PiperOrigin-RevId,valueonly)"
+  if t in out:
+    ret = subprocess.run([
+        "git", "log", *n, "--grep", CL_TRAILER, commit_range,
+        "--pretty=%(trailers)"
+    ],
+                         check=True,
+                         universal_newlines=True,
+                         stderr=subprocess.PIPE,
+                         stdout=subprocess.PIPE)
+    cl_number = re.search("PiperOrigin-RevId: (?P<cl>[0-9]+)",
+                          ret.stdout).group("cl")
+    out = out.replace(t, cl_number)
   # Split by \0 and make list of text, extra whitespace and empty lines removed
   return list(filter(None, map(str.strip, out.split("\0"))))
 
@@ -246,8 +262,7 @@ def bq(args, stdin=None):
   # bq prints extra messages to stdout if ~/.bigqueryrc doesn't exist
   pathlib.Path(pathlib.Path.home() / ".bigqueryrc").touch()
   return gcloud(
-      "bq", ["--project_id", FLAGS.project, "--headless", *args],
-      stdin=stdin)
+      "bq", ["--project_id", FLAGS.project, "--headless", *args], stdin=stdin)
 
 
 def get_all_tested_commits():
@@ -374,8 +389,11 @@ def main():
     print("\t".join(map(str, next_tsv_row)))
   else:
     with open("data.tsv", "w", newline="") as tsvfile:
-      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL,
-                          lineterminator=os.linesep)
+      writer = csv.writer(
+          tsvfile,
+          delimiter="\t",
+          quoting=csv.QUOTE_MINIMAL,
+          lineterminator=os.linesep)
       writer.writerow(next_tsv_row)
     bq([
         "load", "--source_format", "CSV", "--field_delimiter", "tab",

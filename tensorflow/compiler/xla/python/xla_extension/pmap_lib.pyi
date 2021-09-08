@@ -66,7 +66,8 @@ class ShardedDeviceArray:
   aval: Any
   indices: Any
   sharding_spec: ShardingSpec
-  device_buffers: Optional[List[Any]]
+  @property
+  def device_buffers(self) -> Optional[List[Any]]: ...
   _npy_value: Optional[np.ndarray]
   _one_replica_buffer_indices: Optional[Any]
 

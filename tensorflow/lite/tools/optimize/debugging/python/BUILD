@@ -3,7 +3,9 @@ load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],
 )
 
@@ -11,6 +13,7 @@ pytype_strict_library(
     name = "debugger",
     srcs = ["debugger.py"],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",

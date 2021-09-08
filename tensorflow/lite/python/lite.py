@@ -708,7 +708,6 @@ class TFLiteConverterBase(object):
     """Apply optimizations on a TFLite model."""
 
     if quant_mode.is_integer_quantize():
-
       in_type, out_type = self.inference_input_type, self.inference_output_type
 
       if quant_mode.is_post_training_integer_quantize():
@@ -721,7 +720,12 @@ class TFLiteConverterBase(object):
 
       m_in_type = in_type if in_type else _dtypes.float32
       m_out_type = out_type if out_type else _dtypes.float32
-      model = _modify_model_io_type(model, m_in_type, m_out_type)
+      # Skip updating model io types if MLIR quantizer already takes care of it
+      if not (quant_mode.is_post_training_integer_quantize() and
+              self.experimental_new_quantizer and quant_io and
+              (m_in_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32]) and
+              (m_out_type in [_dtypes.int8, _dtypes.uint8, _dtypes.float32])):
+        model = _modify_model_io_type(model, m_in_type, m_out_type)
 
     if self._sparsify_model():
       model = _mlir_sparsify(model)
@@ -1409,11 +1413,15 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     if not isinstance(self._inputs[0], (tuple, list)):
       raise ValueError("The input placeholders are not a dictionary.")
+
+    input_names = []
+    ordered_inputs = []
+    for input_name, tensor in self._inputs[0]:
+      input_names.append(input_name)
+      ordered_inputs.append(tensor)
+
     try:
       xla_compuation = _xla_computation(self._serving_funcs[0], backend="cpu")
-      ordered_inputs = []
-      for input_tuple in self._inputs[0]:
-        ordered_inputs.append(input_tuple[1])
       hlo_proto = xla_compuation(
           *ordered_inputs).as_serialized_hlo_module_proto()
     except Exception:  # pylint: disable=broad-except
@@ -1421,7 +1429,11 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     # We need to set the hlo proto, and here we use serialized proto format
     # since it's more compact.
-    converter_kwargs = {"input_content": hlo_proto, "is_proto_format": True}
+    converter_kwargs = {
+        "input_content": hlo_proto,
+        "input_names": input_names,
+        "is_proto_format": True
+    }
     converter_kwargs.update(self._get_base_converter_args())
 
     # Get quantization options and do some checks.
@@ -1884,7 +1896,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           **converter_kwargs)
 
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=not self.experimental_new_converter)
+        result, quant_mode, quant_io=self.experimental_new_quantizer)
 
   def get_input_arrays(self):
     """Returns a list of the names of the input tensors.

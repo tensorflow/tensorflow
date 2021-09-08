@@ -48,13 +48,13 @@ void RunEigenBenchmark(
   static void BM_mlir_##NAME(::testing::benchmark::State& state) { \
     RunMlirBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
   }                                                                \
-  BENCHMARK(BM_mlir_##NAME)
+  BENCHMARK(BM_mlir_##NAME)->MeasureProcessCPUTime()
 
 #define BM_Eigen(NAME, FN, INPUT_SPEC)                              \
   static void BM_eigen_##NAME(::testing::benchmark::State& state) { \
     RunEigenBenchmark(state, FN, INPUT_SPEC);                       \
   }                                                                 \
-  BENCHMARK(BM_eigen_##NAME)
+  BENCHMARK(BM_eigen_##NAME)->MeasureProcessCPUTime()
 
 }  // namespace tensorflow
 

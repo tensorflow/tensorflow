@@ -54,9 +54,12 @@ struct MlirBenchmark {
 template <typename T, int rank>
 MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
     llvm::StringRef mlir_input, llvm::StringRef function_name,
-    std::array<MemrefDesc, 1>& operands, bool lower_from_tensorflow) {
+    std::array<MemrefDesc, 1>& operands, size_t num_threads,
+    bool lower_from_tensorflow) {
   static_assert(rank >= 1 && rank <= 4, "We do only support ranks 1 to 4");
-  std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
+  std::unique_ptr<HostContext> host =
+      num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
+                      : CreateSingleThreadedHostContext();
 
   JitExecutable& jit_executable = CreateJitExecutable(
       *host, mlir_input, function_name, lower_from_tensorflow);
@@ -90,7 +93,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
 template <typename T, int rank>
 void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
                             llvm::StringRef function_name, T scale, T offset,
-                            bool lower_from_tensorflow) {
+                            size_t num_threads, bool lower_from_tensorflow) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d)
     input_dims[d] = 10;  // The value here does not matter.
@@ -101,7 +104,7 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
@@ -118,7 +121,7 @@ template <typename T, int rank>
 void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
                            llvm::StringRef mlir_input,
                            llvm::StringRef function_name, T scale, T offset,
-                           bool lower_from_tensorflow) {
+                           size_t num_threads, bool lower_from_tensorflow) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d) input_dims[d] = state.range(d);
   // Generate random input data.
@@ -127,7 +130,7 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
@@ -149,7 +152,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
 template <typename T, int rank, bool vectorize, typename ExprBuilder>
 void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
-                            ExprBuilder expr_builder, T scale, T offset) {
+                            ExprBuilder expr_builder, T scale, T offset,
+                            size_t num_threads) {
   static_assert(rank >= 1 && rank <= 4, "We do only support ranks 1 to 4");
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d) input_dims[d] = state.range(d);
@@ -157,8 +161,10 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
   Eigen::Tensor<T, rank, Eigen::RowMajor> input =
       GenRandomTensor<T, rank>(input_dims, scale, offset);
 
-  using Device = Eigen::DefaultDevice;
-  Device d;
+  Eigen::DefaultDevice singleThreadedDevice;
+  Eigen::ThreadPool thread_pool(num_threads);
+  llvm::Optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
+  if (num_threads > 0) multiThreadedDevice.emplace(&thread_pool, num_threads);
 
   Eigen::DSizes<ssize_t, rank> dsizes;
   for (int d = 0; d < rank; ++d) dsizes[d] = input_dims[d];
@@ -170,7 +176,13 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 
     using Dst = decltype(dst);
     using Expr = decltype(expr);
-    ExecuteAssignOp<vectorize, Device, Dst, Expr>::run(d, dst, expr);
+    if (multiThreadedDevice.hasValue()) {
+      ExecuteAssignOp</*vectorize=*/true, Eigen::ThreadPoolDevice, Dst,
+                      Expr>::run(*multiThreadedDevice, dst, expr);
+    } else {
+      ExecuteAssignOp</*vectorize=*/true, Eigen::DefaultDevice, Dst, Expr>::run(
+          singleThreadedDevice, dst, expr);
+    }
   }
 
   state.SetItemsProcessed(state.iterations() * input.size());
@@ -185,38 +197,49 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 // For MLIR benchmarks, we also generate a unit test to detect regressions.
 // -------------------------------------------------------------------------- //
 
-#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET)          \
-  TEST(Test_mlir_##NAME##_##TYPE, RunOnce) {                                \
+#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET,          \
+                  NUM_THREADS)                                              \
+  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                \
     TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,       \
+                                       NUM_THREADS,                         \
                                        /*lower_from_tensorflow=*/true);     \
   }                                                                         \
-  static void BM_mlir_##NAME##_##TYPE(::testing::benchmark::State& state) { \
+  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                      \
+      ::testing::benchmark::State& state) {                                 \
     RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET, \
+                                      NUM_THREADS,                          \
                                       /*lower_from_tensorflow=*/true);      \
   }                                                                         \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE)
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
 
-#define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET)            \
-  TEST(Test_mlir_##NAME##_##TYPE, RunOnce) {                                \
-    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,       \
-                                       /*lower_from_tensorflow=*/false);    \
-  }                                                                         \
-  static void BM_mlir_##NAME##_##TYPE(::testing::benchmark::State& state) { \
-    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET, \
-                                      /*lower_from_tensorflow=*/false);     \
-  }                                                                         \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE)
+#define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
+  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                  \
+    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,         \
+                                       NUM_THREADS,                           \
+                                       /*lower_from_tensorflow=*/false);      \
+  }                                                                           \
+  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                        \
+      ::testing::benchmark::State& state) {                                   \
+    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET,   \
+                                      NUM_THREADS,                            \
+                                      /*lower_from_tensorflow=*/false);       \
+  }                                                                           \
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
 
-#define BM_EigenScalar(NAME, FN, RANK, TYPE, SCALE, OFFSET)                    \
-  static void BM_eigen_s_##NAME##_##TYPE(::testing::benchmark::State& state) { \
-    RunUnaryEigenBenchmark<TYPE, RANK, false>(state, FN, SCALE, OFFSET);       \
-  }                                                                            \
-  BENCHMARK(BM_eigen_s_##NAME##_##TYPE)
+#define BM_EigenScalar(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
+  static void BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS(                \
+      ::testing::benchmark::State& state) {                              \
+    RunUnaryEigenBenchmark<TYPE, RANK, false>(state, FN, SCALE, OFFSET,  \
+                                              NUM_THREADS);              \
+  }                                                                      \
+  BENCHMARK(BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS)
 
-#define BM_EigenVectorized(NAME, FN, RANK, TYPE, SCALE, OFFSET)                \
-  static void BM_eigen_v_##NAME##_##TYPE(::testing::benchmark::State& state) { \
-    RunUnaryEigenBenchmark<TYPE, RANK, true>(state, FN, SCALE, OFFSET);        \
-  }                                                                            \
-  BENCHMARK(BM_eigen_v_##NAME##_##TYPE)
+#define BM_EigenVectorized(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
+  static void BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS(                    \
+      ::testing::benchmark::State& state) {                                  \
+    RunUnaryEigenBenchmark<TYPE, RANK, true>(state, FN, SCALE, OFFSET,       \
+                                             NUM_THREADS);                   \
+  }                                                                          \
+  BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_

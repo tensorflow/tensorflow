@@ -346,10 +346,9 @@ class PerDeviceCollector {
 
   void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
-    std::string device_manfacturer = "Nvidia";
     device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(StatType::kDevManufacturer)),
-                               device_manfacturer);
+                                   GetStatTypeStr(StatType::kDevVendor)),
+                               kDeviceVendorNvidia);
 
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;

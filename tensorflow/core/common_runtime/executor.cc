@@ -239,7 +239,7 @@ class ExecutorImpl : public Executor {
 //   * `TaggedNode front() const`
 //   * `void pop_front()`
 //   * `bool empty() const`
-// * A type `TaggedNodeSeq`, representing a list of nodes to be schedules, with
+// * A type `TaggedNodeSeq`, representing a list of nodes to be scheduled, with
 //   public members (having the same meanings as in an
 //   `std::vector<TaggedNode>`):
 //   * `size_t size() const`

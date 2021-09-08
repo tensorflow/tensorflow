@@ -1024,10 +1024,12 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
-      for (const auto& payload : status->status.GetAllPayloads()) {
+      for (const auto& payload :
+           tensorflow::errors::GetPayloads(status->status)) {
+        std::string payload_value(payload.second);
         PyDict_SetItem(payloads.get(),
                        PyBytes_FromString(payload.first.c_str()),
-                       PyBytes_FromString(payload.second.c_str()));
+                       PyBytes_FromString(payload_value.c_str()));
       }
       tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
           "siO", FormatErrorStatusStackTrace(status->status).c_str(),
@@ -1058,10 +1060,11 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
-      for (const auto& element : status.GetAllPayloads()) {
+      for (const auto& payload : tensorflow::errors::GetPayloads(status)) {
+        std::string payload_value(payload.second);
         PyDict_SetItem(payloads.get(),
-                       PyBytes_FromString(element.first.c_str()),
-                       PyBytes_FromString(element.second.c_str()));
+                       PyBytes_FromString(payload.first.c_str()),
+                       PyBytes_FromString(payload_value.c_str()));
       }
       tensorflow::Safe_PyObjectPtr val(
           Py_BuildValue("siO", FormatErrorStatusStackTrace(status).c_str(),
@@ -3972,6 +3975,7 @@ const char kTupleEnd[] = "u";
 const char kDIter[] = "I";
 const char kDict[] = "D";
 const char kRaw[] = "R";
+const char kResourceVariable[] = "r";
 const char kShape[] = "s";
 const char kShapeDelim[] = "-";
 const char kDType[] = "d";
@@ -4092,12 +4096,14 @@ tensorflow::Status TFE_Py_EncodeTensorOrTensorSpec(
 
 tensorflow::Status TFE_Py_EncodeArgHelperInternal(
     PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
-    absl::flat_hash_map<int, int>& res_map, int& cur_res, EncodeResult* result);
+    absl::flat_hash_map<int, int>& res_map, int& cur_res,
+    bool encode_var_by_res_id, EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
                                          const char* end_type,
                                          bool include_tensor_ranks_only,
+                                         bool encode_var_by_res_id,
                                          std::vector<int>& res_vec,
                                          absl::flat_hash_map<int, int>& res_map,
                                          int& cur_res, EncodeResult* result) {
@@ -4113,7 +4119,8 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
       absl::StrAppend(&result->str, kNone);
     } else {
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
-          item, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
+          item, include_tensor_ranks_only, res_vec, res_map, cur_res,
+          encode_var_by_res_id, result));
     }
   }
   absl::StrAppend(&result->str, end_type);
@@ -4136,7 +4143,7 @@ void UpdateResourceCount(int res_id, std::vector<int>& res_vec,
 tensorflow::Status TFE_Py_EncodeArgHelperInternal(
     PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
     absl::flat_hash_map<int, int>& res_map, int& cur_res,
-    EncodeResult* result) {
+    bool encode_var_by_res_id, EncodeResult* result) {
   if (tensorflow::swig::IsTensorSpec(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeTensorOrTensorSpec(
         arg, true, include_tensor_ranks_only, result));
@@ -4182,13 +4189,13 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
       absl::StrAppend(&result->str, kCompositeTensor);
     }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd,
-                                             include_tensor_ranks_only, res_vec,
-                                             res_map, cur_res, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kList, kListEnd, include_tensor_ranks_only, encode_var_by_res_id,
+        res_vec, res_map, cur_res, result));
   } else if (tensorflow::swig::IsTuple(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd,
-                                             include_tensor_ranks_only, res_vec,
-                                             res_map, cur_res, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kTuple, kTupleEnd, include_tensor_ranks_only, encode_var_by_res_id,
+        res_vec, res_map, cur_res, result));
   } else if (tensorflow::swig::IsMapping(arg)) {
     tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -4201,11 +4208,12 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
     for (int i = 0; i < len; i++) {
       PyObject* key = PyList_GetItem(keys.get(), i);
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
-          key, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
+          key, include_tensor_ranks_only, res_vec, res_map, cur_res,
+          encode_var_by_res_id, result));
       tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelperInternal(value.get(), include_tensor_ranks_only,
-                                         res_vec, res_map, cur_res, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          value.get(), include_tensor_ranks_only, res_vec, res_map, cur_res,
+          encode_var_by_res_id, result));
     }
   } else if (tensorflow::swig::IsCompositeTensor(arg)) {
     absl::StrAppend(&result->str, kCompositeTensor);
@@ -4235,9 +4243,29 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
       tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
           attr_arg.get(), include_tensor_ranks_only, res_vec, res_map, cur_res,
-          result));
+          encode_var_by_res_id, result));
     }
     absl::StrAppend(&result->str, kAttrsEnd);
+  } else if (tensorflow::swig::IsResourceVariable(arg) &&
+             encode_var_by_res_id) {
+    absl::StrAppend(&result->str, kResourceVariable);
+    // Get resource id, similar to OwnedIterator
+    tensorflow::Safe_PyObjectPtr p_res_id(
+        PyObject_CallMethod(arg, "__tf_resource_id__", nullptr));
+    if (p_res_id == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while calling __tf_resource_id__().");
+    }
+    int res_id = PyLong_AsSize_t(p_res_id.get());
+    if (res_id < 0) {
+      return tensorflow::errors::InvalidArgument("PyLong_AsSize_t failure");
+    }
+    UpdateResourceCount(res_id, res_vec, res_map, cur_res);
+
+    // Get dtype and shape, similar to Tensor.
+    tensorflow::Safe_PyObjectPtr type_spec(
+        PyObject_CallMethod(arg, "__tf_function_cache_spec__", nullptr));
+    absl::StrAppend(&result->str, PyUnicode_AsUTF8(type_spec.get()));
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 
@@ -4257,12 +4285,14 @@ tensorflow::Status TFE_Py_EncodeArgHelperInternal(
 
 tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
                                           bool include_tensor_ranks_only,
+                                          bool encode_var_by_res_id,
                                           EncodeResult* result) {
   std::vector<int> res_vec;
   absl::flat_hash_map<int, int> res_map;
   int cur_res = 0;
-  auto status = TFE_Py_EncodeArgHelperInternal(
-      arg, include_tensor_ranks_only, res_vec, res_map, cur_res, result);
+  auto status = TFE_Py_EncodeArgHelperInternal(arg, include_tensor_ranks_only,
+                                               res_vec, res_map, cur_res,
+                                               encode_var_by_res_id, result);
 
   // Add 'encoding' of resources
   std::string str_resource_encoding = "";
@@ -4289,10 +4319,11 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
+PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only,
+                           bool encode_var_by_res_id) {
   EncodeResult result;
-  const auto status =
-      TFE_Py_EncodeArgHelper(arg, include_tensor_ranks_only, &result);
+  const auto status = TFE_Py_EncodeArgHelper(arg, include_tensor_ranks_only,
+                                             encode_var_by_res_id, &result);
   if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
     return nullptr;
   }

@@ -251,7 +251,7 @@ void VersionAttr::print(DialectAsmPrinter &printer) const {
 //   #tf.func<"", {attr = "value"}>
 // in case of null symbol ref.
 void FuncAttr::print(DialectAsmPrinter &os) const {
-  if (getName().getRootReference().empty())
+  if (getName().getRootReference().getValue().empty())
     os << "func<\"\", " << getAttrs() << ">";
   else
     os << "func<" << getName() << ", " << getAttrs() << ">";

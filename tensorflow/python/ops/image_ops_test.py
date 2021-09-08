@@ -6075,6 +6075,16 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             crop_size=[1, 1])
         self.evaluate(op)
 
+  def testImageCropAndResizeWithInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InternalError, ValueError)):
+        op = image_ops_impl.crop_and_resize_v2(
+            image=np.ones((1, 1, 1, 1)),
+            boxes=np.ones((11, 4)),
+            box_indices=np.ones((11)),
+            crop_size=[2065374891, 1145309325])
+        self.evaluate(op)
+
   @parameterized.named_parameters(
       ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),
       ("_png", "PNG", "lena_rgba.png"),

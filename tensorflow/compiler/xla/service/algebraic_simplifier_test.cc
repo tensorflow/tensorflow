@@ -1457,9 +1457,12 @@ TEST_F(AlgebraicSimplifierTest, LnPow) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::Multiply(m::Log(m::Abs(m::Parameter(0))),
-                                     m::Parameter(1))));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Select(
+          m::Eq(m::Parameter(1), m::ConstantScalar(0.0f)),
+          m::ConstantScalar(0.0f),
+          m::Multiply(m::Log(m::Abs(m::Parameter(0))), m::Parameter(1)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, LnSqrt) {
@@ -5743,10 +5746,10 @@ struct DotOfGatherTestSpec {
   int64_t m;
   int64_t k;
   int64_t n;
-  int s;      // start index for dynamic slice on the non-contracting dimension
+  int s;  // start index for dynamic slice on the non-contracting dimension
   int64_t lcd;  // left contracting dimension
   int64_t rcd;  // right contracting dimension
-  bool neg;   // is negative testcase
+  bool neg;     // is negative testcase
 };
 
 class DotOfGatherSimplificationTest

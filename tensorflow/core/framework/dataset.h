@@ -363,6 +363,9 @@ class SplitProvider {
                          IteratorStateReader* reader) = 0;
 };
 
+// Returns the runner threadpool size from an OpKernelContext.
+int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx);
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -392,7 +395,8 @@ class IteratorContext {
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          interleave_depth(ctx->interleave_depth()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -405,15 +409,7 @@ class IteratorContext {
         return device->GetAllocator(attrs);
       };
 
-      thread::ThreadPool* thread_pool =
-          ctx->device()->tensorflow_device_thread_pool();
-      if (thread_pool) {
-        runner_threadpool_size = thread_pool->NumThreads();
-      } else {
-        static const int32_t kDefaultRunnerThreadpoolSize =
-            port::MaxParallelism();
-        runner_threadpool_size = kDefaultRunnerThreadpoolSize;
-      }
+      runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
       // that a symbol in the tensorflow::data namespace is always on the stack
@@ -480,6 +476,11 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree.
+    int64 interleave_depth = 0;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -537,6 +538,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  int64 interleave_depth() { return params_.interleave_depth; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -1277,9 +1280,12 @@ class DatasetOpKernel : public OpKernel {
 
   void Compute(OpKernelContext* ctx) final;
 
-  // Indicates whether the given op corresponds to an op whose kernels subclass
-  // the `DatasetOpKernel` class.
-  static bool IsDatasetOp(const OpDef* op_def);
+  // Checks whether the given op is a tf.data operation.
+  //
+  // NOTE: The check uses a heuristic and can produce both false positives and
+  // false negatives. In particular, tf.data operations are expected to use
+  // names that end with "Dataset" or "DatasetV[0-9]+".
+  static bool IsDatasetOp(const OpDef& op_def);
 
   string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 

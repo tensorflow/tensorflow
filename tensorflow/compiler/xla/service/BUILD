@@ -144,6 +144,36 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_folder",
+    srcs = ["all_reduce_folder.cc"],
+    hdrs = ["all_reduce_folder.h"],
+    deps = [
+        ":all_reduce_key",
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_folder_test",
+    srcs = ["all_reduce_folder_test.cc"],
+    deps = [
+        ":all_reduce_folder",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "bfloat16_support",
     srcs = ["bfloat16_support.cc"],
     hdrs = ["bfloat16_support.h"],
@@ -593,6 +623,7 @@ cc_library(
         ":hlo_sharding_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:sharding_op_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -3066,6 +3097,35 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
+    name = "dot_merger",
+    srcs = ["dot_merger.cc"],
+    hdrs = ["dot_merger.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla/service/graphcycles",
+    ],
+)
+
+tf_cc_test(
+    name = "dot_merger_test",
+    srcs = ["dot_merger_test.cc"],
+    deps = [
+        ":algebraic_simplifier",
+        ":dot_merger",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
     ],
 )
 

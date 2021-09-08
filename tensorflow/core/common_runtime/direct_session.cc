@@ -287,8 +287,12 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
     }
   }
 
-  static RunHandlerPool* pool =
-      new RunHandlerPool(num_inter_threads, num_intra_threads);
+  static RunHandlerPool* pool = [&]() {
+    LOG(INFO) << "Creating run-handler pool with "
+                 "[num_inter_threads, num_intra_threads] as ["
+              << num_inter_threads << "," << num_intra_threads << "]";
+    return new RunHandlerPool(num_inter_threads, num_intra_threads);
+  }();
   return pool;
 }
 

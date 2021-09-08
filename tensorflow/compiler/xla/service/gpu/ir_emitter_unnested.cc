@@ -153,6 +153,22 @@ const auto kStridedLinearIndexingX =
 // efficient.
 const int64_t kMinDimensionToTransposeTiled = 16;
 
+void AnnotateWithInt32Value(string name, int64_t value,
+                            const std::string& kernel_name,
+                            llvm::Module* llvm_module) {
+  llvm::NamedMDNode* nvvm_annotations_node =
+      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
+  llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
+  llvm::LLVMContext& llvm_context = llvm_module->getContext();
+
+  nvvm_annotations_node->addOperand(llvm::MDNode::get(
+      llvm_context,
+      {llvm::ConstantAsMetadata::get(ir_kernel),
+       llvm::MDString::get(llvm_context, name),
+       llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+           llvm::IntegerType::get(llvm_context, /*NumBits=*/32), value))}));
+}
+
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
 void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
@@ -160,20 +176,19 @@ void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
                                    llvm::Module* llvm_module) {
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
-  llvm::Function* ir_kernel = llvm_module->getFunction(kernel_name.c_str());
-  llvm::LLVMContext& llvm_context = llvm_module->getContext();
-  llvm::ConstantInt* threads_per_block_ir_value = llvm::ConstantInt::get(
-      llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-      launch_dims.thread_counts_per_block().x);
-  // Our launch bounds are exact, so we can specify them as reqntidx rather than
-  // maxntidx.
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      llvm_context,
-      {llvm::ConstantAsMetadata::get(ir_kernel),
-       llvm::MDString::get(llvm_context, "reqntidx"),
-       llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+
+  // Our launch bounds are exact, so we can specify them as
+  // reqntid[xyz] rather than maxntid[xyz].
+  AnnotateWithInt32Value("reqntidx", launch_dims.thread_counts_per_block().x,
+                         kernel_name, llvm_module);
+  if (launch_dims.thread_counts_per_block().y > 1) {
+    AnnotateWithInt32Value("reqntidy", launch_dims.thread_counts_per_block().y,
+                           kernel_name, llvm_module);
+  }
+  if (launch_dims.thread_counts_per_block().z > 1) {
+    AnnotateWithInt32Value("reqntidz", launch_dims.thread_counts_per_block().z,
+                           kernel_name, llvm_module);
+  }
 }
 
 bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
@@ -1699,7 +1714,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
         if (broadcast.broadcast_dimensions().empty() ||
             // More then 2 bit inputs cause one speed regression.
-            (row_vectorized && num_big_inputs <= 2)) {
+            (row_vectorized && num_big_inputs <= 3)) {
           continue;
         }
       }
@@ -3316,7 +3331,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
               init_value.getDefiningOp())) {
     auto global_memref =
         mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
-            get_global_memref, get_global_memref.name());
+            get_global_memref, get_global_memref.nameAttr());
     if (global_memref.constant() && global_memref.initial_value()) {
       // If the initial value happens to be a constant, generate a specialized
       // thunk.
@@ -4691,6 +4706,10 @@ bool IsUnrollingColumnReductionBeneficial(
     return false;
   }
 
+  if (input_shape.dimensions()[input_shape.rank() - 1] < 64) {
+    return false;
+  }
+
   int64_t can_be_vectorized = 0;
   int64_t cannot_be_vectorized = 0;
   auto fusion_results = ToStdVector(fusion.getFusionResults());
@@ -4811,6 +4830,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       return kStridedIndexingX;
     }
   }();
+  VLOG(3) << "Each threads will produce " << num_partial_results
+          << " output(s)";
 
   int vector_size = 1;
   if (indexing_order == kStridedLinearIndexingX) {

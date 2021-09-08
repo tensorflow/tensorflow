@@ -49,6 +49,14 @@ func XlaSpmdShardToFullShapeDim(value int64) XlaSpmdShardToFullShapeAttr {
 	}
 }
 
+// XlaSpmdShardToFullShapeUnspecifiedDims sets the optional unspecified_dims attribute to value.
+// If not specified, defaults to {}
+func XlaSpmdShardToFullShapeUnspecifiedDims(value []int64) XlaSpmdShardToFullShapeAttr {
+	return func(m optionalAttr) {
+		m["unspecified_dims"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from manual partitioning to
 //
 // automatic partitioning. It converts the shard-shaped, manually partitioned input
@@ -27481,6 +27489,14 @@ func XlaSpmdFullToShardShapeDim(value int64) XlaSpmdFullToShardShapeAttr {
 	}
 }
 
+// XlaSpmdFullToShardShapeUnspecifiedDims sets the optional unspecified_dims attribute to value.
+// If not specified, defaults to {}
+func XlaSpmdFullToShardShapeUnspecifiedDims(value []int64) XlaSpmdFullToShardShapeAttr {
+	return func(m optionalAttr) {
+		m["unspecified_dims"] = value
+	}
+}
+
 // An op used by XLA SPMD partitioner to switch from automatic partitioning to
 //
 // manual partitioning. It annotates the input (full-shape, to be automatically
@@ -33606,7 +33622,18 @@ func XlaShardingSharding(value string) XlaShardingAttr {
 	}
 }
 
-// An op which shards the input based on the given sharding attribute.
+// XlaShardingUnspecifiedDims sets the optional unspecified_dims attribute to value.
+// If not specified, defaults to {}
+func XlaShardingUnspecifiedDims(value []int64) XlaShardingAttr {
+	return func(m optionalAttr) {
+		m["unspecified_dims"] = value
+	}
+}
+
+// An op which shards the input based on the given sharding attribute. It can
+//
+// selectively annotate a subset of tensor dimensions by skipping unspecified_dims,
+// and the sharding annotation should be replicated in those dims.
 func XlaSharding(scope *Scope, input tf.Output, optional ...XlaShardingAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return

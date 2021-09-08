@@ -119,6 +119,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         protocol_(protocol),
         data_transfer_protocol_(data_transfer_protocol),
         job_name_(job_name),
+        is_coordinated_read_(consumer_index.has_value()),
         consumer_index_(consumer_index),
         num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
@@ -159,6 +160,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  int64_t Cardinality() const override {
+    if (is_coordinated_read_) {
+      // Coordinated reads require the dataset to be infinite.
+      return kInfiniteCardinality;
+    }
+    return kUnknownCardinality;
   }
 
   Status CheckExternalState() const override {
@@ -819,10 +828,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
-          status_ = Status(s.code(),
-                           absl::StrCat("Failed to get element from worker ",
-                                        task_to_process->info.worker_address(),
-                                        ": ", s.error_message()));
+          status_ = errors::CreateWithUpdatedMessage(
+              s, absl::StrCat("Failed to get element from worker ",
+                              task_to_process->info.worker_address(), ": ",
+                              s.error_message()));
           get_next_cv_.notify_all();
           return;
         }
@@ -1051,6 +1060,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const tstring protocol_;
   const tstring data_transfer_protocol_;
   const tstring job_name_;
+  const bool is_coordinated_read_;
   const absl::optional<int64_t> consumer_index_;
   const absl::optional<int64_t> num_consumers_;
   const int64_t max_outstanding_requests_;

@@ -2046,7 +2046,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
 }
 
 Status ConstantFolding::SimplifyGraph(
-    bool use_shape_info, GraphDef* optimized_graph, GraphProperties* properties,
+    GraphDef* optimized_graph, GraphProperties* properties,
     absl::flat_hash_set<string>* nodes_to_not_simplify) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
@@ -2059,8 +2059,7 @@ Status ConstantFolding::SimplifyGraph(
         continue;
       }
 
-      TF_RETURN_IF_ERROR(
-          SimplifyNode(use_shape_info, node, optimized_graph, properties));
+      TF_RETURN_IF_ERROR(SimplifyNode(node, optimized_graph, properties));
     }
   }
   return Status::OK();
@@ -2078,12 +2077,12 @@ Status ConstantFolding::SimplifyGraph(
   EXPR;                          \
   if (graph_modified_) return Status::OK()
 
-Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
-                                     GraphDef* optimized_graph,
+Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                                      GraphProperties* properties) {
   bool graph_modified_cached = graph_modified_;
   graph_modified_ = false;
 
+  bool use_shape_info = properties->has_properties();
   RETURN_IF_MODIFIED(RemoveSplitOrSplitV(*properties, optimized_graph, node));
   RETURN_IF_ERROR_OR_MODIFIED(RemoveShuffleOrTranspose(
       *properties, use_shape_info, optimized_graph, node));
@@ -3949,6 +3948,7 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             GrapplerItem* item,
+                                            GraphProperties* properties,
                                             GraphDef* optimized_graph) {
   graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
@@ -3967,31 +3967,18 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     }
   }
 
-  GraphProperties properties(*item);
-  // It's possible to feed a placeholder with a tensor of any shape: make sure
-  // that the shape inference deals with this conservatively unless we're in
-  // aggressive mode.
-  const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-  Status s = properties.InferStatically(assume_valid_feeds,
-                                        /*aggressive_shape_inference=*/false,
-                                        /*include_input_tensor_values=*/false,
-                                        /*include_output_tensor_values=*/true);
-
-  const bool can_use_shape_info = s.ok();
-  VLOG(1) << "can_use_shape_info = " << can_use_shape_info;
-
   absl::flat_hash_set<string> nodes_to_not_simplify;
-  if (can_use_shape_info) {
-    TF_RETURN_IF_ERROR(MaterializeShapes(properties));
-    TF_RETURN_IF_ERROR(MaterializeConstants(properties));
+  if (properties->has_properties()) {
+    TF_RETURN_IF_ERROR(MaterializeShapes(*properties));
+    TF_RETURN_IF_ERROR(MaterializeConstants(*properties));
     TF_RETURN_IF_ERROR(
-        FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
+        FoldGraph(*properties, optimized_graph, &nodes_to_not_simplify));
   } else {
     *optimized_graph = *graph_;
   }
   node_map_.reset(new NodeMap(optimized_graph));
-  TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
-                                   &properties, &nodes_to_not_simplify));
+  TF_RETURN_IF_ERROR(
+      SimplifyGraph(optimized_graph, properties, &nodes_to_not_simplify));
 
   return Status::OK();
 }
@@ -4022,17 +4009,32 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   has_fetch_ = !item.fetch.empty();
   GrapplerItem item_to_optimize = item;
+  GraphProperties properties(item_to_optimize);
+  // It's possible to feed a placeholder with a tensor of any shape: make sure
+  // that the shape inference deals with this conservatively unless we're in
+  // aggressive mode.
+  const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+  if (!properties
+           .InferStatically(assume_valid_feeds,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_input_tensor_values=*/false,
+                            /*include_output_tensor_values=*/true)
+           .ok()) {
+    properties.Clear();
+  }
+
   *optimized_graph = GraphDef();
   item_to_optimize.graph.Swap(optimized_graph);
   int64_t node_count;
+
   do {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
     optimized_graph->Clear();
     node_count = item_to_optimize.graph.node_size();
-    TF_RETURN_IF_ERROR(
-        RunOptimizationPass(cluster, &item_to_optimize, optimized_graph));
+    TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, &item_to_optimize,
+                                           &properties, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();

@@ -38,7 +38,7 @@ func @biasAdd(%arg0: tensor<1x10x10x32xf32>, %arg1: tensor<32xf32>) -> tensor<1x
   return %0 : tensor<1x10x10x32xf32>
 
 // CHECK-LABEL: biasAdd
-// CHECK:  "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
+// CHECK: tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
 }
 
 func @biasAddInt(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x10x10x32xi32> {
@@ -142,7 +142,7 @@ func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK-LABEL: softplus
 // CHECK:  %[[exp:.*]] = "tfl.exp"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK:  %[[cst:.*]] = constant dense<1.000000e+00> : tensor<f32>
-// CHECK:  %[[add:.*]] = "tfl.add"(%[[exp]], %[[cst]]) {fused_activation_function = "NONE"} : (tensor<8x16xf32>, tensor<f32>) -> tensor<8x16xf32>
+// CHECK:  %[[add:.*]] = tfl.add(%[[exp]], %[[cst]]) {fused_activation_function = "NONE"} : (tensor<8x16xf32>, tensor<f32>) -> tensor<8x16xf32>
 // CHECK:  %[[log:.*]] = "tfl.log"(%[[add]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
@@ -507,7 +507,7 @@ func @greater(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi
   return %0 : tensor<8x16xi1>
 
 // CHECK-LABEL: greater
-// CHECK:  "tfl.greater"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+// CHECK:  tfl.greater(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
 // CHECK:  return
 }
 
@@ -516,7 +516,7 @@ func @greater_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<
   return %0 : tensor<8x16xi1>
 
 // CHECK-LABEL: greater_equal
-// CHECK:  "tfl.greater_equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+// CHECK:  tfl.greater_equal(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
 // CHECK:  return
 }
 
@@ -527,7 +527,7 @@ func @less_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x1
   return %0 : tensor<8x16xi1>
 
 // CHECK-LABEL: less_equal
-// CHECK:  "tfl.less_equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+// CHECK:  tfl.less_equal(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
 // CHECK:  return
 }
 
@@ -563,7 +563,7 @@ func @not_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16
   return %0 : tensor<8x16xi1>
 
 // CHECK-LABEL: not_equal
-// CHECK:  "tfl.not_equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
+// CHECK:  tfl.not_equal(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
 // CHECK:  return
 }
 
@@ -889,7 +889,7 @@ func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf3
   return %0 : tensor<2x1x3xf32>
 
   // CHECK-LABEL: pow
-  // CHECK:  %[[pow:.*]] = "tfl.pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  // CHECK:  %[[pow:.*]] = tfl.pow(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
   // CHECK:  return
 }
 
@@ -1613,7 +1613,7 @@ func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 
 // CHECK-LABEL: reciprocal_f32
 // CHECK:  %cst = constant dense<1.000000e+00> : tensor<f32>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  tfl.div(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return
 }
 
@@ -1623,7 +1623,7 @@ func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 
 // CHECK-LABEL: reciprocal_i32
 // CHECK:  %cst = constant dense<1> : tensor<i32>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<8xi32>) -> tensor<8xi32>
+// CHECK:  tfl.div(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<8xi32>) -> tensor<8xi32>
 // CHECK:  return
 }
 
@@ -1932,7 +1932,7 @@ func @testLessEqualWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: ten
   // CHECK: [[CST:%.*]] = constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
   // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
   // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: "tfl.less_equal"([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
+  // CHECK: tfl.less_equal([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
   %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi1>
   return %0 : tensor<1x2x3x4x5x6xi1>
 }
@@ -1942,7 +1942,7 @@ func @testGreaterEqualWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: 
   // CHECK: [[CST:%.*]] = constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
   // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
   // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: "tfl.greater_equal"([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
+  // CHECK: tfl.greater_equal([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
   %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi1>
   return %0 : tensor<1x2x3x4x5x6xi1>
 }
@@ -1962,7 +1962,7 @@ func @testNotEqualWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tens
   // CHECK: [[CST:%.*]] = constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
   // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
   // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: "tfl.not_equal"([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
+  // CHECK: tfl.not_equal([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
   %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi1>
   return %0 : tensor<1x2x3x4x5x6xi1>
 }
@@ -1972,7 +1972,7 @@ func @testLessWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1
   // CHECK: [[CST:%.*]] = constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
   // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
   // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: "tfl.less"([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
+  // CHECK: tfl.less([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
   %0 = "tf.Less"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi1>
   return %0 : tensor<1x2x3x4x5x6xi1>
 }
@@ -1982,7 +1982,7 @@ func @testGreaterWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tenso
   // CHECK: [[CST:%.*]] = constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
   // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
   // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: "tfl.greater"([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
+  // CHECK: tfl.greater([[BCAST]], [[BCAST_1]]) : (tensor<1x2x3x4x5x6xi32>, tensor<1x2x3x4x5x6xi32>) -> tensor<1x2x3x4x5x6xi1>
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi1>
   return %0 : tensor<1x2x3x4x5x6xi1>
 }
@@ -2223,7 +2223,7 @@ func @select_v2_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x
   // CHECK: %[[BROADCAST_ARGS_0:.*]] = "tfl.broadcast_args"(%[[SHAPE_0]], %[[SHAPE_1]]) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
   // CHECK: %[[BROADCAST_TO_0:.*]] = "tfl.broadcast_to"(%arg0, %[[BROADCAST_ARGS_0]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
   // CHECK: %[[BROADCAST_TO_1:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS_0]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
-  // CHECK: %[[LESS:.*]] = "tfl.less"(%[[BROADCAST_TO_0]], %[[BROADCAST_TO_1]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xi1>
+  // CHECK: %[[LESS:.*]] = tfl.less(%[[BROADCAST_TO_0]], %[[BROADCAST_TO_1]]) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xi1>
   // CHECK: %[[SHAPE_2:.*]] = "tfl.shape"(%[[LESS]]) : (tensor<8x7x6x5x?x3x2x1xi1>) -> tensor<8xi64>
   // CHECK: %[[BROADCAST_ARGS_1:.*]] = "tfl.broadcast_args"(%[[BROADCAST_ARGS_0]], %[[SHAPE_2]]) : (tensor<8xi64>, tensor<8xi64>) -> tensor<8xi64>
   // CHECK: %[[BROADCAST_TO_2:.*]] = "tfl.broadcast_to"(%[[LESS]], %[[BROADCAST_ARGS_1]]) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xi1>

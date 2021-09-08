@@ -302,29 +302,27 @@ void AppendFeatureValues(std::initializer_list<ValueType> container,
 }
 
 namespace internal {
-// HasSize<T>(0) returns true_type if T has a size() member.
+
+// HasSize<T>::value is true_type if T has a size() member.
+template <typename T, typename = void>
+struct HasSize : std::false_type {};
+
 template <typename T>
-constexpr auto HasSize(int)
-    -> decltype((std::declval<T>().size(), std::true_type{})) {
-  return {};
-}
-template <typename>
-constexpr std::false_type HasSize(...) {
-  return {};
-}
+struct HasSize<T, absl::void_t<decltype(std::declval<T>().size())>>
+    : std::true_type {};
 
 // Reserves the container's size, if a container.size() method exists.
-template <typename ContainerType, typename RepeatedFieldType,
-          typename std::enable_if_t<HasSize<ContainerType>(0), int> = 0>
-void ReserveIfSizeAvailable(const ContainerType& container,
-                            RepeatedFieldType& values) {
+template <typename ContainerType, typename RepeatedFieldType>
+auto ReserveIfSizeAvailable(const ContainerType& container,
+                            RepeatedFieldType& values) ->
+    typename std::enable_if_t<HasSize<ContainerType>::value, void> {
   values.Reserve(container.size());
 }
 
-template <typename ContainerType, typename RepeatedFieldType,
-          typename std::enable_if_t<!HasSize<ContainerType>(0), int> = 0>
-void ReserveIfSizeAvailable(const ContainerType& container,
-                            RepeatedFieldType& values) {}
+template <typename ContainerType, typename RepeatedFieldType>
+auto ReserveIfSizeAvailable(const ContainerType& container,
+                            RepeatedFieldType& values) ->
+    typename std::enable_if_t<!HasSize<ContainerType>::value, void> {}
 
 }  // namespace internal
 

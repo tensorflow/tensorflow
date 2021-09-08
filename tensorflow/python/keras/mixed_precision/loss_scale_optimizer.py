@@ -37,6 +37,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import base_delegate
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -57,124 +58,6 @@ class _UnwrapPreventer(object):
 
   def __init__(self, value):
     self.value = value
-
-
-class _DelegatingTrackableMixin(object):
-  """A mixin that delegates all Trackable methods to another trackable object.
-
-  This class must be used with multiple inheritance. A class that subclasses
-  Trackable can also subclass this class, which causes all Trackable methods to
-  be delegated to the trackable object passed in the constructor.
-
-  A subclass can use this mixin to appear as if it were the trackable passed to
-  the constructor, from a Checkpoint's perspective. LossScaleOptimizer uses this
-  mixin, so that the checkpoint format for a LossScaleOptimizer is identical to
-  the checkpoint format for a normal optimizer. This allows a model to be saved
-  with a normal Optimizer and restored with a LossScaleOptimizer, or vice versa.
-  The only difference in checkpoint format is that the loss scale is also saved
-  with a LossScaleOptimizer.
-  """
-
-  def __init__(self, trackable_obj):
-    self._trackable = trackable_obj
-
-  # pylint: disable=protected-access
-  @property
-  def _setattr_tracking(self):
-    return self._trackable._setattr_tracking
-
-  @_setattr_tracking.setter
-  def _setattr_tracking(self, value):
-    self._trackable._setattr_tracking = value
-
-  @property
-  def _update_uid(self):
-    return self._trackable._update_uid
-
-  @_update_uid.setter
-  def _update_uid(self, value):
-    self._trackable._update_uid = value
-
-  @property
-  def _unconditional_checkpoint_dependencies(self):
-    return self._trackable._unconditional_checkpoint_dependencies
-
-  @property
-  def _unconditional_dependency_names(self):
-    return self._trackable._unconditional_dependency_names
-
-  @property
-  def _name_based_restores(self):
-    return self._trackable._name_based_restores
-
-  def _maybe_initialize_trackable(self):
-    return self._trackable._maybe_initialize_trackable()
-
-  @property
-  def _object_identifier(self):
-    return self._trackable._object_identifier
-
-  @property
-  def _tracking_metadata(self):
-    return self._trackable._tracking_metadata
-
-  def _no_dependency(self, value):
-    return self._trackable._no_dependency(value)
-
-  def _name_based_attribute_restore(self, checkpoint):
-    return self._trackable._name_based_attribute_restore(checkpoint)
-
-  @property
-  def _checkpoint_dependencies(self):
-    return self._trackable._checkpoint_dependencies
-
-  @property
-  def _deferred_dependencies(self):
-    return self._trackable._deferred_dependencies
-
-  def _lookup_dependency(self, name):
-    self._trackable._lookup_dependency(name)
-
-  def _add_variable_with_custom_getter(self,
-                                       name,
-                                       shape=None,
-                                       dtype=dtypes.float32,
-                                       initializer=None,
-                                       getter=None,
-                                       overwrite=False,
-                                       **kwargs_for_getter):
-    return self._trackable._add_variable_with_custom_getter(
-        name, shape, dtype, initializer, getter, overwrite, **kwargs_for_getter)
-
-  def _preload_simple_restoration(self, name):
-    return self._trackable._preload_simple_restoration(name)
-
-  def _track_trackable(self, trackable, name, overwrite=False):  # pylint: disable=redefined-outer-name
-    return self._trackable._track_trackable(trackable, name, overwrite)
-
-  def _handle_deferred_dependencies(self, name, trackable):  # pylint: disable=redefined-outer-name
-    return self._trackable._handle_deferred_dependencies(name, trackable)
-
-  def _restore_from_checkpoint_position(self, checkpoint_position):
-    return self._trackable._restore_from_checkpoint_position(
-        checkpoint_position)
-
-  def _single_restoration_from_checkpoint_position(self, checkpoint_position,
-                                                   visit_queue):
-    return self._trackable._single_restoration_from_checkpoint_position(
-        checkpoint_position, visit_queue)
-
-  def _gather_saveables_for_checkpoint(self):
-    return self._trackable._gather_saveables_for_checkpoint()
-
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    return self._trackable._list_extra_dependencies_for_serialization(
-        serialization_cache)
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    return self._trackable._list_functions_for_serialization(
-        serialization_cache)
-  # pylint: enable=protected-access
 
 
 def _is_all_finite(grads):
@@ -386,7 +269,8 @@ _DEFAULT_GROWTH_STEPS = 2000
 
 # pylint: disable=g-classes-have-attributes
 @keras_export('keras.mixed_precision.LossScaleOptimizer')
-class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
+class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
+                         optimizer_v2.OptimizerV2):
   """An optimizer that applies loss scaling to prevent numeric underflow.
 
   Loss scaling is a technique to prevent numeric underflow in intermediate
@@ -538,7 +422,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
     # We don't call super().__init__, since we do not want to call OptimizerV2's
     # constructor.
-    _DelegatingTrackableMixin.__init__(self, self._optimizer)
+    base_delegate.DelegatingTrackableMixin.__init__(self, self._optimizer)
 
     if dynamic:
       if initial_scale is None:

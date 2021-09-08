@@ -183,45 +183,30 @@ cc_library(
 
 cc_library(
     name = "tf_gpu_runtime_wrappers",
-    hdrs = ["tf_gpu_runtime_wrappers.h"],
-    deps = if_cuda_is_configured([
-        ":tf_cuda_runtime_wrappers",
-    ]) + if_rocm_is_configured([
-        ":tf_rocm_runtime_wrappers",
-    ]) + ["@llvm-project//mlir:mlir_runner_utils"],
-)
-
-cc_library(
-    name = "tf_cuda_runtime_wrappers",
-    srcs = ["tf_cuda_runtime_wrappers.cc"],
+    srcs = [
+        "tf_gpu_runtime_wrappers.cc",
+    ],
+    hdrs = [
+        "tf_gpu_runtime_wrappers.h",
+    ],
     compatible_with = get_compatible_with_cloud(),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    deps = if_cuda_is_configured([
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-        "//tensorflow/stream_executor:stream_header",
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "-DTENSORFLOW_USE_ROCM=1",
     ]),
-)
-
-cc_library(
-    name = "tf_rocm_runtime_wrappers",
-    srcs = if_rocm_is_configured(["tf_rocm_runtime_wrappers.cc"]),
-    compatible_with = get_compatible_with_cloud(),
-    copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
-    deps = if_rocm_is_configured([
+    deps = [
+        "@llvm-project//mlir:mlir_runner_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "//tensorflow/stream_executor:stream_header",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+    ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]),
 )
 

@@ -1035,6 +1035,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
     .Attr("T: type")
     .Attr("manual_sharding: string")
     .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto input_handle = c->input(0);
       if (!c->RankKnown(input_handle)) {
@@ -1081,6 +1082,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
     .Attr("manual_sharding: string")
     .Attr("full_shape: shape")
     .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
@@ -1102,9 +1104,12 @@ REGISTER_OP("XlaSharding")
     .Output("output: T")
     .Attr("T: type")
     .Attr("sharding: string = ''")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-An op which shards the input based on the given sharding attribute.
+An op which shards the input based on the given sharding attribute. It can
+selectively annotate a subset of tensor dimensions by skipping unspecified_dims,
+and the sharding annotation should be replicated in those dims.
 )doc");
 
 REGISTER_OP("XlaReplicaId")

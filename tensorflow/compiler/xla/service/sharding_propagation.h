@@ -43,6 +43,10 @@ class ShardingPropagation : public HloModulePass {
   static Status NormalizeDomain(const DomainMetadata::Domain& domain,
                                 const DomainMetadata* metadata);
 
+  static absl::optional<HloSharding> GetShardingFromUser(
+      const HloInstruction& instruction, const HloInstruction& user,
+      int64_t aggressiveness, bool is_spmd);
+
  private:
   bool is_spmd_;
   bool propagate_metadata_;

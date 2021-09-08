@@ -147,8 +147,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     OpBuilder builder = OpBuilder::atBlockEnd(&island_op.GetBody());
     auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
         island_op.getLoc(), func_result_types, operands.getArrayRef(),
-        builder.getSymbolRefAttr(
-            kNestedModule, builder.getSymbolRefAttr(outlined_func.getName())),
+        SymbolRefAttr::get(
+            builder.getContext(), kNestedModule,
+            SymbolRefAttr::get(builder.getContext(), outlined_func.getName())),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));

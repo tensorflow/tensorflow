@@ -92,8 +92,10 @@ class RemoveTfIfConstArgs
     // Change the if_op's argumetns to the new arguments, branches to new
     // branches. Note that the outputs are not changed.
     if_op.inputMutable().assign(remaining_args);
-    if_op.then_branchAttr(builder.getSymbolRefAttr(new_then_function_name));
-    if_op.else_branchAttr(builder.getSymbolRefAttr(new_else_function_name));
+    if_op.then_branchAttr(
+        mlir::SymbolRefAttr::get(builder.getContext(), new_then_function_name));
+    if_op.else_branchAttr(
+        mlir::SymbolRefAttr::get(builder.getContext(), new_else_function_name));
   }
 
   llvm::StringRef CreateBranchFunction(

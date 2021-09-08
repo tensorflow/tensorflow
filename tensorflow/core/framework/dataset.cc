@@ -375,6 +375,17 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx) {
+  thread::ThreadPool* thread_pool =
+      ctx->device()->tensorflow_device_thread_pool();
+  if (thread_pool) {
+    return thread_pool->NumThreads();
+  } else {
+    static const int32_t kDefaultRunnerThreadpoolSize = port::MaxParallelism();
+    return kDefaultRunnerThreadpoolSize;
+  }
+}
+
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                     const IteratorBase* parent) {
   parent_ = parent;
@@ -903,7 +914,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     // autotuning.
     // Here we only call RecordElement in the default implementation of
     // SkipInternal (which trivially calls GetNextInternal) and assume
-    // that the overriden SkipInternal in the derived class will have
+    // that the overridden SkipInternal in the derived class will have
     // negligible cost compare to its GetNextInternal.
     RecordElement(ctx, &out_tensors);
     (*num_skipped)++;
@@ -928,11 +939,19 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 }
 
 // static
-bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
-  return (op_def->output_arg_size() == 1 &&
-          op_def->output_arg(0).type() == DT_VARIANT &&
-          (absl::EndsWith(op_def->name(), "Dataset") ||
-           absl::EndsWith(op_def->name(), "DatasetV2")));
+bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
+  if (op_def.output_arg_size() != 1) return false;
+  if (op_def.output_arg(0).type() != DT_VARIANT) return false;
+  auto& op_name = op_def.name();
+  if (absl::EndsWith(op_name, "Dataset")) return true;
+  // Check if the suffix matches "DatasetV[0-9]+".
+  size_t index = op_name.length() - 1;
+  while (index >= 0 && isdigit(op_name[index])) {
+    index--;
+  }
+  const int64 kPrefixLength = 8;  // length of the `DatasetV` prefix
+  if (index < kPrefixLength - 1 || index == op_name.length() - 1) return false;
+  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) == "DatasetV";
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,

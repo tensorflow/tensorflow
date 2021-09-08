@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 // Set true for greater intelligibility of debug mode log messages.
@@ -409,7 +410,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                int src_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       col_params_->name.data(), col_ctx_->step_id, "dynamic",
       src_tensor->dtype(),
       [src_tensor]() { return src_tensor->shape().DebugString(); });
