@@ -91,13 +91,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    if (tensors_.empty()) {
-      return errors::FailedPrecondition("Cannot index into empty tensor.");
-    }
-    if (index < 0 || index >= tensors_[0].dim_size(0)) {
-      return errors::OutOfRange("Index out of range [0, ",
-                                tensors_[0].dim_size(0), "):", index);
-    }
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
     out_tensors->reserve(tensors_.size());
     for (int i = 0; i < tensors_.size(); ++i) {

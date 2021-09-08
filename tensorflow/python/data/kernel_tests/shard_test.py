@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -113,6 +114,64 @@ class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         self,
         lambda: self._build_dataset(elems, num_shards, index),
         num_outputs=elems // num_shards)
+
+
+# TODO(shilpakrish): Simplify the dataset.from_tensor_slices(range(N)) to
+# dataset.range(N) once we implement random access for the range dataset.
+class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 2, 3, 4])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(4)).shard(
+        num_shards=2, index=0)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDataset(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([]).shard(
+        num_shards=2, index=1)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=0))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNumShardsAndIndexLessThanNumElements(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(10)).shard(5, 0)
+    self.assertEqual(0, self.evaluate(random_access.at(dataset, 0)))
+    self.assertEqual(5, self.evaluate(random_access.at(dataset, 1)))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 2))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNumShardsGreaterThanNumElementsIndexLess(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(7)).shard(8, 3)
+    self.assertEqual(3, self.evaluate(random_access.at(dataset, 0)))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNumShardsAndIndexGreaterThanNumElements(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(13)).shard(23, 21)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 0))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              elements=[0, 10, 50],
+              num_shards=[5, 7, 10],
+              index=[0, 1, 2, 3, 4],
+          )))
+  def testMultipleCombinations(self, elements, num_shards, index):
+    components = range(elements)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).shard(
+        num_shards=num_shards, index=index)
+    for i in range(self.evaluate(dataset.cardinality())):
+      self.assertAllEqual(components[index + (num_shards * i)],
+                          self.evaluate(random_access.at(dataset, i)))
 
 
 if __name__ == "__main__":

@@ -571,6 +571,10 @@ void DatasetBase::Initialize() {
   if (!s.ok()) {
     LOG(ERROR) << s;
   }
+  s = ComputeCardinality();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
 }
 
 Status DatasetBase::ComputeNumSources() {
@@ -598,6 +602,25 @@ Status DatasetBase::ComputeNumSources() {
           input->type_string());
     }
     num_sources_ += input->num_sources();
+  }
+  return Status::OK();
+}
+
+Status DatasetBase::ComputeCardinality() {
+  cardinality_ = this->Cardinality();
+  return Status::OK();
+}
+
+Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
+  if (cardinality_ == kInfiniteCardinality ||
+      cardinality_ == kUnknownCardinality) {
+    return tensorflow::errors::FailedPrecondition(
+        "Dataset of type ", this->DebugString(), "has cardinality ",
+        cardinality_, "which does not support random access.");
+  }
+  if (index < 0 || index >= cardinality_) {
+    return errors::OutOfRange("Index out of range [0, ", cardinality_,
+                              "):", index);
   }
   return Status::OK();
 }
