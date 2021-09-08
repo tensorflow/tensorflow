@@ -797,8 +797,7 @@ Status InstantiatedCapturedFunction::Run(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
@@ -861,8 +860,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -965,8 +963,7 @@ void InstantiatedCapturedFunction::RunAsync(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   // Transfer ownership of the cancellation manager to `callback`.
