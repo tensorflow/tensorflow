@@ -606,7 +606,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             },
             std::move(input_element));
         auto node = model_node();
-        const bool collect_usage = node && ctx->model();
+        const bool collect_usage =
+            node && ctx->model() && ctx->model()->collect_resource_usage();
         // `ctx->runner()` may execute its logic synchronous so we wrap it in
         // `RecordStop` and `RecordStart` to prevent invalid nesting of
         // `RecordStart` calls.
