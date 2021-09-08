@@ -34,6 +34,10 @@ namespace builtin {
 namespace elementwise {
 namespace {
 
+bool IsRsqrtSupportedType(const TfLiteType type) {
+  return type == kTfLiteFloat32 || type == kTfLiteInt8;
+}
+
 typedef bool (*IsSupportedType)(TfLiteType);
 TfLiteStatus GenericPrepareLite(TfLiteContext* context, TfLiteNode* node,
                                 IsSupportedType is_supported_type,

@@ -48,10 +48,6 @@ bool IsAbsSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
 }
 
-bool IsRsqrtSupportedType(const TfLiteType type) {
-  return type == kTfLiteFloat32 || type == kTfLiteInt8;
-}
-
 inline void SetAbsOutputMultiplier(const float input_scale,
                                    const float output_scale,
                                    int32_t* multiplier, int* shift) {
