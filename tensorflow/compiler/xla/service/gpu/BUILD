@@ -692,6 +692,7 @@ cc_library(
         ":is_bef_thunk_enabled": [
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_kernels_detail",
             "@tf_runtime//backends/gpu:gpu_wrapper",
             "@tf_runtime//backends/gpu:gpu_types",
         ],

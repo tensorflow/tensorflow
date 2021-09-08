@@ -17,6 +17,7 @@
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
@@ -75,9 +76,7 @@ tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
   return xccl_ctx->ccl_handle.CopyRef();
 }
 
-// TODO(hanbinyoon): Consider using the TFRT_KERNEL_WITH_CHAIN_RESULT macro.
-// This needs visibility to tf_runtime/backends/gpu/lib/kernels/kernels_detail.h
-static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
+static llvm::Error CustomCall(
     const tfrt::gpu::GpuStream& stream, tfrt::Chain chain,
     tfrt::RemainingArguments buffers,
     // Needs to be sorted alphabetically by attribute name!
@@ -89,12 +88,12 @@ static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
   auto* custom_call_ctx =
       exec_ctx.request_ctx()->GetDataIfExists<CustomCallContext>();
   if (!custom_call_ctx) {
-    return tfrt::MakeErrorAsyncValueRef("Failed to get CustomCallContext.");
+    return tfrt::MakeStringError("Failed to get CustomCallContext.");
   }
 
   auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context());
   if (!current) {
-    return tfrt::MakeErrorAsyncValueRef(llvm::toString(current.takeError()));
+    return tfrt::MakeStringError(llvm::toString(current.takeError()));
   }
 
   const int64_t total_target_params_count =
@@ -126,16 +125,15 @@ static tfrt::AsyncValueRef<tfrt::Chain> CustomCall(
                                &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
-    return tfrt::MakeErrorAsyncValueRef(
-        absl::StrCat("CustomCall failed: ", *message));
+    return tfrt::MakeStringError(absl::StrCat("CustomCall failed: ", *message));
   }
-
-  return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
+  return llvm::Error::success();
 }
 
 void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
-  kernel_reg->AddKernel("xlir.custom_call", TFRT_KERNEL(CustomCall));
+  kernel_reg->AddKernel("xlir.custom_call",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
 }
 
 namespace kernels {
