@@ -399,6 +399,13 @@ Below is the list of currently supported quantized operators:
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
+#### `SUB`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only addition with two inputs is supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
 ### Sparse Inference
 
 XNNPACK backend supports sparse inference for CNN models described in the

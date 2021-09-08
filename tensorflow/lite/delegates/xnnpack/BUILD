@@ -1037,6 +1037,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_sub_test",
+    srcs = ["signed_quantized_sub_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "softmax_test",
     srcs = ["softmax_test.cc"],
     linkopts = select({
@@ -1210,6 +1225,21 @@ cc_test(
     }),
     deps = [
         ":quantized_pad_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_sub_test",
+    srcs = ["unsigned_quantized_sub_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
