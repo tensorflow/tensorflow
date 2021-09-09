@@ -1334,6 +1334,42 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "mirrored_values_test",
+    size = "medium",
+    srcs = ["mirrored_values_test.py"],
+    main = "mirrored_values_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
+        "noasan",  # b/175816710
+        "notsan",  # b/168645872
+    ],
+    tpu_tags = [
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
+    deps = [
+        ":combinations",
+        ":distribute_lib",
+        ":distribute_utils",
+        ":packed_distributed_variable",
+        ":strategy_combinations",
+        ":test_util",
+        ":tpu_strategy",
+        ":tpu_values",
+        ":values",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "per_replica_test",
     size = "medium",
     srcs = ["per_replica_test.py"],
