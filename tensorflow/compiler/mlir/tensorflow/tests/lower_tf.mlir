@@ -1130,22 +1130,22 @@ func @roll_multiple_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x8x4xi32>
   return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_multiple_axis
-  // CHECK:  %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST0:.*]] = "tf.Const"() {value = dense<[2, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK:  %[[CST3:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST4:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST5:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST6:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST7:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK:  %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<2x8x4xi32>
-  // CHECK:  %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST5]], %[[CST1]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x8x4xi32>
-  // CHECK:  %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST2]]) : (tensor<2x8x4xi32>, tensor<1x8x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
-  // CHECK:  %[[SLICE2:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST3]], %[[CST4]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
-  // CHECK:  %[[SLICE3:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST5]], %[[CST6]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
-  // CHECK:  %[[CONCAT1:.*]] = "tf.ConcatV2"(%[[SLICE2]], %[[SLICE3]], %[[CST7]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
-  // CHECK:  return %[[CONCAT1]] : tensor<3x8x4xi32>
+  // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[2, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %[[CST3:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST4:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST5:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST6:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST7:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK:      %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<2x8x4xi32>
+  // CHECK:      %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST5]], %[[CST1]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x8x4xi32>
+  // CHECK:      %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST2]]) : (tensor<2x8x4xi32>, tensor<1x8x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
+  // CHECK:      %[[SLICE2:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST3]], %[[CST4]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
+  // CHECK:      %[[SLICE3:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST5]], %[[CST6]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
+  // CHECK:      %[[CONCAT1:.*]] = "tf.ConcatV2"(%[[SLICE2]], %[[SLICE3]], %[[CST7]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
+  // CHECK:      return %[[CONCAT1]] : tensor<3x8x4xi32>
 }
 
 func @roll_dynamic_shape(%arg0: tensor<?x8x4xi32>) -> tensor<?x8x4xi32> {

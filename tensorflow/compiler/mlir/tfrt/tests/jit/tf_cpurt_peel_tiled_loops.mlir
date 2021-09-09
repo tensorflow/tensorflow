@@ -34,11 +34,11 @@ builtin.module attributes {tf.versions = {producer = 0 : i32}}  {
 // CHECK:   func @tanh_1d(
 // CHECK-SAME:                  %[[IN:.*]]: memref<102401xf32>)
 // CHECK-SAME:                  -> memref<102401xf32> {
-// CHECK:           %[[C102401:.*]] = constant 102401 : index
-// CHECK:           %[[CF0:.*]] = constant 0.000000e+00 : f32
-// CHECK:           %[[C0:.*]] = constant 0 : index
-// CHECK:           %[[C102400:.*]] = constant 102400 : index
-// CHECK:           %[[C8:.*]] = constant 8 : index
+// CHECK-DAG:           %[[C102401:.*]] = constant 102401 : index
+// CHECK-DAG:           %[[CF0:.*]] = constant 0.000000e+00 : f32
+// CHECK-DAG:           %[[C0:.*]] = constant 0 : index
+// CHECK-DAG:           %[[C102400:.*]] = constant 102400 : index
+// CHECK-DAG:           %[[C8:.*]] = constant 8 : index
 // CHECK:           %[[OUT:.*]] = memref.alloc() : memref<102401xf32>
 // CHECK:           linalg.tiled_loop (%[[LOOP_IDX:.*]]) =
 // CHECK-SAME:          (%[[C0]]) to (%[[C102400]]) step (%[[C8]])
