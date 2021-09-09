@@ -52,19 +52,35 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
                                     const DeviceMemoryBase &dev_src,
                                     uint64 size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
+    // Ignore errors.
     port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
-  AsExecutorStream(stream)->BlockUntilDone();
-  return true;
+  port::Status status = AsExecutorStream(stream)->BlockUntilDone();
+  if (status.ok()) {
+    return true;
+  }
+
+  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
+  // throw away error information here.
+  LOG(WARNING) << "Memcpy: error on stream: " << status;
+  return false;
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
                                     const void *host_src, uint64 size) {
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
+    // Ignore errors.
     port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
-  AsExecutorStream(stream)->BlockUntilDone();
-  return true;
+  port::Status status = AsExecutorStream(stream)->BlockUntilDone();
+  if (status.ok()) {
+    return true;
+  }
+
+  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
+  // throw away error information here.
+  LOG(WARNING) << "Memcpy: error on stream: " << status;
+  return false;
 }
 
 port::Status XlaInterpreterExecutor::SynchronousMemcpy(
@@ -81,21 +97,23 @@ port::Status XlaInterpreterExecutor::SynchronousMemcpy(
 
 bool XlaInterpreterExecutor::HostCallback(
     Stream *stream, std::function<port::Status()> callback) {
-  AsExecutorStream(stream)->EnqueueTask([callback]() {
-    port::Status s = callback();
-    if (!s.ok()) {
-      LOG(WARNING) << "Host callback failed: " << s;
-    }
-  });
+  AsExecutorStream(stream)->EnqueueTaskWithStatus(callback);
   return true;
 }
 
 bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
                                                     Stream *other) {
   AsExecutorStream(dependent)->EnqueueTask(
-      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
-  AsExecutorStream(dependent)->BlockUntilDone();
-  return true;
+      [other]() { return other->BlockHostUntilDone(); });
+  port::Status status = AsExecutorStream(dependent)->BlockUntilDone();
+  if (status.ok()) {
+    return true;
+  }
+
+  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
+  // throw away error information here.
+  LOG(WARNING) << "CreateStreamDependency: error on stream: " << status;
+  return false;
 }
 
 bool XlaInterpreterExecutor::StartTimer(Stream *stream, Timer *timer) {
@@ -109,8 +127,7 @@ bool XlaInterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
 }
 
 port::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
-  AsExecutorStream(stream)->BlockUntilDone();
-  return port::Status::OK();
+  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
