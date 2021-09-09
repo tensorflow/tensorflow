@@ -144,6 +144,32 @@
     distributed computations.
   * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
     to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+*  distribute.experimental.rpc package:
+   * distribute.experimental.rpc package introduces APIs to create a GRPC based
+    server to register tf.function methods and a GRPC client to invoke remote
+    registered methods. RPC APIs are intended for multi-client setups i.e. server
+  and clients are started in separate binaries independently.
+
+   * Example usage to create server:
+     ```
+        server = tf.distribute.experimental.rpc.Server.create("grpc", 
+                "127.0.0.1:1234")
+        @tf.function(input_signature=[
+          tf.TensorSpec([], tf.int32),
+          tf.TensorSpec([], dtypes.int32)
+        ])
+        def _remote_multiply(a, b):
+          return tf.math.multiply(a, b)
+
+        server.register("multiply", _remote_multiply)
+     ```
+    * Example usage to create client:
+      ```
+      client = tf.distribute.experimental.rpc.Client.create("grpc", address)
+      a = tf.constant(2, dtype=tf.int32)
+      b = tf.constant(3, dtype=tf.int32)
+      result = client.multiply(a, b)
+      ```
 
 ## Bug Fixes and Other Changes
 
