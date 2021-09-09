@@ -46,6 +46,8 @@ std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 /// CopyOpInterface.
 std::unique_ptr<FunctionPass> createCopyRemovalPass();
 
-}  // namespace mlir
+std::unique_ptr<FunctionPass> createMemoryCountPass();
+
+} // namespace mlir
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_

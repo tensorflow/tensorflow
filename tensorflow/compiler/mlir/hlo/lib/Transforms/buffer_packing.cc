@@ -413,28 +413,6 @@ private:
   }
 };
 
-struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
-  explicit BufferPackingPass(unsigned windowSize) {
-    this->window_size_ = windowSize;
-  }
-
-  void runOnFunction() override {
-    MLIRContext *context = &getContext();
-
-    if (window_size_ == 0) {
-      SortedPackingStrategy<AllocInfoMemSizeCompare> strategy(
-          window_size_, AllocInfoMemSizeCompare());
-      BufferPacking packing(getFunction(), strategy);
-    } else {
-      SortedPackingStrategy<AllocInfoWinIdCompare> strategy(
-          window_size_, AllocInfoWinIdCompare());
-      BufferPacking packing(getFunction(), strategy);
-    }
-  }
-};
-
-<<<<<<< HEAD
-=======
 /// Reuses already allocated buffer to save allocation operations.
 class MemoryCount : BufferPlacementTransformationBase {
 public:
@@ -456,12 +434,28 @@ public:
       size_t shapeBytes = shape.getSizeInBits() / 8;
       size_t alignFactor = llvm::divideCeil(shapeBytes, padding);
       size_t size = alignFactor * padding;
-
-      // llvm::errs() << "Alloc: " << alloc << ", Size: " << size << " Byte.\n";
       totalSize += size;
     }
+  }
+};
 
-    llvm::errs() << "Total size: " << totalSize << "\n";
+struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
+  explicit BufferPackingPass(unsigned windowSize) {
+    this->window_size_ = windowSize;
+  }
+
+  void runOnFunction() override {
+    MLIRContext *context = &getContext();
+
+    if (window_size_ == 0) {
+      SortedPackingStrategy<AllocInfoMemSizeCompare> strategy(
+          window_size_, AllocInfoMemSizeCompare());
+      BufferPacking packing(getFunction(), strategy);
+    } else {
+      SortedPackingStrategy<AllocInfoWinIdCompare> strategy(
+          window_size_, AllocInfoWinIdCompare());
+      BufferPacking packing(getFunction(), strategy);
+    }
   }
 };
 
@@ -469,11 +463,14 @@ struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
   void runOnFunction() override { MemoryCount counter(getFunction()); }
 };
 
->>>>>>> 7c4c319549f... Buffer sorting startegy get template of comperator
 } // namespace
 
 std::unique_ptr<FunctionPass> createBufferPackingPass(unsigned window_size) {
   return std::make_unique<BufferPackingPass>(window_size);
+}
+
+std::unique_ptr<FunctionPass> createMemoryCountPass() {
+  return std::make_unique<MemoryCountPass>();
 }
 
 } // namespace mlir

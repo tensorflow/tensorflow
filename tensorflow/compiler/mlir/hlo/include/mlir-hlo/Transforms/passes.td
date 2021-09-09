@@ -56,6 +56,11 @@ def BufferPacking : FunctionPass<"buffer-packing"> {
   ];
 }
 
+def MemoryCount : FunctionPass<"memory-count"> {
+  let summary = "";
+  let constructor = "createMemoryCountPass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";
