@@ -38,6 +38,13 @@ from tensorflow.python.platform import test
 class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorSlicesEmptyComponent(self):
+    components = ()
+
+    with self.assertRaises(ValueError):
+      dataset_ops.Dataset.from_tensor_slices(components)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlices(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (

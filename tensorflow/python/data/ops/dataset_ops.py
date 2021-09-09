@@ -3991,6 +3991,8 @@ class TensorSliceDataset(DatasetSource):
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
     self._tensors = structure.to_batched_tensor_list(batched_spec, element)
+    if not self._tensors:
+      raise ValueError("Input tensors must not be empty.")
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
 
