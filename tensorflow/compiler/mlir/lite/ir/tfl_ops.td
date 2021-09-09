@@ -3595,6 +3595,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
+                     SameOperandsAndResultsScale,
                      NoSideEffect, TFL_OperandHasRank<1, 2>]> {
   let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
 
