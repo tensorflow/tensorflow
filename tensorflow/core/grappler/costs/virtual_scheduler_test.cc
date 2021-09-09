@@ -2614,6 +2614,11 @@ TEST_F(VirtualSchedulerTest, MemoryUsageWithExecutionCount) {
   // After the graph is executed, at the end, memory usage for the device
   // should be zero.
   EXPECT_EQ(cpu_state_0.memory_usage, 0);
+
+  Costs c = scheduler_->Summary();
+  EXPECT_EQ(64, c.persistent_memory);
+  EXPECT_EQ(200000, c.temporary_memory);
+  EXPECT_EQ(200064, c.max_memory);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {

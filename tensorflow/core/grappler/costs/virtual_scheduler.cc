@@ -1181,6 +1181,9 @@ Costs SchedulerState::Summary() const {
 
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
+      critical_path_costs.persistent_memory = persistent_memory_usage;
+      critical_path_costs.temporary_memory = state.max_memory_usage;
+      critical_path_costs.max_memory = max_memory_usage;
     }
   }
 
