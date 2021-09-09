@@ -15,8 +15,8 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",
+        "//tensorflow/lite/python:interpreter",
         "//tensorflow/lite/python:metrics",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",

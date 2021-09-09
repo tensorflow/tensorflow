@@ -186,6 +186,7 @@ py_library(
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/optimize:calibrator",
+        "//tensorflow/lite/tools/optimize/debugging/python:debugger",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
