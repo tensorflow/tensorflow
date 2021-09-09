@@ -341,11 +341,19 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       ResourceBase** value) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  if (p.IsRefCounting()) {
+    TF_ASSIGN_OR_RETURN(*value, p.GetResource<ResourceBase>());
+    (*value)->Ref();
+    return Status::OK();
+  }
   return ctx->resource_manager()->Lookup(p, value);
 }
 
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  if (p.IsRefCounting()) {
+    return Status::OK();
+  }
   return ctx->resource_manager()->Delete(p);
 }
 

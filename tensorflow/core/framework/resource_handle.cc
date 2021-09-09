@@ -33,6 +33,12 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
 ResourceHandle::~ResourceHandle() {}
 
 void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
+  // TODO(b/197757028): Register the resource with ResourceManager to enable
+  // serialization of ref-counting handles.
+  if (!IsRefCounting()) {
+    LOG(ERROR) << "A ref-counted ResourceHandle cannot be serialized losslessly"
+               << "Deserializing the result is a failure: " << name();
+  }
   proto->set_device(device());
   proto->set_container(container());
   proto->set_name(name());

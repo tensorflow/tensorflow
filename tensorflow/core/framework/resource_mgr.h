@@ -742,18 +742,28 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value) {
   return ctx->resource_manager()->Create(p.container(), p.name(), value);
 }
 
-// If the resource manager in "ctx" has a resource matching "p", returns it in
-// "*value" and the caller takes the ownership of one ref on "*value"
+// Finds the resource as "*value" from the handle. If the handle is
+// ref-counting, returns the resource owned by the handle. Otherwise, looks up
+// the resource matching "p" from resource manager associated with ctx.
+// Always returns a new reference to the resource in "*value". The caller shall
+// call (*value)->Unref().
 template <typename T, bool use_dynamic_cast>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       T** value) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  if (p.IsRefCounting()) {
+    TF_ASSIGN_OR_RETURN(*value, p.GetResource<T>());
+    // Transfers out a new reference.
+    (*value)->Ref();
+    return Status::OK();
+  }
+
   return ctx->resource_manager()->Lookup<T, use_dynamic_cast>(p.container(),
                                                               p.name(), value);
 }
 
-// If the resource manager in "ctx" has a resource matching "p", returns it in
-// "*value" and the caller takes the ownership of one ref on "*value"
+// Finds the resource as "*value" from the handle. This is a type-erased
+// variant of LookupResource above.
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       ResourceBase** value);
 
@@ -820,6 +830,12 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
 template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  // This is a noop because ResourceMgr does not hold a reference.
+  // NOTE(feyu): if we can convert all resources handle to ref-counting, then
+  // DeleteResource can be removed.
+  if (p.IsRefCounting()) {
+    return Status::OK();
+  }
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
 
