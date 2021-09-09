@@ -57,6 +57,22 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let results = (outs GPU_CclHandleType);
 }
 
+def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
+  let description = [{
+    xlir.ccl.collective_permute inserts into the ccl.handle operations to send
+    data at the input buffer and receive data into the output buffer depending
+    on the source and target peers supplied in the ExecutionContext
+    (XcclContext).
+  }];
+  let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
+                   GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $chain attr-dict
+  }];
+}
+
 def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   let description = [{
     xlir.custom_call invokes a host function, supplied in the ExecutionContext

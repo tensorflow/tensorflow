@@ -2958,13 +2958,22 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   } else {
-    const NcclCollectivePermuteThunk::Buffer buffer = {
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice};
-    AddThunkToThunkSequence(absl::make_unique<NcclCollectivePermuteThunk>(
-        GetThunkInfo(op), collective_permute_op, replica_count, partition_count,
-        buffer));
+    std::unique_ptr<Thunk> thunk;
+    if (IsBefThunkEnabled()) {
+      TF_ASSIGN_OR_RETURN(
+          thunk, CreateBefCollectivePermuteThunk(
+                     GetThunkInfo(op), op, {source_slice}, {result_slice},
+                     replica_count, partition_count));
+    } else {
+      const NcclCollectivePermuteThunk::Buffer buffer = {
+          /*element_count=*/ShapeUtil::ElementsIn(shape),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice};
+      thunk = absl::make_unique<NcclCollectivePermuteThunk>(
+          GetThunkInfo(op), collective_permute_op, replica_count,
+          partition_count, buffer);
+    }
+    AddThunkToThunkSequence(std::move(thunk));
   }
   return Status::OK();
 }
