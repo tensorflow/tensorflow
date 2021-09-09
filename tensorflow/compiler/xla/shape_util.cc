@@ -401,6 +401,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
+/* static */ Shape ShapeUtil::MakeMaybeTupleShape(
+    absl::Span<const Shape> shapes) {
+  if (shapes.size() == 1) {
+    return shapes[0];
+  }
+  return MakeTupleShape(shapes);
+}
+
 /* static */ Shape ShapeUtil::MakeOpaqueShape() {
   Shape result;
   result.set_element_type(OPAQUE_TYPE);
