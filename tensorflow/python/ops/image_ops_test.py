@@ -1594,7 +1594,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
-  @test_util.run_all_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes
   def testDeterminismUnimplementedExceptionThrowing(self):
     """Test d9m-unimplemented exception-throwing when op-determinism is enabled.
 
