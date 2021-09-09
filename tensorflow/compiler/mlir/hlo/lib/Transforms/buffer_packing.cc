@@ -28,414 +28,347 @@ namespace mlir {
 
 namespace {
 
-/// Represents a memory interval.
-struct MemoryInterval {
+static size_t computeUserangeSize(const UseInterval &interval);
+
+static size_t computeByteSize(const Value &v);
+
+static size_t computeAlignedSegments(const Value &v);
+
+/// Returns the length of an userange interval.
+static size_t computeUserangeSize(const UseInterval &interval) {
+  return interval.end - interval.start + 1;
+}
+
+/// Compute the byte size of a given Value.
+static size_t computeByteSize(const Value &v) {
+  return v.getType().cast<ShapedType>().getSizeInBits() / 8;
+}
+
+/// Compute the 64 byte alinged segments of a given Value.
+static size_t computeAlignedSegments(const Value &v) {
+  size_t padding = 64;
+  size_t bytes = computeByteSize(v);
+  return std::ceil(bytes / (double)padding);
+}
+
+struct PackedInfo {
 public:
-  MemoryInterval(size_t begin, size_t end) : begin(begin), end(end) {}
+  PackedInfo(Value source, size_t bufferId, size_t offset)
+      : source(source), bufferId(bufferId), offset(offset) {}
 
-  /// Unite two intervals if they overlap.
-  bool intervalUnion(const MemoryInterval &other) {
-    if (other.begin > end + 1 || other.end + 1 < begin)
-      return false;
-    begin = std::min(other.begin, begin);
-    end = std::max(other.end, end);
-    return true;
-  }
-
-  size_t getSize() { return end + 1 - begin; }
-
-  size_t begin;
-  size_t end;
-
-  // TODO: Remove Debug Dump.
-  void dump() { llvm::errs() << "(" << begin << ", " << end << ")\n"; }
+  size_t bufferId;
+  Value source;
+  size_t offset;
 };
 
-/// The PackingInfo contains all important information of a value for the buffer
-/// packing.
-struct PackingInfo {
-  using MemoryIntervalVector = std::vector<MemoryInterval>;
+/// Contains the important informations about a buffer allocation.
+struct AllocationInfo {
+public:
+  using SizedGap = std::pair<UseInterval, size_t>;
 
 public:
-  PackingInfo(Value value, UserangeAnalysis analysis)
-      : alloc(std::move(value)), userange(std::move(analysis)) {
-    // Compute the byte size and the aligned byte size of the alloc.
-    lastUsedByte = computeByteSize(alloc);
-    numAlignedSegments = computeAlignedSegments(alloc);
-    UserangeAnalysis::IntervalVector intervals = userange.getUserangeOf(alloc);
+  AllocationInfo(Value alloc, size_t allocUserangeId, size_t firstUse,
+                 size_t lastUse, size_t numSegments, size_t windowId,
+                 const UseInterval::Vector *userangeIntervals)
+      : alloc(alloc), allocUserangeId(allocUserangeId), firstUse(firstUse),
+        lastUse(lastUse), numSegments(numSegments), windowId(windowId),
+        userangeIntervals(userangeIntervals) {}
 
-    MemoryInterval memoryInterval((size_t)0, numAlignedSegments - 1);
-    MemoryIntervalVector alignedBufferSegment{memoryInterval};
-
-    // Distribute the aligned buffer segments for the whole useInterval. Also
-    // save the userange IDs for later back mapping.
-    for (auto &interval : intervals) {
-      for (size_t i = interval.first, e = interval.second; i <= e; ++i) {
-        memoryDistribution.insert(std::make_pair(i, alignedBufferSegment));
-        bufferUserangeIDs.emplace_back(i);
-      }
-    }
-
-    occupiedMemoryIntervals.insert(std::make_pair(alloc, memoryInterval));
-  }
-
-  /// Compute the 64 byte alinged segments of a given Value.
-  size_t computeAlignedSegments(Value v) {
-    size_t padding = 64;
-    size_t bytes = computeByteSize(v);
-    return std::ceil(bytes / (double)padding);
-  }
-
-  /// Compute the byte size of a given Value.
-  size_t computeByteSize(Value v) {
-    return v.getType().cast<ShapedType>().getSizeInBits() / 8;
-  }
-
-  /// Compute the potential reusers from the given PackingInfo vector. If the
-  /// useIntervals interfere and the aligned buffer size of the other
-  /// PackingInfo is bigger, we continue. Otherwise we order the potential
-  /// reusers by their aligned buffer size.
-  void computePotentialReuser(std::vector<PackingInfo> &other) {
-    for (auto info : other) {
-      Value v = info.alloc;
-      // Skip if the other PackingInfo is this PackingInfo.
-      if (alloc == v)
-        continue;
-
-      // If the useIntervals of this PackingInfo and the other PackingInfo
-      // interfere, we cannot reuse the other PackingInfo.
-      if (userange.rangesInterfere(alloc, info.alloc))
-        continue;
-
-      if (info.numAlignedSegments > numAlignedSegments)
-        continue;
-
-      // Find the correct place to insert the potential reuser based on the
-      // aligned buffer size.
-      auto iter = potentialReuser.begin();
-      while (iter != potentialReuser.end() &&
-             iter->numAlignedSegments >= info.numAlignedSegments)
-        ++iter;
-
-      potentialReuser.insert(iter, info);
-    }
-  }
-
-  /// Try to merge all potential reuser in the current buffer and compute a new
-  /// buffer memory distribution.
-  void packPotentialReuser(DenseSet<Value> &alreadyUnited) {
-    // Iterate over all potential reusers and check if possible candidates fit
-    // into buffer.
-    for (PackingInfo &candidate : potentialReuser) {
-      tryPackCandidate(candidate, alreadyUnited);
-    }
-  }
-
+  /// The allocation value.
   Value alloc;
-  size_t numAlignedSegments;
-  std::vector<PackingInfo> potentialReuser;
-  DenseMap<size_t, MemoryIntervalVector> memoryDistribution;
-  std::vector<size_t> bufferUserangeIDs;
-  DenseMap<Value, MemoryInterval> occupiedMemoryIntervals;
-  size_t lastUsedByte;
+
+  /// The id of allocation based on the Userange Analysis.
+  size_t allocUserangeId;
+
+  /// The first use of the buffer.
+  size_t firstUse;
+
+  /// The last use of the buffer based on the Userange Analysis.
+  size_t lastUse;
+
+  /// The number of 64 byte aligned segments of contigous memory.
+  size_t numSegments;
+
+  /// The window id of the allocation position.
+  size_t windowId;
+
+  /// The userange intervals of the buffer.
+  const UseInterval::Vector *userangeIntervals;
+
+  /// Compute the gas of the alloc userange.
+  std::vector<SizedGap> computeGaps(size_t maxUserangeId = 0) {
+    std::vector<SizedGap> gaps;
+    UseInterval::Vector useranges = *(userangeIntervals);
+    auto useRangeIter = useranges.begin();
+
+    // Add a dummy gap in front of the frist use of the buffer.
+    if (useRangeIter->start > 0) {
+      gaps.push_back(
+          std::make_pair(UseInterval(0, useRangeIter->start - 1), numSegments));
+    }
+
+    // Compute the gap between two userange intervals.
+    for (auto nextUseRangeIter = std::next(useranges.begin());
+         nextUseRangeIter != useranges.end(); ++nextUseRangeIter) {
+      gaps.push_back(std::make_pair(
+          UseInterval(useRangeIter->end + 1, nextUseRangeIter->start - 1),
+          this->numSegments));
+      useRangeIter = nextUseRangeIter;
+    }
+
+    // Add a dummy gap behind the last use of the buffer.
+    if (useRangeIter->end < maxUserangeId) {
+      gaps.push_back(std::make_pair(
+          UseInterval(useRangeIter->end + 1, maxUserangeId), numSegments));
+    }
+
+    return gaps;
+  }
+
+  /// Compute the userange size.
+  size_t getUserangeSize() const { return lastUse - firstUse + 1; }
+};
+
+// Comperator to sort allocation informations by window id, userange and by
+// number of memory segments.
+class AllocInfoWinIdCompare {
+public:
+  bool operator()(const AllocationInfo &a, const AllocationInfo &b) {
+    if (a.windowId == b.windowId) {
+      if (a.allocUserangeId == b.allocUserangeId)
+        return a.numSegments > b.numSegments;
+      return a.allocUserangeId > b.allocUserangeId;
+    }
+    return a.windowId < b.windowId;
+  }
+};
+
+// Comperator to sort the allocation informations by number of segments.
+class AllocInfoMemSizeCompare {
+public:
+  bool operator()(const AllocationInfo &a, const AllocationInfo &b) {
+    return a.numSegments > b.numSegments;
+  }
+};
+
+/// This approach computes an allocation information list and sortes it by
+/// a given comperator. From top to bottom the algortihm tries to fill userange
+/// gaps with appropriate buffers behind it, to optimze the memory.
+template <typename CompareT> class SortedPackingStrategy {
+public:
+  using AllocInfoList = std::vector<AllocationInfo>;
+  using SizedGap = std::pair<UseInterval, size_t>;
+
+public:
+  /// Constructs the Sorted Packing Strategy.
+  SortedPackingStrategy(size_t windowSize, CompareT compare)
+      : windowSize(windowSize), compare(compare) {}
+
+  /// Optimize the buffer allocations.
+  void optimze(const mlir::BufferPlacementAllocs &allocs,
+               const UserangeAnalysis &userangeAnalysis,
+               std::vector<PackedInfo> &packingInfos,
+               DenseMap<size_t, size_t> &bufferGen) {
+    AllocInfoList allocInfos;
+    allocInfos.reserve(std::distance(allocs.begin(), allocs.end()));
+
+    // Create allocInformations and store them in allocInfos.
+    size_t maxUserangeId =
+        computeAllocationInfos(allocInfos, userangeAnalysis, allocs);
+
+    // Sort the allocation infos.
+    std::sort(allocInfos.begin(), allocInfos.end(), compare);
+
+    size_t optMemory = 0;
+    size_t currentOffset = 0;
+    size_t globalBufferOffset = 0;
+
+    for (auto currentIter = allocInfos.begin(); currentIter != allocInfos.end();
+         ++currentIter) {
+      size_t offsetInBytes = currentOffset * 64;
+      UseInterval::Vector useranges = *(currentIter->userangeIntervals);
+
+      // Compute userange gaps.
+      std::vector<std::pair<UseInterval, size_t>> gaps =
+          currentIter->computeGaps(maxUserangeId);
+
+      // Add the current buffer to the packing infos.
+      packingInfos.emplace_back(currentIter->alloc, bufferId, offsetInBytes);
+      if (gaps.empty())
+        continue;
+
+      for (auto checkedAllocInfoIter = std::next(currentIter);
+           checkedAllocInfoIter != allocInfos.end();) {
+
+        // Check if a gap exists to pack the memory into.
+        // If not continue.
+        if (!findGapAndUpdate(gaps, packingInfos, *checkedAllocInfoIter,
+                              *currentIter, offsetInBytes)) {
+          ++checkedAllocInfoIter;
+          continue;
+        }
+        optMemory += checkedAllocInfoIter->numSegments;
+        checkedAllocInfoIter = allocInfos.erase(checkedAllocInfoIter);
+      }
+      // Increase the total global memory offset.
+      currentOffset += currentIter->numSegments;
+    }
+
+    size_t totalBufferSize = currentOffset * 64;
+    bufferGen.insert(std::make_pair(bufferId, totalBufferSize));
+  }
 
 private:
-  UserangeAnalysis userange;
+  const size_t windowSize;
+  const size_t bufferId = 0;
+  const CompareT compare;
 
-  /// Check if the first segments are not occupied and there is enough
-  /// contiguous memory. If not the memory distribution is updated.
-  llvm::Optional<size_t>
-  updateFirstSegmentUsage(MemoryIntervalVector &userangeOccupiedMemoryDist,
-                          MemoryInterval const &intervalToCheck,
-                          PackingInfo const &candidate) {
-    if (intervalToCheck.begin < candidate.numAlignedSegments) {
-      // Check if overlapping with first interval. If not we must add a new
-      // first interval.
-      if (!userangeOccupiedMemoryDist.begin()->intervalUnion(intervalToCheck))
-        userangeOccupiedMemoryDist.insert(userangeOccupiedMemoryDist.begin(),
-                                          intervalToCheck);
+  /// We try to find an appropriate userange gap to pack the buffer into it.
+  /// If we find one we update only the gaps and the buffer offset map.
+  bool findGapAndUpdate(std::vector<std::pair<UseInterval, size_t>> &gaps,
+                        std::vector<PackedInfo> &allocBufferOffsets,
+                        AllocationInfo &allocToPack,
+                        AllocationInfo &allocToPackInto,
+                        size_t unitedBufferOffset) {
+    // Check if the buffer to pack into has enough memory.
+    if (allocToPackInto.numSegments < allocToPack.numSegments)
+      return false;
+    for (auto gapIter = gaps.begin(); gapIter != gaps.end();) {
+      size_t gapUserangeSize = computeUserangeSize(gapIter->first);
 
-      return 0;
-    }
-    return llvm::None;
-  }
-
-  /// Find the relevant intervals that change the userange occupation of the
-  /// memory.
-  MemoryIntervalVector::iterator findRelevantIntervalsToAdd(
-      MemoryIntervalVector const &userangeOccupiedDistribution,
-      MemoryIntervalVector &intervalsToAdd,
-      llvm::Optional<size_t> const &intervalOffset) {
-    auto addIntervalIter = intervalsToAdd.begin();
-    if (intervalOffset.hasValue()) {
-      auto currentMemoryLocIter = std::next(
-          userangeOccupiedDistribution.begin(), intervalOffset.getValue());
-      addIntervalIter = std::find_if(
-          addIntervalIter, intervalsToAdd.end(), [&](MemoryInterval interval) {
-            return interval.end > currentMemoryLocIter->end;
-          });
-    }
-    return addIntervalIter;
-  }
-
-  /// Check if Contigous emory is availabel and update the interval offset to
-  /// the appropriate position if possible.
-  bool
-  updateContigousMemoryOffset(llvm::Optional<size_t> &intervalOffset,
-                              MemoryIntervalVector &userangeOccupiedMemoryDist,
-                              PackingInfo const &candidate) {
-    // Because of the dummy interval the iterator points never to end.
-    auto iter = userangeOccupiedMemoryDist.begin();
-    size_t firstOccupiedMemorySegemt = iter->begin;
-    bool foundPreviousGap =
-        candidate.numAlignedSegments <= firstOccupiedMemorySegemt;
-    intervalOffset = foundPreviousGap ? llvm::None : llvm::Optional<size_t>(0);
-
-    // counter to find the memory interval offset.
-    size_t count = 0;
-    for (;;) {
-      auto next = std::next(iter);
-      if (next == userangeOccupiedMemoryDist.end())
-        break;
-      // Check interval union.
-      if (next->intervalUnion(*iter)) {
-        iter = userangeOccupiedMemoryDist.erase(iter);
+      // If a gap interval has no free contiguous memory anymore, erease it from
+      // list.
+      if (gapIter->second <= 0) {
+        gapIter = gaps.erase(gapIter);
         continue;
       }
 
-      // Found a maximal occupied contigous memory segement and check if the
-      // following gap has enough memory to pack the candidate and there exists
-      // no previous suitable gap.
-      if (!foundPreviousGap) {
-        size_t currentGapSize = next->begin - iter->end - 1;
-        if (currentGapSize >= candidate.numAlignedSegments) {
-          foundPreviousGap = true;
-          intervalOffset = count;
-        }
-      }
-      ++count;
-      iter = next;
-    }
-    return foundPreviousGap;
-  }
-
-  /// Inserts an occupied memory interval to the memory distribution and update
-  /// the userange.
-  void packCandidate(PackingInfo &candidate, size_t segment,
-                     DenseSet<Value> &alreadyUnited) {
-
-    alreadyUnited.insert(candidate.alloc);
-    updateMemoryDistribution(candidate, segment);
-    updateOccupiedMemoryIntervals(candidate, segment);
-    std::sort(bufferUserangeIDs.begin(), bufferUserangeIDs.end());
-  }
-
-  /// Update the memory Distribution of all userange IDs of the candidate and
-  /// unit the occupied memory intervals if possible.
-  void updateMemoryDistribution(PackingInfo const &candidate, size_t segment) {
-    // The new occupied memory interval to insert.
-    MemoryInterval addedMemoryInterval =
-        MemoryInterval(segment, segment + candidate.numAlignedSegments - 1);
-
-    // Iterate over the candidate userange to update the memory distribution.
-    for (size_t userangeID : candidate.bufferUserangeIDs) {
-      auto iterUserange = memoryDistribution.find(userangeID);
-
-      // Case found with no memory usage at this userangeID
-      if (iterUserange == memoryDistribution.end()) {
-        memoryDistribution.insert(std::make_pair(
-            userangeID, MemoryIntervalVector{addedMemoryInterval}));
-        bufferUserangeIDs.emplace_back(userangeID);
+      // Checks if enough the userange and contigous memory segments is
+      // free.
+      if (gapIter->second < allocToPack.numSegments ||
+          allocToPack.firstUse < gapIter->first.start ||
+          allocToPack.lastUse > gapIter->first.end) {
+        ++gapIter;
         continue;
       }
 
-      MemoryIntervalVector &memIntervals = iterUserange->second;
-      auto iter = std::find_if(memIntervals.begin(), memIntervals.end(),
-                               [&](MemoryInterval interval) {
-                                 return interval.begin >=
-                                        segment + candidate.numAlignedSegments;
-                               });
+      // Stores the packed buffer with the offset.
+      allocBufferOffsets.emplace_back(
+          allocToPack.alloc, bufferId,
+          unitedBufferOffset +
+              (allocToPackInto.numSegments - gapIter->second) * 64);
+      size_t freeContiguousMemory = gapIter->second;
+      size_t oldStart = gapIter->first.start;
+      size_t oldEnd = gapIter->first.end;
 
-      // Check if we must enlarge the first memory interval or insert a new
-      // interval before.
-      if (iter == memIntervals.begin()) {
-        if (iter->begin == segment + candidate.numAlignedSegments)
-          iter->begin = segment;
-        else
-          memIntervals.insert(iter, addedMemoryInterval);
-        continue;
-      }
-      auto prevIter = std::prev(iter);
+      // Update gap
+      gapIter->second = freeContiguousMemory - allocToPack.numSegments;
 
-      // Check if we fit exact.
-      if (iter != memIntervals.end() &&
-          addedMemoryInterval.begin == prevIter->end + 1 &&
-          addedMemoryInterval.end == iter->begin) {
-        prevIter->end = iter->end;
-        memIntervals.erase(iter);
+      // Check if the gap must be splitted.
+      if (gapUserangeSize > allocToPack.getUserangeSize()) {
+        gapIter->first.end = allocToPack.lastUse;
+        gapIter->first.start = allocToPack.firstUse;
+
+        if (allocToPack.lastUse < oldEnd)
+          gaps.push_back(
+              std::make_pair(UseInterval(allocToPack.lastUse + 1, oldEnd),
+                             freeContiguousMemory));
+        if (allocToPack.firstUse > oldStart)
+          gaps.push_back(
+              std::make_pair(UseInterval(oldStart, allocToPack.firstUse - 1),
+                             freeContiguousMemory));
       }
-      // Check if we must merge us with the left neighbour
-      else if (addedMemoryInterval.begin == prevIter->end + 1) {
-        prevIter->end = addedMemoryInterval.end;
-      }
-      // Check if we must merge us with the right neighbour
-      else if (iter != memIntervals.end() &&
-               addedMemoryInterval.end + 1 == iter->begin) {
-        iter->begin = addedMemoryInterval.begin;
-      }
-      // We must insert the interval.
-      else {
-        memIntervals.insert(iter, addedMemoryInterval);
-      }
+      return true;
     }
+    return false;
   }
 
-  /// Compute the beginning of the memory segment to occupie.
-  size_t computeSegment(llvm::Optional<size_t> &intervalOffset,
-                        MemoryIntervalVector &userangeMemoryDist) {
-    size_t segment = 0;
-    if (intervalOffset.hasValue())
-      segment = userangeMemoryDist[intervalOffset.getValue()].end + 1;
-    return segment;
-  }
+  /// Aggreagtes the allocation informations of the allocs.
+  size_t computeAllocationInfos(AllocInfoList &allocInfos,
+                                const UserangeAnalysis &userangeAnalysis,
+                                const mlir::BufferPlacementAllocs &allocs) {
+    // Create allocInformations and store them in allocInfos.
+    size_t maxUserangeId = 0;
 
-  /// Compute the packed allocs memory intervals offset and update the map.
-  void updateOccupiedMemoryIntervals(PackingInfo const &candidate,
-                                     size_t segment) {
-    for (auto entry : candidate.occupiedMemoryIntervals) {
-      MemoryInterval currentAllocInterval = entry.second;
-      Value currentAlloc = entry.first;
-      currentAllocInterval.begin += segment;
-      currentAllocInterval.end += segment;
-      occupiedMemoryIntervals.insert(
-          std::make_pair(currentAlloc, currentAllocInterval));
-    }
-  }
-
-  /// Compute a distribution of contiguos memory intervals over the userange of
-  /// the candidate. If we have find a segment with enough contigous memory we
-  /// pack the candidate.
-  void tryPackCandidate(PackingInfo &candidate,
-                        DenseSet<Value> &alreadyUnited) {
-
-    llvm::Optional<size_t> intervalOffset = llvm::None;
-    std::vector<size_t> &userangeToCheck = candidate.bufferUserangeIDs;
-
-    // Initialize the memory distribution over the userange with a dummy
-    // interval.
-    MemoryIntervalVector userangeOccupiedMemoryDist{
-        MemoryInterval(numAlignedSegments, numAlignedSegments)};
-
-    // Iteration over all userange IDs of the candidate to create the
-    // memeorydistribution and find contigous memory segment to pack the
-    // candidate if possible.
-    for (size_t userangeID : userangeToCheck) {
-      auto iterUserange = memoryDistribution.find(userangeID);
-
-      // No memory used at the userangeID
-      if (iterUserange == memoryDistribution.end())
-        continue;
-      MemoryIntervalVector &addIntervals = iterUserange->second;
-
-      // Check if we occupy the first segments of memory.
-      if (!intervalOffset.hasValue())
-        intervalOffset = updateFirstSegmentUsage(
-            userangeOccupiedMemoryDist, *addIntervals.begin(), candidate);
-
-      auto addIntervalIter = findRelevantIntervalsToAdd(
-          userangeOccupiedMemoryDist, addIntervals, intervalOffset);
-
-      userangeOccupiedMemoryDist.insert(userangeOccupiedMemoryDist.end(),
-                                        addIntervalIter, addIntervals.end());
-
-      std::sort(userangeOccupiedMemoryDist.begin(),
-                userangeOccupiedMemoryDist.end(),
-                [&](MemoryInterval a, MemoryInterval b) {
-                  if (a.begin == b.begin)
-                    return a.end > b.end;
-
-                  return a.begin < b.begin;
-                });
-
-      // Check contiguous memory.
-      if (!updateContigousMemoryOffset(intervalOffset,
-                                       userangeOccupiedMemoryDist, candidate))
-        return;
-    }
-    size_t segment = computeSegment(intervalOffset, userangeOccupiedMemoryDist);
-    packCandidate(candidate, segment, alreadyUnited);
-  }
-
-}; // namespace
-
-/// Reuses already allocated buffer to save allocation operations.
-class BufferPacking : BufferPlacementTransformationBase {
-public:
-  using AllocList = std::vector<Value>;
-
-public:
-  BufferPacking(Operation *op) : BufferPlacementTransformationBase(op) {
-    std::vector<PackingInfo> packInfos;
-    UserangeAnalysis userange(op, allocs, aliases);
-    for (auto allocEntry : allocs) {
+    for (auto &allocEntry : allocs) {
       Value v = std::get<0>(allocEntry);
-      PackingInfo info(v, userange);
+      auto userangeIntervals = userangeAnalysis.getUserangeInterval(v);
 
-      auto iterPos = std::find_if(
-          packInfos.begin(), packInfos.end(), [&](PackingInfo pInfo) {
-            return pInfo.numAlignedSegments >= info.numAlignedSegments;
-          });
-      packInfos.insert(iterPos, info);
-    }
-
-    for (auto &infos : packInfos)
-      infos.computePotentialReuser(packInfos);
-
-    DenseSet<Value> alreadUnitedBuffer;
-    for (auto &infos : packInfos) {
-      if (alreadUnitedBuffer.contains(infos.alloc))
+      if (!userangeIntervals)
         continue;
-      infos.packPotentialReuser(alreadUnitedBuffer);
+
+      // Computes the userange id of the allocation.
+      size_t allocUserangeId = userangeAnalysis.computeId(v, v.getDefiningOp());
+
+      // Computes the last use of the allocated buffer.
+      size_t lastUse = std::prev((*userangeIntervals.getValue()).end())->end;
+
+      // Computes the first use of the allocated buffer.
+      size_t firstUse = (*userangeIntervals.getValue()).begin()->start;
+
+      // Computes the number of aligend segments of the buffer.
+      size_t numSegments = computeAlignedSegments(v);
+      maxUserangeId = std::max(maxUserangeId, lastUse);
+      allocInfos.emplace_back(v, allocUserangeId, firstUse, lastUse,
+                              numSegments, 0, userangeIntervals.getValue());
     }
 
-    for (Value unitedAlloc : alreadUnitedBuffer) {
-      for (auto iter = packInfos.begin(), e = packInfos.end(); iter != e;
-           ++iter) {
-        if (iter->alloc == unitedAlloc) {
-          packInfos.erase(iter);
-          break;
-        }
-      }
+    // If the window size is zero we are ready.
+    if (windowSize == 0)
+      return maxUserangeId;
+    // Sorts the allocation informations to compute the window id.
+    std::sort(allocInfos.begin(), allocInfos.end(),
+              [](const AllocationInfo &a, const AllocationInfo &b) {
+                return a.allocUserangeId < b.allocUserangeId;
+              });
+
+    // resize window id
+    size_t windowId = 0;
+    size_t lastAllocUserangeId = 0;
+    for (auto &allocationInfo : allocInfos) {
+      if (allocationInfo.allocUserangeId > lastAllocUserangeId + windowSize)
+        ++windowId;
+
+      lastAllocUserangeId = allocationInfo.allocUserangeId;
+      allocationInfo.windowId = windowId;
+    }
+    return maxUserangeId;
+  }
+};
+
+/// Template to reuses already allocated buffer to save allocation operations.
+class BufferPacking : BufferPlacementTransformationBase {
+
+public:
+  template <typename StrategyT>
+  BufferPacking(Operation *op, StrategyT strategy)
+      : BufferPlacementTransformationBase(op),
+        userangeAnalysis(op, allocs, aliases), dominators(op) {
+    DenseMap<size_t, size_t> bufferGen;
+    std::vector<PackedInfo> packingInfos;
+    strategy.optimze(allocs, userangeAnalysis, packingInfos, bufferGen);
+
+    DenseMap<size_t, Value> generatedBuffers;
+
+    // Find common dominators.
+    Block *block = findAllocationsDominator(packingInfos);
+    // Find alloc position operation.
+    mlir::OpBuilder packBuilder(&(block->front()));
+    auto location = block->front().getLoc();
+
+    // Create the packed AllocOps.
+    for (auto &entry : bufferGen) {
+      auto memrefType =
+          MemRefType::get({entry.second}, packBuilder.getIntegerType(8));
+      Value packedAlloc =
+          packBuilder.create<memref::AllocOp>(location, memrefType);
+      generatedBuffers.insert(std::make_pair(entry.first, packedAlloc));
     }
 
-    DenseMap<Value, size_t> occupiedMemoryIntervals;
-    size_t totalBufferSize = 0;
-
-    for (auto infosIter = packInfos.begin(), e = packInfos.end();
-         infosIter != e; ++infosIter) {
-      for (auto &entry : infosIter->occupiedMemoryIntervals) {
-        occupiedMemoryIntervals.insert(std::make_pair(
-            entry.first, entry.second.begin * 64 + totalBufferSize));
-      }
-      totalBufferSize += infosIter->numAlignedSegments * 64;
-    }
-
-    // Create the packed AllocOp.
-    Value firstAlloc = std::get<0>(*allocs.begin());
-
-    Operation *packDefOp = firstAlloc.getDefiningOp();
-    mlir::OpBuilder packBuilder(packDefOp);
-    auto memrefType =
-        MemRefType::get({totalBufferSize}, packBuilder.getIntegerType(8));
-    Value packedAlloc =
-        packBuilder.create<memref::AllocOp>(packDefOp->getLoc(), memrefType);
-
-    // Iterate over all allocs and create a ConstantOp with aligned offset.
-    for (auto &entry : occupiedMemoryIntervals) {
-      Value currentAlloc = entry.first;
-      size_t offset = entry.second;
-
-      // Initialize a OpBuilder for the ConstantOp and ViewOp.
+    for (auto &packInfo : packingInfos) {
+      Value currentAlloc = packInfo.source;
+      Value targetBuffer = generatedBuffers[packInfo.bufferId];
+      size_t offset = packInfo.offset;
       Operation *viewDefOp = currentAlloc.getDefiningOp();
       Location loc = viewDefOp->getLoc();
       mlir::OpBuilder viewBuilder(viewDefOp);
@@ -446,10 +379,10 @@ public:
           viewBuilder.getIntegerAttr(viewBuilder.getIndexType(), offset));
 
       // Store the operands for the ViewOp.
-      SmallVector<Value, 4> newOperands{packedAlloc};
-      newOperands.emplace_back(constantOp);
-
+      SmallVector<Value, 4> newOperands{targetBuffer};
+      newOperands.push_back(constantOp);
       ShapedType shape = currentAlloc.getType().cast<ShapedType>();
+
       // Create a ViewOp with the shape of the old alloc and use the created
       // packed alloc and the constant for the operands.
       Value viewOp = viewBuilder.create<memref::ViewOp>(
@@ -461,20 +394,86 @@ public:
       viewDefOp->erase();
     }
   }
-};
 
-struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
-  void runOnFunction() override {
-    MLIRContext *context = &getContext();
-    context->getOrLoadDialect("std");
-    BufferPacking packing(getFunction());
+private:
+  UserangeAnalysis userangeAnalysis;
+  /// The current dominance info.
+  DominanceInfo dominators;
+
+  /// Find the block that dominates all buffer allocations.
+  Block *findAllocationsDominator(const std::vector<PackedInfo> &packingInfos) {
+    SmallPtrSet<Value, 16> allocValues;
+    for (auto &packInfo : packingInfos) {
+      allocValues.insert(packInfo.source);
+    }
+
+    // Find common dominators.
+    return findCommonDominator(packingInfos.begin()->source, allocValues,
+                               dominators);
   }
 };
 
+struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
+  explicit BufferPackingPass(unsigned windowSize) {
+    this->window_size_ = windowSize;
+  }
+
+  void runOnFunction() override {
+    MLIRContext *context = &getContext();
+
+    if (window_size_ == 0) {
+      SortedPackingStrategy<AllocInfoMemSizeCompare> strategy(
+          window_size_, AllocInfoMemSizeCompare());
+      BufferPacking packing(getFunction(), strategy);
+    } else {
+      SortedPackingStrategy<AllocInfoWinIdCompare> strategy(
+          window_size_, AllocInfoWinIdCompare());
+      BufferPacking packing(getFunction(), strategy);
+    }
+  }
+};
+
+<<<<<<< HEAD
+=======
+/// Reuses already allocated buffer to save allocation operations.
+class MemoryCount : BufferPlacementTransformationBase {
+public:
+  using AllocList = std::vector<Value>;
+
+public:
+  MemoryCount(Operation *op) : BufferPlacementTransformationBase(op) {
+    // Map that stores the allocs to their respective shape.
+    DenseMap<Type, AllocList> shapeMap;
+
+    // Padding in Byte
+    const size_t padding = 64;
+    size_t totalSize = 0;
+
+    // Iterate over all allocs and fill the shapeMap accordingly.
+    for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+      Value alloc = std::get<0>(entry);
+      auto shape = alloc.getType().cast<ShapedType>();
+      size_t shapeBytes = shape.getSizeInBits() / 8;
+      size_t alignFactor = llvm::divideCeil(shapeBytes, padding);
+      size_t size = alignFactor * padding;
+
+      // llvm::errs() << "Alloc: " << alloc << ", Size: " << size << " Byte.\n";
+      totalSize += size;
+    }
+
+    llvm::errs() << "Total size: " << totalSize << "\n";
+  }
+};
+
+struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
+  void runOnFunction() override { MemoryCount counter(getFunction()); }
+};
+
+>>>>>>> 7c4c319549f... Buffer sorting startegy get template of comperator
 } // namespace
 
-std::unique_ptr<FunctionPass> createBufferPackingPass() {
-  return std::make_unique<BufferPackingPass>();
+std::unique_ptr<FunctionPass> createBufferPackingPass(unsigned window_size) {
+  return std::make_unique<BufferPackingPass>(window_size);
 }
 
-} // end namespace mlir
+} // namespace mlir
