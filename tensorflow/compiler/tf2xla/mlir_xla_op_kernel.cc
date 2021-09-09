@@ -49,6 +49,13 @@ Status ContextToXlaArgs(XlaOpKernelContext* ctx,
 
 }  // namespace
 
+MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx),
+      // Since this kernel implements lowering for a single TF operation, we
+      // disable MLIR threading for efficiency purpose (avoid starting a large
+      // number of threads eagerly).
+      mlir_ctx_(mlir::MLIRContext::Threading::DISABLED) {}
+
 Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Create input XlaArguments.
   std::vector<XlaCompiler::Argument> xla_args;
@@ -88,7 +95,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   GraphDebugInfo debug_info;
   std::vector<xla::XlaOp> returns(1);
   TF_RETURN_IF_ERROR(BuildHloFromGraph(
-      *graph, *ctx->builder(), xla_params, returns,
+      *graph, *ctx->builder(), mlir_ctx_, xla_params, returns,
       mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
       device->device_type(),
       *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info,
