@@ -558,6 +558,10 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64_t index);
 
+  // Creates a get tuple element instruction.
+  static std::unique_ptr<HloInstruction> CreateGetTupleElement(
+      HloInstruction* operand, int64_t index);
+
   // Creates a trace instruction that logs the input operand in the computation.
   static std::unique_ptr<HloInstruction> CreateTrace(const string& tag,
                                                      HloInstruction* operand);

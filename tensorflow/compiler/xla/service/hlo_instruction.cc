@@ -964,6 +964,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
                                                           index);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGetTupleElement(HloInstruction* operand, int64_t index) {
+  return absl::make_unique<HloGetTupleElementInstruction>(
+      operand->shape().tuple_shapes(index), operand, index);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
     const Shape& shape, RandomDistribution distribution,
     absl::Span<HloInstruction* const> parameters) {
