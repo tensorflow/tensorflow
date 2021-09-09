@@ -1130,6 +1130,10 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
     self._field_specs = dict(field_specs)
 
   @property
+  def shape(self):
+    return self._shape
+
+  @property
   def value_type(self):
     return StructuredTensor
 
