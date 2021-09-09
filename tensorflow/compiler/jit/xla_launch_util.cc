@@ -262,6 +262,8 @@ XlaComputationLaunchContext::PopulateInputs(
         is_resource_variable &&
         absl::c_any_of(compilation_result->resource_updates,
                        [&](const XlaCompiler::ResourceUpdate& update) {
+                         // XlaCompiler records `arg_num` in
+                         // `resource_updates` instead of kernel parameters.
                          return update.input_index == arg_num &&
                                 update.modified;
                        });
