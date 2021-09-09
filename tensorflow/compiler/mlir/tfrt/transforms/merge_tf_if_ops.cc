@@ -82,23 +82,18 @@ class MergeTfIfOpsPass
     constexpr int kMaxIter = 10;
     auto module = getOperation();
 
-    llvm::SmallVector<mlir::FuncOp, 4> funcs_to_process(
-        module.getOps<mlir::FuncOp>());
-    llvm::SmallVector<mlir::FuncOp, 4> merged_branch_funcs;
-    for (int i = 0; i < kMaxIter && !funcs_to_process.empty(); ++i) {
-      merged_branch_funcs.clear();
-      for (auto func_op : funcs_to_process) {
-        ProcessFunction(func_op, i, merged_branch_funcs);
+    bool changed = true;
+    for (int i = 0; i < kMaxIter && changed; ++i) {
+      changed = false;
+      for (auto func_op :
+           llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+        changed |= ProcessFunction(func_op, i);
       }
-      std::swap(funcs_to_process, merged_branch_funcs);
 
-      if (!funcs_to_process.empty()) {
+      if (changed) {
         // Run inliner pass to expose more merge opportunities among the
         // then-branch functions and the else-branch functions that are now
         // respectively merged, for the next iteration.
-        // NOTE: funcs_to_process only contains the newly created branch
-        // functions that are called by tf.If ops, so the inliner pass doesn't
-        // inline them, but only inlines functions invoked within them.
         mlir::OpPassManager pm(module.getOperationName());
         pm.addPass(mlir::createInlinerPass());
         if (mlir::failed(runPipeline(pm, module))) {
@@ -112,9 +107,7 @@ class MergeTfIfOpsPass
     }
   }
 
-  void ProcessFunction(
-      mlir::FuncOp op, int iteration,
-      llvm::SmallVectorImpl<mlir::FuncOp> &merged_branch_funcs) {
+  bool ProcessFunction(mlir::FuncOp op, int iteration) {
     // Use a hash map to group tf.If ops with the same operands.
     llvm::SmallDenseMap<mlir::Operation *, llvm::SmallVector<mlir::TF::IfOp, 2>,
                         2, OpWithSameArgsInfo>
@@ -138,6 +131,7 @@ class MergeTfIfOpsPass
     // Track the tf.If ops that should be removed as they are merged.
     llvm::SmallVector<mlir::TF::IfOp, 4> if_ops_to_remove;
 
+    bool changed = false;
     for (auto &iter : if_ops_to_merge) {
       if (iter.second.size() <= 1) continue;
 
@@ -147,22 +141,23 @@ class MergeTfIfOpsPass
                              /*branch_prefix=*/
                              absl::StrCat(op.sym_name().str(), "_merged_if_",
                                           iteration, "_", id++),
-                             iter.second, merged_branch_funcs);
+                             iter.second);
 
       if_ops_to_remove.append(iter.second.begin(), iter.second.end());
+      changed = true;
     }
 
     // Now that we are no longer using `if_ops_to_merge` or any other data
     // structures that uses the operations that will be removed, we can now
     // erase these if ops.
     for (auto op : if_ops_to_remove) op->erase();
+
+    return changed;
   }
 
-  void MergeIfOpsWithSameArgs(
-      mlir::OpBuilder &builder, mlir::Location loc,
-      absl::string_view branch_prefix,
-      llvm::MutableArrayRef<mlir::TF::IfOp> if_ops,
-      llvm::SmallVectorImpl<mlir::FuncOp> &merged_branch_funcs) {
+  void MergeIfOpsWithSameArgs(mlir::OpBuilder &builder, mlir::Location loc,
+                              absl::string_view branch_prefix,
+                              llvm::MutableArrayRef<mlir::TF::IfOp> if_ops) {
     assert(if_ops.size() > 1);
 
     // The results of the merged tf.If op are the concatenation of results of
@@ -177,17 +172,15 @@ class MergeTfIfOpsPass
         if_ops.front().input().getTypes(), new_result_types);
 
     // Create new branches for the merged tf.If op.
-    merged_branch_funcs.push_back(CreateBranchFunction(
+    auto then_branch_name = CreateBranchFunction(
         builder, loc, branch_prefix,
         /*branch_suffix=*/"_then", branch_function_type, if_ops,
-        [](mlir::TF::IfOp op) { return op.then_branchAttr(); }));
-    auto then_branch_name = merged_branch_funcs.back().sym_name();
+        [](mlir::TF::IfOp op) { return op.then_branchAttr(); });
 
-    merged_branch_funcs.push_back(CreateBranchFunction(
+    auto else_branch_name = CreateBranchFunction(
         builder, loc, branch_prefix,
         /*branch_suffix=*/"_else", branch_function_type, if_ops,
-        [](mlir::TF::IfOp op) { return op.else_branchAttr(); }));
-    auto else_branch_name = merged_branch_funcs.back().sym_name();
+        [](mlir::TF::IfOp op) { return op.else_branchAttr(); });
 
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPoint(if_ops.front());
@@ -209,7 +202,7 @@ class MergeTfIfOpsPass
     }
   }
 
-  mlir::FuncOp CreateBranchFunction(
+  llvm::StringRef CreateBranchFunction(
       mlir::OpBuilder &builder, mlir::Location loc,
       absl::string_view branch_prefix, absl::string_view branch_suffix,
       mlir::FunctionType branch_function_type,
@@ -245,7 +238,7 @@ class MergeTfIfOpsPass
 
     builder.create<mlir::ReturnOp>(loc, results);
 
-    return branch;
+    return branch.sym_name();
   }
 };
 
