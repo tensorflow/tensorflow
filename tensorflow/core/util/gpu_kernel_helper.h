@@ -339,13 +339,12 @@ Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
 }
 
 namespace gpu_helper {
-template <typename T, typename OutType = int32>
-__device__ OutType upper_bound(const T* first, OutType count, T val) {
-  const T* orig = first;
-  const T* it = nullptr;
+template <typename T, typename OutType = int32, typename Iterator = const T*>
+__device__ OutType upper_bound(Iterator first, OutType count, T val) {
+  Iterator orig = first;
   OutType step = 0;
   while (count > 0) {
-    it = first;
+    Iterator it = first;
     step = count / 2;
     it += step;
     if (!(val < *it)) {
@@ -359,13 +358,12 @@ __device__ OutType upper_bound(const T* first, OutType count, T val) {
   return first - orig;
 }
 
-template <typename T, typename OutType = int32>
-__device__ OutType lower_bound(const T* first, OutType count, T val) {
-  const T* orig = first;
-  const T* it = nullptr;
+template <typename T, typename OutType = int32, typename Iterator = const T*>
+__device__ OutType lower_bound(Iterator first, OutType count, T val) {
+  Iterator orig = first;
   OutType step = 0;
   while (count > 0) {
-    it = first;
+    Iterator it = first;
     step = count / 2;
     it += step;
     if (*it < val) {
