@@ -930,6 +930,15 @@ class HloInstruction {
       absl::Span<const int64_t> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
+  // Helper version where the operands are given by a single instruction which
+  // either is a tuple of size `init_values`, or a single input, in which case
+  // size of `init_values` is one.
+  static std::unique_ptr<HloInstruction> CreateReduce(
+      const Shape& shape, HloInstruction* tuple_of_instructions,
+      absl::Span<HloInstruction* const> init_values,
+      absl::Span<const int64_t> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+
   // Creates a reduce-window instruction, where the computation (given
   // by the handle) is applied window-wise at each valid window
   // position in the operand.
