@@ -63,8 +63,9 @@ class PruningMode(object):
     if mode in cls._map:
       return cls._map[mode]
     else:
-      raise ValueError('pruning_mode mode must be one of: {}'.format(', '.join(
-          sorted(cls._map))))
+      raise ValueError(
+          'pruning_mode mode must be one of: {}. Found: {}'.format(', '.join(
+              sorted(cls._map)), mode))
 
 
 class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):
