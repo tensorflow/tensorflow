@@ -3253,7 +3253,10 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                                 std::string(kernel->getName()),
                                 ir_emitter_context_->llvm_module());
 
-  if (IsBefThunkEnabled()) {
+  // TODO(b/189180718): Temporarily disable Kernel BefThunk, since
+  // tensorflow/compiler/xla/tests:dot_operation_test_gpu fails with the current
+  // implementation (constants are not resolved).
+  if (false /*IsBefThunkEnabled()*/) {
     return CreateBefKernelThunk(thunk_info, non_constant_buffers,
                                 std::string(kernel->getName()),
                                 launch_dimensions);
