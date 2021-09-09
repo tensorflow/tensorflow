@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
+#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -192,7 +193,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
                                  mlir::PassManager::Nesting::Implicit);
   pass_manager.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
   pass_manager.addPass(mlir::createGpuAsyncRegionPass());
-  pass_manager.addPass(tensorflow::createAsyncGpuTfrtConversionPass());
+  tfrt::gpu::populateGpuToTfrtGpuPasses(pass_manager);
 
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");

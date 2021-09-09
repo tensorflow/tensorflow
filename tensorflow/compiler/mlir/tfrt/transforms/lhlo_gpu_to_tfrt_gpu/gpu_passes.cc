@@ -94,34 +94,10 @@ struct LmhloGpuAsyncConversionPass
   }
 };
 
-struct AsyncGpuTfrtConversionPass
-    : public AsyncGpuTfrtConversionPassBase<AsyncGpuTfrtConversionPass> {
- private:
-  void runOnFunction() override {
-    auto* context = &getContext();
-
-    ConversionTarget target(*context);
-    target.addLegalDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
-                           xla::gpu::XlirDialect>();
-
-    RewritePatternSet patterns(context);
-    TypeConverter converter;
-    tfrt::gpu::populateTfrtConversionPatterns(patterns, converter, target);
-
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      return signalPassFailure();
-  }
-};
-
 }  // namespace
 
 std::unique_ptr<FunctionPass> createLmhloGpuAsyncConversionPass() {
   return std::make_unique<LmhloGpuAsyncConversionPass>();
-}
-
-std::unique_ptr<FunctionPass> createAsyncGpuTfrtConversionPass() {
-  return std::make_unique<AsyncGpuTfrtConversionPass>();
 }
 
 }  // namespace tensorflow

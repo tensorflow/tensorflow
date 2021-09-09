@@ -857,6 +857,7 @@ cc_library(
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         ":is_bef_executable_enabled": [
@@ -870,6 +871,7 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
@@ -1698,6 +1700,7 @@ cc_library(
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_passes",
         ],
         "//conditions:default": [],
     }),
