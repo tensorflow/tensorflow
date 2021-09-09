@@ -85,6 +85,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
@@ -362,7 +363,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<LogisticExpander>(
       /*expansion_type=*/LogisticExpansionType::kExp);
   pipeline.AddPass<ConditionalCanonicalizer>();
-  pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<DynamicDimensionSimplifier>();
+  auto dynamic_padder_options = DynamicPadderOptions();
+  dynamic_padder_options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 

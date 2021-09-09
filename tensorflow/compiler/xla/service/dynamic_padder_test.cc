@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -84,9 +87,11 @@ class DynamicPadderTest : public HloTestBase {
   }
 
   StatusOr<bool> RunPadder(bool slice_dynamic_output = false) {
-    DynamicPadder padder(/*slice_dynamic_output=*/slice_dynamic_output,
-                         CustomCallDynamicDimensionInference,
-                         OpHasDynamismSupport);
+    DynamicPadderOptions options;
+    options.slice_dynamic_output = slice_dynamic_output;
+    options.custom_call_handler = CustomCallDynamicDimensionInference;
+    options.op_supports_dynamism_handler = OpHasDynamismSupport;
+    DynamicPadder padder(std::move(options));
     return padder.Run(module_.get());
   }
 
@@ -459,7 +464,9 @@ class ExecutionTest : public HloTestBase {
           ->ClearDynamicShape();
       module->set_config(new_config);
     }
-    DynamicPadder padder(slice_dynamic_output);
+    DynamicPadderOptions options;
+    options.slice_dynamic_output = slice_dynamic_output;
+    DynamicPadder padder(options);
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloDCE dce;
     TF_CHECK_OK(dce.Run(module.get()).status());
@@ -1752,6 +1759,55 @@ ENTRY gds {
                     .ValueOrDie();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
+}
+
+class SizeCheckTest : public HloTestBase {
+ protected:
+  SizeCheckTest() {}
+};
+
+TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpFail) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  size_0 = s32[] parameter(0)
+  size_1 = s32[] parameter(1)
+  arg = s32[4]{0} parameter(2)
+  dynamic_arg_0 = s32[<=4] set-dimension-size(arg, size_0), dimensions={0}
+  dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
+  ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
+})")
+                    .ValueOrDie();
+  auto options = DynamicPadderOptions();
+  options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  DynamicPadder pass(options);
+  auto status = pass.Run(module.get()).status();
+  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+}
+
+TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {
+  // Two different sizes.
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  size_0 = s32[] parameter(0)
+  size_0_reshape = s32[1] reshape(size_0)
+  size_1 = s32[] reshape(size_0_reshape)
+  arg = s32[4]{0} parameter(1)
+  dynamic_arg_0 = s32[<=4] set-dimension-size(arg, size_0), dimensions={0}
+  dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
+  ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
+})")
+                    .ValueOrDie();
+  auto options = DynamicPadderOptions();
+  options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  DynamicDimensionSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).ok());
+  DynamicPadder pass(options);
+  auto status = pass.Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
 }
 
 }  // namespace

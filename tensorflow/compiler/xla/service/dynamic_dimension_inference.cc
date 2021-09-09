@@ -71,10 +71,12 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   explicit DynamicDimensionInferenceVisitor(
       const DynamicParameterBinding& param_bindings,
       DynamicDimensionInference* parent,
-      DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler)
+      DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler,
+      DynamicDimensionInference::ShapeCheckMode shape_check_mode)
       : param_bindings_(param_bindings),
         parent_(parent),
-        custom_call_handler_(std::move(custom_call_handler)) {}
+        custom_call_handler_(std::move(custom_call_handler)),
+        shape_check_mode_(shape_check_mode) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
@@ -82,9 +84,12 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
                     const DynamicParameterBinding& param_bindings,
                     DynamicDimensionInference* parent,
                     DynamicDimensionInference::CustomCallInferenceHandler
-                        custom_call_handler = nullptr) {
+                        custom_call_handler = nullptr,
+                    DynamicDimensionInference::ShapeCheckMode shape_check_mode =
+                        DynamicDimensionInference::ShapeCheckMode::kIgnore) {
     DynamicDimensionInferenceVisitor visitor(param_bindings, parent,
-                                             std::move(custom_call_handler));
+                                             std::move(custom_call_handler),
+                                             shape_check_mode);
     return computation->Accept(&visitor);
   }
 
@@ -184,6 +189,12 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status ForEachDynamicDimension(HloInstruction* inst,
                                  const DynamicDimensionFn& fn);
 
+  // Insert shape check to make sure `dim1` is equal to `dim2`. If
+  // support_implicit_broadcast is true, the check will pass if either of them
+  // is 1, even if they are different.
+  Status InsertShapeCheck(HloInstruction* dim1, HloInstruction* dim2,
+                          bool support_implicit_broadcast);
+
   // Pass through a dynamic dimension from the input to the output with the
   // same value and index in the shape. This is a helper function to handle
   // trivial instructions like elementwise operations.
@@ -197,6 +208,9 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   // A handler for custom calls.
   DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler_;
+
+  // Indicates what to do at places where shape check is needed.
+  DynamicDimensionInference::ShapeCheckMode shape_check_mode_;
 };
 
 Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
@@ -822,6 +836,9 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
         if (existing_size == nullptr || existing_size == dynamic_size) {
           parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         } else {
+          TF_RETURN_IF_ERROR(
+              InsertShapeCheck(existing_size, dynamic_size,
+                               /*support_implicit_broadcast=*/true));
           HloInstruction* max =
               comp->AddInstruction(HloInstruction::CreateBinary(
                   ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum,
@@ -1690,6 +1707,23 @@ Status DynamicDimensionInferenceVisitor::ForEachDynamicDimension(
   return Status::OK();
 }
 
+Status DynamicDimensionInferenceVisitor::InsertShapeCheck(
+    HloInstruction* dim1, HloInstruction* dim2,
+    bool support_implicit_broadcast) {
+  if (shape_check_mode_ == DynamicDimensionInference::ShapeCheckMode::kIgnore) {
+    return Status::OK();
+  }
+  if (shape_check_mode_ ==
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime) {
+    return InvalidArgument(
+        "Fail to proof the equality of two dimensions at compile time: "
+        "%s vs %s",
+        dim1->ToString(), dim2->ToString());
+  }
+  return Unimplemented(
+      "Runtime dimension check is not supported on this backend.");
+}
+
 Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
     HloInstruction* inst, int64_t operand_index,
     const OperandDynamicDimensionFn& fn) {
@@ -1752,9 +1786,11 @@ void DynamicDimensionInference::CopyMapping(HloInstruction* from,
 
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
-    HloModule* module, CustomCallInferenceHandler custom_call_handler) {
+    HloModule* module, CustomCallInferenceHandler custom_call_handler,
+    ShapeCheckMode shape_check_mode) {
   VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
-  DynamicDimensionInference inference(module, std::move(custom_call_handler));
+  DynamicDimensionInference inference(module, std::move(custom_call_handler),
+                                      shape_check_mode);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;
 }
@@ -1774,13 +1810,16 @@ string DynamicDimensionInference::ToString() const {
 }
 
 DynamicDimensionInference::DynamicDimensionInference(
-    HloModule* module, CustomCallInferenceHandler custom_call_handler)
-    : module_(module), custom_call_handler_(std::move(custom_call_handler)) {}
+    HloModule* module, CustomCallInferenceHandler custom_call_handler,
+    ShapeCheckMode shape_check_mode)
+    : module_(module),
+      custom_call_handler_(std::move(custom_call_handler)),
+      shape_check_mode_(shape_check_mode) {}
 
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(
       module_->entry_computation(), module_->dynamic_parameter_binding(), this,
-      custom_call_handler_);
+      custom_call_handler_, shape_check_mode_);
 }
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
@@ -1838,8 +1877,8 @@ bool DynamicDimensionInference::HasDynamicDimension(
 
 Status DynamicDimensionInference::Update(HloInstruction* inst) {
   DynamicParameterBinding parameter_binding;
-  DynamicDimensionInferenceVisitor visitor(parameter_binding, this,
-                                           custom_call_handler_);
+  DynamicDimensionInferenceVisitor visitor(
+      parameter_binding, this, custom_call_handler_, shape_check_mode_);
   return inst->Visit(&visitor);
 }
 
