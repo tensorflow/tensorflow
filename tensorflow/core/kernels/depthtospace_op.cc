@@ -112,7 +112,7 @@ class DepthToSpaceOp : public OpKernel {
     auto Tinput = input.tensor<T, kDims>();
     auto Toutput = outputs_tensor->tensor<T, kDims>();
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if constexpr (std::is_same<Device, GPUDevice>::value) {
       if (is_int8x4) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
@@ -172,16 +172,6 @@ struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
     }
   }
 };
-
-#ifdef WIN32
-template <typename T>
-struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NCHW> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
-                  int block_size, typename TTypes<T, 4>::Tensor output) {
-    LOG(FATAL) << "Trivial implementation to make debug build compile.";
-  }
-};
-#endif
 }  // namespace functor
 
 #define REGISTER(type)                                                \
