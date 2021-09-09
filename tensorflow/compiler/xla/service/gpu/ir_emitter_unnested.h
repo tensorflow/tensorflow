@@ -71,7 +71,6 @@ struct MlirEmitterContext {
 //
 // Examples of things that are not unnested computations:
 //
-//  - The reducer of a kReduce HLO.  This is emitted using IrEmitterNested.
 //  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
