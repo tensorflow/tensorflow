@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import numpy as np
 
 from tensorflow.python.eager import backprop as backprop_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -37,10 +36,6 @@ from tensorflow.python.platform import test
 
 
 class SparseXentOpTestBase(test.TestCase):
-
-  def _opDeterminismEnabled(self):
-    deterministic_ops = os.getenv('TF_DETERMINISTIC_OPS', '0')
-    return deterministic_ops in ('1', 'true')
 
   def _opFwdBwd(self, labels, logits):
     """Runs the op-under-test both forwards and backwards"""
@@ -259,7 +254,8 @@ class SparseXentOpTestBase(test.TestCase):
       analytical, numerical = gradient_checker_v2.compute_gradient(
           xent_grad, [logits])
 
-      if not context.executing_eagerly() and not self._opDeterminismEnabled():
+      if (not context.executing_eagerly() and
+          not config.deterministic_ops_enabled()):
         # Check that second derivative is calculated.
         # (it is equivalent to being `BatchMatMul` op in the graph because of
         # implementation of xentropy grad)

@@ -4154,7 +4154,7 @@ def softmax_cross_entropy_with_logits(
 
 
 def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
-  if _tf_deterministic_ops():
+  if config.deterministic_ops_enabled():
     # TODO(duncanriach): Implement a GPU-deterministic version of this op at
     #     the C++/CUDA level.
 
