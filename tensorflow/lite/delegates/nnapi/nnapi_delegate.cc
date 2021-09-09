@@ -356,6 +356,14 @@ inline bool isLstmFullKernel(const TfLiteNode* node) {
          node->inputs->size == kLstmFullKernelNoOptionalParamsInputSize;
 }
 
+bool IsMeanWithDifferentInputOutputQuantization(const TfLiteContext* context,
+                                                const TfLiteNode* node) {
+  const auto& input = context->tensors[node->inputs->data[0]];
+  const auto& output = context->tensors[node->outputs->data[0]];
+  return input.params.scale != output.params.scale ||
+         input.params.zero_point != output.params.zero_point;
+}
+
 bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
                       const TfLiteNode* node) {
   switch (builtin_code) {
@@ -1131,6 +1139,32 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  // Add a ADD op to requantize an NNAPI intermediate output to the scale and
+  // zero point of the TFLite output tensor.
+  TfLiteStatus AppendRequantize(int nn_input_index, int lite_out_tensor_index,
+                                int lite_node_index, int tensor_flags = 0) {
+    augmented_inputs_.push_back(nn_input_index);
+    auto& output_tensor = context_->tensors[lite_out_tensor_index];
+
+    // Create a zero vector with the same type as the output type. There is only
+    // one single element in the vector, and it is broadcastable with any
+    // tensor.
+    TF_LITE_ENSURE(context_, IsQuantized(output_tensor.type));
+    bool need_int8_conversion = tensor_flags & NN_TENSOR_FLAG_INT8_CONVERSION;
+    int nn_type = (output_tensor.type == kTfLiteUInt8 || need_int8_conversion)
+                      ? ANEURALNETWORKS_TENSOR_QUANT8_ASYMM
+                      : ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
+    int8_t zero = 0;
+    TF_LITE_ENSURE_STATUS(AddVectorOperand(&zero, /*num_values=*/1, nn_type,
+                                           /*scale=*/1.0f, /*zero_point=*/0));
+
+    TF_LITE_ENSURE_STATUS(AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+    TF_LITE_ENSURE_STATUS(AddTensorOutput(lite_out_tensor_index, tensor_flags));
+    TF_LITE_ENSURE_STATUS(
+        FinalizeAddOperation(ANEURALNETWORKS_ADD, lite_node_index));
+    return kTfLiteOk;
+  }
+
   // Lower PACK into CONCAT + RESHAPE when possible
   TfLiteStatus TransformPackIntoSupportedOps(int lite_node_index,
                                              TfLiteNode* node,
@@ -1290,20 +1324,26 @@ class NNAPIOpBuilder {
                                            uint32_t dimension_count,
                                            const uint32_t* dimension_data,
                                            float scale, int32_t zero_point,
-                                           int* ann_index_out) {
+                                           int* ann_index_out,
+                                           bool need_int8_conversion = false) {
     int32_t nn_type;
     switch (tfl_type) {
       case kTfLiteFloat32:
         nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
         break;
       case kTfLiteInt8:
-        nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
+        nn_type = need_int8_conversion
+                      ? ANEURALNETWORKS_TENSOR_QUANT8_ASYMM
+                      : ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
         break;
       case kTfLiteUInt8:
         nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
         break;
       default:
         return kTfLiteError;
+    }
+    if (need_int8_conversion) {
+      zero_point += 128;
     }
     TF_LITE_ENSURE_STATUS(
         AddAdditionalOutputTensor(dimension_count, dimension_data, nn_type,
@@ -2631,15 +2671,6 @@ bool NNAPIDelegateKernel::Validate(
       Expect(context->tensors[node->outputs->data[0]].dims->size > 0,
              NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output for MEAN.",
-             &val_ctx);
-
-      auto input_param = context->tensors[node->inputs->data[0]].params;
-      auto output_param = context->tensors[node->outputs->data[0]].params;
-      Expect(input_param.scale == output_param.scale &&
-                 input_param.zero_point == output_param.zero_point,
-             NNAPIValidationFailureType::kUnsupportedOutputType,
-             "NNAPI requires that the input and output have the same "
-             "quantization parameters.",
              &val_ctx);
     } break;
     case kTfLiteBuiltinEmbeddingLookup: {
@@ -5198,6 +5229,9 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     // fc_nn_intermediate_output_index is used to indicate whether additional
     // RESHAPE op is needed.
     int fc_nn_intermediate_output_index = -1;
+    // mean_nn_intermediate_output_index is used to indicate whether additional
+    // re-quantization is needed.
+    int mean_nn_intermediate_output_index = -1;
     for (int output_pos = 0; output_pos < node->outputs->size; ++output_pos) {
       auto output_index = node->outputs->data[output_pos];
 
@@ -5219,6 +5253,16 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
             output_tensor.type, output_dims.size(), output_dims.data(),
             output_tensor.params.scale, output_tensor.params.zero_point,
             &fc_nn_intermediate_output_index));
+      } else if (reg->builtin_code == kTfLiteBuiltinMean &&
+                 IsMeanWithDifferentInputOutputQuantization(context, node)) {
+        // Handle MEAN with different input and output quantization params.
+        auto& input_tensor = context->tensors[node->inputs->data[0]];
+        auto& output_tensor = context->tensors[output_index];
+        TF_LITE_ENSURE_STATUS(builder.AddIntermediateOutputTensor(
+            output_tensor.type, output_tensor.dims->size,
+            reinterpret_cast<const uint32_t*>(output_tensor.dims->data),
+            input_tensor.params.scale, input_tensor.params.zero_point,
+            &mean_nn_intermediate_output_index, need_int8_conversion));
       } else {
         TF_LITE_ENSURE_STATUS(
             builder.AddTensorOutput(output_index, output_tensor_flags));
@@ -5235,6 +5279,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (fc_nn_intermediate_output_index > -1) {
       TF_LITE_ENSURE_STATUS(builder.AppendReshape(
           fc_nn_intermediate_output_index, node->outputs->data[0], node_index));
+    }
+    if (mean_nn_intermediate_output_index > -1) {
+      TF_LITE_ENSURE_STATUS(builder.AppendRequantize(
+          mean_nn_intermediate_output_index, node->outputs->data[0], node_index,
+          output_tensor_flags));
     }
   }
   return kTfLiteOk;
