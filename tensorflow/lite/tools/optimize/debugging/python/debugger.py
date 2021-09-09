@@ -172,8 +172,10 @@ class QuantizationDebugger:
     self._float_interpreter = None
     if converter is not None:
       if self._debug_options.model_debug_metrics:
+        old_optimizations = converter.optimizations
         self.converter = self._set_converter_options_for_float(converter)
         self.float_model = self.converter.convert()
+        converter.optimizations = old_optimizations
 
       self.converter = self._set_converter_options_for_calibration(converter)
       self.calibrated_model = self.converter.convert()
