@@ -27,6 +27,8 @@ ARG RELEASE_CONTAINER=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+RUN pip install pip==21.2.4
+
 # Upgrade Bazel version if argument is passed
 RUN if [ "${BAZEL_VERSION}" != "" ]; then \
         curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
