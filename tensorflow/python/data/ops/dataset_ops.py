@@ -515,12 +515,27 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     raise NotImplementedError("Dataset.element_spec")
 
   def __repr__(self):
+    type_ = type(self._dataset if isinstance(self, DatasetV1Adapter) else self)
     output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
     output_shapes = str(output_shapes).replace("'", "")
     output_types = nest.map_structure(repr, get_legacy_output_types(self))
     output_types = str(output_types).replace("'", "")
-    return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
+    return ("<%s shapes: %s, types: %s>" % (type_.__name__, output_shapes,
                                             output_types))
+
+  def __debug_string__(self):
+    """Returns a string showing the type of the dataset and its inputs.
+
+    This string is intended only for debugging purposes, and may change without
+    warning.
+    """
+    lines = []
+    to_process = [(self, 0)]  # Stack of (dataset, depth) pairs.
+    while to_process:
+      dataset, depth = to_process.pop()
+      lines.append("-"*2*depth + repr(dataset))
+      to_process.extend([(ds, depth+1) for ds in dataset._inputs()])  # pylint: disable=protected-access
+    return "\n".join(lines)
 
   def as_numpy_iterator(self):
     """Returns an iterator which converts all elements of the dataset to numpy.
