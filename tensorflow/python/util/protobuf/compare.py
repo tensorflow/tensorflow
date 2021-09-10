@@ -113,9 +113,10 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
   if len(a_str) < 2**16 and len(b_str) < 2**16:
     self.assertMultiLineEqual(a_str, b_str, msg=msg)
   else:
-    diff = '\n' + ''.join(difflib.unified_diff(a_str.splitlines(True),
-                                               b_str.splitlines(True)))
-    self.fail('%s : %s' % (msg, diff))
+    diff = ''.join(
+        difflib.unified_diff(a_str.splitlines(True), b_str.splitlines(True)))
+    if diff:
+      self.fail('%s :\n%s' % (msg, diff))
 
 
 def NormalizeNumberFields(pb):
