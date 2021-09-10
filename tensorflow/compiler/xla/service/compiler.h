@@ -188,14 +188,11 @@ class Compiler {
                         CompileOptions{device_allocator});
   }
 
-  // Runs HLO passes to optimize the given HloModule, perform scheduling and
-  // buffer assignment, returns the optimized module and the buffer assignments.
-  // This interface is intentionally narrow.
+  // Performs scheduling and buffer assignment and returns the scheduled module
+  // and the buffer assignments.
   virtual StatusOr<
       std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) {
+  AssignBuffers(std::unique_ptr<HloModule> module) {
     return Unimplemented("This compiler does not support this method");
   }
 

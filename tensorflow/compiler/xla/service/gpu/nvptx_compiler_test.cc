@@ -48,12 +48,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   NVPTXCompiler compiler;
-  Compiler::CompileOptions compile_options;
   TF_ASSERT_OK_AND_ASSIGN(auto module_and_buffer_assignment,
-                          compiler.RunHloPassesAndBufferAssignement(
-                              std::move(module),
-                              /*executor=*/nullptr,
-                              /*optimize=*/false, compile_options));
+                          compiler.AssignBuffers(std::move(module)));
 
   module = std::move(std::get<0>(module_and_buffer_assignment));
   std::unique_ptr<BufferAssignment> buffer_assignment =
@@ -89,12 +85,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   NVPTXCompiler compiler;
-  Compiler::CompileOptions compile_options;
   TF_ASSERT_OK_AND_ASSIGN(auto module_and_buffer_assignment,
-                          compiler.RunHloPassesAndBufferAssignement(
-                              std::move(module),
-                              /*executor=*/nullptr,
-                              /*optimize=*/false, compile_options));
+                          compiler.AssignBuffers(std::move(module)));
 
   module = std::move(std::get<0>(module_and_buffer_assignment));
   std::unique_ptr<BufferAssignment> buffer_assignment =

@@ -136,9 +136,7 @@ class CpuCompiler : public LLVMCompiler {
 
   StatusOr<
       std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) override;
+  AssignBuffers(std::unique_ptr<HloModule> module) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
