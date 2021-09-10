@@ -176,6 +176,11 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
                                   const MutableGraphView& graph_view);
 
+// If both input nodes have the "metadata" attribute set, it populates the
+// "metadata" attribute for the fused node.
+void MaybeSetFusedMetadata(const NodeDef& node1, const NodeDef& node2,
+                           NodeDef* fused_node);
+
 // Copies the attributes `output_shapes`, `output_types` from node `from` to
 // node `to_node` if they exist. The method will return `true` if attributes
 // copied successfully, otherwise it will return `false`.

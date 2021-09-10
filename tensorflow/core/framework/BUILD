@@ -117,6 +117,7 @@ exports_files(
         "api_def.proto",
         "attr_value.proto",
         "cost_graph.proto",
+        "dataset_metadata.proto",
         "dataset_options.proto",
         "device_attributes.proto",
         "full_type.proto",
@@ -1721,6 +1722,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "dataset_metadata_proto",
+    srcs = ["dataset_metadata.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "dataset_options_proto",
     srcs = ["dataset_options.proto"],
     cc_api_version = 2,
@@ -1736,6 +1744,7 @@ tf_proto_library(
         ":api_def_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
+        ":dataset_metadata_proto",
         ":dataset_options_proto",
         ":device_attributes_proto",
         ":full_type_proto",

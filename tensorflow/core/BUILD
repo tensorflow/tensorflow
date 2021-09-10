@@ -211,6 +211,7 @@ FRAMEWORK_PROTO_SRCS = [
     "//tensorflow/core/framework:model.proto",
     "//tensorflow/core/framework:node_def.proto",
     "//tensorflow/core/framework:op_def.proto",
+    "//tensorflow/core/framework:dataset_metadata.proto",
     "//tensorflow/core/framework:dataset_options.proto",
     "//tensorflow/core/framework:reader_base.proto",
     "//tensorflow/core/framework:resource_handle.proto",

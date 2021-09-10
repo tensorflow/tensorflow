@@ -195,6 +195,8 @@
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
+    *   Added support for user-defined names of tf.data core Python API, which
+        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs
         that are files. This will enable creating hermetic SavedModels when
         using datasets created from files.

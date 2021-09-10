@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
@@ -84,6 +85,7 @@ constexpr char kColon[] = ":";
 
 constexpr char kTFDataResourceTag[] = "tfdata";
 constexpr char kTraceInfoUnavailable[] = "unavailable";
+constexpr char kMetadata[] = "metadata";
 
 class DatasetBase;
 class SerializationContext;
@@ -892,7 +894,9 @@ class DatasetBase : public core::RefCounted {
   const string& node_name() const { return node_name_; }
 
   // Initializes the dataset.
-  void Initialize();
+  void Initialize(const Metadata& metadata);
+
+  const Metadata& metadata() const { return metadata_; }
 
   const Options& options() const { return options_; }
 
@@ -1053,6 +1057,7 @@ class DatasetBase : public core::RefCounted {
 
   const string type_string_;
   const string node_name_;
+  Metadata metadata_;
   Options options_;
   // The number of source datasets feeding into the dataset. A source dataset is
   // a leaf in the subtree of dataset inputs.
@@ -1284,7 +1289,15 @@ Status ParseVectorArgument(OpKernelContext* ctx,
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
  public:
-  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    if (ctx->HasAttr(kMetadata)) {
+      std::string serialized_metadata;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
+      OP_REQUIRES(ctx, metadata_.ParseFromString(serialized_metadata),
+                  errors::InvalidArgument(absl::StrCat(
+                      "Could not parse the 'metadata' attribute.")));
+    }
+  }
 
   void Compute(OpKernelContext* ctx) final;
 
@@ -1301,6 +1314,9 @@ class DatasetOpKernel : public OpKernel {
   // Subclasses should implement this method. It will be called during Compute
   // execution.
   virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
+
+ private:
+  Metadata metadata_;
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

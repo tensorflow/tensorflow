@@ -294,6 +294,12 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       self.assertIn(b"GPU:0", self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).scan(
+        0, lambda x, y: (y, y), name="scan")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          parameterized.TestCase):

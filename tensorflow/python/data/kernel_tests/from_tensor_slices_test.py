@@ -362,6 +362,12 @@ class FromTensorSlicesRandomAccessTest(test_base.DatasetTestBase,
       result = self.evaluate(random_access.at(dataset, i))
       self.assertAllEqual(expected_output[i], result)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([42],
+                                                     name="from_tensor_slices")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                      parameterized.TestCase):

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/errors.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/public/version.h"
 
 // On Windows, disable some macros that would break compile
 #if defined(PLATFORM_WINDOWS)
@@ -266,6 +268,13 @@ Status GraphDefBuilderWrapper::AddDataset(
   if (has_output_types_attr) {
     opts = absl::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr("output_types", dataset->output_dtypes()));
+  }
+  bool has_metadata_attr = HasAttr(type_string, "metadata");
+  if (has_metadata_attr) {
+    std::string serialized_metadata;
+    dataset->metadata().SerializeToString(&serialized_metadata);
+    opts = absl::make_unique<GraphDefBuilder::Options>(
+        opts->WithAttr("metadata", serialized_metadata));
   }
   for (const auto& attr : attrs) {
     opts = absl::make_unique<GraphDefBuilder::Options>(
@@ -562,7 +571,7 @@ void MergeOptions(const protobuf::MessageLite& source,
 
 }  // namespace internal
 
-void DatasetBase::Initialize() {
+void DatasetBase::Initialize(const Metadata& metadata) {
   Status s = ComputeNumSources();
   if (!s.ok()) {
     LOG(ERROR) << s;
@@ -574,6 +583,12 @@ void DatasetBase::Initialize() {
   s = ComputeCardinality();
   if (!s.ok()) {
     LOG(ERROR) << s;
+  }
+  metadata_ = metadata;
+  if (metadata_.name() == "") {
+    static std::atomic<int64_t> id_counter(0);
+    *metadata_.mutable_name() =
+        strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
   }
 }
 
@@ -805,7 +820,8 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
-  strings::StrAppend(&traceme_metadata_, "shapes=");
+  strings::StrAppend(&traceme_metadata_, "name=", dataset()->metadata().name());
+  strings::StrAppend(&traceme_metadata_, ",shapes=");
   auto& shapes = output_shapes();
   for (int i = 0; i < shapes.size(); ++i) {
     if (i > 0) {
@@ -952,7 +968,7 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
-    dataset->Initialize();
+    dataset->Initialize(metadata_);
   }
 }
 

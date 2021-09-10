@@ -46,7 +46,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
                   take=[2],
                   error=[errors.InvalidArgumentError],
                   error_msg=["Dataset had more than one element."])))
-  def testGetSingleElement(self, skip, take, error=None, error_msg=None):
+  def testBasic(self, skip, take, error=None, error_msg=None):
 
     def make_sparse(x):
       x_1d = array_ops.reshape(x, [1])
@@ -125,6 +125,13 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.evaluate(counter_var.initializer)
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 4)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    self.assertEqual(
+        self.evaluate(dataset.get_single_element(name="get_single_element")),
+        42)
 
 
 if __name__ == "__main__":

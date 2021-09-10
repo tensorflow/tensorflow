@@ -432,6 +432,11 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).cache(name="cache")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):

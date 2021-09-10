@@ -19,7 +19,9 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -40,12 +42,13 @@ def _normalise_fspath(path):
   return os.fspath(path) if isinstance(path, os.PathLike) else path
 
 
-def _create_or_validate_filenames_dataset(filenames):
+def _create_or_validate_filenames_dataset(filenames, name=None):
   """Creates (or validates) a dataset of filenames.
 
   Args:
     filenames: Either a list or dataset of filenames. If it is a list, it is
       convert to a dataset. If it is a dataset, its type and shape is validated.
+    name: (Optional.) A name for the tf.data operation.
 
   Returns:
     A dataset of filenames.
@@ -67,12 +70,16 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
           " Got {}".format(filenames.dtype))
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
-    filenames = dataset_ops.TensorSliceDataset(filenames, is_files=True)
+    filenames = dataset_ops.TensorSliceDataset(
+        filenames, is_files=True, name=name)
 
   return filenames
 
 
-def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
+def _create_dataset_reader(dataset_creator,
+                           filenames,
+                           num_parallel_reads=None,
+                           name=None):
   """Creates a dataset that reads the given files using the given reader.
 
   Args:
@@ -80,6 +87,7 @@ def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
       dataset.
     filenames: A `tf.data.Dataset` containing one or more filenames.
     num_parallel_reads: The number of parallel reads we should do.
+    name: (Optional.) A name for the tf.data operation.
 
   Returns:
     A `Dataset` that reads data from `filenames`.
@@ -90,10 +98,10 @@ def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
     return dataset_creator(filename)
 
   if num_parallel_reads is None:
-    return filenames.flat_map(read_one_file)
+    return filenames.flat_map(read_one_file, name=name)
   elif num_parallel_reads == dataset_ops.AUTOTUNE:
     return filenames.interleave(
-        read_one_file, num_parallel_calls=num_parallel_reads)
+        read_one_file, num_parallel_calls=num_parallel_reads, name=name)
   else:
     return ParallelInterleaveDataset(
         filenames,
@@ -102,13 +110,18 @@ def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
         block_length=1,
         sloppy=False,
         buffer_output_elements=None,
-        prefetch_input_elements=None)
+        prefetch_input_elements=None,
+        name=name)
 
 
 class _TextLineDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising records from one or more text files."""
 
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
+  def __init__(self,
+               filenames,
+               compression_type=None,
+               buffer_size=None,
+               name=None):
     """Creates a `TextLineDataset`.
 
     Args:
@@ -118,6 +131,7 @@ class _TextLineDataset(dataset_ops.DatasetSource):
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
         to buffer. A value of 0 results in the default buffering values chosen
         based on the compression type.
+      name: (Optional.) A name for the tf.data operation.
     """
     self._filenames = filenames
     self._compression_type = convert.optional_param_to_tensor(
@@ -129,9 +143,17 @@ class _TextLineDataset(dataset_ops.DatasetSource):
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._metadata = dataset_metadata_pb2.Metadata()
+    if name:
+      self._metadata.name = dataset_ops._validate_and_encode(name)
+    kwargs = {}
+    if name or compat.forward_compatible(2021, 9, 30):
+      kwargs["metadata"] = self._metadata.SerializeToString()
+
     variant_tensor = gen_dataset_ops.text_line_dataset(self._filenames,
                                                        self._compression_type,
-                                                       self._buffer_size)
+                                                       self._buffer_size,
+                                                       **kwargs)
     super(_TextLineDataset, self).__init__(variant_tensor)
 
   @property
@@ -179,7 +201,8 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
                filenames,
                compression_type=None,
                buffer_size=None,
-               num_parallel_reads=None):
+               num_parallel_reads=None,
+               name=None):
     r"""Creates a `TextLineDataset`.
 
     The elements of the dataset will be the lines of the input files, using
@@ -200,17 +223,19 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
         input pipeline is I/O bottlenecked, consider setting this parameter to a
         value greater than one to parallelize the I/O. If `None`, files will be
         read sequentially.
+      name: (Optional.) A name for the tf.data operation.
     """
-    filenames = _create_or_validate_filenames_dataset(filenames)
+    filenames = _create_or_validate_filenames_dataset(filenames, name=name)
     self._filenames = filenames
     self._compression_type = compression_type
     self._buffer_size = buffer_size
 
     def creator_fn(filename):
-      return _TextLineDataset(filename, compression_type, buffer_size)
+      return _TextLineDataset(
+          filename, compression_type, buffer_size, name=name)
 
-    self._impl = _create_dataset_reader(creator_fn, filenames,
-                                        num_parallel_reads)
+    self._impl = _create_dataset_reader(
+        creator_fn, filenames, num_parallel_reads, name=name)
     variant_tensor = self._impl._variant_tensor  # pylint: disable=protected-access
 
     super(TextLineDatasetV2, self).__init__(variant_tensor)
@@ -228,9 +253,10 @@ class TextLineDatasetV1(dataset_ops.DatasetV1Adapter):
                filenames,
                compression_type=None,
                buffer_size=None,
-               num_parallel_reads=None):
+               num_parallel_reads=None,
+               name=None):
     wrapped = TextLineDatasetV2(filenames, compression_type, buffer_size,
-                                num_parallel_reads)
+                                num_parallel_reads, name)
     super(TextLineDatasetV1, self).__init__(wrapped)
 
   __init__.__doc__ = TextLineDatasetV2.__init__.__doc__
@@ -247,7 +273,11 @@ class TextLineDatasetV1(dataset_ops.DatasetV1Adapter):
 class _TFRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
+  def __init__(self,
+               filenames,
+               compression_type=None,
+               buffer_size=None,
+               name=None):
     """Creates a `TFRecordDataset`.
 
     Args:
@@ -256,6 +286,7 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes in the read buffer. 0 means no buffering.
+      name: (Optional.) A name for the tf.data operation.
     """
     self._filenames = filenames
     self._compression_type = convert.optional_param_to_tensor(
@@ -267,9 +298,17 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._metadata = dataset_metadata_pb2.Metadata()
+    if name:
+      self._metadata.name = dataset_ops._validate_and_encode(name)
+    kwargs = {}
+    if name or compat.forward_compatible(2021, 9, 30):
+      kwargs["metadata"] = self._metadata.SerializeToString()
+
     variant_tensor = gen_dataset_ops.tf_record_dataset(self._filenames,
                                                        self._compression_type,
-                                                       self._buffer_size)
+                                                       self._buffer_size,
+                                                       **kwargs)
     super(_TFRecordDataset, self).__init__(variant_tensor)
 
   @property
@@ -280,8 +319,15 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
 class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
-  def __init__(self, input_dataset, map_func, cycle_length, block_length,
-               sloppy, buffer_output_elements, prefetch_input_elements):
+  def __init__(self,
+               input_dataset,
+               map_func,
+               cycle_length,
+               block_length,
+               sloppy,
+               buffer_output_elements,
+               prefetch_input_elements,
+               name=None):
     """See `tf.data.experimental.parallel_interleave()` for details."""
     self._input_dataset = input_dataset
     self._map_func = dataset_ops.StructuredFunctionWrapper(
@@ -307,6 +353,13 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
       self._deterministic = "false"
     else:
       self._deterministic = "true"
+    self._metadata = dataset_metadata_pb2.Metadata()
+    if name:
+      self._metadata.name = dataset_ops._validate_and_encode(name)
+    kwargs = self._flat_structure
+    if name or compat.forward_compatible(2021, 9, 30):
+      kwargs["metadata"] = self._metadata.SerializeToString()
+
     variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -316,7 +369,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         self._prefetch_input_elements,
         f=self._map_func.function,
         deterministic=self._deterministic,
-        **self._flat_structure)
+        **kwargs)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -380,7 +433,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                filenames,
                compression_type=None,
                buffer_size=None,
-               num_parallel_reads=None):
+               num_parallel_reads=None,
+               name=None):
     """Creates a `TFRecordDataset` to read one or more TFRecord files.
 
     Each element of the dataset will contain a single TFRecord.
@@ -400,12 +454,13 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
         input pipeline is I/O bottlenecked, consider setting this parameter to a
         value greater than one to parallelize the I/O. If `None`, files will be
         read sequentially.
+      name: (Optional.) A name for the tf.data operation.
 
     Raises:
       TypeError: If any argument does not have the expected type.
       ValueError: If any argument does not have the expected shape.
     """
-    filenames = _create_or_validate_filenames_dataset(filenames)
+    filenames = _create_or_validate_filenames_dataset(filenames, name=name)
 
     self._filenames = filenames
     self._compression_type = compression_type
@@ -413,22 +468,13 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
     self._num_parallel_reads = num_parallel_reads
 
     def creator_fn(filename):
-      return _TFRecordDataset(filename, compression_type, buffer_size)
+      return _TFRecordDataset(
+          filename, compression_type, buffer_size, name=name)
 
-    self._impl = _create_dataset_reader(creator_fn, filenames,
-                                        num_parallel_reads)
+    self._impl = _create_dataset_reader(
+        creator_fn, filenames, num_parallel_reads, name=name)
     variant_tensor = self._impl._variant_tensor  # pylint: disable=protected-access
     super(TFRecordDatasetV2, self).__init__(variant_tensor)
-
-  def _clone(self,
-             filenames=None,
-             compression_type=None,
-             buffer_size=None,
-             num_parallel_reads=None):
-    return TFRecordDatasetV2(filenames or self._filenames, compression_type or
-                             self._compression_type, buffer_size or
-                             self._buffer_size, num_parallel_reads or
-                             self._num_parallel_reads)
 
   def _inputs(self):
     return self._impl._inputs()  # pylint: disable=protected-access
@@ -446,24 +492,13 @@ class TFRecordDatasetV1(dataset_ops.DatasetV1Adapter):
                filenames,
                compression_type=None,
                buffer_size=None,
-               num_parallel_reads=None):
-    wrapped = TFRecordDatasetV2(filenames, compression_type, buffer_size,
-                                num_parallel_reads)
+               num_parallel_reads=None,
+               name=None):
+    wrapped = TFRecordDatasetV2(
+        filenames, compression_type, buffer_size, num_parallel_reads, name=name)
     super(TFRecordDatasetV1, self).__init__(wrapped)
 
   __init__.__doc__ = TFRecordDatasetV2.__init__.__doc__
-
-  def _clone(self,
-             filenames=None,
-             compression_type=None,
-             buffer_size=None,
-             num_parallel_reads=None):
-    # pylint: disable=protected-access
-    return TFRecordDatasetV1(
-        filenames or self._dataset._filenames, compression_type or
-        self._dataset._compression_type, buffer_size or
-        self._dataset._buffer_size, num_parallel_reads or
-        self._dataset._num_parallel_reads)
 
   @property
   def _filenames(self):
@@ -483,7 +518,8 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
                header_bytes=None,
                footer_bytes=None,
                buffer_size=None,
-               compression_type=None):
+               compression_type=None,
+               name=None):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
@@ -498,6 +534,7 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         bytes to buffer when reading.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
+      name: (Optional.) A name for the tf.data operation.
     """
     self._filenames = filenames
     self._record_bytes = ops.convert_to_tensor(
@@ -513,9 +550,16 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
+    self._metadata = dataset_metadata_pb2.Metadata()
+    if name:
+      self._metadata.name = dataset_ops._validate_and_encode(name)
+    kwargs = {}
+    if name or compat.forward_compatible(2021, 9, 30):
+      kwargs["metadata"] = self._metadata.SerializeToString()
+
     variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
         self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size, self._compression_type)
+        self._footer_bytes, self._buffer_size, self._compression_type, **kwargs)
     super(_FixedLengthRecordDataset, self).__init__(variant_tensor)
 
   @property
@@ -565,7 +609,8 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
                footer_bytes=None,
                buffer_size=None,
                compression_type=None,
-               num_parallel_reads=None):
+               num_parallel_reads=None,
+               name=None):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
@@ -587,8 +632,9 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
         input pipeline is I/O bottlenecked, consider setting this parameter to a
         value greater than one to parallelize the I/O. If `None`, files will be
         read sequentially.
+      name: (Optional.) A name for the tf.data operation.
     """
-    filenames = _create_or_validate_filenames_dataset(filenames)
+    filenames = _create_or_validate_filenames_dataset(filenames, name=name)
 
     self._filenames = filenames
     self._record_bytes = record_bytes
@@ -598,12 +644,17 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
     self._compression_type = compression_type
 
     def creator_fn(filename):
-      return _FixedLengthRecordDataset(filename, record_bytes, header_bytes,
-                                       footer_bytes, buffer_size,
-                                       compression_type)
+      return _FixedLengthRecordDataset(
+          filename,
+          record_bytes,
+          header_bytes,
+          footer_bytes,
+          buffer_size,
+          compression_type,
+          name=name)
 
-    self._impl = _create_dataset_reader(creator_fn, filenames,
-                                        num_parallel_reads)
+    self._impl = _create_dataset_reader(
+        creator_fn, filenames, num_parallel_reads, name=name)
     variant_tensor = self._impl._variant_tensor  # pylint: disable=protected-access
     super(FixedLengthRecordDatasetV2, self).__init__(variant_tensor)
 
@@ -623,10 +674,17 @@ class FixedLengthRecordDatasetV1(dataset_ops.DatasetV1Adapter):
                footer_bytes=None,
                buffer_size=None,
                compression_type=None,
-               num_parallel_reads=None):
-    wrapped = FixedLengthRecordDatasetV2(filenames, record_bytes, header_bytes,
-                                         footer_bytes, buffer_size,
-                                         compression_type, num_parallel_reads)
+               num_parallel_reads=None,
+               name=None):
+    wrapped = FixedLengthRecordDatasetV2(
+        filenames,
+        record_bytes,
+        header_bytes,
+        footer_bytes,
+        buffer_size,
+        compression_type,
+        num_parallel_reads,
+        name=name)
     super(FixedLengthRecordDatasetV1, self).__init__(wrapped)
 
   __init__.__doc__ = FixedLengthRecordDatasetV2.__init__.__doc__

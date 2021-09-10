@@ -96,6 +96,11 @@ class ShardTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).shard(20, 5)
     self.assertDatasetProduces(dataset, expected_output=[5])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).shard(1, 0, name="shard")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
