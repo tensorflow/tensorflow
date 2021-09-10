@@ -24,9 +24,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuSpmdSinglePartitionTest : public GpuCodegenTest {};
+class GpuSpmdE2ECompileTest : public GpuCodegenTest {};
 
-TEST_F(GpuSpmdSinglePartitionTest, SpmdSinglePartition) {
+TEST_F(GpuSpmdE2ECompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
   const char* const hlo_string = R"(
 HloModule module
