@@ -819,11 +819,12 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     };
 
     auto enter = [&](Node* n) -> void {
+      // TODO(b/199443424): Replace this logic with propagated type information.
       if (data::DatasetOpKernel::IsDatasetOp(n->op_def())) {
         // NOTE: Datasets are expected to live on the host. This code should be
         // updated if that changes. Under this assumption, however, we must
         // locate some ops on the host when the input is a dataset variant.
-        if (node->IsRetval() || node->IsIdentity()) {
+        if (node->IsRetval() || node->IsIdentity() || node->IsControlFlow()) {
           is_host_data_type = true;
         }
       } else {
