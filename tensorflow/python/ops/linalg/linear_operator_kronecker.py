@@ -160,8 +160,8 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     check_ops.assert_proper_iterable(operators)
     operators = list(operators)
     if not operators:
-      raise ValueError(
-          "Expected a list of >=1 operators. Found: %s" % operators)
+      raise ValueError(f"Argument `operators` must be a list of >=1 operators. "
+                       f"Received: {operators}.")
     self._operators = operators
 
     # Validate dtype.
@@ -170,8 +170,8 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       if operator.dtype != dtype:
         name_type = (str((o.name, o.dtype)) for o in operators)
         raise TypeError(
-            "Expected all operators to have the same dtype.  Found %s"
-            % "   ".join(name_type))
+            f"Expected every operation in argument `operators` to have the "
+            f"same dtype. Received {list(name_type)}.")
 
     # Auto-set and check hints.
     # A Kronecker product is invertible, if and only if all factors are
@@ -179,23 +179,27 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     if all(operator.is_non_singular for operator in operators):
       if is_non_singular is False:
         raise ValueError(
-            "The Kronecker product of non-singular operators is always "
-            "non-singular.")
+            f"The Kronecker product of non-singular operators is always "
+            f"non-singular. Expected argument `is_non_singular` to be True. "
+            f"Received: {is_non_singular}.")
       is_non_singular = True
 
     if all(operator.is_self_adjoint for operator in operators):
       if is_self_adjoint is False:
         raise ValueError(
-            "The Kronecker product of self-adjoint operators is always "
-            "self-adjoint.")
+            f"The Kronecker product of self-adjoint operators is always "
+            f"self-adjoint. Expected argument `is_self_adjoint` to be True. "
+            f"Received: {is_self_adjoint}.")
       is_self_adjoint = True
 
     # The eigenvalues of a Kronecker product are equal to the products of eigen
     # values of the corresponding factors.
     if all(operator.is_positive_definite for operator in operators):
       if is_positive_definite is False:
-        raise ValueError("The Kronecker product of positive-definite operators "
-                         "is always positive-definite.")
+        raise ValueError(
+            f"The Kronecker product of positive-definite operators is always "
+            f"positive-definite. Expected argument `is_positive_definite` to "
+            f"be True. Received: {is_positive_definite}.")
       is_positive_definite = True
 
     # Initialization.
@@ -459,8 +463,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       return control_flow_ops.group(asserts)
     else:
       raise errors.InvalidArgumentError(
-          node_def=None, op=None, message="All Kronecker factors must be "
-          "square for the product to be invertible.")
+          node_def=None,
+          op=None,
+          message="All Kronecker factors must be square for the product to be "
+          "invertible. Expected hint `is_square` to be True for every operator "
+          "in argument `operators`.")
 
   def _assert_self_adjoint(self):
     if all(operator.is_square for operator in self.operators):
@@ -468,8 +475,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       return control_flow_ops.group(asserts)
     else:
       raise errors.InvalidArgumentError(
-          node_def=None, op=None, message="All Kronecker factors must be "
-          "square for the product to be self adjoint.")
+          node_def=None,
+          op=None,
+          message="All Kronecker factors must be square for the product to be "
+          "invertible. Expected hint `is_square` to be True for every operator "
+          "in argument `operators`.")
 
   @property
   def _composite_tensor_fields(self):
