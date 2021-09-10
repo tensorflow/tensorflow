@@ -178,7 +178,8 @@ absl::Status InferenceContext::InitFromGraph(
   storage_type_ = create_info.storage_type;
   if (env->device().GetInfo().IsMali()) {
     need_flush_ = true;
-    need_manual_release_ = true;
+    need_manual_release_ =
+        env->device().GetInfo().mali_info.IsValhall() ? false : true;
 
     flush_periodically_ = true;
     flush_period_ = 24;
