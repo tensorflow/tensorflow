@@ -341,6 +341,19 @@ class FunctionInstantiationHelper {
           fnode.experimental_debug_info());
     }
 
+    // Tye info.
+    // TODO(mdan): Might this need adjustment at instantiation?
+    if (fnode.has_experimental_type()) {
+      *gnode->mutable_experimental_type() = fnode.experimental_type();
+    }
+
+    DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&fnode)
+                  ->GetDescriptor()
+                  ->field_count(),
+              7)
+        << "The NodeDef format has changed, and the node instantiation code"
+           " may need to be updated.";
+
     return Status::OK();
   }
 

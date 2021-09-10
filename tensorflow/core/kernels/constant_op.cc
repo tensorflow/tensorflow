@@ -64,6 +64,9 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), &ret);
   MergeDebugInfo(original, &ret);
+  if (original.has_experimental_type()) {
+    *ret.mutable_experimental_type() = original.experimental_type();
+  }
   return ret;
 }
 
