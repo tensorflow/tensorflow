@@ -1288,7 +1288,6 @@ distribute_py_test(
         "notsan",  # b/168645872
     ],
     tpu_tags = [
-        "no_oss",  # TODO(b/150954621) Target too big to run serially reliably.
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
@@ -1484,9 +1483,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-    ],
-    tpu_tags = [
-        "no_oss",  # b/150954621 Target too big to run serially reliably.
     ],
     deps = [
         ":combinations",
