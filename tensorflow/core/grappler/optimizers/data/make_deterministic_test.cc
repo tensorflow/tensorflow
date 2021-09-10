@@ -29,12 +29,14 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class MakeDeterministicTest : public ::testing::TestWithParam<bool> {};
+class MakeDeterministicTest
+    : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
 
 TEST_P(MakeDeterministicTest, NoRewriteInterleave) {
   using test::function::NDef;
   GrapplerItem item;
-  bool nest = GetParam();
+  bool nest, deterministic;
+  std::tie(nest, deterministic) = GetParam();
   std::string func_name = nest ? "OuterXTimesTwo" : "XTimesTwo";
 
   item.graph = test::function::GDef(
@@ -48,7 +50,7 @@ TEST_P(MakeDeterministicTest, NoRewriteInterleave) {
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeParallelInterleaveV2Node(
            "interleave", "range", "cycle_length", "block_length",
-           "num_parallel_calls", func_name, /*sloppy=*/false)},
+           "num_parallel_calls", func_name, /*sloppy=*/!deterministic)},
       // FunctionLib
       {test::function::XTimesTwo(),
        FunctionDefHelper::Define(
@@ -75,12 +77,14 @@ TEST_P(MakeDeterministicTest, NoRewriteInterleave) {
   ASSERT_GE(index, 0);
   NodeDef node_def = output.node(index);
   ASSERT_EQ(node_def.op(), "ParallelInterleaveDatasetV2");
+  ASSERT_EQ(node_def.attr().at("sloppy").b(), false);
 }
 
 TEST_P(MakeDeterministicTest, NoRewriteMap) {
   using test::function::NDef;
   GrapplerItem item;
-  bool nest = GetParam();
+  bool nest, deterministic;
+  std::tie(nest, deterministic) = GetParam();
   std::string func_name = nest ? "OuterXTimesTwo" : "XTimesTwo";
   item.graph = test::function::GDef(
       {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
@@ -89,9 +93,9 @@ TEST_P(MakeDeterministicTest, NoRewriteMap) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        NDef("num_parallel_calls", "Const", {},
             {{"value", 1}, {"dtype", DT_INT32}}),
-       graph_tests_utils::MakeParallelMapNode("map", "range",
-                                              "num_parallel_calls", func_name,
-                                              /*sloppy=*/false)},
+       graph_tests_utils::MakeParallelMapV2Node(
+           "map", "range", "num_parallel_calls", func_name,
+           deterministic ? "true" : "false")},
       // FunctionLib
       {test::function::XTimesTwo(),
        FunctionDefHelper::Define(
@@ -117,19 +121,21 @@ TEST_P(MakeDeterministicTest, NoRewriteMap) {
   int index = graph_utils::FindGraphNodeWithName("map", output);
   ASSERT_GE(index, 0);
   NodeDef node_def = output.node(index);
-  ASSERT_EQ(node_def.op(), "ParallelMapDataset");
+  ASSERT_EQ(node_def.op(), "ParallelMapDatasetV2");
+  ASSERT_EQ(node_def.attr().at("deterministic").s(), "true");
 }
 
 TEST_P(MakeDeterministicTest, RewriteInterleave) {
   using test::function::NDef;
   typedef FunctionDefHelper FDH;
   GrapplerItem item;
-  bool nest = GetParam();
+  bool nest, deterministic;
+  std::tie(nest, deterministic) = GetParam();
   std::string func_name = nest ? "OuterRandomUniform" : "RandomUniform";
 
   NodeDef interleave_node_def = graph_tests_utils::MakeParallelInterleaveV2Node(
       "interleave", "range", "cycle_length", "block_length",
-      "num_parallel_calls", func_name, /*sloppy=*/false);
+      "num_parallel_calls", func_name, /*sloppy=*/!deterministic);
   interleave_node_def.add_input("^start");
 
   item.graph = test::function::GDef(
@@ -178,12 +184,13 @@ TEST_P(MakeDeterministicTest, RewriteMap) {
   using test::function::NDef;
   typedef FunctionDefHelper FDH;
   GrapplerItem item;
-  bool nest = GetParam();
+  bool nest, deterministic;
+  std::tie(nest, deterministic) = GetParam();
   std::string func_name = nest ? "OuterRandomUniform" : "RandomUniform";
 
-  NodeDef map_node_def = graph_tests_utils::MakeParallelMapNode(
+  NodeDef map_node_def = graph_tests_utils::MakeParallelMapV2Node(
       "map", "range", "num_parallel_calls", func_name,
-      /*sloppy=*/false);
+      deterministic ? "true" : "false");
   map_node_def.add_input("^start");
 
   item.graph = test::function::GDef(
@@ -225,7 +232,35 @@ TEST_P(MakeDeterministicTest, RewriteMap) {
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, MakeDeterministicTest,
-                         ::testing::Values(false, true));
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
+
+TEST(MakeDeterministicBatchTest, Batch) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("drop_remainder", "Const", {},
+            {{"value", false}, {"dtype", DT_BOOL}}),
+       graph_tests_utils::MakeParallelBatchNode(
+           "batch", "range", "batch_size", "num_parallel_calls",
+           "drop_remainder", /*deterministic=*/"false")},
+      // FunctionLib
+      {});
+
+  MakeDeterministic optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("batch", output));
+  int index = graph_utils::FindGraphNodeWithName("batch", output);
+  EXPECT_EQ(output.node(index).attr().at("deterministic").s(), "true");
+}
 
 }  // namespace
 }  // namespace grappler

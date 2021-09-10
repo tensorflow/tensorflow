@@ -187,6 +187,12 @@ bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
 // of node `to_node`.
 bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node);
 
+// Checks whether the op has a "sloppy" attribute.
+bool HasSloppyAttr(const string& op);
+
+// Checks whether the op has a "deterministic" attribute.
+bool HasDeterministicAttr(const string& op);
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

@@ -455,10 +455,10 @@ cc_library(
     srcs = ["make_sloppy.cc"],
     hdrs = ["make_sloppy.h"],
     deps = [
+        ":graph_utils",
         ":optimizer_base",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),

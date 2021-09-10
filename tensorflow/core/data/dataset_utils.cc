@@ -522,12 +522,10 @@ void GetOptimizations(const Options& options,
   DefaultOptimizationGraphRewrites(options, optimizations_enabled,
                                    optimizations_disabled,
                                    optimizations_default);
-  if (options.optional_deterministic_case() == Options::kDeterministic) {
-    if (options.deterministic()) {
-      optimizations_disabled->insert(kMakeSloppyOpt);
-    } else {
-      optimizations_enabled->insert(kMakeSloppyOpt);
-    }
+  if (!OpDeterminismRequired() &&
+      options.optional_deterministic_case() == Options::kDeterministic &&
+      !options.deterministic()) {
+    optimizations_enabled->insert(kMakeSloppyOpt);
   }
   if (options.optional_slack_case() == Options::kSlack) {
     if (options.slack()) {

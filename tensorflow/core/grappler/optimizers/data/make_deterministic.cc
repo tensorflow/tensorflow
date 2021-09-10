@@ -198,7 +198,15 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
-  for (const NodeDef& node : item.graph.node()) {
+  for (NodeDef& node : *output->mutable_node()) {
+    if (graph_utils::HasSloppyAttr(node.op())) {
+      (*node.mutable_attr())["sloppy"].set_b(false);
+      stats->num_changes++;
+    }
+    if (graph_utils::HasDeterministicAttr(node.op())) {
+      (*node.mutable_attr())["deterministic"].set_s("true");
+      stats->num_changes++;
+    }
     if (!IsParallelInterleave(node.op()) && !IsParallelMap(node.op())) {
       continue;
     }

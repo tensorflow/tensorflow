@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
 
 from absl.testing import parameterized
 
@@ -33,6 +34,8 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import config
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -205,6 +208,35 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(
           dataset,
           expected_output=["1", "4", "7", "2", "5", "8", "3", "6", "9"])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def test_deterministic_attribute(self, local_determinism, global_determinism):
+    self._set_seed()
+    with test_util.deterministic_ops():
+
+      def sleep(x):
+        time.sleep(0.1)
+        return x
+
+      def map_function(x):
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype, stateful=False)
+        else:
+          return x
+
+      dataset = dataset_ops.Dataset.range(100)
+      dataset = dataset.map(
+          map_function, num_parallel_calls=2, deterministic=local_determinism)
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+
+      self.assertDatasetProduces(dataset, expected_output=range(100))
 
   @combinations.generate(test_base.default_test_combinations())
   def test_no_determinism(self):

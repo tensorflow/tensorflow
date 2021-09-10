@@ -400,6 +400,28 @@ bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
   return true;
 }
 
+namespace {
+const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
+    "ParallelInterleaveDatasetV2",
+    "ParallelMapDataset",
+    "ParseExampleDataset",
+};
+
+const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
+    "LegacyParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDatasetV2",
+    "ParallelBatchDataset",
+};
+}  // anonymous namespace
+
+bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasDeterministicAttr(const string& op) {
+  return kDeterministicAttrOps->contains(op);
+}
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

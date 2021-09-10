@@ -23,20 +23,24 @@ namespace grappler {
 
 constexpr char kAutotune[] = "autotune";
 
-// Transforms ParallelInterleave and ParallelMap datasets into Interleave and
-// Map datasets respectively, if the interleave/map function can introduce
-// nondeterminism when run in parallel. In particular, if the function can
-// mutate state, it is considered nondeterministic.
+// Removes sources on nondeterminism from dataset ops. In particular, this pass
+// does the following:
+//   1. Transforms ParallelInterleave and ParallelMap datasets into Interleave
+//      and Map datasets respectively, if the interleave/map function can
+//      introduce nondeterminism when run in parallel. Specifically, if the
+//      function can mutate state, it is considered nondeterministic.
+//   2. Sets the "deterministic" attribute to true and "sloppy" attribute to
+//      False on dataset ops which have such attributes. Note step (1) is still
+//      needed, as even when the "deterministic" attribute is true,
+//      nondeterminism can occur if the interleave/map function mutates state.
 //
-// Note even if the "deterministic" attribute is set, nondeterminism may still
-// occur if the function mutates state. This Optimizer removes this source of
-// nondeterminism.
+// NOTE: ParallelMap datasets are often rewritten to the non-parallel version,
+// as map functions which distort images typically use random ops (which are
+// stateful). Unfortunately, this rewrite usually causes a large performance
+// penalty in such cases by forcing the map function to run in serial.
 //
-// Map datasets are often rewritten, as map functions which distort images
-// typically use random ops (which are stateful). Unfortunately, this rewrite
-// usually causes a large performance penalty in such cases by forcing the map
-// function to run in serial.
-// TODO(reedwm): Reduce the performance penalty.
+// TODO(reedwm): Avoid serial execution of stateful functions that contain
+// random ops.
 class MakeDeterministic : public TFDataOptimizerBase {
  public:
   MakeDeterministic() = default;
