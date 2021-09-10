@@ -152,14 +152,15 @@ def parse_entity(entity, future_features):
 
   try:
     original_source = inspect_utils.getimmediatesource(entity)
-  except OSError as e:
-    raise errors.InaccessibleSourceCodeError(
-        f'Unable to locate the source code of {entity}. Note that functions'
-        ' defined in certain environments, like the interactive Python shell,'
-        ' do not expose their source code. If that is the case, you should'
-        ' define them in a .py source file. If you are certain the code is'
+  except (IOError, OSError) as e:
+    raise ValueError(
+        'Unable to locate the source code of {}. Note that functions defined'
+        ' in certain environments, like the interactive Python shell, do not'
+        ' expose their source code. If that is the case, you should define'
+        ' them in a .py source file. If you are certain the code is'
         ' graph-compatible, wrap the call using'
-        f' @tf.autograph.experimental.do_not_convert. Original error: {e}')
+        ' @tf.autograph.experimental.do_not_convert. Original error: {}'.format(
+            entity, e))
 
   source = dedent_block(original_source)
 
