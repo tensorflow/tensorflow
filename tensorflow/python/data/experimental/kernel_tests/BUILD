@@ -570,7 +570,7 @@ tf_py_test(
 
 tf_py_test(
     name = "sql_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["sql_dataset_test.py"],
     shard_count = 4,
     deps = [
