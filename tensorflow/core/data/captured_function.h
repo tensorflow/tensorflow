@@ -56,7 +56,7 @@ Status MakeIteratorFromInputElement(
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
-    const std::shared_ptr<model::Node>& node);
+    std::shared_ptr<model::Node> node);
 
 struct ShortCircuitInfo {
   std::vector<int> indices;
@@ -230,7 +230,7 @@ class InstantiatedCapturedFunction {
   // called `DatasetBaseIterator::RecordStart().
   Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
              std::vector<Tensor>* rets,
-             const std::shared_ptr<model::Node>& node) const;
+             std::shared_ptr<model::Node> node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -248,7 +248,7 @@ class InstantiatedCapturedFunction {
   Status RunWithBorrowedArgs(IteratorContext* ctx,
                              const std::vector<Tensor>& args,
                              std::vector<Tensor>* rets,
-                             const std::shared_ptr<model::Node>& node) const;
+                             std::shared_ptr<model::Node> node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -269,7 +269,7 @@ class InstantiatedCapturedFunction {
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
-                const std::shared_ptr<model::Node>& node) const;
+                std::shared_ptr<model::Node> node) const;
 
  private:
   InstantiatedCapturedFunction(

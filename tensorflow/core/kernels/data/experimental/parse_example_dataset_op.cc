@@ -412,7 +412,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           return profiler::TraceMeEncode("ParseExampleConsume",
                                          {{"element_id", result->id}});
         });
-        return ProcessResult(ctx, result, out_tensors, end_of_sequence);
+        return ProcessResult(ctx, result.get(), out_tensors, end_of_sequence);
       }
 
      protected:
@@ -554,31 +554,32 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void EnsureThreadsStarted(IteratorContext* ctx)
           TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!runner_thread_) {
-          auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
           runner_thread_ = ctx->StartThread(
-              "tf_data_parallel_map",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy));
+              "tf_data_parse_example",
+              [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
+                RunnerThread(ctx);
+              });
           if (ctx->stats_aggregator()) {
             stats_thread_ = ctx->StartThread(
-                "tf_data_parallel_map_stats",
-                std::bind(&Iterator::StatsThread, this, ctx_copy));
+                "tf_data_parse_example_stats",
+                [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
+                  StatsThread(ctx.get());
+                });
           }
         }
       }
 
-      void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
-                         const std::shared_ptr<InvocationResult>& result)
+      void CallCompleted(IteratorContext* ctx, InvocationResult* result)
           TF_LOCKS_EXCLUDED(*mu_) {
         mutex_lock l(*mu_);
         num_calls_--;
-        RecordBufferEnqueue(ctx.get(), result->return_values);
+        RecordBufferEnqueue(ctx, result->return_values);
         result->notification.Notify();
         cond_var_->notify_all();
       }
 
-      void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
-                        const std::shared_ptr<InvocationResult>& result)
-          TF_LOCKS_EXCLUDED(*mu_) {
+      void CallFunction(std::shared_ptr<IteratorContext> ctx,
+                        InvocationResult* result) TF_LOCKS_EXCLUDED(*mu_) {
         profiler::TraceMe traceme([&] {
           return profiler::TraceMeEncode("ParseExampleProduce",
                                          {{"element_id", result->id}});
@@ -588,13 +589,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                               &result->end_of_input);
         if (result->end_of_input || !result->status.ok()) {
-          CallCompleted(ctx, result);
+          CallCompleted(ctx.get(), result);
           return;
         }
 
         auto done = [this, ctx, result](Status status) {
           result->status.Update(status);
-          CallCompleted(ctx, result);
+          CallCompleted(ctx.get(), result);
         };
 
         // We schedule the `ParseExample` function using `ctx->runner()` to
@@ -724,8 +725,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status ProcessResult(IteratorContext* ctx,
-                           const std::shared_ptr<InvocationResult>& result,
+      Status ProcessResult(IteratorContext* ctx, InvocationResult* result,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
         if (!result->end_of_input && result->status.ok()) {
@@ -746,7 +746,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         return result->status;
       }
 
-      void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
+      void RunnerThread(std::shared_ptr<IteratorContext> ctx)
           TF_LOCKS_EXCLUDED(*mu_) {
         RecordStart(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
@@ -782,7 +782,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             cond_var_->notify_all();
           }
           for (const auto& call : new_calls) {
-            CallFunction(ctx, call);
+            CallFunction(ctx, call.get());
           }
           new_calls.clear();
         }
@@ -820,7 +820,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         return true;
       }
 
-      void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+      void StatsThread(IteratorContext* ctx) {
         for (int64_t step = 0;; ++step) {
           int num_calls;
           int num_parallel_calls;
