@@ -2192,24 +2192,49 @@ func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> 
   return %0 : tensor<1x1xi32>
 }
 
-// CHECK-LABEL:   func @convert_dynamic_slice(
-// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<7x3xf32>,
-// CHECK-SAME:                                %[[VAL_1:.*]]: tensor<i32>,
-// CHECK-SAME:                                %[[VAL_2:.*]]: tensor<i32>) -> tensor<4x2xf32> {
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"{{.*}}value = dense<0> : tensor<i32>
-// CHECK:           %[[VAL_4:.*]] = "tf.Const"{{.*}}value = dense<3> : tensor<i32>
-// CHECK:           %[[VAL_5:.*]] = "tf.Minimum"(%[[VAL_1]], %[[VAL_4]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_6:.*]] = "tf.Maximum"(%[[VAL_5]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_7:.*]] = "tf.Const"{{.*}}value = dense<1> : tensor<i32>
-// CHECK:           %[[VAL_8:.*]] = "tf.Minimum"(%[[VAL_2]], %[[VAL_7]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_9:.*]] = "tf.Maximum"(%[[VAL_8]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:           %[[VAL_10:.*]] = "tf.Pack"(%[[VAL_6]], %[[VAL_9]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
-// CHECK:           %[[VAL_11:.*]] = "tf.Const"{{.*}}value = dense<[4, 2]> : tensor<2xi64>
-// CHECK:           %[[VAL_12:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_10]], %[[VAL_11]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<4x2xf32>
-// CHECK:           return %[[VAL_12]] : tensor<4x2xf32>
+// CHECK-LABEL: func @convert_dynamic_slice(
+// CHECK-SAME:                                      %[[VAL_0:.*]]: tensor<7x3xf32>,
+// CHECK-SAME:                                      %[[VAL_1:.*]]: tensor<i32>,
+// CHECK-SAME:                                      %[[VAL_2:.*]]: tensor<i32>) -> tensor<4x2xf32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_4:.*]] = "tf.Cast"(%[[VAL_1]]) {Truncate = false} : (tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_6:.*]] = "tf.Minimum"(%[[VAL_4]], %[[VAL_5]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_7:.*]] = "tf.Maximum"(%[[VAL_6]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_8:.*]] = "tf.Cast"(%[[VAL_2]]) {Truncate = false} : (tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_9:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_10:.*]] = "tf.Minimum"(%[[VAL_8]], %[[VAL_9]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_11:.*]] = "tf.Maximum"(%[[VAL_10]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_12:.*]] = "tf.Pack"(%[[VAL_7]], %[[VAL_11]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+// CHECK:           %[[VAL_13:.*]] = "tf.Const"() {value = dense<[4, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_12]], %[[VAL_13]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<4x2xf32>
+// CHECK:           return %[[VAL_14]] : tensor<4x2xf32>
 // CHECK:         }
 func @convert_dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<4x2xf32> {
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
+  return %0 : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: func @convert_dynamic_slice_ui32(
+// CHECK-SAME:                                           %[[VAL_0:.*]]: tensor<7x3xf32>,
+// CHECK-SAME:                                           %[[VAL_1:.*]]: tensor<ui32>,
+// CHECK-SAME:                                           %[[VAL_2:.*]]: tensor<ui32>) -> tensor<4x2xf32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_4:.*]] = "tf.Cast"(%[[VAL_1]]) {Truncate = false} : (tensor<ui32>) -> tensor<i32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_6:.*]] = "tf.Minimum"(%[[VAL_4]], %[[VAL_5]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_7:.*]] = "tf.Maximum"(%[[VAL_6]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_8:.*]] = "tf.Cast"(%[[VAL_2]]) {Truncate = false} : (tensor<ui32>) -> tensor<i32>
+// CHECK:           %[[VAL_9:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[VAL_10:.*]] = "tf.Minimum"(%[[VAL_8]], %[[VAL_9]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_11:.*]] = "tf.Maximum"(%[[VAL_10]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK:           %[[VAL_12:.*]] = "tf.Pack"(%[[VAL_7]], %[[VAL_11]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+// CHECK:           %[[VAL_13:.*]] = "tf.Const"() {value = dense<[4, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_12]], %[[VAL_13]]) : (tensor<7x3xf32>, tensor<2xi32>, tensor<2xi64>) -> tensor<4x2xf32>
+// CHECK:           return %[[VAL_14]] : tensor<4x2xf32>
+// CHECK:         }
+func @convert_dynamic_slice_ui32(%arg0: tensor<7x3xf32>, %arg1: tensor<ui32>, %arg2: tensor<ui32>) -> tensor<4x2xf32> {
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<ui32>, tensor<ui32>) -> tensor<4x2xf32>
   return %0 : tensor<4x2xf32>
 }
 

@@ -612,27 +612,42 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                           .cast<ShapedType>()
                                           .getElementType();
 
+    // The mhlo dynamic_slice's start_indices can be either signed/unsigned
+    // int32/int64. However, TF only takes in either i32 or i64 types for begin,
+    // so we will always put a cast.
+    Type signed_start_indices_element_type;
+    if (start_indices_element_type.isInteger(32)) {
+      signed_start_indices_element_type = rewriter.getI32Type();
+    } else {
+      signed_start_indices_element_type = rewriter.getI64Type();
+    }
+
     // Clamp indices to [0, input_size - output_size]
     llvm::SmallVector<Value, 4> start_indices_vector;
     start_indices_vector.reserve(op.start_indices().size());
     Value clamp_min = rewriter.create<ConstOp>(
-        op.getLoc(), rewriter.getIntegerAttr(start_indices_element_type, 0));
+        op.getLoc(),
+        rewriter.getIntegerAttr(signed_start_indices_element_type, 0));
     for (uint64_t i = 0, e = op.start_indices().size(); i < e; ++i) {
+      // Always put a cast there.
+      auto start = op.start_indices()[i];
+      auto cast_type = start.getType().cast<ShapedType>().clone(
+          signed_start_indices_element_type);
+      auto cast_op = rewriter.create<CastOp>(op.getLoc(), cast_type, start);
       Value clamp_max = rewriter.create<ConstOp>(
           op.getLoc(),
-          rewriter.getIntegerAttr(start_indices_element_type,
+          rewriter.getIntegerAttr(signed_start_indices_element_type,
                                   input_type.getShape()[i] -
                                       op.slice_sizes().getValue<int64_t>({i})));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
-          op.getLoc(), op.start_indices()[i].getType(), clamp_min,
-          op.start_indices()[i], clamp_max);
+          op.getLoc(), cast_type, clamp_min, cast_op, clamp_max);
       start_indices_vector.push_back(clamped_index);
     }
 
     // Pack individual start indices to start indices tensor.
     Type start_indices_type = RankedTensorType::get(
         {static_cast<int64_t>(start_indices_vector.size())},
-        start_indices_element_type);
+        signed_start_indices_element_type);
     Value start_indices_op = rewriter.create<PackOp>(
         op.getLoc(), start_indices_type, ValueRange(start_indices_vector));
 
