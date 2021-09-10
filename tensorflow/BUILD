@@ -477,20 +477,8 @@ config_setting(
 # Features that are default ON are handled differently below.
 #
 config_setting(
-    name = "no_aws_support",
-    define_values = {"no_aws_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_gcp_support",
     define_values = {"no_gcp_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_hdfs_support",
-    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
