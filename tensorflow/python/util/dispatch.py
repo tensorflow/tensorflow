@@ -46,7 +46,7 @@ raised.
 
 ### Type-based Dispatch
 
-The main interface for the type-based dispatch system is the `dispatch_for`
+The main interface for the type-based dispatch system is the `dispatch_for_api`
 decorator, which overrides the default implementation for a TensorFlow API.
 The decorated function (known as the "dispatch target") will override the
 default implementation for the API when the API is called with parameters that
@@ -259,7 +259,7 @@ add_dispatch_list = add_fallback_dispatch_list
 ################################################################################
 
 
-def dispatch_for(api, *signatures):
+def dispatch_for_api(api, *signatures):
   """Decorator that overrides the default implementation for a TensorFlow API.
 
   The decorated function (known as the "dispatch target") will override the
@@ -273,7 +273,7 @@ def dispatch_for(api, *signatures):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
 
-  >>> @dispatch_for(tf.math.add, {'x': MaskedTensor, 'y': MaskedTensor})
+  >>> @dispatch_for_api(tf.math.add, {'x': MaskedTensor, 'y': MaskedTensor})
   ... def masked_add(x, y, name=None):
   ...   return MaskedTensor(x.values + y.values, x.mask & y.mask)
 
@@ -286,7 +286,7 @@ def dispatch_for(api, *signatures):
   registers `masked_add` to be called if `x` is a `MaskedTensor` *or* `y` is
   a `MaskedTensor`.
 
-  >>> @dispatch_for(tf.math.add, {'x': MaskedTensor}, {'y':MaskedTensor})
+  >>> @dispatch_for_api(tf.math.add, {'x': MaskedTensor}, {'y':MaskedTensor})
   ... def masked_add(x, y):
   ...   x_values = x.values if isinstance(x, MaskedTensor) else x
   ...   x_mask = x.mask if isinstance(x, MaskedTensor) else True
@@ -299,7 +299,7 @@ def dispatch_for(api, *signatures):
   example, the following will register `masked_concat` to be called if `values`
   is a list of `MaskedTensor` values:
 
-  >>> @dispatch_for(tf.concat, {'values': typing.List[MaskedTensor]})
+  >>> @dispatch_for_api(tf.concat, {'values': typing.List[MaskedTensor]})
   ... def masked_concat(values, axis):
   ...   return MaskedTensor(tf.concat([v.values for v in values], axis),
   ...                       tf.concat([v.mask for v in values], axis))
@@ -310,11 +310,11 @@ def dispatch_for(api, *signatures):
   `CompositeTensor` value.  This rule avoids invoking dispatch in degenerate
   cases, such as the following examples:
 
-  * `@dispatch_for(tf.concat, {'values': List[MaskedTensor]})`: Will not
+  * `@dispatch_for_api(tf.concat, {'values': List[MaskedTensor]})`: Will not
     dispatch to the decorated dispatch target when the user calls
     `tf.concat([])`.
 
-  * `@dispatch_for(tf.add, {'x': Union[MaskedTensor, Tensor], 'y':
+  * `@dispatch_for_api(tf.add, {'x': Union[MaskedTensor, Tensor], 'y':
     Union[MaskedTensor, Tensor]})`: Will not dispatch to the decorated dispatch
     target when the user calls `tf.add(tf.constant(1), tf.constant(2))`.
 
@@ -339,7 +339,7 @@ def dispatch_for(api, *signatures):
 
   #### Registered APIs
 
-  The TensorFlow APIs that may be overridden by `@dispatch_for` are:
+  The TensorFlow APIs that may be overridden by `@dispatch_for_api` are:
 
   <<API_LIST>>
   """
@@ -404,7 +404,7 @@ def type_based_dispatch_signatures_for(cls):
     A `dict` mapping `api` -> `signatures`, where `api` is a TensorFlow API
     function; and `signatures` is a list of dispatch signatures for `api`
     that include `cls`.  (Each signature is a dict mapping argument names to
-    type annotations; see `dispatch_for` for more info.)
+    type annotations; see `dispatch_for_api` for more info.)
   """
 
   def contains_cls(x):
@@ -478,7 +478,7 @@ def _add_name_scope_wrapper(func, api_signature):
 
 
 def unregister_dispatch_target(api, dispatch_target):
-  """Unregisters a dispatch target that was registered with `dispatch_for`."""
+  """Unregisters a dispatch target that was registered with `dispatch_for_api`."""
   dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR, None)
   if dispatcher is None:
     raise ValueError(f"{api} does not support dispatch.")
@@ -645,7 +645,7 @@ def _signature_from_annotations(func):
                     for (name, param) in func_signature.parameters.items()
                     if param.annotation != tf_inspect.Parameter.empty])
   if not signature:
-    raise ValueError("The dispatch_for decorator must be called with at "
+    raise ValueError("The dispatch_for_api decorator must be called with at "
                      "least one signature, or applied to a function that "
                      "has type annotations on its parameters.")
   return signature
@@ -711,7 +711,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
 
   Args:
     x_type: A type annotation indicating when the api handler should be called.
-      See `dispatch_for` for a list of supported annotation types.
+      See `dispatch_for_api` for a list of supported annotation types.
 
   Returns:
     A decorator.
@@ -834,7 +834,7 @@ def _add_dispatch_for_unary_elementwise_api(api, x_type,
       len(api_signature.parameters) > 2 or
       "name" not in api_signature.parameters)
 
-  @dispatch_for(api, {x_name: x_type})
+  @dispatch_for_api(api, {x_name: x_type})
   def dispatch_target(*args, **kwargs):
     args, kwargs, name = _extract_name_arg(args, kwargs, name_index)
     if args:
@@ -870,7 +870,7 @@ def _add_dispatch_for_binary_elementwise_api(api, x_type, y_type,
   need_to_bind_api_args = (len(api_signature.parameters) > 3 or
                            "name" not in api_signature.parameters)
 
-  @dispatch_for(api, {x_name: x_type, y_name: y_type})
+  @dispatch_for_api(api, {x_name: x_type, y_name: y_type})
   def dispatch_target(*args, **kwargs):
     args, kwargs, name = _extract_name_arg(args, kwargs, name_index)
     if len(args) > 1:
@@ -940,16 +940,16 @@ def unregister_elementwise_api_handler(api_handler):
 def update_docstrings_with_api_lists():
   """Updates the docstrings of dispatch decorators with API lists.
 
-  Updates docstrings for `dispatch_for`, `dispatch_for_unary_elementwise_apis`,
-  and `dispatch_for_binary_elementwise_apis`, by replacing the string
-  '<<API_LIST>>' with a list of APIs that have been registered for that
-  decorator.
+  Updates docstrings for `dispatch_for_api`,
+  `dispatch_for_unary_elementwise_apis`, and
+  `dispatch_for_binary_elementwise_apis`, by replacing the string '<<API_LIST>>'
+  with a list of APIs that have been registered for that decorator.
   """
   _update_docstring_with_api_list(dispatch_for_unary_elementwise_apis,
                                   _UNARY_ELEMENTWISE_APIS)
   _update_docstring_with_api_list(dispatch_for_binary_elementwise_apis,
                                   _BINARY_ELEMENTWISE_APIS)
-  _update_docstring_with_api_list(dispatch_for,
+  _update_docstring_with_api_list(dispatch_for_api,
                                   _TYPE_BASED_DISPATCH_SIGNATURES)
 
 
@@ -974,9 +974,9 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   """Decorator that adds a dispatch handling wrapper to a TensorFlow Python API.
 
   This wrapper adds the decorated function as an API that can be overridden
-  using the `@dispatch_for` decorator.  In the following example, we first
+  using the `@dispatch_for_api` decorator.  In the following example, we first
   define a new API (`double`) that supports dispatch, then define a custom type
-  (`MaskedTensor`) and finally use `dispatch_for` to override the default
+  (`MaskedTensor`) and finally use `dispatch_for_api` to override the default
   implementation of `double` when called with `MaskedTensor` values:
 
   >>> @add_dispatch_support
@@ -985,7 +985,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   >>> class MaskedTensor(extension_type.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
-  >>> @dispatch_for(double, {'x': MaskedTensor})
+  >>> @dispatch_for_api(double, {'x': MaskedTensor})
   ... def masked_double(x):
   ...   return MaskedTensor(x.values * 2, y.mask)
 
@@ -999,7 +999,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   >>> @add_dispatch_support(iterable_parameters=['ys'])
   ... def add_tensor_to_list_of_tensors(x, ys):
   ...   return [x + y for y in ys]
-  >>> @dispatch_for(add_tensor_to_list_of_tensors,
+  >>> @dispatch_for_api(add_tensor_to_list_of_tensors,
   ...               {'ys': typing.List[MaskedTensor]})
   ... def masked_add_tensor_to_list_of_tensors(x, ys):
   ...   return [MaskedTensor(x+y.values, y.mask) for y in ys]
