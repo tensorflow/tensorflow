@@ -40,10 +40,6 @@
     [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
     and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
     for the migration.
-  * Add experimental API `experimental_from_jax` to support conversion from Jax
-    models to TensorFlow Lite.
-  * Support uint32 data type for cast op.
-  * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -170,6 +166,11 @@
       b = tf.constant(3, dtype=tf.int32)
       result = client.multiply(a, b)
       ```
+* `tf.lite`:
+  * Add experimental API `experimental_from_jax` to support conversion from Jax
+    models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
+  * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
 
 ## Bug Fixes and Other Changes
 
