@@ -95,24 +95,31 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
 }
 
 ResourceMgr::ResourceAndName::ResourceAndName()
-    : resource(nullptr), name(nullptr) {}
+    : resource(nullptr), name(nullptr), resource_owner(nullptr) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
-                                              string name)
-    : resource(resource), name(absl::make_unique<string>(std::move(name))) {}
+                                              string name,
+                                              ResourceBase* resource_owner)
+    : resource(resource),
+      name(absl::make_unique<string>(std::move(name))),
+      resource_owner(resource_owner) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(
     ResourceAndName&& other) noexcept {
-  resource = std::move(other.resource);
+  resource = nullptr;
+  std::swap(resource, other.resource);
   name = std::move(other.name);
+  resource_owner = std::move(other.resource_owner);
 }
 
 ResourceMgr::ResourceAndName::~ResourceAndName() {}
 
 ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
     ResourceAndName&& other) noexcept {
-  resource = std::move(other.resource);
+  resource = nullptr;
+  std::swap(resource, other.resource);
   name = std::move(other.name);
+  resource_owner = std::move(other.resource_owner);
   return *this;
 }
 
@@ -168,7 +175,8 @@ string ResourceMgr::DebugString() const {
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
-                             const string& name, ResourceBase* resource) {
+                             const string& name, ResourceBase* resource,
+                             bool owns_resource) {
   Container** b = &containers_[container];
   if (*b == nullptr) {
     *b = new Container;
@@ -176,7 +184,8 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 
   // NOTE: Separating out the construction of the map key and value so that the
   // key can contain a StringPiece that borrows from the string in the value.
-  ResourceAndName resource_and_name(resource, name);
+  ResourceAndName resource_and_name(resource, name,
+                                    owns_resource ? resource : nullptr);
   StringPiece borrowed_name(*resource_and_name.name);
   Container::value_type key_and_value(Key(type.hash_code(), borrowed_name),
                                       std::move(resource_and_name));
@@ -217,7 +226,7 @@ Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
     return errors::NotFound("Resource ", container, "/", resource_name, "/",
                             type_name, " does not exist.");
   }
-  *resource = const_cast<ResourceBase*>(iter->second.resource.get());
+  *resource = iter->second.resource;
   (*resource)->Ref();
   return Status::OK();
 }

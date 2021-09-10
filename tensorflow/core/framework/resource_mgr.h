@@ -162,6 +162,19 @@ class ResourceMgr {
   Status Create(const std::string& container, const std::string& name,
                 T* resource) TF_MUST_USE_RESULT;
 
+  // Creates a unowned resource "name" in the "container".  The caller does NOT
+  // transfer the ownership of any ref on "resource" to *this, regardless of
+  // whether this operation succeeds or fails.
+  //
+  // The caller must ensure calling this->Delete() on the name before the
+  // resource is destroyed.
+  //
+  // REQUIRES: std::is_base_of<ResourceBase, T>
+  // REQUIRES: resource != nullptr.
+  template <typename T>
+  Status CreateUnowned(const std::string& container, const std::string& name,
+                       T* resource) TF_MUST_USE_RESULT;
+
   // If "container" has a resource "name", returns it in "*resource" and
   // the caller takes the ownership of one ref on "*resource".
   //
@@ -234,11 +247,13 @@ class ResourceMgr {
     }
   };
   struct ResourceAndName {
-    core::RefCountPtr<ResourceBase> resource;
+    ResourceBase* resource;
     std::unique_ptr<string> name;
+    core::RefCountPtr<ResourceBase> resource_owner;
 
     ResourceAndName();
-    ResourceAndName(ResourceBase* resource, std::string name);
+    ResourceAndName(ResourceBase* resource, std::string name,
+                    ResourceBase* resource_owner);
     ResourceAndName(ResourceAndName&& other) noexcept;
     ~ResourceAndName();
 
@@ -262,7 +277,8 @@ class ResourceMgr {
       TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
   Status DoCreate(const std::string& container, TypeIndex type,
-                  const std::string& name, ResourceBase* resource)
+                  const std::string& name, ResourceBase* resource,
+                  bool owns_resource)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
   Status DoLookup(const std::string& container, TypeIndex type,
@@ -604,7 +620,17 @@ Status ResourceMgr::Create(const std::string& container,
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
   mutex_lock l(mu_);
-  return DoCreate(container, TypeIndex::Make<T>(), name, resource);
+  return DoCreate(container, TypeIndex::Make<T>(), name, resource,
+                  /* owns_resource */ true);
+}
+
+template <typename T>
+Status ResourceMgr::CreateUnowned(const std::string& container,
+                                  const std::string& name, T* resource) {
+  CheckDeriveFromResourceBase<T>();
+  mutex_lock l(mu_);
+  return DoCreate(container, TypeIndex::Make<T>(), name, resource,
+                  /* owns_resource */ false);
 }
 
 template <typename T, bool use_dynamic_cast>
@@ -676,7 +702,8 @@ Status ResourceMgr::LookupOrCreate(const std::string& container,
   s = LookupInternal<T, use_dynamic_cast>(container, name, resource);
   if (s.ok()) return s;
   TF_RETURN_IF_ERROR(creator(resource));
-  s = DoCreate(container, TypeIndex::Make<T>(), name, *resource);
+  s = DoCreate(container, TypeIndex::Make<T>(), name, *resource,
+               /* owns_resource */ true);
   if (!s.ok()) {
     return errors::Internal("LookupOrCreate failed unexpectedly");
   }
