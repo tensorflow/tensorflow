@@ -1219,8 +1219,28 @@ tf_cc_test(
 cc_library(
     name = "op_kernel_test_base",
     testonly = True,
-    textual_hdrs = [
+    hdrs = [
         "op_kernel_test_base.h",
+    ],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "@com_google_absl//absl/strings",
     ],
 )
 
