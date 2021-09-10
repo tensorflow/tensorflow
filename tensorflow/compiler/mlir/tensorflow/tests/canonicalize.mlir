@@ -874,6 +874,46 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @addNWithZerosFloat
+func @addNWithZerosFloat(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
+  %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>}
+  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
+  // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
+  %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %3 = "tf.AddN"(%1, %arg0, %1) : (tensor<2xf32>, tensor<2xf32> , tensor<2xf32>) -> tensor<2xf32>
+  %4 = "tf.AddN"(%1, %1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %5 = "tf.AddN"(%arg0, %1, %0) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %2, %3, %4, %5: tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+}
+
+// CHECK-LABEL: func @addNWithZerosInt
+func @addNWithZerosInt(%arg0: tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) {
+  %0 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>}
+  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
+  // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
+  %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %3 = "tf.AddN"(%1, %arg0, %1) : (tensor<2xi32>, tensor<2xi32> , tensor<2xi32>) -> tensor<2xi32>
+  %4 = "tf.AddN"(%1, %1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %5 = "tf.AddN"(%arg0, %1, %0) : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %2, %3, %4, %5: tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>
+}
+
+// CHECK-LABEL: func @addNSkipFoldingIfBroadcasting
+func @addNSkipFoldingIfBroadcasting(%arg0: tensor<1xf32>) -> tensor<10xf32> {
+  %0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32>
+  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]])
+  // CHECK: return [[ADD_N]]
+  %1 = "tf.AddN"(%arg0, %0) : (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %1: tensor<10xf32>
+}
+
 // CHECK-LABEL: func @ToBool_0DScalarI1
 func @ToBool_0DScalarI1(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: return %arg0
