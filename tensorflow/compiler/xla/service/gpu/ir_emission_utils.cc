@@ -380,8 +380,7 @@ Shape FusionLayoutAnalysis::GetShape(mlir::Value value) const {
   return shape;
 }
 
-bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis) {
+bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
   auto reduce = mlir::dyn_cast<mlir::mhlo::ReduceOp>(op);
   if (!reduce) {
     return false;
@@ -390,7 +389,7 @@ bool IsReductionFromOrToContiguousDimensions(
   CHECK_EQ(1, results.size());
 
   mlir::Value input = reduce->getOperand(0);
-  Shape operand_shape = layout_analysis.GetShape(input);
+  Shape operand_shape = GetShape(input);
 
   std::vector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d : reduce.dimensions()) {
