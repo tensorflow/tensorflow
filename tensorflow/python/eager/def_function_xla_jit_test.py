@@ -682,6 +682,8 @@ class DefFunctionTest(xla_test.XLATestCase):
           v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
+  @test_util.disable_mlir_bridge('MLIR does not support resource update for'
+                                 ' signature with compile-time constant.')
   def testUpdateVariableWithCompileTimeConstMemoryUsage(self):
     with ops.device('device:{}:0'.format(self.device)):
 
