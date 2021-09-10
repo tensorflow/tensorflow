@@ -855,6 +855,7 @@ bzl_library(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
@@ -872,6 +873,7 @@ cc_library(
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
+# copybara:comment_end
 
 # A shared object which includes registration mechanisms for ops and
 # kernels. Does not include the implementations of any ops or kernels. Instead,
