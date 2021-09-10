@@ -189,12 +189,7 @@ Status BuildComputation(
   // cannot change the sharding of the existing output op. To do this, we build
   // a new identity op to which shardings can be applied.
   auto identity_op = [builder](xla::XlaOp op) {
-    xla::XlaOp tuple;
-    {
-      xla::XlaScopedShardingAssignment assign_sharding(builder, absl::nullopt);
-      tuple = xla::Tuple(builder, {op});
-    }
-    return xla::GetTupleElement(tuple, 0);
+    return xla::GetTupleElement(xla::Tuple(builder, {op}), 0);
   };
 
   std::vector<xla::XlaOp> elems;
