@@ -355,7 +355,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
       loc, get_context_op, builder.getStringAttr(""),
       builder.getI64IntegerAttr(key));
 
-  auto function_get_op = builder.create<tfrt::gpu::FunctionGetOp>(
+  auto module_function_op = builder.create<tfrt::gpu::ModuleFunctionOp>(
       loc, module_load_op, builder.getStringAttr(kernel_name));
 
   auto grid_dim_x = builder.create<tfrt::compiler::ConstantUI32Op>(
@@ -381,7 +381,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
   }
 
   mlir::Value launch_op = builder.create<tfrt::gpu::LaunchOp>(
-      loc, chain_type, stream_arg, function_get_op, grid_dim_x, grid_dim_y,
+      loc, chain_type, stream_arg, module_function_op, grid_dim_x, grid_dim_y,
       grid_dim_z, block_dim_x, block_dim_y, block_dim_z, shared_mem_size,
       in_chain, mlir::ValueRange(buffer_values));
 
