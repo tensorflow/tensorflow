@@ -2226,8 +2226,12 @@ TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
       op->builtin_options_as_VarHandleOptions();
 
   if (schema_params != nullptr) {
-    params->container = schema_params->container()->c_str();
-    params->shared_name = schema_params->shared_name()->c_str();
+    if (schema_params->container()) {
+      params->container = schema_params->container()->c_str();
+    }
+    if (schema_params->shared_name()) {
+      params->shared_name = schema_params->shared_name()->c_str();
+    }
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
