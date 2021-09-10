@@ -132,7 +132,8 @@ def initialize_system(
     tpu_cancellation_closes_chips: Set the configuration whether
       we want to close TPU chips when a TPU execution is cancelled. If the value
       is None, the behavior will be determined by the command line flag
-      `tpu_cancellation_closes_chips` for the TPU worker.
+      `tpu_cancellation_closes_chips` for the TPU worker. WARNING: this argument
+      only applies to TFRT TPU runtime.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.

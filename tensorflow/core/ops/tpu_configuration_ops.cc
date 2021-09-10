@@ -210,6 +210,7 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Attr("enable_whole_mesh_compilations: bool = false")
     .Attr("compilation_failure_closes_chips: bool = true")
     // Available values: 0 (unset), 1 (enabled) or 2 (disabled).
+    // This attribute is ignored in non-TFRT TPU runtime.
     .Attr("tpu_cancellation_closes_chips: int = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
