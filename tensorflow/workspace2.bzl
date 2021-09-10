@@ -19,7 +19,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
-load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -57,7 +56,6 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    aws()
     benchmark()
     clog()
     cpuinfo()
