@@ -11,14 +11,23 @@
 // CHECK-SAME: ) -> !tfrt.chain
 func @async(%memref: memref<4x4xf32>) {
   // CHECK-NOT: cast
+  // CHECK: %[[ctx:.*]] = tfrt_gpu.stream.get_context %arg1
+  // CHECK: %[[e0:.*]] = tfrt_gpu.event.create %[[ctx]]
+  // CHECK: %[[ch0:.*]] = tfrt_gpu.event.record %[[e0]], %arg1
 
-  // CHECK: %[[a0:.*]], %[[t0:.*]] = async.execute
-  // CHECK-SAME: -> !async.value<!tfrt_gpu.event>
+  // CHECK: %[[t0:.*]]:2 = tfrt_test.do.async %[[ctx]], %[[e0]], %[[ch0]], %arg2
+  // CHECK-SAME: : (
+  // CHECK-SAME:   !tfrt_gpu.context,
+  // CHECK-SAME:   !tfrt_gpu.event,
+  // CHECK-SAME:   !tfrt.chain,
+  // CHECK-SAME:   !tfrt_gpu.buffer
+  // CHECK-SAME: ) -> (
+  // CHECK-SAME:   !tfrt.chain,
+  // CHECK-SAME:   !tfrt_gpu.event
+  // CHECK-SAME: )  {
   %a0 = async.execute () {
-    // CHECK: %[[e0:.*]] = tfrt_gpu.event.create
-    // CHECK: %[[ch0:.*]] = tfrt_gpu.event.record %[[e0]], %arg1
-    // CHECK: %[[s0:.*]] = tfrt_gpu.stream.create
-    // CHECK: %[[ch1:.*]] = tfrt_gpu.stream.wait %[[s0]], %[[e0]]
+    // CHECK: %[[s0:.*]] = tfrt_gpu.stream.create %[[ctx]]
+    // CHECK: %[[ch1:.*]] = tfrt_gpu.stream.wait %[[s0]], %[[e0]], %[[ch0]]
     // CHECK: %[[h0:.*]] = tfrt_gpu.blas.create %[[s0]]
     // CHECK: %[[ch2:.*]] = tfrt_gpu.blas.gemm %[[h0]]
     // CHECK-SAME: %[[ch1]]
@@ -35,16 +44,23 @@ func @async(%memref: memref<4x4xf32>) {
       : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
     // CHECK: %[[e1:.*]] = tfrt_gpu.event.create
     // CHECK: %[[ch3:.*]] = tfrt_gpu.event.record %[[e1]], %[[s0]], %[[ch2]]
-    // CHECK: async.yield %[[e1]] : !tfrt_gpu.event
+    // CHECK: tfrt.return %[[ch3]], %[[e1]] : !tfrt.chain, !tfrt_gpu.event
     async.yield
   }
 
-  // CHECK: %[[a1:.*]], %[[t1:.*]] = async.execute [%[[a0]]]
-  // CHECK-SAME: (%[[t0]] as %[[e2:.*]]:
-  // CHECK-SAME: !async.value<!tfrt_gpu.event>) -> !async.value<!tfrt_gpu.event>
+  // CHECK: %[[t1:.*]]:2 = tfrt_test.do.async %[[t0]]#0, %[[t0]]#1, %[[ctx]], %arg2
+  // CHECK-SAME: : (
+  // CHECK-SAME:   !tfrt.chain,
+  // CHECK-SAME:   !tfrt_gpu.event,
+  // CHECK-SAME:   !tfrt_gpu.context,
+  // CHECK-SAME:   !tfrt_gpu.buffer
+  // CHECK-SAME: ) -> (
+  // CHECK-SAME:   !tfrt.chain,
+  // CHECK-SAME:   !tfrt_gpu.event
+  // CHECK-SAME: )  {
   %a1 = async.execute [%a0] () {
-    // CHECK: %[[s1:.*]] = tfrt_gpu.stream.create
-    // CHECK: %[[ch4:.*]] = tfrt_gpu.stream.wait %[[s1]], %[[e2]]
+    // CHECK: %[[s1:.*]] = tfrt_gpu.stream.create %[[ctx]]
+    // CHECK: %[[ch4:.*]] = tfrt_gpu.stream.wait %[[s1]], %[[t0]]#1, %[[t0]]#0
     // CHECK: %[[h1:.*]] = tfrt_gpu.blas.create %[[s1]]
     // CHECK: %[[ch5:.*]] = tfrt_gpu.blas.gemm %[[h1]]
     // CHECK-SAME: %[[ch4]]
@@ -61,13 +77,11 @@ func @async(%memref: memref<4x4xf32>) {
       : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
     // CHECK: %[[e3:.*]] = tfrt_gpu.event.create
     // CHECK: %[[ch6:.*]] = tfrt_gpu.event.record %[[e3]], %[[s1]], %[[ch5]]
-    // CHECK: async.yield %[[e3]] : !tfrt_gpu.event
+    // CHECK: tfrt.return %[[ch6]], %[[e3]] : !tfrt.chain, !tfrt_gpu.event
     async.yield
   }
 
-  // CHECK: async.await %[[a1]] : !async.token
-  // CHECK: %[[e4:.*]] = async.await %[[t1]] : !async.value<!tfrt_gpu.event>
-  // CHECK: %[[ch7:.*]] = tfrt_gpu.stream.wait %arg1, %[[e4]]
+  // CHECK: %[[ch7:.*]] = tfrt_gpu.stream.wait %arg1, %[[t1]]#1, %[[t1]]#0
   async.await %a1 : !async.token
 
   // CHECK: %[[h2:.*]] = tfrt_gpu.blas.create %arg1
