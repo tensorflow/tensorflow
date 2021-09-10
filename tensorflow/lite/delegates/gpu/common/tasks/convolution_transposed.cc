@@ -55,6 +55,7 @@ ConvolutionTransposed::ConvolutionTransposed(
     } else {
       block_size_ = is_f16 ? int4(2, 2, 1, 2) : int4(2, 2, 1, 1);
     }
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   if (dst_depth == 1 || dst_depth == 3) {
@@ -101,6 +102,7 @@ ConvolutionTransposed::ConvolutionTransposed(
     } else {
       block_size_ = is_f16 ? int4(2, 2, 1, 2) : int4(2, 2, 1, 1);
     }
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   if (dst_depth == 1 || dst_depth == 3) {
