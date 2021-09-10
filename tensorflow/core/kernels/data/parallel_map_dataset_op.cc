@@ -257,7 +257,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return profiler::TraceMeEncode("ParallelMapConsume",
                                        {{"element_id", result->uid}});
       });
-      return ProcessResult(ctx, result.get(), out_tensors, end_of_sequence);
+      return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -395,30 +395,30 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         runner_thread_ = ctx->StartThread(
             "tf_data_parallel_map",
-            [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
-              RunnerThread(ctx);
-            });
+            std::bind(&Iterator::RunnerThread, this, ctx_copy));
         if (ctx->stats_aggregator()) {
           stats_thread_ = ctx->StartThread(
               "tf_data_parallel_map_stats",
-              [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
-                StatsThread(ctx.get());
-              });
+              std::bind(&Iterator::StatsThread, this, ctx_copy));
         }
       }
     }
 
-    void CallCompleted(InvocationResult* result) TF_LOCKS_EXCLUDED(*mu_) {
+    void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                       const std::shared_ptr<InvocationResult>& result)
+        TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
       result->notification.Notify();
       cond_var_->notify_all();
     }
 
-    void CallFunction(std::shared_ptr<IteratorContext> ctx,
-                      InvocationResult* result) TF_LOCKS_EXCLUDED(*mu_) {
+    void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
+                      const std::shared_ptr<InvocationResult>& result)
+        TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelMapProduce",
                                        {{"element_id", result->uid}});
@@ -428,14 +428,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                             &result->end_of_input);
       if (result->end_of_input || !result->status.ok()) {
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return;
       }
 
       auto done = [this, ctx, result](Status status) {
         result->status.Update(status);
         RecordBufferEnqueue(ctx.get(), result->return_values);
-        CallCompleted(result);
+        CallCompleted(ctx, result);
       };
 
       // Apply the map function on `input_element`, storing the result in
@@ -472,7 +472,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status ProcessResult(IteratorContext* ctx, InvocationResult* result,
+    Status ProcessResult(IteratorContext* ctx,
+                         const std::shared_ptr<InvocationResult>& result,
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
       if (!result->end_of_input && result->status.ok()) {
@@ -500,7 +501,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return result->status;
     }
 
-    void RunnerThread(std::shared_ptr<IteratorContext> ctx)
+    void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
         TF_LOCKS_EXCLUDED(*mu_) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
@@ -533,13 +534,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           cond_var_->notify_all();
         }
         for (const auto& call : new_calls) {
-          CallFunction(ctx, call.get());
+          CallFunction(ctx, call);
         }
         new_calls.clear();
       }
     }
 
-    // Determines whether the caller needs to wait for a result-> Upon returning
+    // Determines whether the caller needs to wait for a result. Upon returning
     // false, `result` will point to the result.
     bool ShouldWait(std::shared_ptr<InvocationResult>* result)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -571,7 +572,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return true;
     }
 
-    void StatsThread(IteratorContext* ctx) {
+    void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
       for (int64_t step = 0;; ++step) {
         int num_calls;
         int num_parallel_calls;

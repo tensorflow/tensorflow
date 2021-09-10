@@ -337,7 +337,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       const int64_t uid = -1;
     };
 
-    void CallCompleted(BatchResult* result) TF_LOCKS_EXCLUDED(*mu_) {
+    void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                       const std::shared_ptr<BatchResult>& result)
+        TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
       result->call_finished = true;
@@ -347,7 +349,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // The function fetches elements from input dataset sequentially and then
     // executes the batching for different batches in parallel using the context
     // runner.
-    void CallBatching(IteratorContext* ctx, BatchResult* result)
+    void CallBatching(std::shared_ptr<IteratorContext> ctx,
+                      const std::shared_ptr<BatchResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelBatchProduce",
@@ -355,7 +358,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       });
 
       if (!input_impl_) {
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return;
       }
 
@@ -368,8 +371,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       bool end_of_input = false;
       for (int i = 0; i < dataset()->batch_size_ && !end_of_input; ++i) {
         std::vector<Tensor> batch_element_tuple;
-        Status status =
-            input_impl_->GetNext(ctx, &batch_element_tuple, &end_of_input);
+        Status status = input_impl_->GetNext(ctx.get(), &batch_element_tuple,
+                                             &end_of_input);
         {
           mutex_lock l(result->mu);
           result->end_of_input = result->end_of_input || end_of_input;
@@ -386,7 +389,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       }
 
       if (batch_elements->empty()) {
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return;
       }
 
@@ -398,15 +401,15 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
               [this, ctx, result]()
                   TF_EXCLUSIVE_LOCKS_REQUIRED(&BatchResult::mu) {
                     result->output_allocated = true;
-                    RecordBufferEnqueue(ctx, result->output);
+                    RecordBufferEnqueue(ctx.get(), result->output);
                     return Status::OK();
                   };
-          status = CopyBatch(CopyBatchParams(ctx), *batch_elements,
+          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
                              dataset()->parallel_copy_,
                              std::move(allocation_callback), &result->output);
           result->status.Update(status);
         }
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return status;
       };
 
@@ -427,18 +430,19 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     void EnsureRunnerThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         runner_thread_ = ctx->StartThread(
-            "tf_data_parallel_batch",
-            [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
-              RunnerThread(ctx.get());
-            });
+            kTFDataParallelBatch,
+            std::bind(&Iterator::RunnerThread, this, ctx_copy));
       }
     }
 
-    void RunnerThread(IteratorContext* ctx) TF_LOCKS_EXCLUDED(*mu_) {
+    void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
+        TF_LOCKS_EXCLUDED(*mu_) {
       std::vector<std::shared_ptr<BatchResult>> new_calls;
-      RecordStart(ctx);
-      auto stop_cleanup = gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx); });
+      RecordStart(ctx.get());
+      auto stop_cleanup =
+          gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx.get()); });
       {
         tf_shared_lock l(*mu_);  // mu_ == num_parallel_calls_->mu
         new_calls.reserve(num_parallel_calls_->value);
@@ -452,9 +456,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(*mu_);
           while (!cancelled_ && busy()) {
-            RecordStop(ctx);
+            RecordStop(ctx.get());
             cond_var_->wait(l);
-            RecordStart(ctx);
+            RecordStart(ctx.get());
           }
 
           if (cancelled_) {
@@ -468,7 +472,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
         for (const auto& call : new_calls) {
-          CallBatching(ctx, call.get());
+          CallBatching(ctx, call);
         }
         new_calls.clear();
       }
