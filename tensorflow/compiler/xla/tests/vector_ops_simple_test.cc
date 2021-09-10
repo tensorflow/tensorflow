@@ -425,7 +425,7 @@ XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
   auto x = ConstantR1<float>(&builder, cube);
   Cbrt(x);
   ComputeAndCompareR1<float>(&builder, expected, {},
-                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/2e-7));
+                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/3e-7));
 }
 
 }  // namespace
