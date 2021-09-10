@@ -121,13 +121,24 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
           "test", cyclic)
       self.assertIs(initial_value, cyclic)
 
-  def testIterable(self):
-    with self.assertRaisesRegex(TypeError, "not iterable"):
+  @test_util.run_deprecated_v1
+  def testIterableV1(self):
+    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
       for _ in variables.Variable(0.0):
         pass
-    with self.assertRaisesRegex(TypeError, "not iterable"):
+    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
       for _ in variables.Variable([0.0, 1.0]):
         pass
+
+  @test_util.run_v2_only
+  def testIterableV2(self):
+    with self.assertRaisesRegex(TypeError, "scalar tensor"):
+      for _ in variables.Variable(0.0):
+        pass
+    values = []
+    for v in variables.Variable([0.0, 1.0]):
+      values.append(v)
+    self.assertAllClose([0., 1.], values)
 
   @test_util.run_deprecated_v1
   def testAssignments(self):
