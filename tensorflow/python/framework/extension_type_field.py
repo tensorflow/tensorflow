@@ -16,6 +16,7 @@
 
 import collections
 import collections.abc
+import enum
 import typing
 
 from tensorflow.python.framework import composite_tensor
@@ -109,7 +110,8 @@ class ExtensionTypeField(
 
     if default is not cls.NO_DEFAULT:
       default = _convert_value(default, value_type,
-                               (f'default value for {name}',))
+                               (f'default value for {name}',),
+                               _ConversionContext.DEFAULT)
     return super(ExtensionTypeField, cls).__new__(cls, name, value_type,
                                                   default)
 
@@ -175,6 +177,16 @@ def validate_field_value_type(value_type,
 # ==============================================================================
 
 
+class _ConversionContext(enum.Enum):
+  """Enum to indicate what kind of value is being converted.
+
+  Used by `_convert_fields` and `_convert_value` and their helper methods.
+  """
+  VALUE = 1  # Converting an ExtensionType field
+  SPEC = 2  # Converting an ExtensionType.Spec field
+  DEFAULT = 3  # Converting a default value for __init__
+
+
 def convert_fields(fields, field_values):
   """Type-checks and converts each field in `field_values` (in place).
 
@@ -190,7 +202,7 @@ def convert_fields(fields, field_values):
     TypeError: If any value in `field_values` does not have the type indicated
       by the corresponding `ExtensionTypeField` object.
   """
-  _convert_fields(fields, field_values, for_spec=False)
+  _convert_fields(fields, field_values, context=_ConversionContext.VALUE)
 
 
 def convert_fields_for_spec(fields, field_values):
@@ -214,10 +226,10 @@ def convert_fields_for_spec(fields, field_values):
     TypeError: If any value in `field_values` does not have the type indicated
       by the corresponding `ExtensionTypeField` object.
   """
-  _convert_fields(fields, field_values, for_spec=True)
+  _convert_fields(fields, field_values, context=_ConversionContext.SPEC)
 
 
-def _convert_fields(fields, field_values, for_spec):
+def _convert_fields(fields, field_values, context):
   """Type-checks and converts each field in `field_values` (in place).
 
   Args:
@@ -225,8 +237,7 @@ def _convert_fields(fields, field_values, for_spec):
     field_values: A `dict` mapping field names to values.  Must contain an entry
       for each field.  I.e., `set(field_values.keys())` must be equal to
       `set([f.name for f in fields])`.
-    for_spec: If false, then expect a value for tensor-like types; if true, then
-      expect a TypeSpec for tensor-like types.
+    context: _ConversionContext, indicates what kind of value we are converting.
 
   Raises:
     ValueError: If the keys of `field_values` do not match the names of
@@ -242,19 +253,19 @@ def _convert_fields(fields, field_values, for_spec):
       _report_field_mismatches(fields, field_values)
     field_value = field_values[field.name]
     converted[field.name] = _convert_value(field_value, field.value_type,
-                                           (field.name,), for_spec)
+                                           (field.name,), context)
   field_values.update(converted)
 
 
-def _convert_value(value, expected_type, path, for_spec=False):
+def _convert_value(value, expected_type, path,
+                   context=_ConversionContext.VALUE):
   """Type-checks and converts a value.
 
   Args:
     value: The value to type-check.
     expected_type: The expected type for the value.
     path: Tuple of `str` naming the value (used for exception messages).
-    for_spec: If false, then expect a value for tensor-like types; if true, then
-      expect a TensorSpec for tensor-like types.
+    context: _ConversionContext, indicates what kind of value we are converting.
 
   Returns:
     A copy of `value`, converted to the expected type.
@@ -268,14 +279,14 @@ def _convert_value(value, expected_type, path, for_spec=False):
     expected_type = _NoneType
 
   if expected_type is ops.Tensor:
-    return _convert_tensor(value, path, for_spec)
+    return _convert_tensor(value, path, context)
   elif isinstance(expected_type, tensor_spec.TensorSpec):
-    return _convert_tensor_spec(value, expected_type, path, for_spec)
+    return _convert_tensor_spec(value, expected_type, path, context)
   elif isinstance(expected_type, type_spec.TypeSpec):
-    return _convert_type_spec(value, expected_type, path, for_spec)
+    return _convert_type_spec(value, expected_type, path, context)
   elif (isinstance(expected_type, type) and
         issubclass(expected_type, composite_tensor.CompositeTensor)):
-    return _convert_composite_tensor(value, expected_type, path, for_spec)
+    return _convert_composite_tensor(value, expected_type, path, context)
   elif expected_type is tensor_shape.TensorShape:
     try:
       return tensor_shape.as_shape(value)
@@ -294,24 +305,29 @@ def _convert_value(value, expected_type, path, for_spec=False):
                       f'{expected_type.__name__}, got {value!r}')
     return value
   elif type_annotations.is_generic_tuple(expected_type):
-    return _convert_tuple(value, expected_type, path, for_spec)
+    return _convert_tuple(value, expected_type, path, context)
   elif type_annotations.is_generic_mapping(expected_type):
-    return _convert_mapping(value, expected_type, path, for_spec)
+    return _convert_mapping(value, expected_type, path, context)
   elif type_annotations.is_generic_union(expected_type):
-    return _convert_union(value, expected_type, path, for_spec)
+    return _convert_union(value, expected_type, path, context)
   else:
     raise TypeError(f'{"".join(path)}: Unsupported type annotation '
                     f'{expected_type!r}')
 
 
-def _convert_tensor(value, path, for_spec):
+def _convert_tensor(value, path, context):
   """Converts `value` to a `Tensor`."""
-  if for_spec:
+  if context == _ConversionContext.SPEC:
     if not isinstance(value, tensor_spec.TensorSpec):
       raise TypeError(f'{"".join(path)}: expected a TensorSpec, got {value!r}')
     return value
 
   if not isinstance(value, ops.Tensor):
+    if context == _ConversionContext.DEFAULT:
+      # TODO(edloper): Convert the value to a numpy array?  (Note: we can't just
+      # use `np.array(value)`, since the default dtypes for TF and numpy are
+      # different -- e.g., int->np.int64 but int->tf.int32.
+      return value
     try:
       value = ops.convert_to_tensor(value)
     except (ValueError, TypeError) as e:
@@ -320,9 +336,9 @@ def _convert_tensor(value, path, for_spec):
   return value
 
 
-def _convert_tensor_spec(value, expected_type, path, for_spec):
+def _convert_tensor_spec(value, expected_type, path, context):
   """Converts `value` to a Tensor comptible with TensorSpec expected_type."""
-  if for_spec:
+  if context == _ConversionContext.SPEC:
     if not (isinstance(value, tensor_spec.TensorSpec) and
             expected_type.is_compatible_with(value)):
       raise TypeError(f'{"".join(path)}: expected a TensorSpec compatible '
@@ -341,9 +357,9 @@ def _convert_tensor_spec(value, expected_type, path, for_spec):
   return value
 
 
-def _convert_type_spec(value, expected_type, path, for_spec):
+def _convert_type_spec(value, expected_type, path, context):
   """Converts `value` to a value comptible with TypeSpec `expected_type`."""
-  if for_spec:
+  if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
             expected_type.is_compatible_with(value)):
       raise TypeError(f'{"".join(path)}: expected a TypeSpec compatible '
@@ -357,9 +373,9 @@ def _convert_type_spec(value, expected_type, path, for_spec):
   return value
 
 
-def _convert_composite_tensor(value, expected_type, path, for_spec):
+def _convert_composite_tensor(value, expected_type, path, context):
   """Converts `value` to a value of type `expected_type`."""
-  if for_spec:
+  if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
             issubclass(value.value_type, expected_type)):
       raise TypeError(f'{"".join(path)}: expected a TypeSpec for '
@@ -372,14 +388,14 @@ def _convert_composite_tensor(value, expected_type, path, for_spec):
   return value
 
 
-def _convert_tuple(value, expected_type, path, for_spec):
+def _convert_tuple(value, expected_type, path, context):
   """Converts `value` to a tuple with type `expected_type`."""
   if not isinstance(value, typing.Sequence):
     raise TypeError(f'{"".join(path)}: expected tuple, got {value!r}')
   element_types = type_annotations.get_generic_type_args(expected_type)
   if len(element_types) == 2 and element_types[1] is Ellipsis:
     return tuple([
-        _convert_value(v, element_types[0], path + (f'[{i}]',), for_spec)
+        _convert_value(v, element_types[0], path + (f'[{i}]',), context)
         for (i, v) in enumerate(value)
     ])
   else:
@@ -387,28 +403,28 @@ def _convert_tuple(value, expected_type, path, for_spec):
       raise TypeError(f'{"".join(path)}: expected tuple with length '
                       f'{len(element_types)}, got {value!r})')
     return tuple([
-        _convert_value(v, t, path + (f'[{i}]',), for_spec)
+        _convert_value(v, t, path + (f'[{i}]',), context)
         for (i, (v, t)) in enumerate(zip(value, element_types))
     ])
 
 
-def _convert_mapping(value, expected_type, path, for_spec):
+def _convert_mapping(value, expected_type, path, context):
   """Converts `value` to a mapping with type `expected_type`."""
   if not isinstance(value, typing.Mapping):
     raise TypeError(f'{"".join(path)}: expected mapping, got {value!r}')
   key_type, value_type = type_annotations.get_generic_type_args(expected_type)
   return immutable_dict.ImmutableDict([
-      (_convert_value(k, key_type, path + ('[<key>]',), for_spec),
-       _convert_value(v, value_type, path + (f'[{k!r}]',), for_spec))
+      (_convert_value(k, key_type, path + ('[<key>]',), context),
+       _convert_value(v, value_type, path + (f'[{k!r}]',), context))
       for (k, v) in value.items()
   ])
 
 
-def _convert_union(value, expected_type, path, for_spec):
+def _convert_union(value, expected_type, path, context):
   """Converts `value` to a value with any of the types in `expected_type`."""
   for type_option in type_annotations.get_generic_type_args(expected_type):
     try:
-      return _convert_value(value, type_option, path, for_spec)
+      return _convert_value(value, type_option, path, context)
     except TypeError:
       pass
   raise TypeError(f'{"".join(path)}: expected {expected_type}, got {value!r}')

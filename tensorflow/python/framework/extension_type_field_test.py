@@ -65,7 +65,7 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       default = converted_default
     self.assertEqual(field.name, name)
     self.assertEqual(field.value_type, value_type)
-    if isinstance(field.default, (ops.Tensor, ragged_tensor.RaggedTensor)):
+    if isinstance(default, (ops.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(field.default, default)
     else:
       self.assertEqual(field.default, default)
@@ -266,7 +266,8 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
     if expected is None:
       expected = value
     converted = extension_type_field._convert_value(
-        value, value_type, ('x',), for_spec=True)
+        value, value_type, ('x',),
+        extension_type_field._ConversionContext.SPEC)
     if isinstance(converted, (ops.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(converted, expected)
     else:

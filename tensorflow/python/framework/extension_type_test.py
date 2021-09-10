@@ -165,6 +165,11 @@ class ForwardRefB(extension_type.ExtensionType):
   n: ops.Tensor
 
 
+class ExtensionTypeWithTensorDefault(extension_type.ExtensionType):
+  x: ops.Tensor = 5
+  y: ops.Tensor = ['a', 'b', 'c']
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -264,6 +269,19 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=MyType)
     self.assertEqual(expected_sig, tf_inspect.signature(MyType.__init__))
+
+  def testConstructorSignatureWithDefaultForTensorField(self):
+    a = ExtensionTypeWithTensorDefault()
+
+    # Check that the default values were *not* converted to Tensors:
+    sig = tf_inspect.signature(ExtensionTypeWithTensorDefault.__init__)
+    self.assertIsInstance(sig.parameters['x'].default, int)
+    self.assertIsInstance(sig.parameters['y'].default, list)
+
+    # The following would fail with "RuntimeError: Attempting to capture an
+    # EagerTensor without building a function" if we converted the default
+    # value to a Tensor when we built the type.
+    self.assertAllEqual(a.x + constant_op.constant(3), 8)
 
   def testEmptyType(self):
 
