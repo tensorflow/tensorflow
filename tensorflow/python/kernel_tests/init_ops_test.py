@@ -542,6 +542,12 @@ class RangeTest(test.TestCase):
         constant_op.constant(4, dtype=dtypes.int32), dtype=dtypes.int64)
     self.assertAllEqual(self.evaluate(tf_ans), np.array([0, 1, 2, 3]))
 
+  def testLargeLimits(self):
+    # Test case for GitHub issue 46913.
+    with self.session():
+      with self.assertRaises(errors_impl.ResourceExhaustedError):
+        v = math_ops.range(0, 9223372036854775807)
+        self.evaluate(v)
 
 # TODO(vrv): move to sequence_ops_test?
 class LinSpaceTest(test.TestCase):
