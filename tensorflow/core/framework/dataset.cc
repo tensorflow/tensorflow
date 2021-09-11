@@ -726,7 +726,7 @@ Status DatasetBase::InputDatasets(
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
+  if (errors::IsUnimplemented(status) && ctx->is_graph_rewrite()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -760,7 +760,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
       return s;
     }
   }
-  if (t.dtype() == DT_RESOURCE && ctx->serialize_data_tensors()) {
+  if (t.dtype() == DT_RESOURCE && !ctx->is_graph_rewrite()) {
     Status s = AddResourceHelper(ctx, t, output);
     if (!errors::IsUnimplemented(s)) {
       // Fall through to AddTensor if AsGraphDef is not implemented for this

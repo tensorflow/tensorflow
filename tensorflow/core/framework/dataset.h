@@ -618,25 +618,22 @@ class SerializationContext {
     // Indicates what to do if the dataset depends on external state.
     ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
 
-    // Indicates whether an attempt to serialize a dataset that does not
-    // implement serialization should result in an error. If set to `false`, the
-    // serialized graph will replace the dataset with a placeholder returned in
-    // `input_list`.
-    bool fail_if_unimplemented = true;
-
-    // Indicates whether (potentially large) data tensors should be
-    // serialized, or replaced with a placeholder returned in `input_list`. The
-    // latter makes sense to do when performing data agnostic graph rewrites to
-    // reduce the memory usage.
-    bool serialize_data_tensors = true;
-
-    // Indicates whether datasets that use random seeds should have the values
-    // of random seeds serialized or not. If the values of random seeds are
-    // serialized, the deserialized dataset will have the same seeds as the
-    // original dataset. Otherwise, the deserialized dataset will use different
-    // seeds. This param does not affect datasets that use fixed seeds; fixed
-    // seeds will always be preserved.
-    bool preserve_random_seeds = true;
+    // Indicates whether the serialization is for rewrites.
+    //
+    // If true:
+    //   * A dataset that doesn't implement serialization is replaced with a
+    //     placeholder returned in `input_list`.
+    //   * Data tensors are replaced with a placeholder returned in
+    //     `input_list`.
+    //   * Datasets that use random seeds should not serialize the random seeds.
+    //     This doesn't affect datasets that use fixed seeds; fixed seeds will
+    //     always be preserved.
+    // If false:
+    //   * A dataset that doesn't implement serialization should result in an
+    //     error.
+    //   * Data tensors (potentially large) should be serialized.
+    //   * Datasets that use random seeds should serialize the random seeds.
+    bool is_graph_rewrite = false;
 
     // A resource manager for looking up resources during serialization.
     ResourceMgr* resource_mgr;
@@ -655,11 +652,7 @@ class SerializationContext {
     return params_.external_state_policy;
   }
 
-  bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
-
-  bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
-
-  bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
+  bool is_graph_rewrite() const { return params_.is_graph_rewrite; }
 
   const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
 

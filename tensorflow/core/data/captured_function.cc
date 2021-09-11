@@ -501,7 +501,7 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    if (ctx->serialize_data_tensors()) {
+    if (!ctx->is_graph_rewrite()) {
       TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
     } else {
       TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
