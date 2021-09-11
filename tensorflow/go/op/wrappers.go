@@ -42863,6 +42863,18 @@ func ResourceSparseApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom 
 	return scope.AddOperation(opspec)
 }
 
+// Whether TPU Embedding is initialized in a distributed TPU system.
+func IsTPUEmbeddingInitialized(scope *Scope) (is_tpu_embedding_initialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IsTPUEmbeddingInitialized",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates and returns an empty tensor map.
 //
 // handle: an empty tensor map
@@ -50146,6 +50158,103 @@ func TPUPartitionedOutput(scope *Scope, inputs tf.Output, num_splits int64, opti
 	return output
 }
 
+// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
+type FusedResizeAndPadConv2DAttr func(optionalAttr)
+
+// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
+//
+// value: If true, the centers of the 4 corner pixels of the input and output tensors are
+// aligned, preserving the values at the corner pixels. Defaults to false.
+// If not specified, defaults to false
+func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
+	return func(m optionalAttr) {
+		m["resize_align_corners"] = value
+	}
+}
+
+// Performs a resize and padding as a preprocess during a convolution.
+//
+// It's often possible to do spatial transformations more efficiently as part of
+// the packing stage of a convolution, so this op allows for an optimized
+// implementation where these stages are fused together. This prevents the need to
+// write out the intermediate results as whole tensors, reducing memory pressure,
+// and we can get some latency gains by merging the transformation calculations.
+// The data_format attribute for Conv2D isn't supported by this op, and defaults to
+// 'NHWC' order.
+// Internally this op uses a single per-graph scratch buffer, which means that it
+// will block if multiple versions are being run in parallel. This is because this
+// operator is primarily an optimization to minimize memory usage.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//	paddings: A two-column matrix specifying the padding sizes. The number of
+// rows must be the same as the rank of `input`.
+//	filter: 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
+// of `input`. Must be in the same order as the dimension specified with format.
+//	padding: The type of padding algorithm to use.
+func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedResizeAndPadConv2D",
+		Input: []tf.Input{
+			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
+type TPUPartitionedInputAttr func(optionalAttr)
+
+// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
+//
+// value: An integer describles which dimension is partitioned. -1 means
+// those inputs are replicated.
+// If not specified, defaults to 0
+func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
+	return func(m optionalAttr) {
+		m["partition_dim"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. This op
+//
+// Arguments:
+//	inputs: A list of partitioned inputs which must have the same shape.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInput",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Replica ID.
 func XlaReplicaId(scope *Scope) (id tf.Output) {
 	if scope.Err() != nil {
@@ -51593,103 +51702,6 @@ func RetrieveTPUEmbeddingFrequencyEstimatorParameters(scope *Scope, num_shards i
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
-type FusedResizeAndPadConv2DAttr func(optionalAttr)
-
-// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
-//
-// value: If true, the centers of the 4 corner pixels of the input and output tensors are
-// aligned, preserving the values at the corner pixels. Defaults to false.
-// If not specified, defaults to false
-func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
-	return func(m optionalAttr) {
-		m["resize_align_corners"] = value
-	}
-}
-
-// Performs a resize and padding as a preprocess during a convolution.
-//
-// It's often possible to do spatial transformations more efficiently as part of
-// the packing stage of a convolution, so this op allows for an optimized
-// implementation where these stages are fused together. This prevents the need to
-// write out the intermediate results as whole tensors, reducing memory pressure,
-// and we can get some latency gains by merging the transformation calculations.
-// The data_format attribute for Conv2D isn't supported by this op, and defaults to
-// 'NHWC' order.
-// Internally this op uses a single per-graph scratch buffer, which means that it
-// will block if multiple versions are being run in parallel. This is because this
-// operator is primarily an optimization to minimize memory usage.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
-//	paddings: A two-column matrix specifying the padding sizes. The number of
-// rows must be the same as the rank of `input`.
-//	filter: 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.
-//
-//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
-// of `input`. Must be in the same order as the dimension specified with format.
-//	padding: The type of padding algorithm to use.
-func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FusedResizeAndPadConv2D",
-		Input: []tf.Input{
-			input, size, paddings, filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
-type TPUPartitionedInputAttr func(optionalAttr)
-
-// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
-//
-// value: An integer describles which dimension is partitioned. -1 means
-// those inputs are replicated.
-// If not specified, defaults to 0
-func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
-	return func(m optionalAttr) {
-		m["partition_dim"] = value
-	}
-}
-
-// An op that groups a list of partitioned inputs together. This op
-//
-// Arguments:
-//	inputs: A list of partitioned inputs which must have the same shape.
-//
-// Returns A handle which represents the full shape of partitioned tensors.
-func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUPartitionedInput",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // SerializeSparseAttr is an optional argument to SerializeSparse.
