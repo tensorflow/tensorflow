@@ -135,7 +135,7 @@ class AssertProperIterableTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_non_iterable_object_raises(self):
     non_iterable = 1234
-    with self.assertRaisesRegex(TypeError, "to be an iterable"):
+    with self.assertRaisesRegex(TypeError, "to be iterable"):
       check_ops.assert_proper_iterable(non_iterable)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1177,13 +1177,13 @@ class AssertRankTest(test.TestCase):
       desired_rank = 2
       with ops.control_dependencies(
           [check_ops.assert_rank(tensor, desired_rank)]):
-        with self.assertRaisesOpError("my_tensor.* must have rank"):
+        with self.assertRaisesOpError("my_tensor.*rank"):
           array_ops.identity(tensor).eval(feed_dict={tensor: [1, 2]})
 
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_scalar_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
-    with self.assertRaisesRegex(ValueError, "Argument `rank` must be a scalar"):
+    with self.assertRaisesRegex(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank(tensor, np.array([], dtype=np.int32))
 
   @test_util.run_deprecated_v1
@@ -1192,7 +1192,7 @@ class AssertRankTest(test.TestCase):
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.int32, name="rank_tensor")
-      with self.assertRaisesOpError("Rank must be a scalar."):
+      with self.assertRaisesOpError("Rank must be a scalar"):
         with ops.control_dependencies(
             [check_ops.assert_rank(tensor, rank_tensor)]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: [1, 2]})
@@ -1221,7 +1221,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_rank_zero_tensor_raises_if_rank_mismatch_static_rank(self):
     tensor_rank0 = constant_op.constant(42, name="my_tensor")
-    with self.assertRaisesRegex(ValueError, "fail.*must have rank.*1.*2"):
+    with self.assertRaisesRegex(ValueError, "fail.*must have rank.*in.*1.*2"):
       with ops.control_dependencies([
           check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
         self.evaluate(array_ops.identity(tensor_rank0))
@@ -1296,8 +1296,7 @@ class AssertRankInTest(test.TestCase):
     desired_ranks = (
         np.array(1, dtype=np.int32),
         np.array((2, 1), dtype=np.int32))
-    with self.assertRaisesRegex(
-        ValueError, "Argument `ranks` must contain scalar tensors."):
+    with self.assertRaisesRegex(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank_in(tensor, desired_ranks)
 
   @test_util.run_deprecated_v1
@@ -1551,15 +1550,15 @@ class AssertTypeTest(test.TestCase):
         constant_op.constant([[111], [232]], dtypes.int64),
         constant_op.constant([23.4, -43.2], dtypes.float16),
         constant_op.constant([500], dtypes.int64))
-    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
+    with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
 
   def test_raise_when_tf_type_is_not_dtype(self):
     # Test case for GitHub issue:
     # https://github.com/tensorflow/tensorflow/issues/45975
     value = constant_op.constant(0.0)
-    with self.assertRaisesRegex(TypeError,
-                                "Cannot convert.*to a TensorFlow DType"):
+    with self.assertRaisesRegexp(TypeError,
+                                 "Cannot convert.*to a TensorFlow DType"):
       check_ops.assert_type(value, (dtypes.float32,))
 
 
@@ -1573,8 +1572,8 @@ class AssertShapesTest(test.TestCase):
         (x, ("N", "Q")),
         (y, ("N", "D")),
     ]
-    regex = (r"Specified by tensor .* dimension 0. "
-             r"Tensor .* dimension 0 must have size 3. "
+    regex = (r"Specified by tensor .* dimension 0.  "
+             r"Tensor .* dimension 0 must have size 3.  "
              r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1599,8 +1598,8 @@ class AssertShapesTest(test.TestCase):
         (x, (3, "Q")),
         (y, (3, "D")),
     ]
-    regex = (r"Specified explicitly. "
-             r"Tensor .* dimension 0 must have size 3. "
+    regex = (r"Specified explicitly.  "
+             r"Tensor .* dimension 0 must have size 3.  "
              r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1623,8 +1622,8 @@ class AssertShapesTest(test.TestCase):
     shapes = [
         (x, ()),
     ]
-    regex = (r"Specified explicitly. "
-             r"Tensor .* dimension 0 must have size 1. "
+    regex = (r"Specified explicitly.  "
+             r"Tensor .* dimension 0 must have size 1.  "
              r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1634,8 +1633,8 @@ class AssertShapesTest(test.TestCase):
     shapes = [
         (x, (2,)),
     ]
-    regex = (r"Specified explicitly. "
-             r"Tensor .* dimension 0 must have size 2. "
+    regex = (r"Specified explicitly.  "
+             r"Tensor .* dimension 0 must have size 2.  "
              r"Received size 1")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1644,8 +1643,8 @@ class AssertShapesTest(test.TestCase):
     scalar = array_ops.constant(5, name="rank_zero")
     x = array_ops.ones([2, 2], name="x")
     shapes = [(scalar, ("a",)), (x, ("a", 2))]
-    regex = (r"Specified by tensor .* dimension 0. "
-             r"Tensor .* dimension 0 must have size 1. "
+    regex = (r"Specified by tensor .* dimension 0.  "
+             r"Tensor .* dimension 0 must have size 1.  "
              r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1653,9 +1652,9 @@ class AssertShapesTest(test.TestCase):
   def test_raise_not_iterable(self):
     x = array_ops.constant([1, 2], name="x")
     shapes = [(x, 2)]
-    regex = (r"Tensor .*. "
-             r"Specified shape must be an iterable. "
-             r"An iterable has the attribute `__iter__` or `__getitem__`. "
+    regex = (r"Tensor .*.  "
+             r"Specified shape must be an iterable.  "
+             r"An iterable has the attribute `__iter__` or `__getitem__`.  "
              r"Received specified shape: 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
@@ -1697,7 +1696,7 @@ class AssertShapesTest(test.TestCase):
 
     def raises_static_rank_error(shapes, x, correct_rank, actual_rank):
       for shape in shapes:
-        regex = (r"Tensor .* must have rank %d. Received rank %d" %
+        regex = (r"Tensor .* must have rank %d.  Received rank %d" %
                  (correct_rank, actual_rank))
         self.raises_static_error(shapes=[(x, shape)], regex=regex)
 
@@ -1788,8 +1787,8 @@ class AssertShapesTest(test.TestCase):
     for shapes in styles:
       self.raises_static_error(
           shapes=shapes,
-          regex=(r"Specified by tensor .* dimension 0. "
-                 "Tensor .* dimension 0 must have size 2. "
+          regex=(r"Specified by tensor .* dimension 0.  "
+                 "Tensor .* dimension 0 must have size 2.  "
                  "Received size 1"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1815,8 +1814,8 @@ class AssertShapesTest(test.TestCase):
     for shapes in styles:
       self.raises_static_error(
           shapes=shapes,
-          regex=(r"Specified explicitly. "
-                 "Tensor .* dimension 0 must have size 2. "
+          regex=(r"Specified explicitly.  "
+                 "Tensor .* dimension 0 must have size 2.  "
                  "Received size 1"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1851,8 +1850,8 @@ class AssertShapesTest(test.TestCase):
         (x, "3Q"),
         (y, "*3D"),
     ]
-    regex = (r"Specified explicitly. "
-             r"Tensor .* dimension -2 must have size 3. "
+    regex = (r"Specified explicitly.  "
+             r"Tensor .* dimension -2 must have size 3.  "
              r"Received size 2")
     self.raises_static_error(shapes=s1, regex=regex)
     self.raises_static_error(shapes=s2, regex=regex)
@@ -1882,7 +1881,7 @@ class AssertShapesTest(test.TestCase):
     s2 = [
         (x, "N*Q"),
     ]
-    regex = (r"Tensor .* specified shape index .*. "
+    regex = (r"Tensor .* specified shape index .*.  "
              r"Symbol `...` or `\*` for a variable number of "
              r"unspecified dimensions is only allowed as the first entry")
     self.raises_static_error(shapes=s1, regex=regex)
@@ -1950,7 +1949,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[111], [232]], dtypes.int64),
         constant_op.constant([23.4, -43.2], dtypes.float32),
         constant_op.constant([500], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 0 must have size 499"):
+    with self.assertRaisesRegexp(ValueError, r"dimension 0 must have size 499"):
       assertion = check_ops.assert_shapes([(sparse_float, [499])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_float)
@@ -1984,7 +1983,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 41"):
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 41"):
       assertion = check_ops.assert_shapes([(sparse_int, [None, 41])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_int)
@@ -2009,7 +2008,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(sparse_int, ["D", "D"])])
       with ops.control_dependencies([assertion]):
         out = array_ops.identity(sparse_int)
@@ -2041,7 +2040,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(sparse_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):
@@ -2068,7 +2067,7 @@ class AssertShapesSparseTensorTest(test.TestCase):
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
         constant_op.constant([23, -43], dtypes.int32),
         constant_op.constant([30, 40], dtypes.int64))
-    with self.assertRaisesRegex(ValueError, r"dimension 1 must have size 30"):
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
       assertion = check_ops.assert_shapes([(dense_scalar, []),
                                            (sparse_2d, ["N", "N"])])
       with ops.control_dependencies([assertion]):

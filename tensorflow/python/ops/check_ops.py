@@ -453,12 +453,12 @@ def assert_proper_iterable(values):
   )
   if isinstance(values, unintentional_iterables):
     raise TypeError(
-        'Expected argument `values` to be a "proper" iterable. Found: '
-        f'{type(values)}')
+        'Expected argument "values" to be a "proper" iterable.  Found: %s' %
+        type(values))
 
   if not hasattr(values, '__iter__'):
     raise TypeError(
-        f'Expected argument `values` to be an iterable. Found: {type(values)}')
+        'Expected argument "values" to be iterable.  Found: %s' % type(values))
 
 
 @tf_export('debugging.assert_negative', v1=[])
@@ -1123,8 +1123,7 @@ def _assert_rank_condition(
   rank_static = tensor_util.constant_value(rank)
   if rank_static is not None:
     if rank_static.ndim != 0:
-      raise ValueError('Argument `rank` must be a scalar tensor. Received '
-                       f'tensor {rank} of rank: {rank_static}')
+      raise ValueError('Rank must be a scalar.')
 
     x_rank_static = x.get_shape().ndims
     if x_rank_static is not None:
@@ -1138,7 +1137,7 @@ def _assert_rank_condition(
   # Add the condition that `rank` must have rank zero.  Prevents the bug where
   # someone does assert_rank(x, [n]), rather than assert_rank(x, n).
   if rank_static is None:
-    this_data = [f'Rank must be a scalar. Received rank: {rank}']
+    this_data = ['Rank must be a scalar. Received rank: ', rank]
     rank_check = assert_rank(rank, 0, data=this_data)
     condition = control_flow_ops.with_dependencies([rank_check], condition)
 
@@ -1235,8 +1234,8 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     except ValueError as e:
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
-            f'{message}Tensor x = {name} must have rank {e.args[2]}. Received '
-            f'rank {e.args[1]}, shape {x.get_shape()}')
+            '%sTensor %s must have rank %d.  Received rank %d, shape %s' %
+            (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -1336,8 +1335,8 @@ def assert_rank_at_least(
     except ValueError as e:
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
-            f'{message}Tensor x = {name} must have rank at least {e.args[2]}. '
-            f'Received rank {e.args[1]}, shape {x.get_shape()}')
+            '%sTensor %s must have rank at least %d.  Received rank %d, '
+            'shape %s' % (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -1388,8 +1387,7 @@ def _assert_ranks_condition(
   if not any(r is None for r in ranks_static):
     for rank_static in ranks_static:
       if rank_static.ndim != 0:
-        raise ValueError('Argument `ranks` must contain scalar tensors. '
-                         f'Received tensor of rank: {rank_static}')
+        raise ValueError('Rank must be a scalar.')
 
     x_rank_static = x.get_shape().ndims
     if x_rank_static is not None:
@@ -1404,7 +1402,7 @@ def _assert_ranks_condition(
   # someone does assert_rank(x, [n]), rather than assert_rank(x, n).
   for rank, rank_static in zip(ranks, ranks_static):
     if rank_static is None:
-      this_data = [f'Rank must be a scalar. Received rank: {rank}']
+      this_data = ['Rank must be a scalar. Received rank: ', rank]
       rank_check = assert_rank(rank, 0, data=this_data)
       condition = control_flow_ops.with_dependencies([rank_check], condition)
 
@@ -1501,8 +1499,8 @@ def assert_rank_in(
     except ValueError as e:
       if e.args[0] == 'Static rank condition failed':
         raise ValueError(
-            f'{message}Tensor x = {name} must have rank {e.args[2]}. Received '
-            f'rank {e.args[1]}, shape {x.get_shape()}')
+            '%sTensor %s must have rank in %s.  Received rank %d, '
+            'shape %s' % (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
         raise
 
@@ -1562,8 +1560,8 @@ def assert_integer(x, message=None, name=None):
       else:
         name = x.name
       err_msg = (
-          f'{_message_prefix(message)}Expected argument `x` to be integer type.'
-          f' Found: {name} of dtype {x.dtype}')
+          '%sExpected "x" to be integer type.  Found: %s of dtype %s'
+          % (_message_prefix(message), name, x.dtype))
       raise TypeError(err_msg)
 
     return control_flow_ops.no_op('statically_determined_was_integer')
@@ -1629,13 +1627,13 @@ def assert_type(tensor, tf_type, message=None, name=None):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       if context.executing_eagerly():
-        raise TypeError(f'{message} Expected type of argument `tensor` must be '
-                        f'of type {tf_type}, obtained {tensor.dtype}')
+        raise TypeError('%s tensor must be of type %s' % (message, tf_type))
       else:
-        tensor_name = tensor.name if hasattr(tensor, 'name') else ''
         raise TypeError(
-            f'{_message_prefix(message)} Expected type of argument `tensor`, '
-            f'{tensor_name} must be of type {tf_type}, obtained {tensor.dtype}')
+            '%s%s must be of type %s' %
+            (_message_prefix(message),
+             tensor.name if hasattr(tensor, 'name') else '',
+             tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 
@@ -1882,9 +1880,11 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
       )
       if not is_iterable:
         raise ValueError(
-            f'{message_prefix} Tensor {tensor_name(tensor)}. Specified shape '
-            'must be an iterable. An iterable has the attribute `__iter__` or '
-            f'`__getitem__`. Received specified shape: {symbolic_shape}')
+            '%s'
+            'Tensor %s.  Specified shape must be an iterable.  '
+            'An iterable has the attribute `__iter__` or `__getitem__`.  '
+            'Received specified shape: %s' %
+            (message_prefix, tensor_name(tensor), symbolic_shape))
 
       # We convert this into a tuple to handle strings, lists and numpy arrays
       symbolic_shape_tuple = tuple(symbolic_shape)
@@ -1896,10 +1896,11 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
         if i != 0:
           raise ValueError(
-              f'{message_prefix} Tensor {tensor_name(tensor)} specified shape '
-              f'index {i}. Symbol `...` or `*` for a variable number of '
-              'unspecified dimensions is only allowed as the first entry of '
-              f'argument `shapes` (={shapes})')
+              '%s'
+              'Tensor %s specified shape index %d.  '
+              'Symbol `...` or `*` for a variable number of '
+              'unspecified dimensions is only allowed as the first entry' %
+              (message_prefix, tensor_name(tensor), i))
 
         tensors_specified_innermost = True
 
@@ -1983,10 +1984,11 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
           if _has_known_value(actual_size) and _has_known_value(specified_size):
             if int(actual_size) != int(specified_size):
               raise ValueError(
-                  f'{message_prefix}{size_check_message}. Tensor '
-                  f'{tensor_name(sizes.x)} dimension {tensor_dim} must have '
-                  f'size {specified_size}. Received size {actual_size}, '
-                  f'shape {sizes.x.get_shape()}')
+                  '%s%s.  Tensor %s dimension %s must have size %d.  '
+                  'Received size %d, shape %s' %
+                  (message_prefix, size_check_message, tensor_name(sizes.x),
+                   tensor_dim, specified_size, actual_size,
+                   sizes.x.get_shape()))
             # No dynamic assertion needed
             continue
 
@@ -2022,8 +2024,7 @@ def _get_diff_for_monotonic_comparison(x):
   """Gets the difference x[1:] - x[:-1]."""
   x = array_ops.reshape(x, [-1])
   if not is_numeric_tensor(x):
-    raise TypeError(f'Expected argument `x` to be numeric, instead found: {x} '
-                    f'with dtype {x.dtype}')
+    raise TypeError('Expected x to be numeric, instead found: %s' % x)
 
   # If x has less than 2 elements, there is nothing to compare.  So return [].
   is_shorter_than_two = math_ops.less(array_ops.size(x), 2)
@@ -2185,11 +2186,10 @@ def _assert_same_base_type(items, expected_type=None):
           expected_type = item_type
           original_item_str = item.name if hasattr(item, 'name') else str(item)
         elif expected_type != item_type:
-          item_name = item.name if hasattr(item, 'name') else str(item)
-          item_str = (' as %s' % original_item_str if original_item_str else '')
-          raise ValueError(
-              f'{item_name}, type={item_type}, must be of the same type '
-              f'({expected_type}){item_str}.')
+          raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+              item.name if hasattr(item, 'name') else str(item),
+              item_type, expected_type,
+              (' as %s' % original_item_str) if original_item_str else ''))
     return expected_type  # Should be unreachable
   else:
     return expected_type
@@ -2226,8 +2226,7 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   if not dtype:
     dtype = dtypes.float32
   elif not dtype.is_floating:
-    raise ValueError('Expected floating point type for argument `tensors`, '
-                     f'got {dtype}')
+    raise ValueError('Expected floating point type, got %s.' % dtype)
   return dtype
 
 
@@ -2282,11 +2281,11 @@ def assert_scalar(tensor, name=None, message=None):
     message = _message_prefix(message)
     if shape.ndims != 0:
       if context.executing_eagerly():
-        raise ValueError(f'{message}Expected scalar shape for argument `tensor`'
-                         f', saw shape: {shape}.')
+        raise ValueError('%sExpected scalar shape, saw shape: %s.'
+                         % (message, shape,))
       else:
-        raise ValueError(f'{message}Expected scalar shape for argument `tensor`'
-                         f' {tensor.name}, saw shape: {shape}.')
+        raise ValueError('%sExpected scalar shape for %s, saw shape: %s.'
+                         % (message, tensor.name, shape))
     return tensor
 
 
