@@ -214,8 +214,9 @@ class Allocator {
   virtual void SetSafeFrontier(uint64 count) {}
 
   // For allocator that are stream aware, allow to specify the compute
-  // stream this allocator is used for.
-  virtual void SetStream(void* stream) {}
+  // stream this allocator is used for. This can also trigger memory
+  // preallocation.
+  virtual void SetStreamAndPreallocateMemory(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.
