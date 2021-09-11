@@ -2735,6 +2735,7 @@ cuda_py_test(
     name = "sparse_xent_op_deterministic_test",
     size = "medium",
     srcs = ["sparse_xent_op_deterministic_test.py"],
+    tags = ["no_windows"],  # Fails as SegmentSum is nondeterministic on Windows
     xla_enable_strict_auto_jit = False,
     deps = [
         ":sparse_xent_op_test_base",
