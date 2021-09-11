@@ -2733,7 +2733,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "sparse_xent_op_deterministic_test",
-    size = "small",
+    size = "medium",
     srcs = ["sparse_xent_op_deterministic_test.py"],
     xla_enable_strict_auto_jit = False,
     deps = [
