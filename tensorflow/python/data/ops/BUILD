@@ -4,12 +4,26 @@ package(
 )
 
 py_library(
+    name = "structured_function",
+    srcs = ["structured_function.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
         ":iterator_ops",
         ":options",
+        ":structured_function",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
