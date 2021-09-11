@@ -93,18 +93,12 @@ device_combination = (
     combinations.combine(
         device='GPU', communication=['RING', 'NCCL'], required_gpus=2))
 
-
-collective_op_combinations = combinations.times(
-    combinations.combine(
-        collective_op=[
-            combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
-            combinations.NamedObject('all_reduce_v2',
-                                     CollectiveOpsV2.all_reduce),
-            combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
-            combinations.NamedObject('all_gather_v2',
-                                     CollectiveOpsV2.all_gather),
-        ],
-        mode='eager'), device_combination)
+collective_op_combinations = combinations.combine(collective_op=[
+    combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
+    combinations.NamedObject('all_reduce_v2', CollectiveOpsV2.all_reduce),
+    combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
+    combinations.NamedObject('all_gather_v2', CollectiveOpsV2.all_gather)
+])
 
 
 @combinations.generate(
@@ -488,7 +482,8 @@ class XlaTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(results, [[2.], [2.]])
 
 
-@combinations.generate(collective_op_combinations)
+@combinations.generate(
+    combinations.times(collective_op_combinations, device_combination))
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -909,7 +904,8 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(finishes, 2)
 
 
-@combinations.generate(collective_op_combinations)
+@combinations.generate(
+    combinations.times(collective_op_combinations, device_combination))
 class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -1032,6 +1028,39 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_key=group_key,
             instance_key=instance_key,
             communication_hint=communication)
+
+
+class CommunicationHintTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  @combinations.generate(
+      combinations.times(collective_op_combinations,
+                         combinations.combine(required_gpus=[0, 1])))
+  def testNCCLFallbackOnCPU(self, collective_op):
+    # communication_hint=NCCL should work for CPU by falling back to RING. The
+    # test doesn't actually require GPU, only GPU builds. We specify
+    # required_gpus=1 so that it's tested with GPU builds.
+    dev0 = '/device:CPU:0'
+    dev1 = '/device:CPU:1'
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1., 2., 3., 4.])
+
+    @def_function.function
+    def run():
+      for device in [dev0, dev1]:
+        with ops.device(device):
+          collective_op(
+              input_data,
+              group_size=2,
+              group_key=group_key,
+              instance_key=instance_key,
+              communication_hint='NCCL')
+
+    run()
 
 
 @combinations.generate(
