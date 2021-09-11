@@ -116,7 +116,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   
   // Correct the endiness of Tensor content on big-endian system
   if (!port::kLittleEndian) {
-    TF_RETURN_IF_ERROR(SwapTensorContent(&(bundle->meta_graph_def_)));
+    TF_RETURN_IF_ERROR(ByteSwapTensorContent(&(bundle->meta_graph_def_)));
   }
 
   // Load GraphDebugInfo.
