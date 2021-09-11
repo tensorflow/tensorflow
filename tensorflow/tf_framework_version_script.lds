@@ -9,5 +9,4 @@ VERS_1.0 {
     jcopy_*;
     jsimd_*;
     hwloc_*;
-    *mlir*;
 };
