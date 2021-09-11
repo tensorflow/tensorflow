@@ -69,9 +69,9 @@ def _GetMaxSizeFromNestedMaximumIterations(value, while_ctxt):
     max_iter = while_ctxt.maximum_iterations
     if max_iter is None:
       raise ValueError(
-          "Cannot create a gradient accumulator for tensor '%s' inside "
-          "XLA while_loop because maximum_iterations was not passed to "
-          "the tf.while_loop call ('%s')." % (value_name, while_ctxt.name))
+          f"Cannot create a gradient accumulator for tensor '{value_name}' "
+          "inside XLA while_loop because maximum_iterations was not passed to "
+          f"the tf.while_loop call ('{while_ctxt.name}').")
 
     # pylint: disable=protected-access
     max_iter_ctxt = max_iter.op._get_control_flow_context()
@@ -88,13 +88,13 @@ def _GetMaxSizeFromNestedMaximumIterations(value, while_ctxt):
       const_max_iter = tensor_util.constant_value(max_iter)
       if const_max_iter is None:
         raise ValueError(
-            "Cannot create a gradient accumulator for tensor '%s' inside XLA "
-            "while_loop. maximum_iterations tensor '%s' for while_loop context "
-            "'%s' must be statically known (e.g. a constant value or known "
+            f"Cannot create a gradient accumulator for tensor '{value_name}' "
+            "inside XLA while_loop. maximum_iterations tensor "
+            f"'{max_iter.name}' for while_loop context '{while_ctxt.name}' "
+            "must be statically known (e.g. a constant value or known "
             "shape dimension), or be defined at or outside the while loop "
-            "context '%s' (currently defined in '%s')." %
-            (value_name, max_iter.name, while_ctxt.name, curr_ctxt_name,
-             max_iter_ctxt.name))
+            f"context '{curr_ctxt_name}' (currently defined in "
+            f"'{max_iter_ctxt.name}').")
       max_size *= const_max_iter
 
     # Find the next outer WhileContext (or stop if we reach the
@@ -156,8 +156,10 @@ class _GradLoopState(object):
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
       if not hasattr(forward_ctxt, "outer_context"):
-        raise ValueError("Failed to call gradients on a while loop without"
-                         "properly serializing graph via MetaGraphDef")
+        raise ValueError("Expected `outer_context` attribute on argument "
+                         "`forward_ctxt`. Failed to call gradients on a while "
+                         "loop without properly serializing graph via "
+                         "MetaGraphDef.")
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
@@ -364,7 +366,9 @@ class _GradLoopState(object):
         else:
           # value is in a cond context within the forward context.
           if not isinstance(value_ctxt, control_flow_ops.CondContext):
-            raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
+            raise TypeError(
+                "OutputContext for `value.op` is not a CondContext: "
+                f"{type(value_ctxt)}")
           if dead_branch:
             # The special case for creating a zero tensor for a dead
             # branch of a switch. See _ControlFlowState.ZerosLikeV1WhileLoop().
