@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 #include "tensorflow/core/grappler/utils/canonicalizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -265,6 +266,8 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
+  // Hooks the MLIR optimizer, it won't run any optimizations right now.
+  optimizers->push_back(MakeUnique<mlir::tfg::TfgGrapplerOptimizer>(""));
 
 #define USER_IS_ON(CFG) cfg_.CFG() == RewriterConfig::ON
 #define USER_NOT_OFF(CFG) cfg_.CFG() != RewriterConfig::OFF
