@@ -1188,7 +1188,7 @@ class DatasetBaseIterator : public IteratorBase {
   // When modeling is enabled, this method records the fact that this iterator
   // has produced an element and its size in bytes.
   void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64_t num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
       node_->record_bytes_produced(num_bytes);
@@ -1218,14 +1218,11 @@ class DatasetBaseIterator : public IteratorBase {
 
   // Returns whether work is currently being recorded, i.e. whether we are
   // currently between a `RecordStart` and a `RecordStop`.
-  bool IsRecording(IteratorContext* ctx) {
-    return collect_resource_usage(ctx) && node_->is_recording();
-  }
+  bool IsRecording(IteratorContext* ctx) { return node_->is_recording(); }
 
  private:
   bool collect_resource_usage(IteratorContext* ctx) {
-    auto model = ctx->model();
-    return model && model->collect_resource_usage() && node_;
+    return ctx->model() && node_;
   }
 
   string traceme_metadata_;

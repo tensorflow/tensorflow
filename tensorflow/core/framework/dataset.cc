@@ -865,7 +865,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
@@ -883,7 +883,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
       out_tensors->clear();
     }
   }
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
@@ -909,7 +909,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
@@ -918,7 +918,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     node_->record_start(now_nanos);
   }
   Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
