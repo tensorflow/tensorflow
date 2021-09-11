@@ -188,11 +188,12 @@ class Compiler {
                         CompileOptions{device_allocator});
   }
 
-  // Performs scheduling and buffer assignment and returns the scheduled module
-  // and the buffer assignments.
-  virtual StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  AssignBuffers(std::unique_ptr<HloModule> module) {
+  // Performs scheduling and buffer assignment and returns the buffer
+  // assignments.
+  // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
+  // the module must live at least as long as the buffer assignments.
+  virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* module) {
     return Unimplemented("This compiler does not support this method");
   }
 

@@ -48,12 +48,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   NVPTXCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(auto module_and_buffer_assignment,
-                          compiler.AssignBuffers(std::move(module)));
-
-  module = std::move(std::get<0>(module_and_buffer_assignment));
-  std::unique_ptr<BufferAssignment> buffer_assignment =
-      std::move(std::get<1>(module_and_buffer_assignment));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
+                          compiler.AssignBuffers(module.get()));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
 
@@ -85,12 +81,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   NVPTXCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(auto module_and_buffer_assignment,
-                          compiler.AssignBuffers(std::move(module)));
-
-  module = std::move(std::get<0>(module_and_buffer_assignment));
-  std::unique_ptr<BufferAssignment> buffer_assignment =
-      std::move(std::get<1>(module_and_buffer_assignment));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
+                          compiler.AssignBuffers(module.get()));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
 

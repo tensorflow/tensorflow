@@ -143,16 +143,10 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
     optimized_hlo_module = std::move(hlo_module);
   }
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-      result =
-          backend->compiler()->AssignBuffers(std::move(*optimized_hlo_module));
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(result.status(),
+  StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+      backend->compiler()->AssignBuffers(optimized_hlo_module->get());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(assignment.status(),
                                   "running XLA buffer assigment");
-  std::unique_ptr<HloModule> scheduled_hlo_module =
-      std::move(std::get<0>(*result));
-  std::unique_ptr<BufferAssignment> assignment =
-      std::move(std::get<1>(*result));
 
   // Clear the module before populating it back with the result of the
   // conversion.
@@ -160,7 +154,7 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   OpBuilder builder(module);
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      HloToLhloModule(*assignment, *scheduled_hlo_module, module),
+      HloToLhloModule(**assignment, **optimized_hlo_module, module),
       "converting HLO to LHLO");
 
   return Status::OK();

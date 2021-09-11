@@ -52,9 +52,8 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  AssignBuffers(std::unique_ptr<HloModule> hlo_module) override;
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* hlo_module) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
 
