@@ -224,4 +224,7 @@ REGISTER_OP("ConfigureTPUEmbedding")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IsTPUEmbeddingInitialized")
+    .Output("is_tpu_embedding_initialized: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
 }  // end namespace tensorflow
