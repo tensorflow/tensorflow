@@ -37,6 +37,7 @@ constexpr char kLegacyParallelInterleaveOp[] =
     "LegacyParallelInterleaveDatasetV2";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 
 // List of stateful ops which do not introduce nondeterminism when put inside a
 // parallel interleave or map dataset. All ops which do not mutate state can be
@@ -59,6 +60,10 @@ bool IsParallelMap(const std::string& op) {
   return data::MatchesAnyVersion(kParallelMapOp, op);
 }
 
+bool IsMapAndBatch(const std::string& op) {
+  return data::MatchesAnyVersion(kMapAndBatchOp, op);
+}
+
 bool IsDeterministicStatefulOp(const std::string& op) {
   for (auto stateful_op : kDeterministicStatefulOps) {
     if (data::MatchesAnyVersion(stateful_op, op)) {
@@ -68,13 +73,17 @@ bool IsDeterministicStatefulOp(const std::string& op) {
   return false;
 }
 
-// Converts a ParallelInterleaveDataset or ParallelMapDataset to the equivalent
-// non-parallel version, to make it deterministic.
-Status ConvertToNonParallel(const string& node_name, MutableGraphView* graph) {
+NodeDef* GetMutableNode(const string& node_name, MutableGraphView* graph) {
   int index = graph_utils::FindGraphNodeWithName(node_name, *graph->graph());
   DCHECK_NE(index, -1) << "Failed to find node " << node_name
                        << " in the optimized graph.";
-  NodeDef* node = graph->graph()->mutable_node(index);
+  return graph->graph()->mutable_node(index);
+}
+
+// Converts a ParallelInterleaveDataset or ParallelMapDataset to the equivalent
+// non-parallel version, to make it deterministic.
+Status ConvertToNonParallel(const string& node_name, MutableGraphView* graph) {
+  NodeDef* node = GetMutableNode(node_name, graph);
 
   auto Targuments = node->attr().find("Targuments");
   if (Targuments == node->attr().end()) {
@@ -115,6 +124,21 @@ Status ConvertToNonParallel(const string& node_name, MutableGraphView* graph) {
   // Remove extra attributes not in Interleave or Map.
   node->mutable_attr()->erase("deterministic");
   node->mutable_attr()->erase("sloppy");
+  return Status::OK();
+}
+
+Status ConvertMapAndBatch(const string& node_name, MutableGraphView* graph) {
+  NodeDef* node = GetMutableNode(node_name, graph);
+  auto Targuments = node->attr().find("Targuments");
+  if (Targuments == node->attr().end()) {
+    return errors::Internal("Failed to find Targuments attribute for node ",
+                            node_name);
+  }
+
+  int num_parallel_calls_index = 2 + Targuments->second.list().type_size();
+  node->add_input(absl::StrCat("^", node->input(num_parallel_calls_index)));
+  NodeDef* tmp = graph_utils::AddScalarConstNode<int64_t>(1, graph);
+  node->set_input(num_parallel_calls_index, tmp->name());
   return Status::OK();
 }
 
@@ -198,16 +222,19 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
-  for (NodeDef& node : *output->mutable_node()) {
+  for (const NodeDef& node : item.graph.node()) {
     if (graph_utils::HasSloppyAttr(node.op())) {
-      (*node.mutable_attr())["sloppy"].set_b(false);
+      NodeDef* mutable_node = GetMutableNode(node.name(), &graph);
+      (*mutable_node->mutable_attr())["sloppy"].set_b(false);
       stats->num_changes++;
     }
     if (graph_utils::HasDeterministicAttr(node.op())) {
-      (*node.mutable_attr())["deterministic"].set_s("true");
+      NodeDef* mutable_node = GetMutableNode(node.name(), &graph);
+      (*mutable_node->mutable_attr())["deterministic"].set_s("true");
       stats->num_changes++;
     }
-    if (!IsParallelInterleave(node.op()) && !IsParallelMap(node.op())) {
+    if (!IsParallelInterleave(node.op()) && !IsParallelMap(node.op()) &&
+        !IsMapAndBatch(node.op())) {
       continue;
     }
     if (!FunctionMayIntroduceNondeterminism(
@@ -217,9 +244,15 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
       continue;
     }
 
-    VLOG(1) << "Rewriting node " << node.name() << " (" << node.op()
-            << ") into the non-parallel version";
-    TF_RETURN_IF_ERROR(ConvertToNonParallel(node.name(), &graph));
+    if (IsMapAndBatch(node.op())) {
+      VLOG(1) << "Changing num_parallel_calls attr of node " << node.name()
+              << " (" << node.op() << ") to 1";
+      TF_RETURN_IF_ERROR(ConvertMapAndBatch(node.name(), &graph));
+    } else {
+      VLOG(1) << "Rewriting node " << node.name() << " (" << node.op()
+              << ") into the non-parallel version";
+      TF_RETURN_IF_ERROR(ConvertToNonParallel(node.name(), &graph));
+    }
     stats->num_changes++;
   }
 

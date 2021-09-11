@@ -21,8 +21,10 @@ import os
 import time
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
@@ -113,6 +115,48 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       expected_output = list(zip(range(0, 5), range(1, 6)))
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              use_function=[False, True],
+              use_legacy_map_and_batch=[False, True])))
+  def test_stateful_ops_map_and_batch(self, use_function,
+                                      use_legacy_map_and_batch):
+    with test_util.deterministic_ops():
+
+      v = variables.Variable(0.)
+
+      def map_fn(x):
+        v.assign_add(1.)
+        return (x, v.read_value())
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
+      if use_legacy_map_and_batch:
+        dataset = dataset.apply(batching.map_and_batch(map_fn, 2,
+                                                       num_parallel_calls=5))
+      else:
+        dataset = dataset.map(map_fn, num_parallel_calls=5)
+        dataset = dataset.batch(2)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_optimization.map_and_batch_fusion = True
+      dataset = dataset.with_options(options)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [
+          (np.array([0, 1]), np.array([1, 2])),
+          (np.array([2, 3]), np.array([3, 4])),
+          (np.array([4]), np.array([5])),
+      ]
       self.assertDatasetProduces(
           dataset,
           expected_output=expected_output,

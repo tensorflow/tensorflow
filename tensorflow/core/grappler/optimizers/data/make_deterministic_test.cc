@@ -262,6 +262,74 @@ TEST(MakeDeterministicBatchTest, Batch) {
   EXPECT_EQ(output.node(index).attr().at("deterministic").s(), "true");
 }
 
+TEST(MakeDeterministicBatchTest, NoRewriteMapAndBatch) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT64}}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 2}, {"dtype", DT_INT64}}),
+       NDef("drop_remainder", "Const", {},
+            {{"value", false}, {"dtype", DT_BOOL}}),
+       graph_tests_utils::MakeMapAndBatchNode(
+           "map_and_batch", "range", "batch_size", "num_parallel_calls",
+           "drop_remainder", "XTimesTwo")},
+      // FunctionLib
+      {test::function::XTimesTwo()});
+
+  MakeDeterministic optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  int index = graph_utils::FindGraphNodeWithName("map_and_batch", output);
+  ASSERT_GE(index, 0);
+  NodeDef node_def = output.node(index);
+  ASSERT_EQ(node_def.input_size(), 4);
+  ASSERT_EQ(node_def.input(0), "range");
+  ASSERT_EQ(node_def.input(1), "batch_size");
+  ASSERT_EQ(node_def.input(2), "num_parallel_calls");
+  ASSERT_EQ(node_def.input(3), "drop_remainder");
+}
+
+TEST(MakeDeterministicBatchTest, RewriteMapAndBatch) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT64}}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 2}, {"dtype", DT_INT64}}),
+       NDef("drop_remainder", "Const", {},
+            {{"value", false}, {"dtype", DT_BOOL}}),
+       graph_tests_utils::MakeMapAndBatchNode(
+           "map_and_batch", "range", "batch_size", "num_parallel_calls",
+           "drop_remainder", "RandomUniform")},
+      // FunctionLib
+      {test::function::RandomUniform()});
+
+  MakeDeterministic optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  int index = graph_utils::FindGraphNodeWithName("map_and_batch", output);
+  ASSERT_GE(index, 0);
+  NodeDef node_def = output.node(index);
+  ASSERT_EQ(node_def.input_size(), 5);
+  ASSERT_EQ(node_def.input(0), "range");
+  ASSERT_EQ(node_def.input(1), "batch_size");
+  ASSERT_EQ(node_def.input(3), "drop_remainder");
+  ASSERT_EQ(node_def.input(4), "^num_parallel_calls");
+  NodeDef num_parallel_calls_node = output.node(
+      graph_utils::FindGraphNodeWithName(node_def.input(2), output));
+  EXPECT_EQ(num_parallel_calls_node.attr().at("value").tensor().int64_val(0),
+            1);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

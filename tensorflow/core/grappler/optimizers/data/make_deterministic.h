@@ -28,7 +28,9 @@ constexpr char kAutotune[] = "autotune";
 //   1. Transforms ParallelInterleave and ParallelMap datasets into Interleave
 //      and Map datasets respectively, if the interleave/map function can
 //      introduce nondeterminism when run in parallel. Specifically, if the
-//      function can mutate state, it is considered nondeterministic.
+//      function can mutate state, it is considered nondeterministic. A
+//      MapAndBatch dataset instead has num_parallel_calls set to 1 if it can
+//      introduce non-determinism since there is no non-parallel version.
 //   2. Sets the "deterministic" attribute to true and "sloppy" attribute to
 //      False on dataset ops which have such attributes. Note step (1) is still
 //      needed, as even when the "deterministic" attribute is true,
