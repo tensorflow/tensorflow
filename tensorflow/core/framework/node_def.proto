@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow;
 
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/full_type.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "NodeProto";
@@ -85,4 +86,10 @@ message NodeDef {
 
   // This stores debug information associated with the node.
   ExperimentalDebugInfo experimental_debug_info = 6;
+
+  // The complete type of this node. Experimental and subject to change.
+  // Currently, the field only contains the return types of the node. That will
+  // extend in the future to contain the entire signature of the node, as a
+  // function type.
+  FullTypeDef experimental_type = 7;
 }

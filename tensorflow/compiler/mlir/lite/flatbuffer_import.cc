@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
@@ -307,25 +306,12 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 }
 
 // Gets the MLIR op name with the dialect name for the flatbuffer operator.
-StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
-                                    const tflite::OperatorCodeT& op_code) {
+std::string GetMlirOpName(const tflite::OperatorT& op,
+                          const tflite::OperatorCodeT& op_code) {
   if (IsBasicLSTMOp(op.builtin_options)) {
     return std::string("tfl.basic_lstm");
   }
-
-  auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
-  if (builtin_code == tflite::BuiltinOperator_IF) {
-    return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
-  }
-
-  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
-  return llvm::Twine("tfl.", op_name.lower()).str();
+  return mlir::GetMlirOpNameFromOpCode(op_code);
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
@@ -801,7 +787,7 @@ StatusOr<Operation*> ConvertOp(
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
-  TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
+  const std::string op_name = GetMlirOpName(op, op_code);
 
   OperationState op_state(loc, op_name);
 

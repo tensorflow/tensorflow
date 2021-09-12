@@ -669,6 +669,7 @@ cc_library(
 cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
+    hdrs = ["batch_kernels.h"],
     deps = [
         ":ops_util_hdrs",
         "//tensorflow/core:core_cpu_internal",
@@ -677,10 +678,12 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -1605,6 +1608,47 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "batch_kernel_test_util",
+    testonly = 1,
+    srcs = ["batch_kernel_test_util.cc"],
+    hdrs = ["batch_kernel_test_util.h"],
+    deps = [
+        ":batch_kernels",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_test",
+    size = "small",
+    srcs = ["batch_kernels_test.cc"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_env_test",
+    size = "small",
+    srcs = ["batch_kernels_env_test.cc"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -3195,6 +3239,7 @@ LOGGING_DEPS = [
     "//tensorflow/c/kernels:histogram_summary_op",
     "//tensorflow/c/kernels:merge_summary_op",
     "//tensorflow/c/kernels:summary_op",
+    "//tensorflow/core/util:determinism_for_kernels",
 ]
 
 tf_kernel_library(
@@ -3251,6 +3296,8 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/util:determinism_test_util",
         "@com_google_absl//absl/strings",
     ],
 )

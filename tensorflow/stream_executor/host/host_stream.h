@@ -23,6 +23,7 @@ limitations under the License.
 #include <queue>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
@@ -36,20 +37,29 @@ class HostStream : public internal::StreamInterface {
   explicit HostStream(size_t stack_size_in_bytes);
   ~HostStream() override;
 
+  // Enqueue a task that reports a status when finished. Tasks that fail do not
+  // stop the stream or block any other tasks from executing; rather, the stream
+  // will remember the first error encountered and return it from
+  // 'BlockUntilDone'.
+  bool EnqueueTaskWithStatus(std::function<port::Status()> task);
+  // Enqueue a task that doesn't report any status.
   bool EnqueueTask(std::function<void()> task);
 
   void* GpuStreamHack() override { return nullptr; }
   void** GpuStreamMemberHack() override { return nullptr; }
 
-  void BlockUntilDone();
+  // Blocks until all tasks are done, returns the first error reported by a task
+  // (if any) and clears the error status.
+  port::Status BlockUntilDone();
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<void()>> work_queue_ TF_GUARDED_BY(mu_);
+  std::queue<std::function<port::Status()>> work_queue_ TF_GUARDED_BY(mu_);
   std::unique_ptr<port::Thread> thread_;
+  port::Status status_;
 };
 
 }  // namespace host

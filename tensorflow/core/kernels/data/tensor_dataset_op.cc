@@ -88,7 +88,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->serialize_data_tensors()) {
+      if (!ctx->is_graph_rewrite()) {
         TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
       } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));

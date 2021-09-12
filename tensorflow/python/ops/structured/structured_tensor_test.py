@@ -1426,6 +1426,12 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st3 = st2.field_value("bar")
     self.assertLen(st3.row_partitions, st3.rank - 1)
 
+  def test_structured_tensor_spec_shape_property(self):
+    spec = structured_tensor.StructuredTensorSpec([1, 2], {})
+    self.assertEqual(spec.shape.as_list(), [1, 2])
+    spec = structured_tensor.StructuredTensorSpec([None], {})
+    self.assertEqual(spec.shape.as_list(), [None])
+
 
 if __name__ == "__main__":
   googletest.main()

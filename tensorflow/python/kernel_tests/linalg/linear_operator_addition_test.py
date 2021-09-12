@@ -157,13 +157,13 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
   def test_incompatible_domain_dimensions_raises(self):
     op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(2, 4))
-    with self.assertRaisesRegex(ValueError, "must.*same domain dimension"):
+    with self.assertRaisesRegex(ValueError, "must.*same `domain_dimension`"):
       add_operators([op1, op2])
 
   def test_incompatible_range_dimensions_raises(self):
     op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(3, 3))
-    with self.assertRaisesRegex(ValueError, "must.*same range dimension"):
+    with self.assertRaisesRegex(ValueError, "must.*same `range_dimension`"):
       add_operators([op1, op2])
 
   def test_non_broadcastable_batch_shape_raises(self):

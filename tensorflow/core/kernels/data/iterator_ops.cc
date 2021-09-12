@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -569,11 +570,19 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 // running them.
 AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
-    : AnonymousResourceOp<IteratorResource>(context),
+    : AnonymousResourceOp<IteratorResource>(
+          context,
+          /* ref_counting */
+          // Only enable this for V2 (via Python's iter protocol),
+          // AnonymousIteratorV1 requires IteratorToStringHandle, which is
+          // undefined on Refcounting ResourceHandle.
+          context->def().op() == kAnonymousIteratorV2,
+          // V1 does not return a deleter.
+          /* return_deleter */
+          context->def().op() == kAnonymousIteratorV2),
       graph_def_version_(context->graph_def_version()) {
   OP_REQUIRES_OK(context, context->GetAttr(kOutputTypes, &output_dtypes_));
   OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
-  create_deleter_ = context->def().op() == kAnonymousIteratorV2;
 }
 
 string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
@@ -625,7 +634,7 @@ Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
-  return ctx->resource_manager()->Delete(handle);
+  return DeleteResource(ctx, handle);
 }
 
 namespace {
@@ -1105,8 +1114,8 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
-        Status(s.code(),
-               absl::StrCat(
+        errors::CreateWithUpdatedMessage(
+            s, absl::StrCat(
                    "Failed to restore dataset iterator from checkpoint: ",
                    s.error_message(),
                    ". Make sure the dataset definition has not changed between "

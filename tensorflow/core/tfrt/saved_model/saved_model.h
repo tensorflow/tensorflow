@@ -52,6 +52,10 @@ class HostAllocator;
 class HostContext;
 struct DecodedDiagnostic;
 
+namespace tpu {
+class TpuVariablesTable;
+}  // namespace tpu
+
 // TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
 // latter is checked in.
 struct TensorSpec {
@@ -244,6 +248,7 @@ class SavedModelImpl final : public SavedModel {
       std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
       std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
           graph_execution_state,
+      std::unique_ptr<tpu::TpuVariablesTable> tpu_var_table,
       std::unique_ptr<tfrt::ResourceContext> resource_context);
 
   ~SavedModelImpl() override;
@@ -290,6 +295,7 @@ class SavedModelImpl final : public SavedModel {
   // TODO(b/178227859): Remove the need for the special handling for TPU here.
   static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
       const tensorflow::tfrt_stub::Runtime& runtime,
+      tpu::TpuVariablesTable* tpu_var_table,
       tensorflow::TfrtTpuInfraTarget tpu_target);
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
@@ -344,6 +350,9 @@ class SavedModelImpl final : public SavedModel {
   std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state_;
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;
+  // TODO(b/178227859): Change the hardcoding of this specific TPU resource
+  // (TpuVariablesTable) to a general and plugable interface.
+  std::unique_ptr<tpu::TpuVariablesTable> tpu_var_table_;
   std::unique_ptr<tfrt::ResourceContext> resource_context_;
   tensorflow::mutex loading_result_cache_mu_;
   // For pointer stability of values in `absl::flat_hash_map<>`, additional

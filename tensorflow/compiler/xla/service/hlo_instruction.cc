@@ -964,6 +964,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
                                                           index);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGetTupleElement(HloInstruction* operand, int64_t index) {
+  return absl::make_unique<HloGetTupleElementInstruction>(
+      operand->shape().tuple_shapes(index), operand, index);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
     const Shape& shape, RandomDistribution distribution,
     absl::Span<HloInstruction* const> parameters) {
@@ -1482,6 +1488,30 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   all_args.insert(all_args.end(), init_values.begin(), init_values.end());
   return absl::make_unique<HloReduceInstruction>(
       shape, all_args, dimensions_to_reduce, reduce_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
+    const Shape& shape, HloInstruction* tuple_of_instructions,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions_to_reduce,
+    HloComputation* reduce_computation) {
+  if (!tuple_of_instructions->shape().IsTuple()) {
+    CHECK_EQ(init_values.size(), 1)
+        << "The first input has to be a tuple, or the number of init values "
+           "has to be one.";
+    return CreateReduce(shape, tuple_of_instructions, init_values[0],
+                        dimensions_to_reduce, reduce_computation);
+  }
+  absl::InlinedVector<HloInstruction*, 4> inputs;
+  for (int idx = 0; idx < tuple_of_instructions->shape().tuple_shapes_size();
+       idx++) {
+    std::unique_ptr<HloInstruction> gte =
+        HloInstruction::CreateGetTupleElement(tuple_of_instructions, idx);
+    inputs.push_back(
+        tuple_of_instructions->parent()->AddInstruction(std::move(gte)));
+  }
+  return CreateReduce(shape, inputs, init_values, dimensions_to_reduce,
+                      reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(

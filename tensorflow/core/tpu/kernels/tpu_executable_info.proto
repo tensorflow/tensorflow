@@ -76,8 +76,7 @@ message TPUHostTransferProto {
   TransferDirection direction = 2;
   // Channel identifier prodided by XLA client.
   string key = 3;
-  // Depth of nested loops for this transfer operation.
-  int64 nested_while_level = 4;
+  reserved 4;  // was nested_while_level
   // Shape of the data to be transferred (including layout).
   xla.ShapeProto shape = 5;
   // Address of the device buffer in HBM (byte offset).

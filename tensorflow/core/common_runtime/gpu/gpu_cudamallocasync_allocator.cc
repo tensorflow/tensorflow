@@ -100,8 +100,14 @@ std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
     bool compute_stats)
-    : name_(absl::StrCat("gpu_async_", platform_device_id.value())) {
+    : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
+      reserve_memory_(reserve_memory) {
   ++number_instantiated_;
+
+  // Stop clang from complaining about unused private fields when
+  // TF_CUDA_MALLOC_ASYNC_SUPPORTED is not defined.
+  (void)reserve_memory_;
+
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
@@ -110,9 +116,6 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // enough CUDA.
   pool_ = nullptr;
   cuda_stream_ = nullptr;
-  // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
-  // request that the context on GPU 0 is initialized. Which isn't the
-  // case for TF+horovod.
   int driverVersion;
   cuDriverGetVersion(&driverVersion);
   VLOG(2) << "DRIVER VERSION: " << driverVersion;
@@ -123,6 +126,9 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         << " We detected a version compatible with: " << driverVersion;
   }
 
+  // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
+  // request that the context on GPU 0 is initialized. Which isn't the
+  // case for TF+horovod.
   if (platform_device_id.value() > 0 && driverVersion < 11030) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
@@ -255,25 +261,6 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   all_ids_->push_back(platform_device_id);
 
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
-  int64 prealloc_size = 0;
-  // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
-  // preallocates the total pool size.
-  TF_CHECK_OK(ReadInt64FromEnvVar("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", 0,
-                                  &prealloc_size));
-  if (prealloc_size == -1) {
-    prealloc_size = pool_size;
-  } else if (reserve_memory) {
-    prealloc_size = pool_size;
-  }
-
-  if (prealloc_size != 0) {
-    void* ptr = AllocateRaw(0, prealloc_size);
-    DeallocateRaw(ptr);
-    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
-            << prealloc_size << " bytes"
-            << ". First ptr: " << ptr;
-    ClearStats();
-  }
 #else   // TF_CUDA_MALLOC_ASYNC_SUPPORTED
   LOG(FATAL) << "GpuCudaMallocAsyncAllocator requires CUDA 11.2+";  // Crash OK.
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
@@ -395,6 +382,42 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
   stats_->peak_bytes_in_use = stats_->bytes_in_use;
   stats_->largest_alloc_size = 0;
   return true;
+}
+
+void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
+#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  if (cuda_stream_ != nullptr) {
+    LOG(FATAL) <<  // Crash OK.
+        "Trying to set the stream twice. This isn't supported. ";
+  }
+
+  uint64_t pool_size_64 = 0;
+  if (auto status = cuMemPoolGetAttribute(
+          pool_, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD, &pool_size_64)) {
+    LOG(FATAL) <<  // Crash OK.
+        "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
+  }
+  cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
+  int64 prealloc_size = 0;
+  // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
+  // preallocates the total pool size.
+  TF_CHECK_OK(ReadInt64FromEnvVar("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", 0,
+                                  &prealloc_size));
+  if (prealloc_size == -1) {
+    prealloc_size = pool_size_64;
+  } else if (reserve_memory_) {
+    prealloc_size = pool_size_64;
+  }
+
+  if (prealloc_size != 0) {
+    void* ptr = AllocateRaw(0, prealloc_size);
+    DeallocateRaw(ptr);
+    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
+            << prealloc_size << " bytes"
+            << ". First ptr: " << ptr;
+    ClearStats();
+  }
+#endif
 }
 
 }  // namespace tensorflow

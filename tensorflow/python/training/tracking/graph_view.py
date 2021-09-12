@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
@@ -159,6 +160,22 @@ class ObjectGraphView(object):
     self._root_ref = root
     self._saveables_cache = saveables_cache
     self._attached_dependencies = attached_dependencies
+
+  def __deepcopy__(self, memo):
+    if isinstance(self._root_ref, weakref.ref):
+      # By default, weak references are not copied, which leads to surprising
+      # deepcopy behavior. To fix, we first we copy the object itself, then we
+      # make a weak reference to the copy.
+      strong_root = self._root_ref()
+      if strong_root is not None:
+        strong_copy = copy.deepcopy(strong_root, memo)
+        memo[id(self._root_ref)] = weakref.ref(strong_copy)
+    # super() does not have a __deepcopy__, so we need to re-implement it
+    copied = super().__new__(type(self))
+    memo[id(self)] = copied
+    for key, value in vars(self).items():
+      setattr(copied, key, copy.deepcopy(value, memo))
+    return copied
 
   def list_dependencies(self, obj):
     # pylint: disable=protected-access

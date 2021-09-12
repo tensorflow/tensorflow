@@ -318,7 +318,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-    opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+    opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
     opts.type_converter = mlir::BufferizeTypeConverter();
 
     auto entrypoint = kernel.nested_symbols()[0];

@@ -5,7 +5,7 @@ load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
-load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 package(
@@ -29,13 +29,35 @@ exports_files([
 #-----------------------------------------------------------------------------
 # Filegroup targets.
 
+JAVA_SRCS = glob([
+    "src/main/java/org/tensorflow/lite/*.java",
+    "src/main/java/org/tensorflow/lite/annotations/*.java",
+]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
+
 # All Java source files.
 filegroup(
     name = "java_srcs",
-    srcs = glob([
-        "src/main/java/org/tensorflow/lite/*.java",
-        "src/main/java/org/tensorflow/lite/annotations/*.java",
-    ]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"],
+    srcs = JAVA_SRCS,
+)
+
+JAVA_API_SRCS = [
+    "src/main/java/org/tensorflow/lite/DataType.java",
+    "src/main/java/org/tensorflow/lite/Delegate.java",
+    "src/main/java/org/tensorflow/lite/InterpreterApi.java",
+    "src/main/java/org/tensorflow/lite/Tensor.java",
+    "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+]
+
+# Java source files for API uses.
+filegroup(
+    name = "java_api_srcs",
+    srcs = JAVA_API_SRCS,
+)
+
+# Java sources exclude API files.
+filegroup(
+    name = "java_runtime_srcs",
+    srcs = [x for x in JAVA_SRCS if x not in JAVA_API_SRCS],
 )
 
 # Java source files for just the stable (non-experimental) APIs.
@@ -88,6 +110,12 @@ aar_with_jni(
     ],
 )
 
+# No JNI should be in this AAR. Only package in the LICENSE.
+aar_without_jni(
+    name = "tensorflow-lite-api",
+    android_library = ":tensorflowlite_api",
+)
+
 # Same as "tensorflow-lite" (above), but excluding experimental APIs.
 aar_with_jni(
     name = "tensorflow-lite-stable",
@@ -125,21 +153,39 @@ aar_with_jni(
 #-----------------------------------------------------------------------------
 # android_library targets.
 
-# 'tensorflowlite' is the public android_library target for the TF Lite Java APIs,
-# including experimental APIs.  (See also 'tensorflowlite_stable' below,
-# which includes only the non-experimental APIs; if your code does not require
-# the use of experimental APIs, it may be preferable to use that one.)
+# 'tensorflowlite' is the public android_library target for the TF Lite Java
+# APIs & Runtime, including experimental APIs.  (See also
+# 'tensorflowlite_stable' below which includes only the non-experimental APIs;
+# if your code does not require the use of experimental APIs, it may be
+# preferable to use that one.)
 android_library_with_tflite(
     name = "tensorflowlite",
     # Note that we need to explicitly list all the srcs here, rather than
     # including a dependency on ":tensorflowlite_javalib", in order
     # for the class files to get included in the generated AAR file.
-    srcs = [":java_srcs"],
+    srcs = [":java_runtime_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     tflite_deps = [
         ":tensorflowlite_native",
+        ":tensorflowlite_api",
     ],
+    tflite_exports = [
+        ":tensorflowlite_api",
+    ],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# 'tensorflowlite-api' is the public android_library target for TF Lite Java
+# APIs. Only stable APIs are included. This library corresponds to the public
+# Maven package "org.tensorflow:tensorflow-lite-api".
+android_library_with_tflite(
+    name = "tensorflowlite_api",
+    srcs = [":java_api_srcs"],
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
     ],

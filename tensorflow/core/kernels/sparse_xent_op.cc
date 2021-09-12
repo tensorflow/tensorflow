@@ -50,17 +50,6 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
   return Status::OK();
 }
 
-bool DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_SPARSE_SOFTMAX_XENT_WITH_LOGITS_OP_DETERMINISM_EXCEPTIONS",
-        /*default_val=*/false, &disable));
-    return disable;
-  }();
-  return cached_disable;
-}
-
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
  public:
@@ -89,12 +78,12 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
-          context,
-          !OpDeterminismRequired() ||
-              DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions(),
+          context, !OpDeterminismRequired(),
           errors::Unimplemented(
-              "Deterministic GPU implementation of"
-              " SparseSoftmaxXentWithLogitsOp not available."));
+              "The GPU implementation of SparseSoftmaxCrossEntropyWithLogits"
+              " that would have been executed is not deterministic. Note that"
+              " the Python API uses an alternative, deterministic,"
+              " GPU-accelerated path when determinsim is enabled."));
     }
 
     Tensor scratch;

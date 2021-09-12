@@ -68,6 +68,8 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+constexpr int64_t kDefaultJobGcCheckIntervalMs = 10 * 60 * 1000;  // 10 minutes.
+constexpr int64_t kDefaultJobGcTimeoutMs = 5 * 60 * 1000;         // 5 minutes.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -80,6 +82,7 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "MutableHashTableOfTensorsV2",
 };
 
+using DispatcherConfig = experimental::DispatcherConfig;
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -126,11 +129,25 @@ void PrepareGraph(GraphDef* graph) {
   }
   StripDevicePlacement(graph->mutable_library());
 }
+
+DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
+  DispatcherConfig new_config(config);
+  if (new_config.job_gc_check_interval_ms() == 0) {
+    new_config.set_job_gc_check_interval_ms(kDefaultJobGcCheckIntervalMs);
+  }
+  if (new_config.job_gc_timeout_ms() == 0) {
+    new_config.set_job_gc_timeout_ms(kDefaultJobGcTimeoutMs);
+  }
+  return new_config;
+}
+
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
-    const experimental::DispatcherConfig& config)
-    : config_(config), env_(Env::Default()), state_(config_) {
+    const DispatcherConfig& config)
+    : config_(ApplyConfigDefaults(config)),
+      env_(Env::Default()),
+      state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = absl::make_unique<MemoryDatasetStore>();
   } else {

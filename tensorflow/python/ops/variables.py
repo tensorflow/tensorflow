@@ -1038,8 +1038,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     _ = name
     if dtype and not dtype.is_compatible_with(v.dtype):
       raise ValueError(
-          "Incompatible type conversion requested to type '%s' for variable "
-          "of type '%s'" % (dtype.name, v.dtype.name))
+          f"Incompatible type conversion requested to type '{dtype.name}' for "
+          f"variable of type '{v.dtype.name}' (Variable: {v}).")
     if as_ref:
       return v._ref()  # pylint: disable=protected-access
     else:
@@ -1082,8 +1082,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable. "
-                      "Instead, use tensor.ref() as the key.")
+      raise TypeError(
+          "Variable is unhashable. "
+          f"Instead, use variable.ref() as the key. (Variable: {self})")
     else:
       return id(self)
 
@@ -1106,18 +1107,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       return self is not other
 
   def __iter__(self):
-    """Dummy method to prevent iteration.
-
-    Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the variable's Tensor from 0
-    to infinity.  Declaring this method prevents this unintended behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Variable' object is not iterable.")
+    """When executing eagerly, iterates over the value of the variable."""
+    return iter(self.read_value())
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -1783,7 +1774,9 @@ class RefVariable(VariableV1, core.Tensor):
       # Ensure that we weren't lifted into the eager context.
       if context.executing_eagerly():
         raise RuntimeError(
-            "RefVariable not supported when eager execution is enabled. ")
+            "Reference variables are not supported when eager execution is "
+            "enabled. Please run `tf.compat.v1.enable_resource_variables()` to "
+            "switch to resource variables.")
       with ops.name_scope(name, "Variable",
                           [] if init_from_fn else [initial_value]) as name:
 

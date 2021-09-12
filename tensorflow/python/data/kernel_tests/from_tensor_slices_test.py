@@ -38,6 +38,13 @@ from tensorflow.python.platform import test
 class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorSlicesEmptyComponent(self):
+    components = ()
+
+    with self.assertRaises(ValueError):
+      dataset_ops.Dataset.from_tensor_slices(components)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlices(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (
@@ -354,6 +361,12 @@ class FromTensorSlicesRandomAccessTest(test_base.DatasetTestBase,
     for i in range(2):
       result = self.evaluate(random_access.at(dataset, i))
       self.assertAllEqual(expected_output[i], result)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([42],
+                                                     name="from_tensor_slices")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,

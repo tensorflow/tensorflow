@@ -1155,6 +1155,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "@llvm-project//mlir:IR",
     ],
 )
 

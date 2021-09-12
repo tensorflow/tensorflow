@@ -48,7 +48,6 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir:OpWrapper",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",

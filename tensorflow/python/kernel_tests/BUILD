@@ -1008,10 +1008,7 @@ cuda_py_test(
     name = "segment_reduction_ops_deterministic_test",
     size = "small",
     srcs = ["segment_reduction_ops_deterministic_test.py"],
-    tags = [
-        "no_cuda_asan",  # b/195247538
-        "no_windows",  # TODO(reedwm): Fix this
-    ],
+    tags = ["no_cuda_asan"],  # b/195247538
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
@@ -2736,10 +2733,12 @@ cuda_py_test(
 
 cuda_py_test(
     name = "sparse_xent_op_deterministic_test",
-    size = "small",
+    size = "medium",
     srcs = ["sparse_xent_op_deterministic_test.py"],
+    tags = ["no_windows"],  # Fails as SegmentSum is nondeterministic on Windows
     xla_enable_strict_auto_jit = False,
     deps = [
+        ":sparse_xent_op_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -2747,6 +2746,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
@@ -2757,21 +2757,38 @@ cuda_py_test(
     size = "small",
     srcs = ["sparse_xent_op_test.py"],
     deps = [
+        ":sparse_xent_op_test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl:app",
+    ],
+)
+
+py_library(
+    name = "sparse_xent_op_test_base",
+    srcs = ["sparse_xent_op_test_base.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )

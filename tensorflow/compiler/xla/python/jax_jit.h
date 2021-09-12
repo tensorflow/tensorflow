@@ -84,6 +84,9 @@ ThreadLocalJitState& GetLocalState();
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
+  // Not part of the signature, but we need it for error messages.
+  absl::string_view function_name;
+
   // A PyTreeDef for each dynamic argument, positional arguments first
   // followed by keyword arguments. Keyword arguments are in the order given
   // by dynamic_arg_names.

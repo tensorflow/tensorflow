@@ -85,6 +85,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
@@ -362,7 +363,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<LogisticExpander>(
       /*expansion_type=*/LogisticExpansionType::kExp);
   pipeline.AddPass<ConditionalCanonicalizer>();
-  pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<DynamicDimensionSimplifier>();
+  auto dynamic_padder_options = DynamicPadderOptions();
+  dynamic_padder_options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
@@ -611,34 +616,25 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-StatusOr<
-    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-CpuCompiler::RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                              se::StreamExecutor* executor,
-                                              bool optimize,
-                                              const CompileOptions& options) {
-  if (optimize) {
-    TF_ASSIGN_OR_RETURN(module,
-                        RunHloPasses(std::move(module), executor, options));
-  }
-
+StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
+    const HloModule* module) {
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced
   // memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                      ScheduleModule(module, BufferSizeBytesFunction(),
                                      ComputationSchedulerToModuleScheduler(
                                          DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(module.get(),
+      BufferAssigner::Run(module,
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
 
-  return std::make_tuple(std::move(module), std::move(assignment));
+  return std::move(assignment);
 }
 
 namespace {

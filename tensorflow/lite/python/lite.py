@@ -74,6 +74,8 @@ from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
 from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
@@ -162,6 +164,7 @@ class Optimize(enum.Enum):
     return str(self.value)
 
 
+# TODO(b/198099651): move converter implementation out of lite.py
 @_tf_export("lite.RepresentativeDataset")
 class RepresentativeDataset(object):
   """Representative dataset used to optimize the model.
@@ -362,7 +365,7 @@ class QuantizationMode(object):
           "post_training_quantize": True,
           "quantize_to_float16": True,  # enable float16 quantization
           "accumulation_type":
-              self._target_spec._experimental_supported_accumulation_type,
+              self._target_spec._experimental_supported_accumulation_type,  # pylint: disable=protected-access
           "allow_bfloat16":
               self.is_bfloat16_inference_allowed()
       }

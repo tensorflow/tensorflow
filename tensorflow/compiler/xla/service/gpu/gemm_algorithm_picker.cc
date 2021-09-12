@@ -273,6 +273,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
   if (gemm_algorithm) {
+    VLOG(4) << "GEMM autotuning picked algorithm = " << *gemm_algorithm;
     updated_config.set_selected_algorithm(*gemm_algorithm);
   }
   TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));

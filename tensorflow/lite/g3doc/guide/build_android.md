@@ -13,11 +13,13 @@ To use nightly snapshots, add the following repo to your root Gradle build
 config.
 
 ```build
-allprojects {     // should be already there
-    mavenCentral  // should be already there
-    maven {       // add this repo to use snapshots
-      name 'ossrh-snapshot'
-      url 'http://oss.sonatype.org/content/repositories/snapshots'
+allprojects {
+    repositories {      // should be already there
+        mavenCentral()  // should be already there
+        maven {         // add this repo to use snapshots
+          name 'ossrh-snapshot'
+          url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 ```

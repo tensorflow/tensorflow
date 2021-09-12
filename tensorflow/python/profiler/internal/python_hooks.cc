@@ -54,10 +54,9 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                       function);
 }
 
-string GetEventName(PyCFunctionObject* py_cfunc) {
+string GetEventName(PyMethodDef* method, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
-  PyObject* module = py_cfunc->m_module;
   string filename;
   bool filename_ok;
 #if PY_MAJOR_VERSION < 3
@@ -71,7 +70,7 @@ string GetEventName(PyCFunctionObject* py_cfunc) {
     filename = "<unknown>";
   }
 
-  return absl::StrCat("$", filename, " ", py_cfunc->m_ml->ml_name);
+  return absl::StrCat("$", filename, " ", method->ml_name);
 }
 
 void AddEventToXLine(const PythonTraceEntry& event, XLineBuilder* line,
@@ -105,8 +104,8 @@ std::string PythonTraceEntry::Name() const {
   std::string event_name;
   if (co_filename) {
     return GetEventName(co_filename, co_name, co_firstlineno);
-  } else if (function_object) {
-    return GetEventName(function_object);
+  } else {
+    return GetEventName(method_def, m_module);
   }
   return "<unknown>";
 }
@@ -272,8 +271,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   switch (what) {
     case PyTrace_CALL: {
       PyCodeObject* f_code = frame->f_code;
-      thread_traces.active.emplace(now, 0, f_code->co_filename, f_code->co_name,
-                                   f_code->co_firstlineno);
+      thread_traces.active.emplace(now, 0, f_code);
       break;
     }
     case PyTrace_RETURN:
@@ -285,9 +283,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
         thread_traces.active.pop();
       } else if (options_.include_incomplete_events) {
         PyCodeObject* f_code = frame->f_code;
-        thread_traces.completed.emplace_back(
-            start_timestamp_ns_, now, f_code->co_filename, f_code->co_name,
-            f_code->co_firstlineno);
+        thread_traces.completed.emplace_back(start_timestamp_ns_, now, f_code);
       }
       break;
     }

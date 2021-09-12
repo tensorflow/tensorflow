@@ -1526,7 +1526,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
             << (bytes_limit >> 20) << " MB memory: "
             << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
-  gpu_allocator->SetStream(gpu_device->GetStream());
+  gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
   devices->push_back(std::move(gpu_device));
 
   return Status::OK();

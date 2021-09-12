@@ -122,17 +122,16 @@ class ResourceHandle {
   //
   // For those familiar with `ResourceMgr`, when you create a handle by the
   // `MakeResourceHandle` function in resource_mgr.h, the handle doesn't hold a
-  // pointer to the resource, and the resource is owned by the resource manager
-  // and needs to be manually deleted by calling `ResourceMgr::Delete`. In
-  // contrast, a handle created by this function doesn't interact with
-  // `ResourceMgr` at all, and the resource shouldn't be registered in any
-  // resource manager (otherwise the resource manager will prevent the resource
-  // from being automatically deleted).
+  // strong reference to the resource, and the resource is owned by the
+  // resource manager whose strong reference must be manually deleted by
+  // calling `ResourceMgr::Delete`. In contrast, a handle created by this
+  // function holds a strong reference to the resource. The resource manager
+  // does not hold a strong reference to the resource.
   template <typename T>
   static ResourceHandle MakeRefCountingHandle(
       T* resource, const string& device_name,
-      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-      const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+      const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
     return MakeRefCountingHandle(resource, device_name, TypeIndex::Make<T>(),
                                  dtypes_and_shapes, definition_stack_trace);
   }
@@ -140,8 +139,8 @@ class ResourceHandle {
   static ResourceHandle MakeRefCountingHandle(
       ResourceBase* resource, const string& device_name,
       const TypeIndex& type_index,
-      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-      const absl::optional<ManagedStackTrace>& definition_stack_trace);
+      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+      const absl::optional<ManagedStackTrace>& definition_stack_trace = {});
 
   // Pointer to the resource.
   const core::IntrusivePtr<ResourceBase>& resource() const { return resource_; }
@@ -153,6 +152,10 @@ class ResourceHandle {
     TF_RETURN_IF_ERROR(ValidateType<T>());
     return down_cast<T*>(resource_.get());
   }
+
+  // Returns True if the resource handle is ref-counting.
+  // See MakeRefCountingHandle.
+  bool IsRefCounting() const { return resource_.get() != nullptr; }
 
   // Validates that the resource type in `handle` is `T`.
   template <typename T>

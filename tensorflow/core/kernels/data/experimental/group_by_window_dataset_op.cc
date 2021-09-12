@@ -489,8 +489,14 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
+        // If not restoring, pass the model node of this iterator in order to
+        // exclude captured function run time from being added to the processing
+        // time of the node. If restoring, pass nullptr to not record processing
+        // time because iterator modeling is only used to model Iterator's
+        // GetNext() resource usage.
         TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
-            ctx, std::move(args), &return_values, model_node()));
+            ctx, std::move(args), &return_values,
+            ctx->is_restoring() ? nullptr : model_node()));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

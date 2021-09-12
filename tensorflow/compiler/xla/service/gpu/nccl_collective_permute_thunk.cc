@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
@@ -156,8 +157,11 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
   // use of NCCL_LAUNCH_MODE=PARALLEL to avoid these issues. See
   // https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-8-4.html#rel_2-8-4
   if (!IsNcclLaunchModeParallel()) {
-    LOG(WARNING) << "NCCL based collective permute may not work correctly if "
-                    "NCCL_LAUNCH_MODE is not set to PARALLEL";
+    static absl::once_flag log_once;
+    absl::call_once(log_once, [] {
+      LOG(WARNING) << "NCCL based collective permute may not work correctly if "
+                      "NCCL_LAUNCH_MODE is not set to PARALLEL";
+    });
   }
 
   se::DeviceMemoryBase src_addr =

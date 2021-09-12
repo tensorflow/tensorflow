@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -33,11 +34,9 @@ namespace xla {
 // is meant to produce a reference module that is comparable to our custom test
 // platforms.
 StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
-    const HloModule& test_module,
-    const ::stream_executor::Platform::Id& test_platform_id,
+    const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    const std::function<Status(const HloModule&,
-                               const ::stream_executor::Platform::Id&,
+    const std::function<Status(const HloModule&, HloRunnerInterface*,
                                HloModule*)>& module_modifier_hook = {});
 
 }  // namespace xla

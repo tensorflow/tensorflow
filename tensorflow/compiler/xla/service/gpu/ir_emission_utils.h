@@ -195,9 +195,8 @@ class FusionLayoutAnalysis {
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
-// MLIR variant that relies on the shape layouts from fusion layout analysis.
-bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
+// MLIR variant.
+bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all

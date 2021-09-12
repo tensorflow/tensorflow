@@ -17,12 +17,24 @@ alias_with_tflite(
 
 # Native code needed for TF Lite Java API, including experimental APIs;
 # but only the framework code, no ops.
-cc_library_with_tflite(
-    name = "native_experimental_framework_only",
+filegroup(
+    name = "native_experimental_only_srcs",
     srcs = [
         "nativeinterpreterwrapperexperimental_jni.cc",
     ],
-    hdrs = ["jni_utils.h"],
+)
+
+filegroup(
+    name = "native_hdrs",
+    srcs = ["jni_utils.h"],
+)
+
+cc_library_with_tflite(
+    name = "native_experimental_framework_only",
+    srcs = [
+        ":native_experimental_only_srcs",
+    ],
+    hdrs = [":native_hdrs"],
     tflite_deps = [
         ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:framework_experimental",
@@ -35,8 +47,8 @@ cc_library_with_tflite(
 
 # Native code needed for TF Lite Java API, excluding experimental APIs;
 # but only the framework code, no ops.
-cc_library_with_tflite(
-    name = "native_stable_framework_only",
+filegroup(
+    name = "native_stable_srcs",
     srcs = [
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
@@ -44,7 +56,12 @@ cc_library_with_tflite(
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
     ],
-    hdrs = ["jni_utils.h"],
+)
+
+cc_library_with_tflite(
+    name = "native_stable_framework_only",
+    srcs = [":native_stable_srcs"],
+    hdrs = [":native_hdrs"],
     copts = tflite_copts(),
     linkopts = [
         "-lm",

@@ -13,11 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-#include <limits>
-#include <random>
+#include <initializer_list>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,28 +26,35 @@ namespace tflite {
 namespace {
 
 template <typename T>
-tflite::TensorType GetTTEnum();
+TensorType GetTTEnum();
 
 template <>
-tflite::TensorType GetTTEnum<float>() {
-  return tflite::TensorType_FLOAT32;
+TensorType GetTTEnum<float>() {
+  return TensorType_FLOAT32;
 }
 
 template <>
-tflite::TensorType GetTTEnum<double>() {
-  return tflite::TensorType_FLOAT64;
+TensorType GetTTEnum<double>() {
+  return TensorType_FLOAT64;
 }
 
-class RandomStandardNormalOpModel : public tflite::SingleOpModel {
+class RandomStandardNormalOpModel : public SingleOpModel {
  public:
   RandomStandardNormalOpModel(const std::initializer_list<int>& input,
-                              tflite::TensorData output) {
-    input_ = AddConstInput(tflite::TensorType_INT32, input,
-                           {static_cast<int>(input.size())});
+                              TensorData output, bool dynamic_input) {
+    if (dynamic_input) {
+      input_ = AddInput({TensorType_INT32, {3}});
+    } else {
+      input_ = AddConstInput(TensorType_INT32, input,
+                             {static_cast<int>(input.size())});
+    }
     output_ = AddOutput(output);
     SetCustomOp("RandomStandardNormal", {},
                 ops::custom::Register_RANDOM_STANDARD_NORMAL);
     BuildInterpreter({GetShape(input_)});
+    if (dynamic_input) {
+      PopulateTensor<int32_t>(input_, std::vector<int32_t>(input));
+    }
   }
 
   int input_;
@@ -69,30 +72,57 @@ class RandomStandardNormalOpModel : public tflite::SingleOpModel {
 }  // namespace
 }  // namespace tflite
 
-template <typename FloatType>
-class RandomStandardNormalTest : public ::testing::Test {
- public:
-  using Float = FloatType;
+template <typename InputType>
+struct RandomStandardNormalTest : public ::testing::Test {
+  using Type = InputType;
 };
-
 using TestTypes = ::testing::Types<float, double>;
 
 TYPED_TEST_SUITE(RandomStandardNormalTest, TestTypes);
 
 TYPED_TEST(RandomStandardNormalTest, TestOutput) {
-  using Float = typename TestFixture::Float;
-  tflite::RandomStandardNormalOpModel m({1000, 50, 5},
-                                        {tflite::GetTTEnum<Float>(), {}});
-  m.Invoke();
-  auto output = m.GetOutput<Float>();
-  EXPECT_EQ(output.size(), 1000 * 50 * 5);
+  using Type = typename TestFixture::Type;
+  for (const auto dynamic : {false, true}) {
+    tflite::RandomStandardNormalOpModel m(
+        {1000, 50, 5}, {tflite::GetTTEnum<Type>(), {}}, dynamic);
+    m.Invoke();
+    auto output = m.GetOutput<Type>();
+    EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
+    double sum = 0;
+    for (auto r : output) {
+      sum += r;
+    }
+    double avg = sum / output.size();
+    ASSERT_LT(std::abs(avg), 0.05);  // Average should be approximately 0.
+
+    double sum_squared = 0;
+    for (auto r : output) {
+      sum_squared += std::pow(r - avg, 2);
+    }
+    double var = sum_squared / output.size();
+    EXPECT_LT(std::abs(1 - var), 0.05);  // Variance should be approximately 1.
+  }
+}
+
+TYPED_TEST(RandomStandardNormalTest, TestOutputDistributionRange) {
+  using Type = typename TestFixture::Type;
+  tflite::RandomStandardNormalOpModel m({1000, 50, 5},
+                                        {tflite::GetTTEnum<Type>(), {}}, false);
+  // Initialize output tensor to infinity to validate that all of its values are
+  // updated and are normally distributed after Invoke().
+  const std::vector<Type> output_data(1000 * 50 * 5,
+                                      std::numeric_limits<Type>::infinity());
+  m.PopulateTensor(m.output(), output_data);
+  m.Invoke();
+  auto output = m.GetOutput<Type>();
+  EXPECT_EQ(output.size(), 1000 * 50 * 5);
   double sum = 0;
   for (auto r : output) {
     sum += r;
   }
   double avg = sum / output.size();
-  ASSERT_LT(std::abs(avg), 0.05);  // Average should approximately 0.
+  ASSERT_LT(std::abs(avg), 0.05);  // Average should be approximately 0.
 
   double sum_squared = 0;
   for (auto r : output) {

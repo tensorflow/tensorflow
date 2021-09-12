@@ -504,6 +504,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -682,6 +683,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":custom_call_thunk",
         "@llvm-project//llvm:Support",
     ] + if_nccl([
         ":virtual_nccl",
@@ -691,6 +693,7 @@ cc_library(
         ":is_bef_thunk_enabled": [
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_kernels_detail",
             "@tf_runtime//backends/gpu:gpu_wrapper",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
@@ -848,12 +851,14 @@ cc_library(
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         ":is_bef_executable_enabled": [
@@ -862,10 +867,12 @@ cc_library(
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
@@ -1122,10 +1129,6 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
-        # copybara:uncomment-begin
-        # "@local_config_cuda//cuda:cublas_headers",
-        # "@local_config_cuda//cuda:cusolver_headers",
-        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]) + if_rocm_is_configured([
@@ -1620,6 +1623,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:all_gather_broadcast_reorder",
+        "//tensorflow/compiler/xla/service:dynamic_dimension_simplifier",
         "//tensorflow/compiler/xla/service:all_gather_combiner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
@@ -1692,6 +1696,8 @@ cc_library(
             "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
+            "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_passes",
         ],
         "//conditions:default": [],
     }),

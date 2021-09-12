@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/env_var.h"
@@ -177,7 +178,7 @@ class RPCState : public GrpcClientCQTag {
         strings::StrAppend(&error_msg, " from remote target ", *target_);
       }
       strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
-      s = Status(s.code(), error_msg);
+      s = errors::CreateWithUpdatedMessage(s, error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that
       // other error types are preferred during status aggregation. (gRPC
       // cancellation messages do not contain the original status message).

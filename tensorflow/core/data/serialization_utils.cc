@@ -417,16 +417,14 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   return Status::OK();
 }
 
-Status AsGraphDefMinimal(OpKernelContext* ctx, const DatasetBase* input,
-                         std::vector<std::pair<string, Tensor>>* input_list,
-                         GraphDef* result, string* dataset_node) {
+Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
+                            std::vector<std::pair<string, Tensor>>* input_list,
+                            GraphDef* result, string* dataset_node) {
   SerializationContext::Params params(ctx);
   params.input_list = input_list;
   params.external_state_policy =
       SerializationContext::ExternalStatePolicy::kIgnore;
-  params.fail_if_unimplemented = false;
-  params.serialize_data_tensors = false;
-  params.preserve_random_seeds = false;
+  params.is_graph_rewrite = true;
   SerializationContext serialization_ctx(params);
   TF_RETURN_IF_ERROR(
       AsGraphDef(ctx, input, std::move(serialization_ctx), result));

@@ -212,6 +212,8 @@ struct MaliInfo {
   bool IsBifrostGen2() const;
   bool IsBifrostGen3() const;
   bool IsBifrost() const;
+  bool IsValhallGen1() const;
+  bool IsValhallGen2() const;
   bool IsValhall() const;
 };
 

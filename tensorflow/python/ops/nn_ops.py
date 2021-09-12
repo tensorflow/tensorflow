@@ -4153,6 +4153,35 @@ def softmax_cross_entropy_with_logits(
       labels=labels, logits=logits, axis=dim, name=name)
 
 
+def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
+  if config.deterministic_ops_enabled():
+    # TODO(duncanriach): Implement a GPU-deterministic version of this op at
+    #     the C++/CUDA level.
+
+    # The actual op functionality
+    log_probs = log_softmax_v2(logits)
+    cost = math_ops.negative(array_ops.gather(log_probs, labels, batch_dims=1))
+
+    # Force the output to be NaN when the corresponding label is invalid.
+    # Without the selective gradient gating provided by the following code,
+    # backprop into the actual op functionality above, when there are invalid
+    # labels, leads to corruption of the gradients associated with valid labels.
+    # TODO(duncanriach): Uncover the source of the aforementioned corruption.
+    nan_tensor = constant_op.constant(float("Nan"), dtype=logits.dtype)
+    cost_all_nans = array_ops.broadcast_to(nan_tensor, array_ops.shape(cost))
+    class_count = math_ops.cast(array_ops.shape(logits)[-1], labels.dtype)
+    cost = array_ops.where(
+        math_ops.logical_or(
+            math_ops.less(labels, 0),
+            math_ops.greater_equal(labels, class_count)), cost_all_nans, cost)
+  else:
+    # The second output tensor contains the gradients. We use it in
+    # _CrossEntropyGrad() in nn_grad but not here.
+    cost, _ = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+        logits, labels, name=name)
+  return cost
+
+
 @tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy_with_logits(
@@ -4247,7 +4276,7 @@ def sparse_softmax_cross_entropy_with_logits(
                                                      logits.get_shape()))
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
-      cost, _ = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+      cost = _sparse_softmax_cross_entropy_with_rank_2_logits(
           precise_logits, labels, name=name)
       if logits.dtype == dtypes.float16:
         return math_ops.cast(cost, dtypes.float16)
@@ -4267,9 +4296,7 @@ def sparse_softmax_cross_entropy_with_logits(
       num_classes = array_ops.shape(logits)[array_ops.rank(logits) - 1]
       precise_logits = array_ops.reshape(precise_logits, [-1, num_classes])
       labels = array_ops.reshape(labels, [-1])
-      # The second output tensor contains the gradients.  We use it in
-      # _CrossEntropyGrad() in nn_grad but not here.
-      cost, _ = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+      cost = _sparse_softmax_cross_entropy_with_rank_2_logits(
           precise_logits, labels, name=name)
       cost = array_ops.reshape(cost, labels_shape)
       cost.set_shape(labels_static_shape)

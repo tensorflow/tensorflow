@@ -681,6 +681,21 @@ static void printGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
 }
 
+GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
+                                           SymbolTable &symbol_table) {
+  // Check if a node does indirect function call via PartitionedCallOp.
+  // TODO(aminim): consider replacing with isa<...> when possible.
+  if (op->getName().getStringRef() == "tfg.PartitionCall" ||
+      op->getName().getStringRef() == "tfg.StatefulPartitionedCall") {
+    auto func_attr = op->getAttrOfType<FuncAttr>("f");
+    if (!func_attr) return {};
+    GraphFuncOp callee = symbol_table.lookup<GraphFuncOp>(
+        func_attr.getName().getLeafReference());
+    if (callee) return callee;
+  }
+  return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
+}
+
 }  // namespace tfg
 }  // namespace mlir
 

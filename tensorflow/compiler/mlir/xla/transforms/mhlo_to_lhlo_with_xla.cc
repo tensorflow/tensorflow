@@ -130,16 +130,23 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
                                   "failed to create XLA Backend ");
   auto backend = std::move(backend_or_err.ValueOrDie());
 
-  // Run all HLO passes to produce an optimized module.
-  auto result_or = backend->compiler()->RunHloPassesAndBufferAssignement(
-      std::move(hlo_module), backend->default_stream_executor(),
-      optimize_xla_hlo, {backend->memory_allocator()});
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(result_or.status(),
-                                  "running XLA pass pipeline");
-  std::unique_ptr<HloModule> optimized_hlo_module =
-      std::move(std::get<0>(result_or.ValueOrDie()));
-  std::unique_ptr<BufferAssignment> assignment =
-      std::move(std::get<1>(result_or.ValueOrDie()));
+  StatusOr<std::unique_ptr<HloModule>> optimized_hlo_module;
+
+  if (optimize_xla_hlo) {
+    // Run all HLO passes to produce an optimized module.
+    optimized_hlo_module = backend->compiler()->RunHloPasses(
+        std::move(hlo_module), backend->default_stream_executor(),
+        backend->memory_allocator());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(optimized_hlo_module.status(),
+                                    "running XLA pass pipeline");
+  } else {
+    optimized_hlo_module = std::move(hlo_module);
+  }
+
+  StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+      backend->compiler()->AssignBuffers(optimized_hlo_module->get());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(assignment.status(),
+                                  "running XLA buffer assigment");
 
   // Clear the module before populating it back with the result of the
   // conversion.
@@ -147,7 +154,7 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   OpBuilder builder(module);
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      HloToLhloModule(*assignment, *optimized_hlo_module, module),
+      HloToLhloModule(**assignment, **optimized_hlo_module, module),
       "converting HLO to LHLO");
 
   return Status::OK();

@@ -421,10 +421,15 @@ bool MaliInfo::IsBifrost() const {
   return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
-bool MaliInfo::IsValhall() const {
-  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77 ||
-         gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+bool MaliInfo::IsValhallGen1() const {
+  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77;
 }
+
+bool MaliInfo::IsValhallGen2() const {
+  return gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+}
+
+bool MaliInfo::IsValhall() const { return IsValhallGen1() || IsValhallGen2(); }
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {

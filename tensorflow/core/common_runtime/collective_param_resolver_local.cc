@@ -626,6 +626,7 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
   CollectiveImplementationInterface* col_impl;
   bool use_nccl =
       (nccl_ || cp->instance.impl_details.communication_hint == "nccl") &&
+      cp->group.device_type == DEVICE_GPU &&
       CollectiveRegistry::LookupParamResolverInstance("NcclReduce", &col_impl)
           .ok();
   cp->instance.impl_details.collective_name = GetCollectiveName(cp, use_nccl);

@@ -5,12 +5,12 @@ func @batchMatMulV2TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf32>
   return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2TwoDim
-  // CHECK: %[[cst:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
-  // CHECK: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK: %[[cst_2:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
-  // CHECK: %[[cst_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK: %[[cst_10:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK: %[[cst_11:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
+  // CHECK-DAG: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_2:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
+  // CHECK-DAG: %[[cst_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: %[[cst_10:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_11:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[v1:.*]]:6 = "tf.Split"(%[[cst_3]], %[[v0]]) : (tensor<i32>, tensor<6x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -50,9 +50,9 @@ func @batchMatMulV2FlatInput(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>)
   return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2FlatInput
-  // CHECK: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK: %[[cst_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK: %[[cst_6:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: %[[cst_6:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
 
   // CHECK: %[[v0:.*]]:3 = "tf.Split"(%[[cst_2]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[v1:.*]] = "tf.Reshape"(%[[v0]]#0, %[[cst_1]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
@@ -113,12 +113,12 @@ func @batchMatMulTwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf32>) 
   return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulTwoDim
-  // CHECK: %[[cst:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
-  // CHECK: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK: %[[cst_2:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
-  // CHECK: %[[cst_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK: %[[cst_10:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK: %[[cst_11:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
+  // CHECK-DAG: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_2:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
+  // CHECK-DAG: %[[cst_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: %[[cst_10:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_11:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[v1:.*]]:6 = "tf.Split"(%[[cst_3]], %[[v0]]) : (tensor<i32>, tensor<6x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -158,9 +158,9 @@ func @batchMatMulFlatInput(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -
   return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulFlatInput
-  // CHECK: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK: %[[cst_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK: %[[cst_6:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_1:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
+  // CHECK-DAG: %[[cst_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: %[[cst_6:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
 
   // CHECK: %[[v0:.*]]:3 = "tf.Split"(%[[cst_2]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[v1:.*]] = "tf.Reshape"(%[[v0]]#0, %[[cst_1]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>

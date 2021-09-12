@@ -44,6 +44,7 @@ bool ElementIsF32OrF16(const Shape& shape) {
   switch (instruction.opcode()) {
     case HloOpcode::kDivide:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kExp:
       if (ElementIsF32OrF16(instruction.shape())) {
         return false;
       }

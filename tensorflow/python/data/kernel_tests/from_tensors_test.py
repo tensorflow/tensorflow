@@ -294,6 +294,11 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42, name="from_tensors")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):

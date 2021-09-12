@@ -18,24 +18,27 @@ load(
     "tf_additional_binary_deps",
 )
 load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+# copybara:comment_begin(oss-only)
+load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
-    "gen_api_init_files",  # @unused
+    "gen_api_init_files",
     "get_compat_files",
     "get_nested_compat_files",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
-    "TENSORFLOW_API_INIT_FILES",  # @unused
+    "TENSORFLOW_API_INIT_FILES",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
-    "TENSORFLOW_API_INIT_FILES_V1",  # @unused
+    "TENSORFLOW_API_INIT_FILES_V1",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+# copybara:comment_end
 
 package(default_visibility = [":internal"])
 
@@ -51,7 +54,7 @@ exports_files([
     "leakr_file_type_recipe.ftrcp",
 ])
 
-# @unused
+# copybara:comment_begin(oss-only)
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
@@ -61,7 +64,6 @@ TENSORFLOW_API_INIT_FILES_V2 = (
     ])
 )
 
-# @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
@@ -70,6 +72,7 @@ TENSORFLOW_API_INIT_FILES_V1 = (
         2,
     ])
 )
+# copybara:comment_end
 
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
@@ -474,20 +477,8 @@ config_setting(
 # Features that are default ON are handled differently below.
 #
 config_setting(
-    name = "no_aws_support",
-    define_values = {"no_aws_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_gcp_support",
     define_values = {"no_gcp_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_hdfs_support",
-    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -852,6 +843,7 @@ bzl_library(
     ],
 )
 
+# copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
@@ -869,6 +861,7 @@ cc_library(
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
+# copybara:comment_end
 
 # A shared object which includes registration mechanisms for ops and
 # kernels. Does not include the implementations of any ops or kernels. Instead,
@@ -1211,6 +1204,7 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
+# copybara:comment_begin(oss-only)
 genrule(
     name = "root_init_gen",
     srcs = select({
@@ -1284,10 +1278,12 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = select({
-        "api_version_2": [],
-        "//conditions:default": [],
-    }) + [
+    deps = select(
+        {
+            "api_version_2": [],
+            "//conditions:default": [],
+        },
+    ) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
     ],
@@ -1308,3 +1304,4 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+# copybara:comment_end

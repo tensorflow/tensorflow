@@ -1600,5 +1600,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
 
+  @test_util.run_v2_only
+  def testIterateVariable(self):
+    v = variables.Variable([1., 2.])
+    self.assertAllClose([1., 2.], list(iter(v)))
+
+
 if __name__ == "__main__":
   test.main()

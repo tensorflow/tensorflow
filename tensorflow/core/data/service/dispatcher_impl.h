@@ -284,7 +284,7 @@ class DataServiceDispatcherImpl {
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  const experimental::DispatcherConfig& config_;
+  const experimental::DispatcherConfig config_;
   Env* env_;
 
   mutex mu_;

@@ -59,7 +59,8 @@ struct AddTensorflowProducerVersion
 // buffers via progressive lowering to MHLO and Linalg.
 // -------------------------------------------------------------------------- //
 
-void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
+void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
+                           const TfCpuRtPipelineOptions& options) {
   // Break Tensorflow fused operations into primitive operations before
   // lowering to HLO.
   pm.addNestedPass<mlir::FuncOp>(CreateFissionPass());
@@ -144,7 +145,12 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 }
 
-static mlir::PassPipelineRegistration<> tf_cpurt_pipeline(
+void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {
+  TfCpuRtPipelineOptions options;
+  CreateTfCpuRtPipeline(pm, options);
+}
+
+static mlir::PassPipelineRegistration<TfCpuRtPipelineOptions> tf_cpurt_pipeline(
     "tf-cpurt-pipeline",
     "Convert Tensorflow dialect to TFRT's CPURT compatible dialects",
     CreateTfCpuRtPipeline);

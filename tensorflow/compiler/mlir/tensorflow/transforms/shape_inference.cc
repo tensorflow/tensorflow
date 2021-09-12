@@ -733,6 +733,8 @@ class ShapeInference {
 
   bool InferShapeForCast(Operation* op);
 
+  bool InferShapeForRestore(Operation* op);
+
   // Infers the shape IfOp outputs based on the shapes of the then and else
   // function result types.
   bool InferShapeForIf(IfOp op);
@@ -953,6 +955,36 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   }
 
   return changed;
+}
+
+// Infer the shape of `Restore` and `RestoreV2` op based on the first
+// `AssignVariableOp` that uses the result. This requires that the resource
+// subtype inference is completed.
+bool ShapeInference::InferShapeForRestore(Operation* op) {
+  DCOMMENT_OP(op, "Inferring shape for Restore,RestoreV2");
+  // Currently only support single output.
+  if (op->getNumResults() != 1) return false;
+  if (!CanBeRefined(op->getResult(0).getType())) return false;
+
+  // Look for any `AssignVariableOp` that uses the result of this op.
+  for (auto use : op->getUsers()) {
+    TF::AssignVariableOp assign_op = llvm::dyn_cast<TF::AssignVariableOp>(use);
+    if (!assign_op) {
+      continue;
+    }
+    auto subtypes = getElementTypeOrSelf(assign_op.resource())
+                        .cast<TF::ResourceType>()
+                        .getSubtypes();
+    if (subtypes.empty()) {
+      continue;
+    }
+    // Update the result type of this op with the resource's type. We only use
+    // the resource subtype of the first user since shapes from all the users
+    // should be equal or compatible.
+    return UpdateTypeAndInsertIncompatibleUseCasts(subtypes.front(),
+                                                   op->getResult(0));
+  }
+  return false;
 }
 
 // Helper structure to capture shapes & types for Dataset input.
@@ -1384,6 +1416,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
                             << op->getName() << "'.\n");
     return false;
   }
+
+  if (isa<TF::RestoreOp, TF::RestoreV2Op>(op)) return InferShapeForRestore(op);
 
   // Handle call operations by looking up callee and inferring return shape as
   // needed.

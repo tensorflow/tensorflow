@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -179,60 +177,77 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
-  s.SetPayload("Invalid", absl::Cord("Invalid Val"));
-  ASSERT_FALSE(s.GetPayload("Invalid").has_value());
+  s.SetPayload("Invalid", "Invalid Val");
+  ASSERT_EQ(s.GetPayload("Invalid"), tensorflow::StringPiece());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
 }
 
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", absl::Cord("Original"));
-  ASSERT_EQ(s.GetPayload("Error key"), "Original");
-  s.SetPayload("Error key", absl::Cord("Updated"));
-  ASSERT_EQ(s.GetPayload("Error key"), "Updated");
+  s.SetPayload("Error key", "Original");
+  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
+  s.SetPayload("Error key", "Updated");
+  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", absl::Cord("Original"));
+  s.SetPayload("Error key", "Original");
 
   bool is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, true);
   is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, false);
-  ASSERT_FALSE(s.GetPayload("Error key").has_value());
+  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
 }
 
-TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("key1", absl::Cord("value1"));
-  s.SetPayload("key2", absl::Cord("value2"));
-  s.SetPayload("key3", absl::Cord("value3"));
+TEST(Status, GetAllPayloads) {
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  auto payloads_error_status = s_error.GetAllPayloads();
+  ASSERT_EQ(payloads_error_status.size(), 1);
+  ASSERT_EQ(payloads_error_status["Error key"], "foo");
 
-  absl::flat_hash_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
-    payloads[key] = value;
-  });
-
-  EXPECT_EQ(payloads.size(), 3);
-  EXPECT_EQ(payloads["key1"], "value1");
-  EXPECT_EQ(payloads["key2"], "value2");
-  EXPECT_EQ(payloads["key3"], "value3");
+  Status s_ok = Status();
+  auto payloads_ok_status = s_ok.GetAllPayloads();
+  ASSERT_TRUE(payloads_ok_status.empty());
 }
 
-TEST(Status, OkStatusForEachPayloadNoIteration) {
-  Status s = Status::OK();
-  s.SetPayload("key1", absl::Cord("value1"));
-  s.SetPayload("key2", absl::Cord("value2"));
-  s.SetPayload("key3", absl::Cord("value3"));
+TEST(Status, OKStatusReplaceAllPayloadsFromErrorStatus) {
+  // An OK status will should not change after ReplaceAllPayloads() calls.
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  Status s_ok = Status();
 
-  absl::flat_hash_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
-    payloads[key] = value;
-  });
+  s_ok.ReplaceAllPayloads(s_error.GetAllPayloads());
+  auto payloads_ok_status = s_ok.GetAllPayloads();
+  ASSERT_TRUE(payloads_ok_status.empty());
+}
 
-  EXPECT_EQ(payloads.size(), 0);
+TEST(Status, ErrorStatusReplaceAllPayloadsFromOKStatus) {
+  // An ReplaceAllPayloads() call should not take effect from empty inputs.
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  Status s_ok = Status();
+
+  s_error.ReplaceAllPayloads(s_ok.GetAllPayloads());
+  ASSERT_EQ(s_error.GetPayload("Error key"), "foo");
+}
+
+TEST(Status, ErrorStatusReplaceAllPayloadsFromErrorStatus) {
+  Status s_error1(error::INTERNAL, "Error message");
+  s_error1.SetPayload("Error key 1", "foo");
+  s_error1.SetPayload("Error key 2", "bar");
+  Status s_error2(error::INTERNAL, "Error message");
+  s_error2.SetPayload("Error key", "bar");
+  ASSERT_EQ(s_error2.GetPayload("Error key"), "bar");
+
+  s_error2.ReplaceAllPayloads(s_error1.GetAllPayloads());
+  ASSERT_EQ(s_error2.GetPayload("Error key 1"), "foo");
+  ASSERT_EQ(s_error2.GetPayload("Error key 2"), "bar");
+  auto payloads_error_status = s_error2.GetAllPayloads();
+  ASSERT_EQ(payloads_error_status.size(), 2);
 }
 
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {

@@ -330,11 +330,11 @@ tf_module {
   }
   member_method {
     name: "BatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "BatchDatasetV2"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "BatchFFT"
@@ -706,11 +706,11 @@ tf_module {
   }
   member_method {
     name: "CacheDataset"
-    argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "CacheDatasetV2"
-    argspec: "args=[\'input_dataset\', \'filename\', \'cache\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'filename\', \'cache\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Case"
@@ -838,7 +838,7 @@ tf_module {
   }
   member_method {
     name: "ConcatenateDataset"
-    argspec: "args=[\'input_dataset\', \'another_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'another_dataset\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ConditionalAccumulator"
@@ -1042,7 +1042,7 @@ tf_module {
   }
   member_method {
     name: "DatasetToSingleElement"
-    argspec: "args=[\'dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "DatasetToTFRecord"
@@ -1650,7 +1650,7 @@ tf_module {
   }
   member_method {
     name: "FilterDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "FinalizeDataset"
@@ -1662,11 +1662,11 @@ tf_module {
   }
   member_method {
     name: "FixedLengthRecordDataset"
-    argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "FixedLengthRecordDatasetV2"
-    argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'compression_type\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "FixedLengthRecordReader"
@@ -1682,7 +1682,7 @@ tf_module {
   }
   member_method {
     name: "FlatMapDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Floor"
@@ -1790,7 +1790,7 @@ tf_module {
   }
   member_method {
     name: "GeneratorDataset"
-    argspec: "args=[\'init_func_other_args\', \'next_func_other_args\', \'finalize_func_other_args\', \'init_func\', \'next_func\', \'finalize_func\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'init_func_other_args\', \'next_func_other_args\', \'finalize_func_other_args\', \'init_func\', \'next_func\', \'finalize_func\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "GetElementAtIndex"
@@ -1826,7 +1826,7 @@ tf_module {
   }
   member_method {
     name: "GroupByWindowDataset"
-    argspec: "args=[\'input_dataset\', \'key_func_other_arguments\', \'reduce_func_other_arguments\', \'window_size_func_other_arguments\', \'key_func\', \'reduce_func\', \'window_size_func\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'key_func_other_arguments\', \'reduce_func_other_arguments\', \'window_size_func_other_arguments\', \'key_func\', \'reduce_func\', \'window_size_func\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "GuaranteeConst"
@@ -1998,7 +1998,7 @@ tf_module {
   }
   member_method {
     name: "InterleaveDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'f\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Inv"
@@ -2035,6 +2035,10 @@ tf_module {
   member_method {
     name: "IsNan"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "IsTPUEmbeddingInitialized"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "IsVariableInitialized"
@@ -2130,7 +2134,7 @@ tf_module {
   }
   member_method {
     name: "LegacyParallelInterleaveDatasetV2"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
   }
   member_method {
     name: "Less"
@@ -2306,7 +2310,7 @@ tf_module {
   }
   member_method {
     name: "MapAndBatchDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "MapClear"
@@ -2314,7 +2318,7 @@ tf_module {
   }
   member_method {
     name: "MapDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "MapDefun"
@@ -2706,7 +2710,7 @@ tf_module {
   }
   member_method {
     name: "OptionsDataset"
-    argspec: "args=[\'input_dataset\', \'serialized_options\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'serialized_options\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "OrderedMapClear"
@@ -2774,11 +2778,11 @@ tf_module {
   }
   member_method {
     name: "PaddedBatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "PaddedBatchDatasetV2"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\', \'output_shapes\', \'parallel_copy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\', \'output_shapes\', \'parallel_copy\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "PaddingFIFOQueue"
@@ -2790,7 +2794,7 @@ tf_module {
   }
   member_method {
     name: "ParallelBatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'default\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelConcat"
@@ -2802,27 +2806,27 @@ tf_module {
   }
   member_method {
     name: "ParallelInterleaveDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ParallelInterleaveDatasetV2"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'sloppy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'sloppy\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelInterleaveDatasetV3"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelInterleaveDatasetV4"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelMapDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'sloppy\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'sloppy\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelMapDatasetV2"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ParameterizedTruncatedNormal"
@@ -2894,7 +2898,7 @@ tf_module {
   }
   member_method {
     name: "PrefetchDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'legacy_autotune\', \'buffer_size_min\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'legacy_autotune\', \'buffer_size_min\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'0\', \'\', \'None\'], "
   }
   member_method {
     name: "Prelinearize"
@@ -3238,7 +3242,7 @@ tf_module {
   }
   member_method {
     name: "RandomDataset"
-    argspec: "args=[\'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "RandomGamma"
@@ -3286,7 +3290,7 @@ tf_module {
   }
   member_method {
     name: "RangeDataset"
-    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Rank"
@@ -3398,7 +3402,7 @@ tf_module {
   }
   member_method {
     name: "ReduceDataset"
-    argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ReduceJoin"
@@ -3466,7 +3470,7 @@ tf_module {
   }
   member_method {
     name: "RepeatDataset"
-    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "RequantizationRange"
@@ -3874,7 +3878,7 @@ tf_module {
   }
   member_method {
     name: "ScanDataset"
-    argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\', \'use_default_device\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\', \'use_default_device\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ScatterAdd"
@@ -4034,7 +4038,7 @@ tf_module {
   }
   member_method {
     name: "ShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_shards\', \'index\', \'output_types\', \'output_shapes\', \'require_non_empty\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_shards\', \'index\', \'output_types\', \'output_shapes\', \'require_non_empty\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "ShardedFilename"
@@ -4046,23 +4050,23 @@ tf_module {
   }
   member_method {
     name: "ShuffleAndRepeatDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ShuffleAndRepeatDatasetV2"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'count\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ShuffleDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ShuffleDatasetV2"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed_generator\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed_generator\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ShuffleDatasetV3"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
   }
   member_method {
     name: "ShutdownDistributedTPU"
@@ -4094,7 +4098,7 @@ tf_module {
   }
   member_method {
     name: "SkipDataset"
-    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "SleepDataset"
@@ -4122,7 +4126,7 @@ tf_module {
   }
   member_method {
     name: "SnapshotDatasetV2"
-    argspec: "args=[\'input_dataset\', \'path\', \'reader_func_other_args\', \'shard_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'shard_func\', \'compression\', \'reader_prefix\', \'writer_prefix\', \'hash_valid\', \'hash\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'reader_func_other_args\', \'shard_func_other_args\', \'output_types\', \'output_shapes\', \'reader_func\', \'shard_func\', \'compression\', \'reader_prefix\', \'writer_prefix\', \'hash_valid\', \'hash\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'False\', \'0\', \'\', \'None\'], "
   }
   member_method {
     name: "SnapshotNestedDatasetReader"
@@ -4762,7 +4766,7 @@ tf_module {
   }
   member_method {
     name: "TFRecordDataset"
-    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TFRecordReader"
@@ -4802,7 +4806,7 @@ tf_module {
   }
   member_method {
     name: "TakeDataset"
-    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TakeManySparseFromTensorsMap"
@@ -4810,7 +4814,7 @@ tf_module {
   }
   member_method {
     name: "TakeWhileDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Tan"
@@ -4962,7 +4966,7 @@ tf_module {
   }
   member_method {
     name: "TensorDataset"
-    argspec: "args=[\'components\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'components\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TensorListConcat"
@@ -5062,7 +5066,7 @@ tf_module {
   }
   member_method {
     name: "TensorSliceDataset"
-    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
   }
   member_method {
     name: "TensorStridedSliceUpdate"
@@ -5078,7 +5082,7 @@ tf_module {
   }
   member_method {
     name: "TextLineDataset"
-    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "TextLineReader"
@@ -5154,7 +5158,7 @@ tf_module {
   }
   member_method {
     name: "UnbatchDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "UnbatchGrad"
@@ -5194,7 +5198,7 @@ tf_module {
   }
   member_method {
     name: "UniqueDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "UniqueV2"
@@ -5286,7 +5290,7 @@ tf_module {
   }
   member_method {
     name: "WindowDataset"
-    argspec: "args=[\'input_dataset\', \'size\', \'shift\', \'stride\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'size\', \'shift\', \'stride\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "WindowOp"
@@ -5362,6 +5366,6 @@ tf_module {
   }
   member_method {
     name: "ZipDataset"
-    argspec: "args=[\'input_datasets\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_datasets\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
 }
