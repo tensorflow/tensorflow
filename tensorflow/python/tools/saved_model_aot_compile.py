@@ -275,15 +275,14 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:
     raise ValueError(
-        'Unable to find signature_def key \'{}\' in signature def map.  '
-        'Available keys: {}'.format(
-            signature_def_key,
-            list(signature_def_map.keys())))
+        f"Unable to find signature_def_key '{signature_def_key}' in signature "
+        'def map of `meta_graph_def`. Available keys: '
+        f'{list(signature_def_map.keys())}')
   signature_def = signature_def_map[signature_def_key]
   if not signature_def.outputs:
     raise ValueError(
-        'Signature key {} must have outputs, but saw none:\n{}'.format(
-            signature_def_key, str(signature_def)))
+        f'Signature key {signature_def_key} must have outputs, but saw none:\n'
+        f'{str(signature_def)}')
 
   temp_dir = test.get_temp_dir()
   file_io.recursive_create_dir(temp_dir)
@@ -304,10 +303,9 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   else:
     not_in_graph = set(variables_to_feed).difference(list(all_variables))
     if not_in_graph:
-      raise ValueError(
-          'Asked to feed variables that were not found in graph: {}.  '
-          'Variables contained in the graph: {}'.format(
-              not_in_graph, list(all_variables)))
+      raise ValueError('Asked to feed variables that were not found in graph: '
+                       f'{not_in_graph}. Variables contained in the graph: '
+                       f'{list(all_variables)}')
     variable_nodes_to_feed = [
         all_variables[name] for name in variables_to_feed
     ]
@@ -408,9 +406,8 @@ def _replace_input_placeholders_with_default_values(graph_def, signature_def):
     processed_nodes.add(tensor_name)
     if tensor_name not in name_to_node_map:
       raise RuntimeError(
-          'Unable to find input signature tensor \'{}\' in optimized GraphDef. '
-          'Graph nodes are: {}'.format(tensor_name,
-                                       list(name_to_node_map.keys())))
+          f"Unable to find input signature tensor '{tensor_name}' in optimized "
+          f'GraphDef. Graph nodes are: {list(name_to_node_map.keys())}')
     node = name_to_node_map[tensor_name]
     if node.op not in ('Placeholder', 'PlaceholderV2'):
       logging.info(
@@ -421,9 +418,8 @@ def _replace_input_placeholders_with_default_values(graph_def, signature_def):
     shape = tensor_shape.TensorShape(input_.tensor_shape)
     if not shape.is_fully_defined():
       raise ValueError(
-          'Expected fully defined input shape for signature_def \'{}\', '
-          'tensor name: \'{}\'; but shape is: {}.'
-          .format(name, tensor_name, shape))
+          f"Expected fully defined input shape for signature_def '{name}', "
+          f"tensor name: '{tensor_name}'; but shape is: {shape}.")
     temp_graph = ops_lib.Graph()
     with temp_graph.as_default():
       const = array_ops.zeros(
