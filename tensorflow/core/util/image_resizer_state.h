@@ -135,11 +135,16 @@ struct ImageResizerState {
   void ValidateAndCreateOutput(OpKernelContext* context, const Tensor& input) {
     ValidateAndCalculateOutputSize(context, input);
     if (!context->status().ok()) return;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0,
-                                TensorShape({input.dim_size(0), out_height,
-                                             out_width, input.dim_size(3)}),
-                                &output));
+    
+    TensorShape shape;
+    // Guard against shape overflow
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(batch_size));
+
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(out_height));
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(out_width));
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(channels));
+
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
   }
 
   int64 batch_size;
