@@ -186,6 +186,9 @@ upper_tabs:
         status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
+      - title: "Inspecting quantization errors"
+        path: /lite/performance/quantization_debugger
+        status: nightly
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for Android"
