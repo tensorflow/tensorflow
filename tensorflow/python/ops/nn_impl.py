@@ -127,11 +127,6 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
-    try:
-      labels.get_shape().assert_is_compatible_with(logits.get_shape())
-    except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -142,11 +137,21 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     # To allow computing gradients at zero, we define custom versions of max and
     # abs functions.
     zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
+
+    broadcasted_labels = labels + zeros
+    try:
+      broadcasted_labels.get_shape().assert_is_compatible_with(
+          logits.get_shape())
+    except ValueError:
+      raise ValueError(
+          "labels must have shape broadcastable to the shape of logits (%s vs %s)"
+          % (labels.get_shape(), logits.get_shape()))
+
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
     neg_abs_logits = array_ops.where(cond, -logits, logits)  # pylint: disable=invalid-unary-operand-type
     return math_ops.add(
-        relu_logits - logits * labels,
+        relu_logits - logits * broadcasted_labels,
         math_ops.log1p(math_ops.exp(neg_abs_logits)),
         name=name)
 
@@ -187,7 +192,8 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
 
       max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
-  `logits` and `labels` must have the same type and shape.
+  `logits` and `labels` must have the same type.
+  The shape of `labels` must be broadcastable to the shape of `logits`.
 
   >>> logits = tf.constant([1., -1., 0., 1., -1., 0., 0.])
   >>> labels = tf.constant([0., 0., 0., 1., 1., 1., 0.5])
@@ -232,7 +238,7 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
 
   Args:
     labels: A `Tensor` of the same type and shape as `logits`. Between 0 and 1,
-      inclusive.
+      inclusive. The shape must be broadcastable to the shape of `logits`.
     logits: A `Tensor` of type `float32` or `float64`. Any real number.
     name: A name for the operation (optional).
 
@@ -241,7 +247,8 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
     logistic losses.
 
   Raises:
-    ValueError: If `logits` and `labels` do not have the same shape.
+    ValueError: If the shape of `labels` is not broadcastable to the shape of
+    `logits`.
   """
   return sigmoid_cross_entropy_with_logits(
       logits=logits, labels=labels, name=name)
@@ -292,7 +299,8 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
 
       (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
 
-  `logits` and `labels` must have the same type and shape.
+  `logits` and `labels` must have the same type.
+  The shape of `labels` must  be broadcastable to the shape of `logits`.
 
   >>> labels = tf.constant([1., 0.5, 0.])
   >>> logits = tf.constant([1.5, -0.1, -10.])
@@ -304,8 +312,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
   array([1.00706644e-01, 5.08297503e-01, 4.57763672e-05], dtype=float32)
 
   Args:
-    labels: A `Tensor` of the same type and shape as `logits`, with values
-      between 0 and 1 inclusive.
+    labels: A `Tensor` of the same type as `logits`, with values
+      between 0 and 1 inclusive. The shape must be broadcastable to  the
+      shape of `logits`.
     logits: A `Tensor` of type `float32` or `float64`, any real numbers.
     pos_weight: A coefficient to use on the positive examples, typically a
       scalar but otherwise broadcastable to the shape of `logits`. Its value
@@ -317,16 +326,21 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     weighted logistic losses.
 
   Raises:
-    ValueError: If `logits` and `labels` do not have the same shape.
+    ValueError: If the shape of `labels` is not broadcastable to the shape of
+    `logits`.
   """
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
+
+    broadcasted_labels = labels + array_ops.zeros_like(logits, dtype=logits.dtype)
     try:
-      labels.get_shape().assert_is_compatible_with(logits.get_shape())
+      broadcasted_labels.get_shape().assert_is_compatible_with(
+          logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError(
+          "labels must have shape broadcastable to the shape of logits (%s vs %s)"
+          % (labels.get_shape(), logits.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -334,9 +348,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(x)) - l * x
     # To avoid branching, we use the combined version
     #   (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
-    log_weight = 1 + (pos_weight - 1) * labels
+    log_weight = 1 + (pos_weight - 1) * broadcasted_labels
     return math_ops.add(
-        (1 - labels) * logits,
+        (1 - broadcasted_labels) * logits,
         log_weight * (math_ops.log1p(math_ops.exp(-math_ops.abs(logits))) +
                       nn_ops.relu(-logits)),  # pylint: disable=invalid-unary-operand-type
         name=name)
@@ -387,10 +401,12 @@ def weighted_cross_entropy_with_logits(labels=None,
 
       (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
 
-  `logits` and `labels` must have the same type and shape.
+  `logits` and `labels` must have the same type.
+  The shape of `labels` must be broadcastable to the shape of `logits`.
 
   Args:
-    labels: A `Tensor` of the same type and shape as `logits`.
+    labels: A `Tensor` of the same type `logits`. The shape of `labels` must
+    be broadcastable to the shape of `logits`'.
     logits: A `Tensor` of type `float32` or `float64`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
@@ -401,7 +417,8 @@ def weighted_cross_entropy_with_logits(labels=None,
     weighted logistic losses.
 
   Raises:
-    ValueError: If `logits` and `labels` do not have the same shape.
+    ValueError: If the shape of `labels` is not broadcastable to the shape of
+    `logits`.
   """
   labels = deprecated_argument_lookup("labels", labels, "targets", targets)
   return weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name)
