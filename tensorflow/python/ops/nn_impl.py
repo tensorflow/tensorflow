@@ -144,8 +144,8 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
           logits.get_shape())
     except ValueError:
       raise ValueError(
-          "labels must have shape broadcastable to the shape of logits (%s vs %s)"
-          % (labels.get_shape(), logits.get_shape()))
+          ("labels must have shape broadcastable to the shape of logits "
+           "(%s vs %s)") % (labels.get_shape(), logits.get_shape()))
 
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
@@ -333,14 +333,15 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
 
-    broadcasted_labels = labels + array_ops.zeros_like(logits, dtype=logits.dtype)
+    broadcasted_labels = (
+        labels + array_ops.zeros_like(logits, dtype=logits.dtype))
     try:
       broadcasted_labels.get_shape().assert_is_compatible_with(
           logits.get_shape())
     except ValueError:
       raise ValueError(
-          "labels must have shape broadcastable to the shape of logits (%s vs %s)"
-          % (labels.get_shape(), logits.get_shape()))
+          ("labels must have shape broadcastable to the shape of logits "
+           "(%s vs %s)") % (labels.get_shape(), logits.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
