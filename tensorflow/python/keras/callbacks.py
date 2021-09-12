@@ -1179,14 +1179,11 @@ class History(Callback):
 @keras_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
   """Callback to save the Keras model or model weights at some frequency.
-
   `ModelCheckpoint` callback is used in conjunction with training using
   `model.fit()` to save a model or weights (in a checkpoint file) at some
   interval, so the model or weights can be loaded later to continue the training
   from the state saved.
-
   A few options this callback provides include:
-
   - Whether to only keep the model that has achieved the "best performance" so
     far, or whether to save the model at the end of every epoch regardless of
     performance.
@@ -1195,17 +1192,13 @@ class ModelCheckpoint(Callback):
   - The frequency it should save at. Currently, the callback supports saving at
     the end of every epoch, or after a fixed number of training batches.
   - Whether only weights are saved, or the whole model is saved.
-
   Note: If you get `WARNING:tensorflow:Can save best model only with <name>
   available, skipping` see the description of the `monitor` argument for
   details on how to get this right.
-
   Example:
-
   ```python
   model.compile(loss=..., optimizer=...,
                 metrics=['accuracy'])
-
   EPOCHS = 10
   checkpoint_filepath = '/tmp/checkpoint'
   model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -1214,15 +1207,12 @@ class ModelCheckpoint(Callback):
       monitor='val_accuracy',
       mode='max',
       save_best_only=True)
-
   # Model weights are saved at the end of every epoch, if it's the best seen
   # so far.
   model.fit(epochs=EPOCHS, callbacks=[model_checkpoint_callback])
-
   # The model weights (that are considered the best) are loaded into the model.
   model.load_weights(checkpoint_filepath)
   ```
-
   Args:
       filepath: string or `PathLike`, path to save the model file. e.g.
         filepath = os.path.join(working_dir, 'ckpt', file_name). `filepath`
@@ -1234,7 +1224,6 @@ class ModelCheckpoint(Callback):
         any other callbacks to avoid conflicts.
       monitor: The metric name to monitor. Typically the metrics are set by the
         `Model.compile` method. Note:
-
         * Prefix the name with `"val_`" to monitor validation metrics.
         * Use `"loss"` or "`val_loss`" to monitor the model's total loss.
         * If you specify metrics as strings, like `"accuracy"`, pass the same
@@ -1245,7 +1234,6 @@ class ModelCheckpoint(Callback):
           of the `history.history` dictionary returned by
           `history = model.fit()`
         * Multi-output models set additional prefixes on the metric names.
-
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, it only saves when the model
         is considered the "best" and the latest best model according to the
@@ -1273,6 +1261,9 @@ class ModelCheckpoint(Callback):
       options: Optional `tf.train.CheckpointOptions` object if
         `save_weights_only` is true or optional `tf.saved_model.SaveOptions`
         object if `save_weights_only` is false.
+      initial_best: Initial best value of the metric to be monitored before
+        training begins. Only overwrites the model weights already saved, if the
+        performance of current model is better than the previous saved model.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.
   """
@@ -1286,6 +1277,7 @@ class ModelCheckpoint(Callback):
                mode='auto',
                save_freq='epoch',
                options=None,
+               initial_best= None,
                **kwargs):
     super(ModelCheckpoint, self).__init__()
     self._supports_tf_logs = True
@@ -1298,6 +1290,7 @@ class ModelCheckpoint(Callback):
     self.epochs_since_last_save = 0
     self._batches_seen_since_last_saving = 0
     self._last_batch_seen = 0
+    self.best= initial_best
 
     if save_weights_only:
       if options is None or isinstance(
@@ -1340,17 +1333,21 @@ class ModelCheckpoint(Callback):
 
     if mode == 'min':
       self.monitor_op = np.less
-      self.best = np.Inf
+      if self.best is None:
+        self.best = np.Inf
     elif mode == 'max':
       self.monitor_op = np.greater
-      self.best = -np.Inf
+      if self.best is None:
+        self.best = -np.Inf
     else:
       if 'acc' in self.monitor or self.monitor.startswith('fmeasure'):
         self.monitor_op = np.greater
-        self.best = -np.Inf
+        if self.best is None:
+          self.best = -np.Inf
       else:
         self.monitor_op = np.less
-        self.best = np.Inf
+        if self.best is None:
+          self.best = np.Inf
 
     if self.save_freq != 'epoch' and not isinstance(self.save_freq, int):
       raise ValueError('Unrecognized save_freq: {}'.format(self.save_freq))
@@ -1410,7 +1407,6 @@ class ModelCheckpoint(Callback):
 
   def _save_model(self, epoch, logs):
     """Saves the model.
-
     Args:
         epoch: the epoch this iteration is in.
         logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
@@ -1502,11 +1498,9 @@ class ModelCheckpoint(Callback):
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
     """Returns the most recently modified filepath matching pattern.
-
     Pattern may contain python formatting placeholder. If
     `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
     check for most recently modified one that matches the pattern.
-
     In the rare case where there are more than one pattern-matching file having
     the same modified time that is most recent among all, return the filepath
     that is largest (by `>` operator, lexicographically using the numeric
@@ -1516,11 +1510,8 @@ class ModelCheckpoint(Callback):
     but not necessarily (when accuracy or loss is used). The tie-breaker is
     put in the logic as best effort to return the most recent, and to avoid
     undeterministic result.
-
     Modified time of a file is obtained with `os.path.getmtime()`.
-
     This utility function is best demonstrated via an example:
-
     ```python
     file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
     test_dir = self.get_temp_dir()
@@ -1535,11 +1526,9 @@ class ModelCheckpoint(Callback):
         _get_most_recently_modified_file_matching_pattern(path_pattern),
         file_paths[-1])
     ```
-
     Args:
         pattern: The file pattern that may optionally contain python placeholder
             such as `{epoch:02d}`.
-
     Returns:
         The most recently modified file's full filepath matching `pattern`. If
         `pattern` does not contain any placeholder, this returns the filepath
@@ -1590,7 +1579,6 @@ class ModelCheckpoint(Callback):
       # If there are more than one file having latest modified time, return
       # the file path with the largest file name.
       return file_path_with_largest_file_name
-
 
 @keras_export('keras.callbacks.experimental.BackupAndRestore', v1=[])
 class BackupAndRestore(Callback):
