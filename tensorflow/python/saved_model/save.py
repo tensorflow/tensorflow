@@ -1003,7 +1003,9 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   registered_name = registration.get_registered_name(obj)
   if registered_name:
     proto.registered_name = registered_name
-    proto.serialized_user_proto.Pack(obj._serialize_to_proto())  # pylint: disable=protected-access
+    serialized_user_proto = obj._serialize_to_proto()  # pylint: disable=protected-access
+    if serialized_user_proto is not None:
+      proto.serialized_user_proto.Pack(serialized_user_proto)
 
 
 def _export_debug_info(exported_graph, export_dir):
