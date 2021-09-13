@@ -508,19 +508,20 @@ class PoolingTest(test.TestCase):
 
   def testMaxPool3DZeroPoolSize(self):
     # Test case for GitHub issue 51936.
-    with self.session():
-      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
-        input_sizes = [3, 4, 10, 11, 12]
+    for f in [nn_ops.max_pool3d, nn_ops.avg_pool3d]:
+      with self.session():
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+          input_sizes = [3, 4, 10, 11, 12]
 
-        input_data = 1.
-        input_tensor = constant_op.constant(
-            input_data, shape=input_sizes, name="input")
-        max_pool_3d = nn_ops.max_pool3d(
-            input_tensor,
-            ksize=[2, 2, 0],
-            strides=1,
-            padding="VALID")
-        self.evaluate(max_pool_3d)
+          input_data = 1.
+          input_tensor = constant_op.constant(
+              input_data, shape=input_sizes, name="input")
+          pool_3d = f(
+              input_tensor,
+              ksize=[2, 2, 0],
+              strides=1,
+              padding="VALID")
+          self.evaluate(pool_3d)
 
 
 if __name__ == "__main__":
