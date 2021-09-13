@@ -168,6 +168,8 @@ class CpuCompiler : public LLVMCompiler {
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features);
 
+  mutable std::unique_ptr<HloProto> hlo_proto_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };
 
