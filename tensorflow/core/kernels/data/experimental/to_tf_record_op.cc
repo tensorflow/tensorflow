@@ -87,6 +87,7 @@ class ToTFRecordOp : public AsyncOpKernel {
     IteratorContext iter_ctx(std::move(params));
     DatasetBase* finalized_dataset;
     TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
 
     std::unique_ptr<IteratorBase> iterator;
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
