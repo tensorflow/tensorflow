@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -157,6 +158,11 @@ class Status {
 // Helper class to manage multiple child status values.
 class StatusGroup {
  public:
+  StatusGroup();
+  // Constructor to form a StatusGroup from any N set of Status arguments.
+  // Usage: StatusGroup({status_a, status_b, status_c});
+  StatusGroup(std::initializer_list<Status> statuses);
+
   // Utility function to mark a Status as derived. By marking derived status,
   // Derived status messages are ignored when reporting errors to end users.
   static Status MakeDerived(const Status& s);
@@ -165,6 +171,13 @@ class StatusGroup {
   // Enable warning and error log collection for appending to the aggregated
   // status. This function may be called more than once.
   static void ConfigureLogHistory();
+
+  // Returns merged payloads of all statuses. In case multiple statuses have the
+  // same payload key, non-derived statuses have priority over derived ones,
+  // otherwise one payload value will be chosen in an unspecified but
+  // deterministic order.
+  // NOTE: The payload marking derived statuses as derived will not be returned.
+  std::unordered_map<std::string, std::string> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
@@ -184,7 +197,18 @@ class StatusGroup {
  private:
   bool ok_ = true;
   size_t num_ok_ = 0;
-  std::vector<Status> children_;
+
+  // Maintain a sorted collection of statuses.
+  struct CompareStatus {
+    bool operator()(const Status& a, const Status& b) const {
+      return a.ToString() > b.ToString();
+    }
+  };
+  // Using std::set instead of absl::btree_set to keep size for certain
+  // dependent libraries under the limit.
+  std::set<Status, CompareStatus> derived_;
+  std::set<Status, CompareStatus> non_derived_;
+
   std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
