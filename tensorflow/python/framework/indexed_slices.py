@@ -323,8 +323,9 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+          "Incompatible tensor conversion requested to `dtype` "
+          f"{dtypes.as_dtype(dtype).name} for `value` ({value}) with dtype"
+          f" {value.dtype.name}.")
     return value
   else:
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
@@ -358,7 +359,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections_abc.Iterable):
-    raise TypeError("values must be iterable.")
+    raise TypeError("Argument `values` must be iterable.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -423,12 +424,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
   _ = as_ref
   if dtype and not dtype.is_compatible_with(value.dtype):
     raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
-        (dtype.name, value.dtype.name))
+        f"Incompatible tensor conversion requested to `dtype` {dtype.name} for "
+        f"IndexedSlices ({value}) with dtype {value.dtype.name}")
   if value.dense_shape is None:
     raise ValueError(
-        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-        % str(value))
+        "Tensor conversion requested for IndexedSlices for argument `value` "
+        f"without dense_shape: {value!s}")
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
   if not context.executing_eagerly():

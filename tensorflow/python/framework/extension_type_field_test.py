@@ -88,7 +88,8 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       ('y', typing.Union[int, list], 3,
        "In field 'y': Unsupported type annotation `list`"),
       ('z', typing.Mapping[ops.Tensor,
-                           int], {}, "In field 'z': Key must be hashable."),
+                           int], {},
+       "In field 'z': Mapping had a key with type 'type'"),
   ])
   def testConstructionError(self, name, value_type, default, error):
     if callable(default):
@@ -167,10 +168,11 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
           error='Unsupported type annotation `dict`'),
       dict(tp='A', error='Unresolved forward reference .*'),
       dict(tp=typing.Union[int, 'A'], error='Unresolved forward reference .*'),
-      dict(tp=typing.Mapping[ops.Tensor, int], error='Key must be hashable.'),
+      dict(tp=typing.Mapping[ops.Tensor, int],
+           error="Mapping had a key with type 'type'"),
       dict(
           tp=typing.Mapping[tensor_shape.TensorShape, int],
-          error='Key must be hashable.'),
+          error="Mapping had a key with type 'type'"),
   ])
   def testInvalidPytype(self, tp, error):
     with self.assertRaisesRegex(TypeError, error):

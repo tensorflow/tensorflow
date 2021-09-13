@@ -150,7 +150,8 @@ def validate_field_value_type(value_type,
         (isinstance(value_type, type) and
          issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
-      raise TypeError('Key must be hashable.')
+      raise TypeError(
+          f"Mapping had a key with type '{type(value_type).__name__}'")
   elif (type_annotations.is_generic_tuple(value_type) or
         type_annotations.is_generic_union(value_type)):
     type_args = type_annotations.get_generic_type_args(value_type)
