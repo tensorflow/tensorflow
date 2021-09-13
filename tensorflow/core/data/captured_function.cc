@@ -516,13 +516,21 @@ Status CapturedFunction::AddToGraph(
   return Status::OK();
 }
 
-// TODO(b/190831948): Check whether the function creates a resource and if so,
-// produce a warning.
 Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
+  return CapturedFunction::Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                       instantiated_captured_function);
+}
+
+// TODO(b/190831948): Check whether the function creates a resource and if so,
+// produce a warning.
+Status CapturedFunction::Instantiate(
+    InstantiateCapturedFunctionParams params,
+    std::unique_ptr<InstantiatedCapturedFunction>*
+        instantiated_captured_function) {
   // The context's runtime will be used for all subsequent calls.
-  FunctionLibraryRuntime* lib = ctx->flr();
+  FunctionLibraryRuntime* lib = params.flr;
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
@@ -533,7 +541,7 @@ Status CapturedFunction::Instantiate(
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
-  if (!ctx->function_handle_cache()) {
+  if (!params.function_handle_cache) {
     // If the caller does not provide a cache, we use the FLR cache.
     inst_opts.use_function_cache = true;
   }
@@ -639,8 +647,8 @@ Status CapturedFunction::Instantiate(
   }
 
   FunctionLibraryRuntime::Handle f_handle;
-  if (ctx->function_handle_cache()) {
-    TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
+  if (params.function_handle_cache) {
+    TF_RETURN_IF_ERROR(params.function_handle_cache->Instantiate(
         metadata_->func().name(), AttrSlice(&metadata_->func().attr()),
         inst_opts, &f_handle));
   } else {
@@ -653,10 +661,11 @@ Status CapturedFunction::Instantiate(
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
   bool is_multi_device;
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
-  return InstantiatedCapturedFunction::Create(
-      lib, f_handle, std::move(ret_types), *ctx->runner(), this,
-      is_multi_device, instantiated_captured_function);
+  TF_RETURN_IF_ERROR(IsMultiDevice(lib, &is_multi_device));
+  *instantiated_captured_function = absl::WrapUnique(
+      new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
+                                       *params.runner, this, is_multi_device));
+  return Status::OK();
 }
 
 Status CapturedFunction::CheckExternalState() const {
@@ -673,7 +682,7 @@ CapturedFunction::CapturedFunction(
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
 
-Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
                                        bool* is_multi_device) const {
   if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
@@ -684,7 +693,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   TF_RETURN_IF_ERROR(
       LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
 
-  Device* current_device = ctx->flr()->device();
+  Device* current_device = flr->device();
   DeviceType current_device_type(current_device->device_type());
   DeviceNameUtils::ParsedName current_device_name;
   if (!DeviceNameUtils::ParseFullName(current_device->name(),
@@ -742,17 +751,6 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   }
 
   *is_multi_device = false;
-  return Status::OK();
-}
-
-/* static */
-Status InstantiatedCapturedFunction::Create(
-    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func, bool is_multi_device,
-    std::unique_ptr<InstantiatedCapturedFunction>* out_function) {
-  out_function->reset(new InstantiatedCapturedFunction(
-      lib, f_handle, ret_types, runner, captured_func, is_multi_device));
   return Status::OK();
 }
 

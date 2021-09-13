@@ -120,6 +120,26 @@ class FunctionMetadata {
   bool use_multi_device_function_ = true;
 };
 
+// Constructs and stores the parameters for the CapturedFunction Instantiate
+// function.
+struct InstantiateCapturedFunctionParams {
+  explicit InstantiateCapturedFunctionParams(IteratorContext* ctx) {
+    flr = ctx->flr();
+    function_handle_cache = ctx->function_handle_cache();
+    runner = ctx->runner();
+  }
+
+  explicit InstantiateCapturedFunctionParams(OpKernelContext* ctx) {
+    flr = ctx->function_library();
+    function_handle_cache = nullptr;
+    runner = ctx->runner();
+  }
+
+  FunctionLibraryRuntime* flr;
+  FunctionHandleCache* function_handle_cache;
+  std::function<void(std::function<void()>)>* runner;
+};
+
 // A `CapturedFunction` encapsulates a TensorFlow function, plus any "captured"
 // arguments that it closed over in the user program.
 class CapturedFunction {
@@ -149,6 +169,10 @@ class CapturedFunction {
   // Instantiates this function for use in the given context, providing an
   // InstantiatedCapturedFunction that can be used to execute functions.
   Status Instantiate(IteratorContext* ctx,
+                     std::unique_ptr<InstantiatedCapturedFunction>*
+                         instantiated_captured_function);
+
+  Status Instantiate(InstantiateCapturedFunctionParams params,
                      std::unique_ptr<InstantiatedCapturedFunction>*
                          instantiated_captured_function);
 
@@ -185,7 +209,8 @@ class CapturedFunction {
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
-  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device) const;
+  Status IsMultiDevice(FunctionLibraryRuntime* flr,
+                       bool* is_multi_device) const;
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
@@ -205,15 +230,6 @@ class CapturedFunction {
 // functions outside of the normal `OpKernel::Compute()` context.
 class InstantiatedCapturedFunction {
  public:
-  // Creates a new instance of the `InstantiatedCapturedFunction` class from the
-  // given inputs.
-  static Status Create(
-      FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-      DataTypeVector ret_types,
-      std::function<void(std::function<void()>)> runner,
-      CapturedFunction* captured_func, bool is_multi_device,
-      std::unique_ptr<InstantiatedCapturedFunction>* out_function);
-
   // Runs the instantiated captured function. This method takes ownership of
   // the tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
@@ -272,6 +288,8 @@ class InstantiatedCapturedFunction {
                 std::shared_ptr<model::Node> node) const;
 
  private:
+  friend class CapturedFunction;
+
   InstantiatedCapturedFunction(
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
