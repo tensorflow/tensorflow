@@ -42,16 +42,16 @@
     for the migration.
 
 * TF Core:
-    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
+    * `tf.Graph.get_name_scope()` now always returns a string, as documented.
         Previously, when called within `name_scope("")` or `name_scope(None)`
         contexts, it returned None; now it returns the empty string.
-    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+    * `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
         isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
         Grappler) optimizations.
-    *   Deprecated and removed attrs() function in shape inference. All
+    * Deprecated and removed attrs() function in shape inference. All
         attributes should be queried by name now (rather than range returned)
         to enable changing the underlying storage there.
-    *   The following Python symbols were accidentally added in earlier versions
+    * The following Python symbols were accidentally added in earlier versions
         of TensorFlow and now are removed. Each symbol has a replacement that
         should be used instead, but note the replacement's argument names are
         different.
@@ -63,10 +63,13 @@
         2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
         this op is typically not necessary, as it is automatically used when
         computing the gradient of `tf.sparse.segment_sum`.
-    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former
+    * Renaming of tensorflow::int64 to int_64_t in numerous places (the former
         is an alias for the latter) which could result in needing to regenerate
         selective op registration headers else execution would fail with
         unregistered kernels error.
+    * Adding a flag `stateful` to `numpy_function`, allowing to give the
+        guarantee to the runtime that the function call is stateless,
+        which allows for more optimizations in the graph.
 
 ## Known Caveats
 
