@@ -250,9 +250,9 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensor5.values, [5, 25, 35])
       self.assertAllEqual(sparse_tensor5.dense_shape, [4, 1])
 
-  @test_util.run_deprecated_v1
   def testSliceEmpty(self):
-    with self.session(use_gpu=False):
+    # SparseSlice does not currently have a GPU kernel.
+    with test_util.force_cpu():
       sp_empty = self._SparseTensor_4x6_empty()
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_empty, [0, 0], [4, 1])
