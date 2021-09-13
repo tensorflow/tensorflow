@@ -262,7 +262,8 @@ def global_norm(t_list, name=None):
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
       isinstance(t_list, six.string_types)):
-    raise TypeError("t_list should be a sequence")
+    raise TypeError("`t_list` should be a sequence of tensors. Received "
+                    f"{type(t_list)}.")
   t_list = list(t_list)
   with ops.name_scope(name, "global_norm", t_list) as name:
     values = [
@@ -340,7 +341,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
       isinstance(t_list, six.string_types)):
-    raise TypeError("t_list should be a sequence")
+    raise TypeError("`t_list` should be a sequence of tensors. Received "
+                    f"{type(t_list)}.")
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
