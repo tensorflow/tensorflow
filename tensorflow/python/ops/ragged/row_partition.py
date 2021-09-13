@@ -226,7 +226,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     >>> print(RowPartition.from_value_rowids(
     ...     value_rowids=[0, 0, 0, 0, 2, 2, 2, 3],
     ...     nrows=4))
-    tf.RowPartition(row_splits=tf.Tensor([0 4 4 7 8], shape=(5,), dtype=int64))
+    tf.RowPartition(row_splits=[0 4 4 7 8])
     """
     # Local import bincount_ops to avoid import-cycle since bincount_ops
     # imports ragged_tensor.
@@ -863,7 +863,11 @@ class RowPartition(composite_tensor.CompositeTensor):
   #=============================================================================
 
   def __repr__(self):
-    return "tf.RowPartition(row_splits=%s)" % (self._row_splits)
+    if self._uniform_row_length is not None:
+      return (f"tf.RowPartition(nrows={self._nrows}, "
+              f"uniform_row_length={self._uniform_row_length})")
+    else:
+      return f"tf.RowPartition(row_splits={self._row_splits})"
 
   #=============================================================================
   # Precomputed Encodings
