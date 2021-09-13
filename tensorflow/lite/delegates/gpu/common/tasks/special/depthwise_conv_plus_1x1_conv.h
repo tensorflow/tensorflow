@@ -39,7 +39,8 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr);
+    const Convolution2DAttributes& conv_attr,
+    ReLUAttributes* relu_attr_ptr = nullptr);
 
 }  // namespace gpu
 }  // namespace tflite
