@@ -431,6 +431,18 @@ class PadOpTest(test.TestCase):
               np.zeros([row[1] for row in paddings_value]),
               self.evaluate(right))
 
+  def testWithLargePadding(self):
+    # Test case for GitHub issue 51908.
+    with self.session():
+      input_tensor = array_ops.zeros([1, 32, 32, 3], dtype=dtypes.float32)
+      paddings = [[125106557, 1415887920],
+                  [747509374, 2136925906],
+                  [413308538, 904601717],
+                  [1900762018, 831358864]]
+      with self.assertRaises((ValueError, errors.InternalError)):
+        res = array_ops.pad(input_tensor,paddings)
+        self.evaluate(res)
+
 
 if __name__ == "__main__":
   test.main()
