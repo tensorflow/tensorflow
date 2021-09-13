@@ -44,29 +44,38 @@ class NumpyFunctionTest(test.TestCase):
       return a + b
 
     @def_function.function
-    def tensor_double_plus_stateless(a, b):
-      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
-      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
+    def numpy_func_stateless(a, b):
+      return numpy_function(plus, [a, b], dtypes.int32, stateful=False)
+
+    @def_function.function
+    def func_stateless(a, b):
+      sum1 = numpy_func_stateless(a, b)
+      sum2 = numpy_func_stateless(a, b)
       return sum1 + sum2
 
-    # different argument
-    _ = tensor_double_plus_stateless(  # executing empty
+    _ = func_stateless(
       constant_op.constant(1),
       constant_op.constant(2),
     )
-    self.assertEqual(call_count, 1)  # +1 as only the first encounter was executed
+
+    self.assertEqual(call_count, 1)  # the second call should be eliminated
+    call_count = 0  # reset
 
     @def_function.function
-    def tensor_double_plus_stateful(a, b):
-      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
-      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
+    def numpy_func_stateful(a, b):
+      return numpy_function(plus, [a, b], dtypes.int32, stateful=True)
+
+    @def_function.function
+    def func_stateful(a, b):
+      sum1 = numpy_func_stateful(a, b)
+      sum2 = numpy_func_stateful(a, b)
       return sum1 + sum2
 
-    _ = tensor_double_plus_stateful( # executing empty
-      constant_op.constant(3),
-      constant_op.constant(4),
-                          )
-    self.assertEqual(call_count, 3)  # +2 as it is stateful, func was both times executed
+    _ = func_stateful(
+      constant_op.constant(1),
+      constant_op.constant(2),
+    )
+    self.assertEqual(call_count, 2)  # 2 as it is stateful, func was both times executed
 
 
 if __name__ == "__main__":

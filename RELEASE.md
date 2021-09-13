@@ -99,10 +99,10 @@ This release contains contributions from many people at Google, as well as:
 
 # Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
-*   `tf.data`:
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+* `tf.data`:
 
     *   The optimization `parallel_batch` now becomes default if not disabled by
         users, which will parallelize copying of batch elements.
@@ -110,7 +110,7 @@ This release contains contributions from many people at Google, as well as:
         that are files. This enables creating hermetic SavedModels when using
         datasets created from files.
 
-*   `tf.lite`:
+* `tf.lite`:
 
     *   GPU
     *   Adds GPU Delegation support for serialization to Java API. This boosts
@@ -118,34 +118,34 @@ This release contains contributions from many people at Google, as well as:
     *   Deprecated `Interpreter::SetNumThreads`, in favor of
         `InterpreterBuilder::SetNumThreads`.
 
-*   Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2
+* Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2
     by enabling tracking of nested keras models created in TF1-style, when used
     with the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
 
-*   `tf.keras`:
+* `tf.keras`:
 
-    *   Preprocessing Layers
-    *   Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
+    * Preprocessing Layers
+    * Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
         layer which applies the hashing trick to the concatenation of crossed
         scalar inputs. This provides a stateless way to try adding feature
         crosses of integer or string data to a model.
-    *   Removed `keras.layers.experimental.preprocessing.CategoryCrossing`.
+    * Removed `keras.layers.experimental.preprocessing.CategoryCrossing`.
         Users should migrate to the `HashedCrossing` layer or use
         `tf.sparse.cross`/`tf.ragged.cross` directly.
-    *   Added additional `standardize` and `split` modes to `TextVectorization`.
+    * Added additional `standardize` and `split` modes to `TextVectorization`.
         *   `standardize="lower"` will lowercase inputs.
         *   `standardize="string_punctuation"` will remove all puncuation.
         *   `split="character"` will split on every unicode character.
-    *   Added an `output_mode` argument to the `Discretization` and `Hashing`
+    * Added an `output_mode` argument to the `Discretization` and `Hashing`
         layers with the same semantics as other preprocessing layers. All
         categorical preprocessing layers now support `output_mode`.
-    *   All preprocessing layer output will follow the compute dtype of a
+    * All preprocessing layer output will follow the compute dtype of a
         `tf.keras.mixed_precision.Policy`, unless constructed with
         `output_mode="int"` in which case output will be `tf.int64`. The output
         type of any preprocessing layer can be controlled individually by
         passing a `dtype` argument to the layer.
-    *   `tf.random.Generator` for keras initializers and all RNG code.
-    *   Added 3 new APIs for enable/disable/check the usage of
+    * `tf.random.Generator` for keras initializers and all RNG code.
+    * Added 3 new APIs for enable/disable/check the usage of
         `tf.random.Generator` in keras backend, which will be the new backend
         for all the RNG in Keras. We plan to switch on the new code path by
         default in tf 2.8, and the behavior change will likely to cause some
@@ -154,21 +154,26 @@ This release contains contributions from many people at Google, as well as:
         legacy behavior if they prefer. In future (eg tf 2.10), we expect to
         totally remove the legacy code path (stateful random Ops), and these 3
         APIs will be removed as well.
-    *   `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
+    * `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
         `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
         deprecated and will be removed in a future release.
-    *   `tf.keras.experimental.SidecarEvaluator` is now available as
+    * `tf.keras.experimental.SidecarEvaluator` is now available as
         `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is
         deprecated and will be removed in a future release.
-    *   Metrics update and collection logic in default `Model.train_step()` is
+    * Metrics update and collection logic in default `Model.train_step()` is
         now customizable via overriding `Model.compute_metrics()`.
-    *   Losses computation logic in default `Model.train_step()` is now
+    * Losses computation logic in default `Model.train_step()` is now
         customizable via overriding `Model.compute_loss()`.
-    *   `jit_compile` added to `Model.compile()` on an opt-in basis to compile
+    * `jit_compile` added to `Model.compile()` on an opt-in basis to compile
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
-*   Deterministic Op Functionality
+    * TF Core:
+      * Adding a flag `stateful` to `numpy_function`, allowing to give the
+        guarantee to the runtime that the function call is stateless,
+        which allows for more optimizations in the graph.
+
+* Deterministic Op Functionality
 
     *   Add determinsitic GPU implementations of:
     *   `tf.function(jit_compile=True)`'s that use `Scatter`.
@@ -228,7 +233,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 
 # Release 2.7.0
