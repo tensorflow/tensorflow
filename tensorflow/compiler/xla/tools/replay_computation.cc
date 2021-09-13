@@ -410,6 +410,7 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
   std::vector<std::string> hlo_module_texts =
     absl::StrSplit(contents, "// -----");
   std::vector<HloSnapshot> snapshots;
+  int start_line = 0;
   for (const std::string& hlo_module_text : hlo_module_texts) {
     StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(hlo_module_text, config);
@@ -420,7 +421,11 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
       snapshots.push_back(snapshot);
     } else {
       LOG(ERROR) << module.status();
+      if (hlo_module_texts.size() > 1) {
+        LOG(ERROR) << "The error below was done on the section starting at line " << start_line;
+      }
     }
+    start_line += absl::c_count(hlo_module_text, '\n');
   }
   if (!snapshots.empty()) {
     return snapshots;
