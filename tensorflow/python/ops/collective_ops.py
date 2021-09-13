@@ -58,8 +58,7 @@ def all_reduce(t,
     ValueError: if any of the input parameter constraints are not met.
   """
   if group_size < 1:
-    raise ValueError('Parameter `group_size` to all_reduce must be at least 1. '
-                     f'Received: {group_size}.')
+    raise ValueError('Parameter group_size to all_reduce must be at least 1.')
   return gen_collective_ops.collective_reduce(
       t,
       group_size=group_size,
@@ -156,8 +155,7 @@ def all_gather(t,
     ValueError: if any of the input parameter constraints are not met.
   """
   if group_size < 1:
-    raise ValueError('Parameter `group_size` to all_gather must be at least 1.'
-                     f' Received: {group_size}.')
+    raise ValueError('Parameter group_size to all_gather must be at least 1.')
   return gen_collective_ops.collective_gather(
       t,
       shape=[0],
@@ -253,16 +251,13 @@ def broadcast_send(t,
   """
   if group_size <= 1:
     raise ValueError(
-        'Parameter `group_size` to broadcast_send must be at least 2. '
-        f'Received: {group_size}.')
+        'Parameter group_size to broadcast_send must be at least 2.')
   if t.shape != shape:
     raise ValueError(
-        'Shape of broadcast_send tensor `t` not equal to declared shape. '
-        f'Received {t.shape}, expected {shape}.')
+        'Shape of broadcast_send tensor not equal to declared shape')
   if t.dtype != dtype:
     raise ValueError(
-        'Type of broadcast_send tensor `t` not equal to declared type. '
-        f'Received {t.dtype}, expected {dtype}.')
+        'Type of broadcast_send tensor not equal to declared type')
   return gen_collective_ops.collective_bcast_send(
       t,
       shape=shape,
@@ -339,8 +334,7 @@ def broadcast_recv(shape,
   """
   if group_size <= 1:
     raise ValueError(
-        'Parameter `group_size` to broadcast_send must be at least 2. '
-        f'Received: {group_size}.')
+        'Parameter group_size to broadcast_send must be at least 2.')
   return gen_collective_ops.collective_bcast_recv(
       shape=shape,
       T=dtype,
