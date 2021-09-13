@@ -46,6 +46,7 @@ cc_library(
         "tf_cpurt_copy_removal.cc",
         "tf_cpurt_fission.cc",
         "tf_cpurt_matmul_specialization.cc",
+        "tf_cpurt_pad_tiled_ops.cc",
         "tf_cpurt_passes.cc",
         "tf_cpurt_peel_tiled_loops.cc",
         "tf_cpurt_symbolic_shape_optimization.cc",

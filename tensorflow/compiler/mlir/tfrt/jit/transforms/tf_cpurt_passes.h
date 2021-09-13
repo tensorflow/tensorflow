@@ -41,6 +41,9 @@ std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForMatMulPass();
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
 std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 
+// Pass to pad linalg ops.
+std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
+
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 

@@ -139,12 +139,14 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
   ];
 }
 
-def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
-  let summary = "Vectorize tiled Linalg ops.";
-  let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
-  let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
-  ];
-  let description = "Vectorizes Linalg ops inside `tiled_loop`.";
+def PadTiledOps : FunctionPass<"tf-cpurt-pad-tiled-ops"> {
+  let summary = "Pad tiled Linalg ops inside `tiled_loop`";
+  let constructor = "tensorflow::CreatePadTiledOpsPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
+def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
+  let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
+  let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}
