@@ -6140,6 +6140,7 @@ filegroup(
         "sparse_xent_op.h",
         "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
+        "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
