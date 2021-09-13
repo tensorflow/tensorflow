@@ -1696,7 +1696,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     // depend on the name being this way for correctness.
     std::string debug_info_key = (name + "@" + function_name).str();
     std::string name_for_name_loc =
-        function_name.empty() ? name.str() : (name + "@" + function_name).str();
+        function_name.empty() ? name.str() : debug_info_key;
     auto name_loc_id = mlir::Identifier::get(name_for_name_loc, context_);
 
     llvm::SmallVector<mlir::Location, 4> locations;
@@ -1754,9 +1754,6 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
   if (node.type_string() == "NextIteration")
     return create_location(node.name(), function_name_for_debug_info_);
 
-  if (node.GetStackTrace())
-    return create_location(node.name(), function_name_for_debug_info_);
-
   const auto& node_def = node.def();
   auto original_nodes =
       node_def.experimental_debug_info().original_node_names();
@@ -1772,13 +1769,13 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     llvm::SmallVector<mlir::Location, 4> node_locations;
     node_locations.reserve(original_nodes.size() + 1);
 
-    // store the names in the experimental_debug_info
+    // Retrieve the names from the experimental_debug_info
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_locations.push_back(create_location(node_name, func_name));
     }
-    // store the name of the node_def
+    // Retrieve the name of the node_def
     node_locations.push_back(
         create_location(node.name(), function_name_for_debug_info_));
     return mlir::FusedLoc::get(context_, node_locations);

@@ -4869,7 +4869,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(get_v_plus_one(), 2.0)
 
   def testOpExpandErrorMessage(self):
-    self.skipTest('b/198550525: Currently failing with mlir bridge enabled.')
     @def_function.function
     def test_fn():
       if array_ops.constant(False):
