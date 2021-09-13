@@ -920,7 +920,7 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    ag_logging.warn(
+    ag_logging.warning(
         'Large unrolled loop detected. Did you mean to use a TF loop?'
         ' The following ops were created after iteration %s: %s'
         '\nSee'
