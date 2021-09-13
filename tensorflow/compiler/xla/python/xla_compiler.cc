@@ -638,7 +638,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_device_assignment)
       .def_property("use_spmd_partitioning",
                     &ExecutableBuildOptions::use_spmd_partitioning,
-                    &ExecutableBuildOptions::set_use_spmd_partitioning);
+                    &ExecutableBuildOptions::set_use_spmd_partitioning)
+      .def_property(
+          "allow_spmd_sharding_propagation_to_output",
+          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
+          &ExecutableBuildOptions::
+              set_allow_spmd_sharding_propagation_to_output);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
