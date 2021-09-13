@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -228,6 +229,12 @@ absl::Status GPUSubgraphFromGraph(
                  consumed_nodes, gpu_subgraph)
           .ok()) {
     *name = "fully_connected_x2_and_add";
+    return absl::OkStatus();
+  }
+  if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
+                            consumed_nodes, gpu_subgraph)
+          .ok()) {
+    *name = "slice_mul_mean_concat";
     return absl::OkStatus();
   }
   return absl::NotFoundError("No special combination.");
