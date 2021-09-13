@@ -3167,6 +3167,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
       DoesConvolutionFeedReduceWindowOrSelectAndScatter(convolution);
 
   if (reduce_window_or_select_and_scatter != nullptr &&
+      reduce_window_or_select_and_scatter->shape().IsArray() &&
       reduce_window_or_select_and_scatter->shape().rank() ==
           convolution->shape().rank()) {
     VLOG(2)
