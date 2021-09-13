@@ -69,6 +69,11 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset,
                                [components] * (inner_count * outer_count))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).repeat(1, name="repeat")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                   parameterized.TestCase):

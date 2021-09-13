@@ -1341,9 +1341,11 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
             << output.DebugString();
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
-      return Status(status.code(),
-                    StrCat("Failed to add output for node ", node_def.name(),
-                           ": ", status.error_message()));
+      return errors::Create(
+          status.code(),
+          StrCat("Failed to add output for node ", node_def.name(), ": ",
+                 status.error_message()),
+          errors::GetPayloads(status));
     }
   }
   return Status::OK();
@@ -1358,9 +1360,9 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   if (use_implicit_batch_) {
     status = MaybeUpdateBatchSize(batch_size);
     if (!status.ok()) {
-      return Status(status.code(),
-                    StrCat("Batch size doesn't match for tensor ", name, ": ",
-                           status.error_message()));
+      return errors::CreateWithUpdatedMessage(
+          status, StrCat("Batch size doesn't match for tensor ", name, ": ",
+                         status.error_message()));
     }
   }
   ITensorProxyPtr tensor = network()->addInput(name.c_str(), dtype, dims);
@@ -1370,8 +1372,9 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   }
   status = AddTensorOrWeights(name, TRT_TensorOrWeights(tensor));
   if (!status.ok()) {
-    return Status(status.code(), StrCat("Failed to add input tensor ", name,
-                                        ": ", status.error_message()));
+    return errors::CreateWithUpdatedMessage(
+        status, StrCat("Failed to add input tensor ", name, ": ",
+                       status.error_message()));
   }
   return Status::OK();
 }
@@ -6928,7 +6931,7 @@ Status ConvertGraphDefToEngine(
             StrCat("Validation failed for ", node_name, " and input slot ",
                    slot_number, ": ", status.error_message());
         LOG_WARNING_WITH_PREFIX << error_message;
-        return Status(status.code(), error_message);
+        return errors::CreateWithUpdatedMessage(status, error_message);
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
               << DebugString(trt_dims);

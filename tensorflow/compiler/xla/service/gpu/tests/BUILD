@@ -182,9 +182,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "gpu_spmd_single_partition_test",
+    name = "gpu_spmd_e2e_compile_test",
     size = "small",
-    srcs = ["gpu_spmd_single_partition_test.cc"],
+    srcs = ["gpu_spmd_e2e_compile_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
@@ -661,7 +661,6 @@ xla_test(
     name = "bef_executable_test",
     srcs = ["bef_executable_test.cc"],
     backends = ["gpu"],
-    tags = ["notap"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",

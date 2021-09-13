@@ -261,7 +261,7 @@ std::vector<char> QuantizedBinaryElementwiseTester::CreateTfLiteModel(
       builder.CreateVector(operators.data(), operators.size()));
 
   flatbuffers::Offset<flatbuffers::String> description =
-      builder.CreateString("Quantized Add operator model");
+      builder.CreateString("Quantized binary operator model");
 
   flatbuffers::Offset<Model> model_buffer = CreateModel(
       builder, TFLITE_SCHEMA_VERSION,

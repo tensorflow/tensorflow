@@ -52,8 +52,8 @@ def OptimizeGraph(config_proto,
         process that might not know some of the recently added attributes.
   """
   if not isinstance(config_proto, config_pb2.ConfigProto):
-    raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
-                    type(config_proto))
+    raise TypeError('Argument `config_proto` should be a tf.ConfigProto, '
+                    f'received type: {type(config_proto).__name__}')
   if cluster is not None:
     out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
                                         config_proto.SerializeToString(),

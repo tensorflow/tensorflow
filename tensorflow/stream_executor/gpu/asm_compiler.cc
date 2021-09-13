@@ -99,27 +99,22 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
   // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
   // PTX 6.0.  An older ptxas will just fail to compile any of our code.
   //
-  // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
-  // address calculations with large offsets (e.g. "load ptr + large_constant"),
-  // b/70245379.
-  //
-  // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
-  // that appears related to address calculations, b/111107644.  ptxas 9.2.88
-  // appears to work, as far as we can tell.
+  // ptxas versions before the version that shipped with CUDA 11.1 are known to
+  // miscompile XLA code.
   if (vmaj < 9) {
     LOG(ERROR)
         << "You are using ptxas 8.x, but TF requires ptxas 9.x (and strongly "
-           "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
-           "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
-           "binary is sufficient.";
-  } else if (std::make_tuple(vmaj, vmin, vdot) < std::make_tuple(9, 2, 88)) {
+           "prefers >= 11.1).  Compilation of XLA kernels below will likely "
+           "fail.\n\nYou may not need to update CUDA; cherry-picking the ptxas "
+           "binary is often sufficient.";
+  } else if (std::make_tuple(vmaj, vmin) < std::make_tuple(11, 1)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which is older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+        << ", which is older than 11.1. ptxas before 11.1 is known to "
            "miscompile XLA code, leading to incorrect results or "
-           "invalid-address errors.\n\nYou do not need to update to CUDA "
-           "9.2.88; cherry-picking the ptxas binary is sufficient.";
+           "invalid-address errors.\n\nYou may not need to update to CUDA "
+           "11.1; cherry-picking the ptxas binary is often sufficient.";
   }
 }
 

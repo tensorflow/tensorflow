@@ -483,4 +483,8 @@ const Backend& HloRunner::backend() const {
   return const_cast<HloRunner*>(this)->backend();
 }
 
+absl::string_view HloRunner::Name() const {
+  return backend_->platform()->Name();
+}
+
 }  // namespace xla

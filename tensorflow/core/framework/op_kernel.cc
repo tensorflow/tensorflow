@@ -60,6 +60,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* kJitKernelLabel = "JITCompiledKernel";
+const char* kDisableJitKernelsEnvVar = "TF_DISABLE_JIT_KERNELS";
+
 namespace {
 
 Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
@@ -1162,6 +1165,54 @@ void LoadDynamicKernels() {
   absl::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
 }
 
+static string Key(StringPiece op_type, const DeviceType& device_type,
+                  StringPiece label) {
+  return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
+                         label);
+}
+
+// Provide a way for users to disable JIT kernels for a transitional period.
+// Until this is removed, this function also removes the JIT label that is added
+// to JIT kernels during the static registration, to allow them to be found
+// during lookup as normal kernels.
+void SetupOrDisableJit(KernelRegistry* registry) {
+  std::unordered_multimap<string, KernelRegistration> jit_kernels;
+  bool remove_jit_kernels =
+      absl::StrContains(getenv(kDisableJitKernelsEnvVar), "1");
+
+  mutex_lock l(registry->mu);
+  std::unordered_multimap<string, KernelRegistration>& all_kernels =
+      registry->registry;
+  auto it = all_kernels.begin();
+  while (it != all_kernels.end()) {
+    if (absl::StrContains(it->second.def.label(), kJitKernelLabel)) {
+      // Remove all kernels that have the jit label. They will be added back
+      // without the label if they are not to be disabled.
+      KernelDef def_without_label = it->second.def;
+      def_without_label.set_label("");
+
+      if (!remove_jit_kernels) {
+        jit_kernels.emplace(
+            Key(def_without_label.op(),
+                DeviceType(def_without_label.device_type()),
+                def_without_label.label()),
+            KernelRegistration(def_without_label, it->second.kernel_class_name,
+                               std::move(it->second.factory)));
+      }
+
+      it = all_kernels.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  // Add back kernels if they are not disabled. This new key-value pair have all
+  // references to the label removed.
+  for (auto& jit_kernel : jit_kernels) {
+    all_kernels.insert(std::move(jit_kernel));
+  }
+}
+
 void* GlobalKernelRegistry() {
   static KernelRegistry* global_kernel_registry = []() {
     KernelRegistry* registry = new KernelRegistry;
@@ -1175,13 +1226,12 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
 #ifdef AUTOLOAD_DYNAMIC_KERNELS
   LoadDynamicKernels();
 #endif  // AUTOLOAD_DYNAMIC_KERNELS
-  return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
-}
-
-static string Key(StringPiece op_type, const DeviceType& device_type,
-                  StringPiece label) {
-  return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
-                         label);
+  auto* registry = reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+  // Update or disable JIT kernels based on user configuration. This is a
+  // temporary fallback as part of the initial release of JIT kernels.
+  static absl::once_flag setup_or_disable_jit;
+  absl::call_once(setup_or_disable_jit, SetupOrDisableJit, registry);
+  return registry;
 }
 
 namespace kernel_factory {

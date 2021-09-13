@@ -274,6 +274,20 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           job_name="")
 
   @combinations.generate(test_base.default_test_combinations())
+  def testExplicitProtocolFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    range_ds = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   range_ds)
+    ds = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id,
+        processing_mode="parallel_epochs",
+        element_spec=range_ds.element_spec,
+        service=cluster.dispatcher.target,
+        data_transfer_protocol="grpc")
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testNonStringJobNameDistribute(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     with self.assertRaisesRegex(ValueError, "job_name must be a string"):

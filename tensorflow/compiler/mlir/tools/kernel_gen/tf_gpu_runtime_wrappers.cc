@@ -44,13 +44,13 @@ using GPUResult = hipError_t;
 void GPUReportIfError(GPUResult result, tensorflow::OpKernelContext *ctx,
                       const char *expr_str) {
   if (!result) return;
+  const char *name = nullptr;
 
 #if GOOGLE_CUDA
-  const char *name = nullptr;
   cuGetErrorName(result, &name);
 #endif
 #if TENSORFLOW_USE_ROCM
-  const char *name = hipGetErrorName(result);
+  name = hipGetErrorName(result);
 #endif
 
   if (!name) name = "<unknown>";

@@ -62,7 +62,9 @@ void RandomSeedGenerator::Reset() {
 
 AnonymousSeedGeneratorHandleOp::AnonymousSeedGeneratorHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<SeedGeneratorManager>(ctx) {}
+    : AnonymousResourceOp<SeedGeneratorManager>(ctx,
+                                                /* ref_counting */ false,
+                                                /* return_deleter */ true) {}
 
 void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   int64_t seed;

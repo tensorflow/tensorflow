@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -155,6 +156,39 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
   }
   EXPECT_EQ(number_instantiated + 1,
             GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+  EXPECT_EQ(status.code(), error::OK);
+}
+
+TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
+                                           /*use_cuda_malloc_async=*/true);
+  setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
+  std::vector<std::unique_ptr<Device>> devices;
+  Status status;
+
+  int number_instantiated =
+      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+  {  // The new scope is to trigger the destruction of the object.
+    status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+        opts, kDeviceNamePrefix, &devices);
+    EXPECT_EQ(devices.size(), 1);
+    Device* device = devices[0].get();
+    auto* device_info = device->tensorflow_gpu_device_info();
+    CHECK(device_info);
+
+    AllocatorAttributes allocator_attributes = AllocatorAttributes();
+    allocator_attributes.set_gpu_compatible(true);
+    Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
+    void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment, 1024);
+    EXPECT_NE(ptr, nullptr);
+    allocator->DeallocateRaw(ptr);
+  }
+
+  unsetenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC");
+
+  EXPECT_EQ(number_instantiated + 1,
+            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+
   EXPECT_EQ(status.code(), error::OK);
 }
 

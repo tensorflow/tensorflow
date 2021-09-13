@@ -208,7 +208,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RowPartition` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or greater than or equal to zero if
-        `value_rowids` is empty). Defaults to `value_rowids[-1]` (or zero if
+        `value_rowids` is empty). Defaults to `value_rowids[-1] + 1` (or zero if
         `value_rowids` is empty).
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.

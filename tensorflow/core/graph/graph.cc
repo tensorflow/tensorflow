@@ -465,9 +465,6 @@ void Graph::Copy(const Graph& src) {
     Node* dst_copy = node_map[e->dst()];
     AddEdge(src_copy, e->src_output(), dst_copy, e->dst_input());
   }
-
-  types_ = src.types_;
-  node_name_to_out_type_ = src.node_name_to_out_type_;
 }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
@@ -898,26 +895,6 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
     result[n->name()] = n;
   }
   return result;
-}
-
-void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
-  TypeRef t = {std::make_shared<FullTypeDef>(ft)};
-  auto ret = types_.emplace(t);
-  if (ret.second == false) {
-    t = *ret.first;
-  }
-
-  node_name_to_out_type_.emplace(string(name), t);
-}
-
-void Graph::NodeType(StringPiece name, FullTypeDef** result) {
-  *result = nullptr;
-  auto it = node_name_to_out_type_.find(string(name));
-  if (it == node_name_to_out_type_.end()) {
-    *result = nullptr;
-    return;
-  }
-  *result = it->second.full_type.get();
 }
 
 std::string Edge::DebugString() const {

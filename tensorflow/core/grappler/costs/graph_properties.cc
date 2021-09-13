@@ -611,6 +611,10 @@ bool IsAllowListedOpTypeForEvaluateNode(const string& op_type) {
           "Range",
           "Fill",
           "Cast",
+          "Prod",
+          "Unpack",
+          "GatherV2",
+          "Pack",
       }));
   return kOpTpeAllowlist->find(op_type) != kOpTpeAllowlist->end();
 }

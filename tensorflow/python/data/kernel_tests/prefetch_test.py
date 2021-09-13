@@ -75,6 +75,11 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).prefetch(1, name="prefetch")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                              parameterized.TestCase):

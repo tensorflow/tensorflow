@@ -1770,6 +1770,34 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
 
 // -----
 
+func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  // CHECK: "tfl.transpose"
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  return %1 : tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // CHECK: "tfl.transpose"
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype_mismatch_axis(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // expected-error @+1 {{op has mismatched quantized axes of input and output}}
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
 func @anyWithI64Axis(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
   // expected-error @+1 {{tfl.reduce_any' op operand #1 must be tensor of 32-bit signless integer values}}
   %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>

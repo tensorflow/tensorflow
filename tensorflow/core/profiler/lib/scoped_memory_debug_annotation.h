@@ -40,20 +40,24 @@ struct MemoryDebugAnnotation {
 class ScopedMemoryDebugAnnotation {
  public:
   static const MemoryDebugAnnotation& CurrentAnnotation() {
-    return annotation_;
+    return *ThreadMemoryDebugAnnotation();
   }
 
   explicit ScopedMemoryDebugAnnotation(const char* op_name) {
-    last_annotation_ = annotation_;
-    annotation_ = MemoryDebugAnnotation();
-    annotation_.pending_op_name = op_name;
+    MemoryDebugAnnotation* thread_local_annotation =
+        ThreadMemoryDebugAnnotation();
+    last_annotation_ = *thread_local_annotation;
+    *thread_local_annotation = MemoryDebugAnnotation();
+    thread_local_annotation->pending_op_name = op_name;
   }
 
   explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id) {
-    last_annotation_ = annotation_;
-    annotation_ = MemoryDebugAnnotation();
-    annotation_.pending_op_name = op_name;
-    annotation_.pending_step_id = step_id;
+    MemoryDebugAnnotation* thread_local_annotation =
+        ThreadMemoryDebugAnnotation();
+    last_annotation_ = *thread_local_annotation;
+    *thread_local_annotation = MemoryDebugAnnotation();
+    thread_local_annotation->pending_op_name = op_name;
+    thread_local_annotation->pending_step_id = step_id;
   }
 
   // This constructor keeps the pending_op_name and pending_step_id from parent
@@ -61,32 +65,38 @@ class ScopedMemoryDebugAnnotation {
   explicit ScopedMemoryDebugAnnotation(
       const char* op_name, const char* region_type, int32_t data_type,
       const std::function<std::string()>& pending_shape_func) {
-    last_annotation_ = annotation_;
-    if (!annotation_.pending_op_name) {
-      annotation_.pending_op_name = op_name;
+    MemoryDebugAnnotation* thread_local_annotation =
+        ThreadMemoryDebugAnnotation();
+    last_annotation_ = *thread_local_annotation;
+    if (!thread_local_annotation->pending_op_name) {
+      thread_local_annotation->pending_op_name = op_name;
     }
-    annotation_.pending_region_type = region_type;
-    annotation_.pending_data_type = data_type;
-    annotation_.pending_shape_func = pending_shape_func;
+    thread_local_annotation->pending_region_type = region_type;
+    thread_local_annotation->pending_data_type = data_type;
+    thread_local_annotation->pending_shape_func = pending_shape_func;
   }
 
   explicit ScopedMemoryDebugAnnotation(
       const char* op_name, int64_t step_id, const char* region_type,
       int32_t data_type,
       const std::function<std::string()>& pending_shape_func) {
-    last_annotation_ = annotation_;
-    annotation_.pending_op_name = op_name;
-    annotation_.pending_step_id = step_id;
-    annotation_.pending_region_type = region_type;
-    annotation_.pending_data_type = data_type;
-    annotation_.pending_shape_func = pending_shape_func;
+    MemoryDebugAnnotation* thread_local_annotation =
+        ThreadMemoryDebugAnnotation();
+    last_annotation_ = *thread_local_annotation;
+    thread_local_annotation->pending_op_name = op_name;
+    thread_local_annotation->pending_step_id = step_id;
+    thread_local_annotation->pending_region_type = region_type;
+    thread_local_annotation->pending_data_type = data_type;
+    thread_local_annotation->pending_shape_func = pending_shape_func;
   }
 
-  ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
+  ~ScopedMemoryDebugAnnotation() {
+    *ThreadMemoryDebugAnnotation() = last_annotation_;
+  }
 
  private:
-  // Stores the current annotations.
-  static thread_local MemoryDebugAnnotation annotation_;
+  // Returns a pointer to the MemoryDebugAnnotation for the current thread.
+  static MemoryDebugAnnotation* ThreadMemoryDebugAnnotation();
 
   // Stores the previous values in case the annotations are nested.
   MemoryDebugAnnotation last_annotation_;

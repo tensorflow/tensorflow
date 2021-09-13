@@ -54,13 +54,18 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
+constexpr int64_t kRetryIntervalMicros = 5 * 1000 * 1000;        // 5 seconds.
+constexpr int64_t kDefaultHeartBeatIntervalMs = 30 * 1000;       // 30 seconds.
+constexpr int64_t kDefaultDispatcherTimeoutMs = 60 * 60 * 1000;  // 1 hour.
+
+using WorkerConfig = experimental::WorkerConfig;
 
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
@@ -86,15 +91,25 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
   *resp.mutable_compressed() = *compressed;
   return Status::OK();
 }
+
+WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
+  WorkerConfig new_config(config);
+  if (new_config.heartbeat_interval_ms() == 0) {
+    new_config.set_heartbeat_interval_ms(kDefaultHeartBeatIntervalMs);
+  }
+  if (new_config.dispatcher_timeout_ms() == 0) {
+    new_config.set_dispatcher_timeout_ms(kDefaultDispatcherTimeoutMs);
+  }
+  return new_config;
+}
 }  // namespace
 
 mutex LocalWorkers::mu_(LINKER_INITIALIZED);
 LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
     new AddressToWorkerMap();
 
-DataServiceWorkerImpl::DataServiceWorkerImpl(
-    const experimental::WorkerConfig& config)
-    : config_(config) {
+DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
+    : config_(ApplyWorkerDefaults(config)) {
   metrics::RecordTFDataServiceWorkerCreated();
 }
 

@@ -527,7 +527,8 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
     const MemorySchedulerAlgorithm& computation_scheduler,
     const MemorySchedulerPostprocessor& postprocessor) {
   return [computation_scheduler, postprocessor](
-             HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+             const HloModule* module,
+             const TuplePointsToAnalysis& points_to_analysis,
              const HloAliasAnalysis& alias_analysis,
              const LogicalBuffer::SizeFunction& size_func,
              int64_t* peak_memory) -> StatusOr<HloSchedule> {
@@ -658,7 +659,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
 }
 
 StatusOr<HloSchedule> DefaultModuleScheduler(
-    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+    const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function, int64_t* peak_memory) {
   // We try a few schedulers and choose whichever returns a lower min-memory,
@@ -716,7 +717,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
 }
 
 StatusOr<HloSchedule> ScheduleModule(
-    HloModule* module, const BufferValue::SizeFunction& size_function,
+    const HloModule* module, const BufferValue::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm, int64_t* peak_memory) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));

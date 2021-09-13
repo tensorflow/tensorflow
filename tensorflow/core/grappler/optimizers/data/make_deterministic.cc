@@ -35,11 +35,14 @@ constexpr char kInterleaveOp[] = "InterleaveDataset";
 constexpr char kParallelInterleaveOp[] = "ParallelInterleaveDataset";
 constexpr char kLegacyParallelInterleaveOp[] =
     "LegacyParallelInterleaveDatasetV2";
+constexpr char kMapOp[] = "MapDataset";
+constexpr char kParallelMapOp[] = "ParallelMapDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 
 // List of stateful ops which do not introduce nondeterminism when put inside a
-// ParallelInterleave dataset. All ops which do not mutate state can be put in
-// this list, even if such ops read state. Note that random ops implicitly
-// mutate state and cannot be put in this list.
+// parallel interleave or map dataset. All ops which do not mutate state can be
+// put in this list, even if such ops read state. Note that random ops
+// implicitly mutate state and cannot be put in this list.
 // TODO(reedwm): Expand this list.
 constexpr std::array<const char*, 7> kDeterministicStatefulOps = {
     "TextLineDataset", "FixedLengthRecordDataset",
@@ -53,6 +56,14 @@ bool IsParallelInterleave(const std::string& op) {
          op == kLegacyParallelInterleaveOp;
 }
 
+bool IsParallelMap(const std::string& op) {
+  return data::MatchesAnyVersion(kParallelMapOp, op);
+}
+
+bool IsMapAndBatch(const std::string& op) {
+  return data::MatchesAnyVersion(kMapAndBatchOp, op);
+}
+
 bool IsDeterministicStatefulOp(const std::string& op) {
   for (auto stateful_op : kDeterministicStatefulOps) {
     if (data::MatchesAnyVersion(stateful_op, op)) {
@@ -62,55 +73,80 @@ bool IsDeterministicStatefulOp(const std::string& op) {
   return false;
 }
 
-Status ConvertToNonParallelInterleave(const string& node_name,
-                                      MutableGraphView* graph) {
+NodeDef* GetMutableNode(const string& node_name, MutableGraphView* graph) {
   int index = graph_utils::FindGraphNodeWithName(node_name, *graph->graph());
   DCHECK_NE(index, -1) << "Failed to find node " << node_name
                        << " in the optimized graph.";
-  NodeDef* interleave = graph->graph()->mutable_node(index);
-  interleave->set_op(kInterleaveOp);
+  return graph->graph()->mutable_node(index);
+}
 
-  auto Targuments = interleave->attr().find("Targuments");
-  if (Targuments == interleave->attr().end()) {
-    return errors::Internal(
-        "Failed to find Targuments attribute for "
-        "interleave node ",
-        node_name);
+// Converts a ParallelInterleaveDataset or ParallelMapDataset to the equivalent
+// non-parallel version, to make it deterministic.
+Status ConvertToNonParallel(const string& node_name, MutableGraphView* graph) {
+  NodeDef* node = GetMutableNode(node_name, graph);
+
+  auto Targuments = node->attr().find("Targuments");
+  if (Targuments == node->attr().end()) {
+    return errors::Internal("Failed to find Targuments attribute for node ",
+                            node_name);
   }
-  const int num_inputs_after_rewrite =
-      3 + Targuments->second.list().type_size();
 
-  // ParallelInterleave ops take in more inputs than Interleave, so turn extra
-  // inputs into control inputs. These extra inputs are for performance and are
-  // safe to ignore.
+  int num_inputs_after_rewrite;
+  if (IsParallelInterleave(node->op())) {
+    node->set_op(kInterleaveOp);
+    num_inputs_after_rewrite = 3 + Targuments->second.list().type_size();
+  } else {
+    DCHECK(IsParallelMap(node->op()));
+    node->set_op(kMapOp);
+    num_inputs_after_rewrite = 1 + Targuments->second.list().type_size();
+  }
+
+  // ParallelInterleave and ParallelMap ops take in more inputs than the
+  // corresponding non-parallel versions, so turn extra inputs into control
+  // inputs. These extra inputs are for performance and are safe to ignore.
   int inputs_processed = 0;
-  for (int i = 0; i < interleave->input_size(); i++) {
-    std::string input = interleave->input(i);
+  for (int i = 0; i < node->input_size(); i++) {
+    std::string input = node->input(i);
     if (IsControlInput(input)) {
       continue;
     }
     if (inputs_processed >= num_inputs_after_rewrite) {
-      interleave->set_input(i, absl::StrCat("^", input));
+      node->set_input(i, absl::StrCat("^", input));
     }
     inputs_processed++;
   }
   if (inputs_processed < num_inputs_after_rewrite) {
-    return errors::Internal("Found only ", inputs_processed,
-                            " inputs to interleave node ", node_name,
-                            ", but expected to find at least ",
+    return errors::Internal("Found only ", inputs_processed, " inputs to node ",
+                            node_name, ", but expected to find at least ",
                             num_inputs_after_rewrite);
   }
 
-  // Remove extra attributes not in Interleave.
-  interleave->mutable_attr()->erase("deterministic");
-  interleave->mutable_attr()->erase("sloppy");
+  // Remove extra attributes not in Interleave or Map.
+  node->mutable_attr()->erase("deterministic");
+  node->mutable_attr()->erase("sloppy");
   return Status::OK();
 }
 
-// Returns true if the ParallelInterleave with the given FunctionDef should be
-// rewritten to Interleave. Recursively checks any function attributes of ops
-// within the function. "functions_processed" is the list of functions already
-// processed, so that the same function is not recursively checked twice.
+Status ConvertMapAndBatch(const string& node_name, MutableGraphView* graph) {
+  NodeDef* node = GetMutableNode(node_name, graph);
+  auto Targuments = node->attr().find("Targuments");
+  if (Targuments == node->attr().end()) {
+    return errors::Internal("Failed to find Targuments attribute for node ",
+                            node_name);
+  }
+
+  int num_parallel_calls_index = 2 + Targuments->second.list().type_size();
+  node->add_input(absl::StrCat("^", node->input(num_parallel_calls_index)));
+  NodeDef* tmp = graph_utils::AddScalarConstNode<int64_t>(1, graph);
+  node->set_input(num_parallel_calls_index, tmp->name());
+  return Status::OK();
+}
+
+// Returns true if the ParallelInterleave or ParallelMap with the given
+// FunctionDef should be rewritten to the non-parallel version. Recursively
+// checks any function attributes of ops within the function.
+// "functions_processed" is the list of functions already processed, so that the
+// same function is not recursively checked twice.
 bool FunctionMayIntroduceNondeterminism(
     const FunctionLibraryDefinition& library, const std::string& function_name,
     absl::flat_hash_set<std::string>* functions_processed) {
@@ -121,8 +157,7 @@ bool FunctionMayIntroduceNondeterminism(
   const FunctionDef* function_def = library.Find(function_name);
   if (!function_def) {
     VLOG(2) << "Could not look up function " << function_name
-            << " in FunctionLibraryDefinition, so rewriting interleave op to "
-               "be safe";
+            << " in FunctionLibraryDefinition, so rewriting op to be safe";
     return true;
   }
   for (const NodeDef& node_def : function_def->node_def()) {
@@ -130,8 +165,7 @@ bool FunctionMayIntroduceNondeterminism(
     Status s = library.LookUp(node_def.op(), &op_reg_data);
     if (!s.ok()) {
       VLOG(2) << "Could not look up op " << node_def.op()
-              << " in FunctionLibraryDefinition, so rewriting interleave op to "
-                 "be safe";
+              << " in FunctionLibraryDefinition, so rewriting op to be safe";
       return true;
     }
     bool is_function_op = op_reg_data->is_function_op;
@@ -189,19 +223,36 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
                                              item.graph.library());
 
   for (const NodeDef& node : item.graph.node()) {
-    if (!IsParallelInterleave(node.op())) {
+    if (graph_utils::HasSloppyAttr(node.op())) {
+      NodeDef* mutable_node = GetMutableNode(node.name(), &graph);
+      (*mutable_node->mutable_attr())["sloppy"].set_b(false);
+      stats->num_changes++;
+    }
+    if (graph_utils::HasDeterministicAttr(node.op())) {
+      NodeDef* mutable_node = GetMutableNode(node.name(), &graph);
+      (*mutable_node->mutable_attr())["deterministic"].set_s("true");
+      stats->num_changes++;
+    }
+    if (!IsParallelInterleave(node.op()) && !IsParallelMap(node.op()) &&
+        !IsMapAndBatch(node.op())) {
       continue;
     }
     if (!FunctionMayIntroduceNondeterminism(
             function_library, node.attr().at("f").func().name())) {
       VLOG(1) << "Not rewriting node " << node.name() << " (" << node.op()
-              << ") into a non-parallel InterleaveDataset";
+              << ") into the non-parallel version";
       continue;
     }
 
-    VLOG(1) << "Rewriting node " << node.name() << " (" << node.op()
-            << ") into a non-parallel InterleaveDataset";
-    TF_RETURN_IF_ERROR(ConvertToNonParallelInterleave(node.name(), &graph));
+    if (IsMapAndBatch(node.op())) {
+      VLOG(1) << "Changing num_parallel_calls attr of node " << node.name()
+              << " (" << node.op() << ") to 1";
+      TF_RETURN_IF_ERROR(ConvertMapAndBatch(node.name(), &graph));
+    } else {
+      VLOG(1) << "Rewriting node " << node.name() << " (" << node.op()
+              << ") into the non-parallel version";
+      TF_RETURN_IF_ERROR(ConvertToNonParallel(node.name(), &graph));
+    }
     stats->num_changes++;
   }
 

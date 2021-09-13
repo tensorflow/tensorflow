@@ -121,7 +121,6 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
         data::SerializationContext::Params params;
         params.resource_mgr = resource_manager;
         params.device_name = device_name;
-        params.serialize_data_tensors = true;
         data::SerializationContext serialization_ctx(params);
         Node* dataset_node;
         TF_RETURN_IF_ERROR(

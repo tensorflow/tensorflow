@@ -48,7 +48,11 @@ TfLiteIntArray* CreateDimensionsFromTensor(const TfLiteTensor* tensor) {
   const int output_dims = tflite::SizeOfDimension(tensor, 0);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_dims);
   for (int i = 0; i < output_dims; i++) {
-    output_shape->data[i] = tensor->data.i32[i];
+    if (tensor->type == kTfLiteInt32) {
+      output_shape->data[i] = tensor->data.i32[i];
+    } else {
+      output_shape->data[i] = tensor->data.i64[i];
+    }
   }
   return output_shape;
 }
@@ -68,6 +72,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Input is a shape tensor.
   const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteInt32 || input->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, tflite::NumDimensions(input), 1);
   TfLiteTensor* output = tflite::GetOutput(context, node, 0);
   if (!IsConstantTensor(input)) {

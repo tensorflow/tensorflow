@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/errors.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/public/version.h"
 
 // On Windows, disable some macros that would break compile
 #if defined(PLATFORM_WINDOWS)
@@ -266,6 +268,13 @@ Status GraphDefBuilderWrapper::AddDataset(
   if (has_output_types_attr) {
     opts = absl::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr("output_types", dataset->output_dtypes()));
+  }
+  bool has_metadata_attr = HasAttr(type_string, "metadata");
+  if (has_metadata_attr) {
+    std::string serialized_metadata;
+    dataset->metadata().SerializeToString(&serialized_metadata);
+    opts = absl::make_unique<GraphDefBuilder::Options>(
+        opts->WithAttr("metadata", serialized_metadata));
   }
   for (const auto& attr : attrs) {
     opts = absl::make_unique<GraphDefBuilder::Options>(
@@ -562,7 +571,7 @@ void MergeOptions(const protobuf::MessageLite& source,
 
 }  // namespace internal
 
-void DatasetBase::Initialize() {
+void DatasetBase::Initialize(const Metadata& metadata) {
   Status s = ComputeNumSources();
   if (!s.ok()) {
     LOG(ERROR) << s;
@@ -570,6 +579,16 @@ void DatasetBase::Initialize() {
   s = MergeOptionsFromInputs();
   if (!s.ok()) {
     LOG(ERROR) << s;
+  }
+  s = ComputeCardinality();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
+  metadata_ = metadata;
+  if (metadata_.name() == "") {
+    static std::atomic<int64_t> id_counter(0);
+    *metadata_.mutable_name() =
+        strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
   }
 }
 
@@ -598,6 +617,25 @@ Status DatasetBase::ComputeNumSources() {
           input->type_string());
     }
     num_sources_ += input->num_sources();
+  }
+  return Status::OK();
+}
+
+Status DatasetBase::ComputeCardinality() {
+  cardinality_ = this->Cardinality();
+  return Status::OK();
+}
+
+Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
+  if (cardinality_ == kInfiniteCardinality ||
+      cardinality_ == kUnknownCardinality) {
+    return tensorflow::errors::FailedPrecondition(
+        "Dataset of type ", this->DebugString(), "has cardinality ",
+        cardinality_, "which does not support random access.");
+  }
+  if (index < 0 || index >= cardinality_) {
+    return errors::OutOfRange("Index out of range [0, ", cardinality_,
+                              "):", index);
   }
   return Status::OK();
 }
@@ -688,7 +726,7 @@ Status DatasetBase::InputDatasets(
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
+  if (errors::IsUnimplemented(status) && ctx->is_graph_rewrite()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -722,7 +760,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
       return s;
     }
   }
-  if (t.dtype() == DT_RESOURCE && ctx->serialize_data_tensors()) {
+  if (t.dtype() == DT_RESOURCE && !ctx->is_graph_rewrite()) {
     Status s = AddResourceHelper(ctx, t, output);
     if (!errors::IsUnimplemented(s)) {
       // Fall through to AddTensor if AsGraphDef is not implemented for this
@@ -782,7 +820,8 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
-  strings::StrAppend(&traceme_metadata_, "shapes=");
+  strings::StrAppend(&traceme_metadata_, "name=", dataset()->metadata().name());
+  strings::StrAppend(&traceme_metadata_, ",shapes=");
   auto& shapes = output_shapes();
   for (int i = 0; i < shapes.size(); ++i) {
     if (i > 0) {
@@ -826,7 +865,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
@@ -844,7 +883,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
       out_tensors->clear();
     }
   }
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
@@ -870,7 +909,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
@@ -879,7 +918,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     node_->record_start(now_nanos);
   }
   Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
-  if (model && model->collect_resource_usage() && node_) {
+  if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
@@ -929,7 +968,7 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
-    dataset->Initialize();
+    dataset->Initialize(metadata_);
   }
 }
 

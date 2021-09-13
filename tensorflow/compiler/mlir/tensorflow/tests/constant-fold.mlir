@@ -173,9 +173,9 @@ func @testSimpleConcatOffset() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) 
   %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
   %shape2 = constant dense<[2, 5, 7]> : tensor<3xi32>
 
-  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
-  // CHECK: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 2, 0]> : tensor<3xi32>
-  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 5, 0]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 2, 0]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 5, 0]> : tensor<3xi32>
 
   %offset:3 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
 
@@ -191,9 +191,9 @@ func @testConcatOffsetWithZeros() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32
   %shape2 = constant dense<[0, 5, 0]> : tensor<3xi32>
   %shape3 = constant dense<0> : tensor<3xi32>
 
-  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
-  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 3, 0]> : tensor<3xi32>
-  // CHECK: [[OFFSET_3:%.*]] = "tf.Const{{.*}} dense<[0, 8, 0]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 3, 0]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_3:%.*]] = "tf.Const{{.*}} dense<[0, 8, 0]> : tensor<3xi32>
 
   %offset:4 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2, %shape3) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
 
@@ -208,9 +208,9 @@ func @testConcatOffsetNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>, tens
   %shape1 = constant dense<[2, 8, 5]> : tensor<3xi32>
   %shape2 = constant dense<[2, 8, 7]> : tensor<3xi32>
 
-  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
-  // CHECK: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 0, 3]> : tensor<3xi32>
-  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 0, 8]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 0, 3]> : tensor<3xi32>
+  // CHECK-DAG: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 0, 8]> : tensor<3xi32>
 
   %offset:3 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
 
@@ -592,8 +592,8 @@ func @testBroadcastGradientArgs6() -> (tensor<1xi32>, tensor<0xi32>) {
   %s4 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
   %s5 = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> tensor<1xi32>
   %r4, %r5 = "tf.BroadcastGradientArgs"(%s4, %s5) {} : (tensor<0xi32>, tensor<1xi32>) -> (tensor<1xi32>, tensor<0xi32>)
-  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
   // CHECK: return %[[R0]], %[[R1]]
 
@@ -605,8 +605,8 @@ func @testBroadcastGradientArgsHigherRank() -> (tensor<2xi32>, tensor<2xi32>) {
   %s0 = "tf.Const"() {value = dense<[1, 4, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
   %s1 = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<3xi32>, tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
-  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: %[[R1:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
   // CEHCK: return [[R0]], [[R1]]
 
@@ -618,8 +618,8 @@ func @testBroadcastGradientArgsScalar() -> (tensor<2xi32>, tensor<0xi32>) {
   %s0 = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<0xi32>, tensor<2xi32>) -> (tensor<2xi32>, tensor<0xi32>)
-  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
   // CEHCK: return [[R0]], [[R1]]
 
@@ -631,8 +631,8 @@ func @testBroadcastGradientArgI64() -> (tensor<2xi64>, tensor<0xi64>) {
   %s0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
   %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi64>} : () -> tensor<2xi64>
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<0xi64>, tensor<2xi64>) -> (tensor<2xi64>, tensor<0xi64>)
-  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
   // CHECK-NOT: tf.BroadcastGradientArgs
   // CEHCK: return [[R0]], [[R1]]
 

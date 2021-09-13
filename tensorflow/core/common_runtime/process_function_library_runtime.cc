@@ -1184,7 +1184,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             status.error_message());
-        refcounted_done->UpdateStatus(Status(status.code(), function_and_msg));
+        refcounted_done->UpdateStatus(
+            errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
         cm->StartCancel();
       } else {

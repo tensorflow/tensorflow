@@ -224,6 +224,30 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       t.gradient(y, [x])
 
+  def test_stop_gradient_hides_downstream_ops(self):
+
+    @custom_gradient.custom_gradient
+    def _backward_pass_error(x):
+
+      def _grad(_):
+        raise AssertionError(
+            'Unexpectedly ran the backward function. This probably means that '
+            'tf.GradientTape is not properly ignoring tensors downstream of '
+            'tf.stop_gradient.')
+
+      return x, _grad
+
+    @def_function.function
+    def f(x):
+      return _backward_pass_error(x)
+
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = f(array_ops.stop_gradient(x))
+
+    self.assertIsNone(tape.gradient(y, x))
+
   def testOutputGradUsedInComputation(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)

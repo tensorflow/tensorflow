@@ -704,20 +704,17 @@ xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
   return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
-Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
-                         llvm::ArrayRef<xla::XlaOp> xla_params,
-                         std::vector<xla::XlaOp>& returns,
-                         llvm::ArrayRef<XlaArgument> args,
-                         llvm::ArrayRef<std::string> control_rets,
-                         llvm::StringRef device_type,
-                         const FunctionLibraryDefinition& flib_def,
-                         const GraphDebugInfo& debug_info,
-                         llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                             custom_legalization_passes) {
-  mlir::MLIRContext context;
+Status BuildHloFromGraph(
+    const Graph& graph, xla::XlaBuilder& builder,
+    mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
+    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes) {
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
+      GraphToModule(graph, control_rets, flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
 }

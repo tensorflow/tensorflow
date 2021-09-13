@@ -922,8 +922,8 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(7+3j, dtype=dtypes.complex64)
     y = math_ops.square(x)
     with self.assertRaisesRegex(
-        TypeError, r"Gradients of complex tensors must set grad_ys "
-        r"\(y\.dtype = tf\.complex64\)"):
+        TypeError, r"Gradients of complex tensors .* must set grad_ys "
+        r"\(y\.dtype = complex64\)"):
       gradients.gradients(y, x)
 
 

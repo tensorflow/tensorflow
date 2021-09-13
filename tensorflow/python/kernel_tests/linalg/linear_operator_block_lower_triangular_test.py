@@ -253,11 +253,11 @@ class SquareLinearOperatorBlockLowerTriangularTest(
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegex(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "must be a list of >=1"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([])
 
   def test_operators_wrong_length_raises(self):
-    with self.assertRaisesRegex(ValueError, "must contain `i` blocks"):
+    with self.assertRaisesRegex(ValueError, "must contain `2` blocks"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))],
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))
@@ -269,7 +269,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
         [linalg.LinearOperatorFullMatrix(rng.rand(3, 4)),
          linalg.LinearOperatorFullMatrix(rng.rand(3, 3))]
     ]
-    with self.assertRaisesRegex(ValueError, "must be equal"):
+    with self.assertRaisesRegex(ValueError, "must be the same as"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_incompatible_input_blocks_raises(self):

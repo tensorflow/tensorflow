@@ -2089,6 +2089,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     _ = defined(it5, it5)  # The two iterators are the same, should retrace
     self.assertLen(total_function_cache(defined), 2)
 
+    it6 = iter(d)
+    _ = defined(it6, it6)  # The two iterators are the same, should not retrace
+    self.assertLen(total_function_cache(defined), 2)
+
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
     def full_function(a, b, c=3):

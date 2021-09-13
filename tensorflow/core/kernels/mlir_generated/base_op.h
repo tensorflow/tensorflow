@@ -165,16 +165,19 @@ class MlirOp : public OpKernel {
 #define MLIR_OP(tf_op, platform, input_type, output_type) \
   Mlir##tf_op##platform##input_type##output_type##Op
 
-#define REGISTER_ALIASED_KERNEL(tf_op, mlir_op, platform, input_type,      \
-                                output_type)                               \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name(#tf_op)                                                         \
-          .Device(DEVICE_##platform)                                       \
-          .TypeConstraint<typename EnumToDataType<input_type>::Type>("T"), \
+#define REGISTER_ALIASED_KERNEL(tf_op, mlir_op, platform, input_type,     \
+                                output_type, additional_cstrs)            \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name(#tf_op)                                                        \
+          .Device(DEVICE_##platform)                                      \
+          .TypeConstraint<typename EnumToDataType<input_type>::Type>("T") \
+              additional_cstrs,                                           \
       MLIR_OP(mlir_op, platform, input_type, output_type));
 
-#define REGISTER_KERNEL(tf_op, platform, input_type, output_type) \
-  REGISTER_ALIASED_KERNEL(tf_op, tf_op, platform, input_type, output_type)
+#define REGISTER_KERNEL(tf_op, platform, input_type, output_type,          \
+                        additional_cstrs)                                  \
+  REGISTER_ALIASED_KERNEL(tf_op, tf_op, platform, input_type, output_type, \
+                          additional_cstrs)
 
 #define REGISTER_COMPLEX_KERNEL(tf_op, platform, input_type, output_type)      \
   REGISTER_KERNEL_BUILDER(                                                     \
@@ -192,21 +195,23 @@ class MlirOp : public OpKernel {
 // memref descriptors and calls mlir-generated unranked kernel. The outputs
 // are converted back to tensors using MlirTensorBuffer to take ownership of
 // pre-allocated memory.
-#define GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, platform, input_type) \
+#define GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, platform, input_type, \
+                                            additional_cstrs)            \
   GENERATE_BINARY_KERNEL(tf_op, platform, input_type)                    \
-  REGISTER_KERNEL(tf_op, platform, input_type, input_type)
+  REGISTER_KERNEL(tf_op, platform, input_type, input_type, additional_cstrs)
 
-#define GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, platform, input_type, \
-                                             output_type)                 \
-  GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, output_type)       \
-  REGISTER_KERNEL(tf_op, platform, input_type, output_type)
+#define GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, platform, input_type,   \
+                                             output_type, additional_cstrs) \
+  GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, output_type)         \
+  REGISTER_KERNEL(tf_op, platform, input_type, output_type, additional_cstrs)
 
-#define GENERATE_AND_REGISTER_BINARY_KERNEL3(tf_op, platform, input_type,    \
-                                             output_type, casted_input_type, \
-                                             casted_output_type)             \
-  GENERATE_BINARY_KERNEL3(tf_op, platform, input_type, output_type,          \
-                          casted_input_type, casted_output_type)             \
-  REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type)
+#define GENERATE_AND_REGISTER_BINARY_KERNEL3(                             \
+    tf_op, platform, input_type, output_type, casted_input_type,          \
+    casted_output_type, additional_cstrs)                                 \
+  GENERATE_BINARY_KERNEL3(tf_op, platform, input_type, output_type,       \
+                          casted_input_type, casted_output_type)          \
+  REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type, \
+                  additional_cstrs)
 
 #define GENERATE_BINARY_KERNEL(tf_op, platform, input_type) \
   GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, input_type)
@@ -250,7 +255,8 @@ class MlirOp : public OpKernel {
 
 #define GENERATE_AND_REGISTER_SELECT_KERNEL(tf_op, platform, input_type) \
   GENERATE_SELECT_KERNEL(tf_op, platform, input_type)                    \
-  REGISTER_KERNEL(tf_op, platform, input_type, input_type)
+  REGISTER_KERNEL(tf_op, platform, input_type, input_type,               \
+                  /*no additional_cstrs*/)
 
 #define GENERATE_SELECT_KERNEL(tf_op, platform, input_type)                    \
   extern "C" void MLIR_FUNCTION(tf_op, platform, input_type, input_type)(      \
@@ -286,16 +292,18 @@ class MlirOp : public OpKernel {
   };                                                                           \
   }
 
-#define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, platform, input_type) \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, platform, input_type, \
+                                           additional_cstrs)            \
   GENERATE_UNARY_KERNEL(tf_op, platform, input_type)                    \
-  REGISTER_KERNEL(tf_op, platform, input_type, input_type)
+  REGISTER_KERNEL(tf_op, platform, input_type, input_type, additional_cstrs)
 
-#define GENERATE_AND_REGISTER_UNARY_KERNEL3(tf_op, platform, input_type,    \
-                                            output_type, casted_input_type, \
-                                            casted_output_type)             \
-  GENERATE_UNARY_KERNEL3(tf_op, platform, input_type, output_type,          \
-                         casted_input_type, casted_output_type)             \
-  REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type)
+#define GENERATE_AND_REGISTER_UNARY_KERNEL3(                              \
+    tf_op, platform, input_type, output_type, casted_input_type,          \
+    casted_output_type, additional_cstrs)                                 \
+  GENERATE_UNARY_KERNEL3(tf_op, platform, input_type, output_type,        \
+                         casted_input_type, casted_output_type)           \
+  REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type, \
+                  additional_cstrs)
 
 #define GENERATE_UNARY_KERNEL(tf_op, platform, input_type) \
   GENERATE_UNARY_KERNEL2(tf_op, platform, input_type, input_type)

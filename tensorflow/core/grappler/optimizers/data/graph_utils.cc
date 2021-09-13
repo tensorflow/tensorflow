@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -387,6 +389,27 @@ bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
   return true;
 }
 
+void MaybeSetFusedMetadata(const NodeDef& node1, const NodeDef& node2,
+                           NodeDef* fused_node) {
+  data::Metadata metadata1;
+  if (node1.attr().contains("metadata")) {
+    metadata1.ParseFromString(node1.attr().at("metadata").s());
+  }
+  data::Metadata metadata2;
+  if (node2.attr().contains("metadata")) {
+    metadata2.ParseFromString(node2.attr().at("metadata").s());
+  }
+  data::Metadata fused_metadata;
+  auto normalize_name = [](const string& name) {
+    return name.empty() ? "?" : name;
+  };
+  *fused_metadata.mutable_name() =
+      strings::StrCat("fused(", normalize_name(metadata1.name()), ",",
+                      normalize_name(metadata2.name()), ")");
+  fused_metadata.SerializeToString(
+      (*fused_node->mutable_attr())["metadata"].mutable_s());
+}
+
 bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
   auto* attr = gtl::FindOrNull(from.attr(), kOutputTypes);
   attr = (attr == nullptr ? gtl::FindOrNull(from.attr(), kToutputTypes) : attr);
@@ -398,6 +421,28 @@ bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
   if (attr == nullptr) return false;
   (*to_node->mutable_attr())[kOutputShapes] = *attr;
   return true;
+}
+
+namespace {
+const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
+    "ParallelInterleaveDatasetV2",
+    "ParallelMapDataset",
+    "ParseExampleDataset",
+};
+
+const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
+    "LegacyParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDatasetV2",
+    "ParallelBatchDataset",
+};
+}  // anonymous namespace
+
+bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasDeterministicAttr(const string& op) {
+  return kDeterministicAttrOps->contains(op);
 }
 
 }  // namespace graph_utils

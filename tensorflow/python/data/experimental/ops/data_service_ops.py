@@ -276,13 +276,10 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         dtype=dtypes.int64,
         name="max_outstanding_requests")
     self._element_spec = element_spec
-    self._target_workers = target_workers
 
     compat_kwargs = {}
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
-    if compat.forward_compatible(2021, 7, 12) or target_workers != "AUTO":
-      compat_kwargs["target_workers"] = target_workers
 
     variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
         dataset_id=self._dataset_id,
@@ -296,6 +293,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
         ),
+        target_workers=target_workers,
         **compat_kwargs,
         **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)
@@ -366,7 +364,8 @@ def _parse_service(service):
 
 
 def _decide_compression(compression, data_transfer_protocol):
-  if compression == COMPRESSION_AUTO and data_transfer_protocol is not None:
+  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
+      data_transfer_protocol is not None):
     return COMPRESSION_NONE
   return compression
 

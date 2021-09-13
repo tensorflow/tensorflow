@@ -226,6 +226,46 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
   return chain;
 }
 
+FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
+                                        Value chain, Value stream, Value handle,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  const auto& operand = srcOp.operand();
+  const auto& result = srcOp.output();
+
+  xla::Shape shape = xla::TypeToShape(operand.getType());
+  auto nccl_data_type_or = ToNcclDataType(shape.element_type());
+  if (mlir::failed(nccl_data_type_or)) {
+    return rewriter.notifyMatchFailure(
+        srcOp, "Failed to convert operand data type to ncclDataType_t.");
+  }
+  ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+
+  Value input = mapping.lookup(operand);
+  Value output = mapping.lookup(result);
+
+  return rewriter
+      .create<xla::gpu::CclCollectivePermuteOp>(srcOp.getLoc(), handle, input,
+                                                output, nccl_data_type, chain)
+      .getResult();
+}
+
+template <class CclOpType>
+LogicalResult BufferOperandsEqualsOpArguments(CclOpType op,
+                                              ArrayRef<Value> operands) {
+  if (operands.size() != op.operands().size() + op.results().size()) {
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+
+template <>
+LogicalResult BufferOperandsEqualsOpArguments(lmhlo::CollectivePermuteOp op,
+                                              ArrayRef<Value> operands) {
+  // lmhlo::CollectivePermuteOp's input and output count are not variable.
+  return mlir::success();
+}
+
 template <class CclOpType>
 struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   using tfrt::gpu::GpuAsyncOpConversionPattern<
@@ -233,17 +273,12 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   FailureOr<Value> matchAndRewriteOp(
       CclOpType op, Value chain, Value stream, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
-    if (op.operands().size() != op.results().size()) {
-      return rewriter.notifyMatchFailure(
-          op, "Number of op inputs does not match number of op outputs.");
-    }
-
     if (!all_of(operands, [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
 
-    if (operands.size() != op.operands().size() + op.results().size()) {
+    if (mlir::failed(BufferOperandsEqualsOpArguments(op, operands))) {
       return rewriter.notifyMatchFailure(
           op,
           "Number of buffer operands does not match the number of op inputs "
@@ -276,11 +311,12 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
 }  // namespace
 
 void populateCclConversionPattern(RewritePatternSet& patterns) {
-  // TODO(hanbinyoon): Support additional lmhlo collective ops.
   patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
                CclRewritePattern<lmhlo::AllReduceOp>,
                CclRewritePattern<lmhlo::ReduceScatterOp>,
-               CclRewritePattern<lmhlo::AllToAllOp>>(patterns.getContext());
+               CclRewritePattern<lmhlo::AllToAllOp>,
+               CclRewritePattern<lmhlo::CollectivePermuteOp>>(
+      patterns.getContext());
 }
 
 }  // namespace tensorflow
