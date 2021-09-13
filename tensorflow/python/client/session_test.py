@@ -1846,11 +1846,14 @@ class SessionTest(test_util.TensorFlowTestCase):
           pass
 
   def testInvalidArgument(self):
-    with self.assertRaisesRegex(TypeError, 'target must be a string'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `target` must be a string'):
       session.Session(37)
-    with self.assertRaisesRegex(TypeError, 'config must be a tf.ConfigProto'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `config` must be a tf.ConfigProto'):
       session.Session(config=37)
-    with self.assertRaisesRegex(TypeError, 'graph must be a tf.Graph'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `graph` must be a tf.Graph'):
       session.Session(graph=37)
 
   @test_util.run_v1_only('b/120545219')
