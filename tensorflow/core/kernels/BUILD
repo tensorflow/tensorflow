@@ -3357,6 +3357,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "lookup_ops_test",
+    size = "small",
+    srcs = ["lookup_ops_test.cc"],
+    deps = [
+        ":lookup_table_op",
+        ":ops_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
