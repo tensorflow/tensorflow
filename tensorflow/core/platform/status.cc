@@ -125,11 +125,7 @@ const std::vector<StackFrame>& Status::empty_stack_trace() {
   return *empty;
 }
 
-<<<<<<< HEAD
 std::string error_name(error::Code code) {
-=======
-string error_name(error::Code code) {
->>>>>>> google_upstream/master
   switch (code) {
     case tensorflow::error::OK:
       return "OK";
