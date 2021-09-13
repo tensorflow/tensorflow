@@ -138,3 +138,13 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
 }
+
+def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
+  let summary = "Vectorize tiled Linalg ops.";
+  let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+  ];
+  let description = "Vectorizes Linalg ops inside `tiled_loop`.";
+}
+
