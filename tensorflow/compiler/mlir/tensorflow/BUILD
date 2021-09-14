@@ -33,6 +33,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
+        "//learning/pathways/data_parallel/serving/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/contrib/waymo/...",
@@ -1122,7 +1123,6 @@ cc_library(
         "transforms/test_resource_alias_analysis.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
-        "transforms/tf_device_replication_pass.cc",
         "transforms/tpu_cluster_cleanup_attributes.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_colocate_composite_resource_ops.cc",

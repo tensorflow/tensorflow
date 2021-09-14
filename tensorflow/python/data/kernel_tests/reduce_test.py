@@ -263,6 +263,13 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x * 2).batch(5)
     self.evaluate(dataset.reduce(0, lambda state, value: state))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    self.assertEqual(
+        self.evaluate(
+            dataset.reduce(0, lambda state, value: value, name="reduce")), 42)
+
 
 if __name__ == "__main__":
   test.main()

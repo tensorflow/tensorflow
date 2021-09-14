@@ -43,6 +43,31 @@ tf_py_test(
 )
 
 py_library(
+    name = "base_delegate",
+    srcs = ["base_delegate.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_test(
+    name = "base_delegate_test",
+    srcs = ["base_delegate_test.py"],
+    deps = [
+        ":base",
+        ":base_delegate",
+        ":util",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+    ],
+)
+
+py_library(
     name = "tracking",
     srcs = ["tracking.py"],
     srcs_version = "PY3",

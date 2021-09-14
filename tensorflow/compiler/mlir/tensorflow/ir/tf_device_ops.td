@@ -78,10 +78,10 @@ This op captures all needed live-in values.
   let builders = [
     OpBuilder<(ins "StringAttr":$device, "TypeRange":$result_types),
     [{
-        $_state.addAttribute("device", device);
-        $_state.addTypes(result_types);
-        $_state.addRegion();
-      }]>
+      $_state.addAttribute("device", device);
+      $_state.addTypes(result_types);
+      $_state.addRegion();
+    }]>
   ];
 
   let hasCanonicalizer = 1;
@@ -365,7 +365,7 @@ This op is used for outlining a cluster.
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
     FuncOp getFunc() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, func());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, funcAttr());
     }
   }];
 }

@@ -87,6 +87,11 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(TypeError):
         _ = dataset_ops.Dataset.from_generator(lambda: [], dtype).unique()
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).unique(name="unique")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class UniqueCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                            parameterized.TestCase):

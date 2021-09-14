@@ -215,5 +215,21 @@ TEST(CastOpModel, CastComplex64ToComplex64) {
            std::complex<float>(6.0f, 16.0f)}));
 }
 
+TEST(CastOpModel, CastUInt32ToInt32) {
+  CastOpModel m({TensorType_UINT32, {2, 3}}, {TensorType_INT32, {2, 3}});
+  m.PopulateTensor<uint32_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({100, 200, 300, 400, 500, 600}));
+}
+
+TEST(CastOpModel, CastInt32ToUInt32) {
+  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_UINT32, {2, 3}});
+  m.PopulateTensor<int32_t>(m.input(), {100, 200, 300, 400, 500, 600});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<uint32_t>(m.output()),
+              ElementsAreArray({100, 200, 300, 400, 500, 600}));
+}
+
 }  // namespace
 }  // namespace tflite

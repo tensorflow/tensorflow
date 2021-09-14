@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import binascii
 import os
+from posixpath import join as urljoin
 import uuid
 
 import six
@@ -779,6 +780,44 @@ def list_directory_v2(path):
   ]
 
 
+@tf_export("io.gfile.join")
+def join(path, *paths):
+  r"""Join one or more path components intelligently.
+
+  TensorFlow specific filesystems will be joined
+  like a url (using "/" as the path seperator) on all platforms:
+
+  On Windows or Linux/Unix-like:
+  >>> tf.io.gfile.join("gcs://folder", "file.py")
+  'gcs://folder/file.py'
+
+  >>> tf.io.gfile.join("ram://folder", "file.py")
+  'ram://folder/file.py'
+
+  But the native filesystem is handled just like os.path.join:
+
+  >>> path = tf.io.gfile.join("folder", "file.py")
+  >>> if os.name == "nt":
+  ...   expected = "folder\\file.py"  # Windows
+  ... else:
+  ...   expected = "folder/file.py"  # Linux/Unix-like
+  >>> path == expected
+  True
+
+  Args:
+    path: string, path to a directory
+    paths: string, additional paths to concatenate
+
+  Returns:
+    path: the joined path.
+  """
+  # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
+  path_ = compat.as_str_any(compat.path_to_str(path))
+  if "://" in path_[1:]:
+    return urljoin(path, *paths)
+  return os.path.join(path, *paths)
+
+
 @tf_export(v1=["gfile.Walk"])
 def walk(top, in_order=True):
   """Recursive directory tree generator for directories.
@@ -816,12 +855,12 @@ def walk_v2(top, topdown=True, onerror=None):
   """
 
   def _make_full_path(parent, item):
-    # Since `os.path.join` discards paths before one that starts with the path
-    # separator (https://docs.python.org/3/library/os.path.html#os.path.join),
+    # Since `join` discards paths before one that starts with the path
+    # separator (https://docs.python.org/3/library/os.path.html#join),
     # we have to manually handle that case as `/` is a valid character on GCS.
     if item[0] == os.sep:
-      return "".join([os.path.join(parent, ""), item])
-    return os.path.join(parent, item)
+      return "".join([join(parent, ""), item])
+    return join(parent, item)
 
   top = compat.as_str_any(compat.path_to_str(top))
   try:

@@ -31,7 +31,6 @@ struct TestParams {
   bool enable_native_ops = false;
   bool enable_grappler = false;
   bool enable_lazy_loading = false;
-  bool force_bef_function_async = false;
 };
 
 class SavedModelTest : public testing::TestWithParam<TestParams> {};
@@ -63,7 +62,6 @@ TEST_P(SavedModelTest, BasicV1) {
       CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
 
   tfrt::SavedModel::RunOptions run_options;
-  run_options.force_bef_function_async = GetParam().force_bef_function_async;
 
   std::vector<tensorflow::Tensor> outputs;
   TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
@@ -75,16 +73,14 @@ TEST_P(SavedModelTest, BasicV1) {
 
 // Tests all the value combinations of `TestParams`. For readability, use
 // integers instead of booleans.
-INSTANTIATE_TEST_SUITE_P(SavedModelLiteTest, SavedModelTest,
-                         testing::Values(
-                             // The values below are for:
-                             // enable_native_ops, enable_grappler,
-                             // enable_lazy_loading, force_bef_function_async
-                             TestParams{0, 0, 0}, TestParams{0, 0, 0, 1},
-                             TestParams{0, 0, 1}, TestParams{0, 1, 0},
-                             TestParams{0, 1, 1}, TestParams{1, 0, 0},
-                             TestParams{1, 0, 1}, TestParams{1, 1, 0},
-                             TestParams{1, 1, 1}, TestParams{1, 1, 1, 1}));
+INSTANTIATE_TEST_SUITE_P(
+    SavedModelLiteTest, SavedModelTest,
+    testing::Values(
+        // The values below are for:
+        // enable_native_ops, enable_grappler, enable_lazy_loading
+        TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
+        TestParams{0, 1, 1}, TestParams{1, 0, 0}, TestParams{1, 0, 1},
+        TestParams{1, 1, 0}, TestParams{1, 1, 1}));
 
 TEST(SavedModelTest, BasicV2) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated

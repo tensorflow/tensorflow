@@ -101,8 +101,8 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   auto new_session_init_op =
       builder.create<tf_saved_model::SessionInitializerOp>(
-          module->getLoc(),
-          builder.getArrayAttr(builder.getSymbolRefAttr(kSessionInitFuncName)));
+          module->getLoc(), builder.getArrayAttr(SymbolRefAttr::get(
+                                builder.getContext(), kSessionInitFuncName)));
   if (session_init_op) {
     session_init_op->replaceAllUsesWith(new_session_init_op);
     session_init_op->erase();

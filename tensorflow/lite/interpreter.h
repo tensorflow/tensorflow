@@ -648,9 +648,9 @@ class Interpreter {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -763,6 +763,9 @@ class Interpreter {
   // Returns true if delegates have been applied.
   bool HasDelegates();
 
+  // Returns true if the model has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
@@ -833,7 +836,10 @@ class Interpreter {
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
-  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
+  using TfLiteDelegateCreator =
+      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+  using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+  TfLiteDelegateCreators lazy_delegate_providers_;
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;

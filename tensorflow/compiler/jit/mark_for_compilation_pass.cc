@@ -2060,6 +2060,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
                                      "Unique",
+                                     "UniqueV2",
                                      "UpperBound",
                                      "UnsortedSegmentMax",
                                      "UnsortedSegmentMin",

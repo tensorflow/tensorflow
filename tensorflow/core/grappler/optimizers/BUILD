@@ -565,55 +565,6 @@ tf_cuda_cc_test(
 )
 
 cc_library(
-    name = "layout_optimizer",
-    srcs = ["layout_optimizer.cc"],
-    hdrs = [
-        "layout_optimizer.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_optimizer",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:devices",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/costs:virtual_placer",
-        "//tensorflow/core/grappler/utils:frame",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "layout_optimizer_test",
-    srcs = ["layout_optimizer_test.cc"],
-    deps = [
-        ":layout_optimizer",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/grappler:devices",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:single_machine",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/costs:virtual_placer",
-        "//tensorflow/core/grappler/utils:grappler_test",
-    ],
-)
-
-cc_library(
     name = "auto_mixed_precision",
     srcs = ["auto_mixed_precision.cc"],
     hdrs = [

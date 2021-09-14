@@ -193,6 +193,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
+        "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -2809,6 +2810,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
+        "noasan",  # TODO(b/199895990):re-enable
     ],
     deps = [
         ":array_ops",

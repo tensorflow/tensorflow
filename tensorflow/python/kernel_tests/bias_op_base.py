@@ -254,7 +254,7 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   def testGradientTensor4D(self):
-    for (data_format, use_gpu) in [("NHWC", False)]:
+    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False)]:
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.arange(
             1.0, 49.0,
@@ -272,6 +272,13 @@ class BiasAddTestBase(test.TestCase):
                                                  64]).astype(np.float32)
         self._testGradient(np_input,
                            np.random.rand(64).astype(dtype.as_numpy_dtype),
+                           dtype, data_format, use_gpu)
+        np_input = np.arange(
+            1.0, 129.0,
+            dtype=dtype.as_numpy_dtype).reshape([4, 1, 1,
+                                                 32]).astype(np.float32)
+        self._testGradient(np_input,
+                           np.random.rand(32).astype(dtype.as_numpy_dtype),
                            dtype, data_format, use_gpu)
 
   def testGradientTensor5D(self):

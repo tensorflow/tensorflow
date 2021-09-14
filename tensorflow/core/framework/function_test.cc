@@ -114,6 +114,64 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
+TEST(TFunc, CopyDebugInfo) {
+  auto fdef = FDH::Create(
+      // Name
+      "Square",
+      // Inputs
+      {"x: T"},
+      // Outputs
+      {"y: T"},
+      // Attrs
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {// a = Sqaure<T>(x)
+       {{"a"},
+        {"Square"},
+        {"x"},
+        {{"T", "$T"}},
+        {},
+        "",
+        "",
+        {"node_name"},
+        {"func_name"}}},
+      // Returns
+      {{"y", "a:y:0"}});
+  const char* e = R"P(
+Square[T:{float, double, int32, int64}](x:T) -> (y:T) {
+  a = Square[T=$T](x)
+  return y = a:y:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  const char* e2 = R"P(
+(x:float) -> (a:float) {
+  a = Square[T=float](x)
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.nodes), e2);
+  EXPECT_EQ(result.nodes.size(), 3);
+  NodeDef node;
+  for (auto n : result.nodes) {
+    if (n.name() == "a") {
+      node = n;
+      break;
+    }
+  }
+  EXPECT_TRUE(node.has_experimental_debug_info());
+  EXPECT_EQ(node.experimental_debug_info().original_node_names().size(), 1);
+  EXPECT_EQ(node.experimental_debug_info().original_func_names().size(), 1);
+  EXPECT_EQ(node.experimental_debug_info().original_node_names()[0],
+            "node_name");
+  EXPECT_EQ(node.experimental_debug_info().original_func_names()[0],
+            "func_name");
+}
+
 TEST(TFunc, ControlDep) {
   auto fdef = FDH::Create(
       // Name

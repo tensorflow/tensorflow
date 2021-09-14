@@ -174,7 +174,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
-        // Don't remove leading and tailing QDQ for PQT workflow, so the io
+        // Don't remove leading and trailing QDQ for PTQ workflow, so the io
         // modifying lib can work correctly.
         if (!q.input().getDefiningOp()) return failure();
         if (op->hasOneUse() &&

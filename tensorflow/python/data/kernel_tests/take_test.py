@@ -42,6 +42,11 @@ class TakeTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, [tuple(components[0][i:i + 1]) for i in range(num_output)])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).take(1, name="take")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):

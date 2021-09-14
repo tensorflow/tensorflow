@@ -19,7 +19,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
-load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -33,6 +32,7 @@ load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
@@ -56,7 +56,6 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    aws()
     benchmark()
     clog()
     cpuinfo()
@@ -71,6 +70,7 @@ def _initialize_third_party():
     icu()
     jpeg()
     kissfft()
+    libprotobuf_mutator()
     nasm()
     opencl_headers()
     pasta()
@@ -133,11 +133,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f3b3256b6dcde8002159df50380b86087ae9ee927464b4179a22028be8a5ac20",
-        strip_prefix = "XNNPACK-0f6613555829d59cbc165f1be87bdcd5137e23d2",
+        sha256 = "99cbb88352e7944d9436559e8331085e441408fbdf8255b24af963a6b6330b4b",
+        strip_prefix = "XNNPACK-548542c13770c9af1cf08542bc2c0138098beb18",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
-            "https://github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/548542c13770c9af1cf08542bc2c0138098beb18.zip",
+            "https://github.com/google/XNNPACK/archive/548542c13770c9af1cf08542bc2c0138098beb18.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -559,22 +559,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_google_protobuf",
-        patch_file = "//third_party/protobuf:protobuf.patch",
-        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
-        strip_prefix = "protobuf-3.9.2",
-        system_build_file = "//third_party/systemlibs:protobuf.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-            "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
-        },
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
-            "https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
-        ],
-    )
-
-    tf_http_archive(
         name = "nsync",
         sha256 = "caf32e6b3d478b78cff6c2ba009c3400f8251f646804bcb65465666a9cea93c4",
         strip_prefix = "nsync-1.22.0",
@@ -608,22 +592,21 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
-        strip_prefix = "curl-7.77.0",
+        sha256 = "ed936c0b02c06d42cf84b39dd12bb14b62d77c7c4e875ade022280df5dcc81d7",
+        strip_prefix = "curl-7.78.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.77.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.78.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.78.0.tar.gz",
         ],
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
-        strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
+        sha256 = "13e7c6460cd979726e5b3b129bb01c34532f115883ac696a75eb7f1d6a9765ed",
+        strip_prefix = "grpc-1.40.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
-        patch_file = "//third_party/grpc:generate_cc_env_fix.patch",
         system_link_files = {
             "//third_party/systemlibs:BUILD": "bazel/BUILD",
             "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
@@ -634,8 +617,8 @@ def _tf_repositories():
             "//third_party/systemlibs:grpc.bazel.protobuf.bzl": "bazel/protobuf.bzl",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
-            "https://github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/refs/tags/v1.40.0.tar.gz",
+            "https://github.com/grpc/grpc/archive/refs/tags/v1.40.0.tar.gz",
         ],
     )
 

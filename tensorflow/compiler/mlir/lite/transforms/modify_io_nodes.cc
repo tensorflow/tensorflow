@@ -208,6 +208,13 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
 
 void ModifyIONodesPass::runOnFunction() {
   auto func = getFunction();
+  auto attrs = func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+
+  // Handle the entry functions only.
+  if (func.getName() != "main" && (!attrs || attrs.empty())) {
+    return;
+  }
+
   OpBuilder builder(func);
   FunctionType func_type = func.getType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),

@@ -36,11 +36,15 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kComponents;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const TensorSliceDatasetOp::kIsFiles;
 
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:
-  explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-      : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
+  explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors,
+                   bool is_files)
+      : DatasetBase(DatasetContext(ctx)),
+        tensors_(std::move(tensors)),
+        is_files_(is_files) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
       gtl::InlinedVector<int64_t, 4> element_dim_sizes;
@@ -87,13 +91,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    if (tensors_.empty()) {
-      return errors::FailedPrecondition("Cannot index into empty tensor.");
-    }
-    if (index < 0 || index >= tensors_[0].dim_size(0)) {
-      return errors::OutOfRange("Index out of range [0, ",
-                                tensors_[0].dim_size(0), "):", index);
-    }
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
     out_tensors->reserve(tensors_.size());
     for (int i = 0; i < tensors_.size(); ++i) {
@@ -110,8 +108,13 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->serialize_data_tensors()) {
+      if (!ctx->is_graph_rewrite()) {
         TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
+        if (is_files_) {
+          Node* file_node;
+          TF_RETURN_IF_ERROR(
+              b->AddIdentity(ctx, "FileIdentity", &node, &file_node));
+        }
       } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
         DCHECK_NE(ctx->input_list(), nullptr);
@@ -121,6 +124,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     }
     AttrValue dtypes;
     b->BuildAttrValue(dtypes_, &dtypes);
+    AttrValue is_files;
+    b->BuildAttrValue(is_files_, &is_files);
     TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
                                      {{kToutputTypes, dtypes}}, output));
     return Status::OK();
@@ -187,12 +192,16 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   DataTypeVector dtypes_;
   std::vector<TensorShape> shapes_;
   std::vector<PartialTensorShape> partial_shapes_;
+  bool is_files_;
 };
 
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kToutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  if (ctx->HasAttr(kIsFiles)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kIsFiles, &is_files_));
+  }
 }
 
 void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
@@ -215,7 +224,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
         errors::InvalidArgument(
             "All components must have the same size in the 0th dimension"));
   }
-  *output = new Dataset(ctx, std::move(components));
+  *output = new Dataset(ctx, std::move(components), is_files_);
   OP_REQUIRES_OK(ctx,
                  VerifyTypesMatch((*output)->output_dtypes(), output_types_));
   OP_REQUIRES_OK(

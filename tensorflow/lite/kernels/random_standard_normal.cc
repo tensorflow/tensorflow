@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
-#include <cstdint>
-#include <limits>
 #include <random>
 
 #include "tensorflow/lite/c/common.h"
@@ -31,40 +29,22 @@ struct OpData {
   std::default_random_engine rng;
 };
 
+namespace {
+
+constexpr int kShapeTensor = 0;
+constexpr int kOutputTensor = 0;
+
 // Draws a sample from standard normal distribution.
-template <typename Float>
+template <typename T>
 TfLiteStatus RandomStandardNormalSample(std::default_random_engine& rng,
-                                        Float* output, size_t output_size) {
-  std::normal_distribution<Float> dist;
-  for (Float* it = output; it != output + output_size; ++it) {
-    *it = dist(rng);
-  }
+                                        T* output, size_t output_size) {
+  std::normal_distribution<T> dist;
+  std::generate(output, output + output_size, [&]() { return dist(rng); });
+
   return kTfLiteOk;
 }
 
-TfLiteStatus RandomStandardNormalSample(TfLiteContext* context,
-                                        std::default_random_engine& rng,
-                                        TfLiteTensor* output,
-                                        size_t output_size) {
-  switch (output->type) {
-    case kTfLiteFloat32:
-      TF_LITE_ENSURE_OK(context,
-                        RandomStandardNormalSample<float>(
-                            rng, GetTensorData<float>(output), output_size));
-      break;
-    case kTfLiteFloat64:
-      TF_LITE_ENSURE_OK(context,
-                        RandomStandardNormalSample<double>(
-                            rng, GetTensorData<double>(output), output_size));
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(
-          context, "Unsupported output datatype for RandomStandardNormal: %s",
-          TfLiteTypeGetName(output->type));
-      return kTfLiteError;
-  }
-  return kTfLiteOk;
-}
+}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return new OpData();
@@ -75,41 +55,53 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(b/169611265): Handle optional seed input.
-  TF_LITE_ENSURE_EQ(context, tflite::NumInputs(node), 1);
-  TF_LITE_ENSURE_EQ(context, tflite::NumOutputs(node), 1);
+  // TODO(b/111309333): Handle optional seed input.
+  TF_LITE_ENSURE(context, NumInputs(node) == 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  // Input is a shape tensor.
-  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, tflite::NumDimensions(input), 1);
-  // TODO(b/169611265): Support dynamic output tensors.
-  TF_LITE_ENSURE(context, IsConstantTensor(input));
-
-  // TODO(b/169611265): Handle other input data types.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt32);
-
-  int output_dims = tflite::SizeOfDimension(input, 0);
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_dims);
-  for (int i = 0; i < output_dims; i++) {
-    output_shape->data[i] = input->data.i32[i];
+  const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
+  TF_LITE_ENSURE_EQ(context, shape->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(shape), 1);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  if (!IsConstantTensor(shape)) {
+    SetTensorToDynamic(output);
+    return kTfLiteOk;
   }
-
-  TfLiteTensor* output = tflite::GetOutput(context, node, 0);
-  // ResizeTensor takes ownership of output_shape.
+  TfLiteIntArray* output_shape;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputShapeFromInput(context, shape, &output_shape));
   return context->ResizeTensor(context, output, output_shape);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(b/169611265): Handle optional seed input.
   OpData* params = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
-  TfLiteTensor* output = tflite::GetOutput(context, node, 0);
-  size_t output_size = tflite::NumElements(output);
-
-  TF_LITE_ENSURE_OK(context, RandomStandardNormalSample(context, params->rng,
-                                                        output, output_size));
-
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  if (IsDynamicTensor(output)) {
+    const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
+    TfLiteIntArray* output_shape;
+    TF_LITE_ENSURE_OK(context,
+                      GetOutputShapeFromInput(context, shape, &output_shape));
+    TF_LITE_ENSURE_OK(context,
+                      context->ResizeTensor(context, output, output_shape));
+  }
+  const size_t output_size = NumElements(output);
+  switch (output->type) {
+    case kTfLiteFloat32:
+      RandomStandardNormalSample<float>(
+          params->rng, GetTensorData<float>(output), output_size);
+      break;
+    case kTfLiteFloat64:
+      RandomStandardNormalSample<double>(
+          params->rng, GetTensorData<double>(output), output_size);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(
+          context, "Unsupported output datatype for RandomStandardNormal: %s",
+          TfLiteTypeGetName(output->type));
+      return kTfLiteError;
+  }
   return kTfLiteOk;
 }
 

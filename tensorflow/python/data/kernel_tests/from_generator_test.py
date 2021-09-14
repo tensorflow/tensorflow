@@ -514,6 +514,18 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset_ops.Dataset.from_generator(
           generator, output_types=(dtypes.int64), output_shapes=[[1]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+
+    def generator():
+      yield 42
+
+    dataset_ops.Dataset.from_generator(
+        generator,
+        output_types=(dtypes.int64),
+        output_shapes=[1],
+        name="from_generator")
+
 
 if __name__ == "__main__":
   test.main()

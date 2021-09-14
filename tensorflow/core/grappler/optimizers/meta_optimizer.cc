@@ -205,7 +205,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
              !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", "shape_optimization", new ShapeOptimizer());
   MK_OPT("remap", "remapping",
-         new Remapper(cfg_.remapping(), xla_auto_clustering_on_));
+         new Remapper(cfg_.remapping(), cfg_.cpu_layout_conversion(),
+                      xla_auto_clustering_on_));
   MK_OPT("layout", "layout_optimizer",
          new GenericLayoutOptimizer(
              /*optimization level*/ cfg_.layout_optimizer(),
@@ -327,8 +328,9 @@ Status MetaOptimizer::InitializeOptimizers(
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   }
   if (BOTH_NOT_OFF(remapping)) {
-    optimizers->push_back(
-        MakeUnique<Remapper>(cfg_.remapping(), xla_auto_clustering_on_));
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping(),
+                                               cfg_.cpu_layout_conversion(),
+                                               xla_auto_clustering_on_));
   }
   if (BOTH_NOT_OFF(loop_optimization)) {
     optimizers->push_back(

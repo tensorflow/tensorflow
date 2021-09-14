@@ -284,23 +284,6 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   if (src.NumElements() == 0) {
     return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
   }
-  if (src.dtype() == tensorflow::DT_RESOURCE) {
-    if (src.shape().dims() != 0) {
-      *status = InvalidArgument(
-          "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
-          src.shape().DebugString(),
-          "). Please file a bug at "
-          "https://github.com/tensorflow/tensorflow/issues/new, "
-          "ideally with a "
-          "short code snippet that reproduces this error.");
-      return nullptr;
-    }
-    const string str =
-        src.scalar<tensorflow::ResourceHandle>()().SerializeAsString();
-    TF_Tensor* t = TF_AllocateTensor(TF_RESOURCE, {}, 0, str.size());
-    std::memcpy(TF_TensorData(t), str.c_str(), str.size());
-    return t;
-  }
 
   Tensor tensor;
   if (!tensor.CopyFrom(src, src.shape())) {
@@ -315,21 +298,6 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 }
 
 Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
-  if (tensor_.dtype() == DT_RESOURCE) {
-    if (tensor_.dims() != 0) {
-      return InvalidArgument(
-          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
-          "shape ",
-          tensor_.shape().DebugString());
-    }
-    *dst = tensorflow::Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
-    if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
-            string(static_cast<const char*>(Data()), ByteSize()))) {
-      return InvalidArgument(
-          "Malformed TF_RESOURCE tensor: unable to parse resource handle");
-    }
-    return Status::OK();
-  }
   *dst = tensor_;
   return Status::OK();
 }

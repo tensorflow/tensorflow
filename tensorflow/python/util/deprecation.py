@@ -107,7 +107,7 @@ def _call_location(outer=False):
   # DISABLE_IMPORT_INSPECT_CHECK=TRUE to your cl description. Using it caused
   # test timeouts (b/189384061).
   f = inspect.currentframe().f_back.f_back
-  parent = f.f_back
+  parent = f and f.f_back
   if outer and parent is not None:
     f = parent
   return '{}:{}'.format(f.f_code.co_filename, f.f_lineno)

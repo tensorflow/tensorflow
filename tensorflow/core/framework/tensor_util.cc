@@ -280,6 +280,28 @@ inline bool PackedValuesNotEqual(const std::complex<RealType>& a,
 }
 
 template <typename T>
+static bool IsNegativeZero(T value) {
+  return value == T(0) && std::signbit(value);
+}
+
+template <typename T>
+static bool IsNegativeZero(std::complex<T> value) {
+  return IsNegativeZero(value.real()) || IsNegativeZero(value.imag());
+}
+
+static bool IsNegativeZero(Eigen::QUInt8 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt8 value) { return false; }
+static bool IsNegativeZero(Eigen::QUInt16 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt16 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt32 value) { return false; }
+static bool IsNegativeZero(Eigen::half value) {
+  return IsNegativeZero<float>(value);
+}
+static bool IsNegativeZero(Eigen::bfloat16 value) {
+  return IsNegativeZero<float>(value);
+}
+
+template <typename T>
 bool CompressRepeatedField(float min_compression_ratio,
                            const TensorShape& shape, TensorProto* tensor) {
   using TypeHelper = internal::TensorProtoHelper<T>;
@@ -304,7 +326,7 @@ bool CompressRepeatedField(float min_compression_ratio,
 
   // Detect all zeroes tensors: this is default value and the content can be
   // erased entirely.
-  if (last_index == 0 && last_value == T(0)) {
+  if (last_index == 0 && last_value == T(0) && !IsNegativeZero(last_value)) {
     TypeHelper::Truncate(0, tensor);
     return true;
   }

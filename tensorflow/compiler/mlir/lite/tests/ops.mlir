@@ -318,8 +318,8 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testAddWithI64Broadcasting
 func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
 ^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
-  // CHECK: "tfl.add"(%arg0, %arg1)
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  // CHECK: tfl.add(%arg0, %arg1)
+  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
   return %0#0 : tensor<2x3xi64>
 }
 
@@ -373,7 +373,7 @@ func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
-  // CHECK: "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>>
   return %0#0 : tensor<? x !quant.any<i16:f32>>
 }
@@ -409,7 +409,7 @@ func @testDiv(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testLess
 func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // CHECK: "tfl.less"(%arg0, %arg1)
+  // CHECK: tfl.less(%arg0, %arg1)
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
   return %0#0 : tensor<? x i1>
 }
@@ -1766,6 +1766,34 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
   // expected-error @+1 {{op failed to verify that operand 1 is 1-D}}
   %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  // CHECK: "tfl.transpose"
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  return %1 : tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // CHECK: "tfl.transpose"
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype_mismatch_axis(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // expected-error @+1 {{op has mismatched quantized axes of input and output}}
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
 }
 
 // -----

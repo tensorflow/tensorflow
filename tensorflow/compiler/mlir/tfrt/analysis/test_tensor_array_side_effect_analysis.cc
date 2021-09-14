@@ -22,6 +22,12 @@ namespace {
 class TestTensorArraySideEffectAnalysis
     : public mlir::PassWrapper<TestTensorArraySideEffectAnalysis,
                                mlir::OperationPass<mlir::ModuleOp>> {
+  llvm::StringRef getArgument() const final {
+    return "tfrt-test-tensor-array-effect";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Test TensorArraySideEffectAnalysis";
+  }
   void runOnOperation() override {
     auto module = getOperation();
     TensorArraySideEffectAnalysis tensor_array_side_effect_analysis(module);
@@ -34,8 +40,7 @@ class TestTensorArraySideEffectAnalysis
   }
 };
 
-mlir::PassRegistration<TestTensorArraySideEffectAnalysis> pass(
-    "tfrt-test-tensor-array-effect", "Test TensorArraySideEffectAnalysis");
+mlir::PassRegistration<TestTensorArraySideEffectAnalysis> pass;
 
 }  // namespace
 }  // namespace tfrt_compiler

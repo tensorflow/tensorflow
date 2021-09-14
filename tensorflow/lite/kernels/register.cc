@@ -168,7 +168,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_CAST, Register_CAST());
+  AddBuiltin(BuiltinOperator_CAST, Register_CAST(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(),
              /* min_version = */ 1,
              /* max_version = */ 5);
@@ -341,19 +343,13 @@ BuiltinOpResolver::BuiltinOpResolver() {
   may_directly_contain_user_defined_ops_ = false;
 }
 
-OpResolver::TfLiteDelegatePtrVector BuiltinOpResolver::GetDelegates(
-    int num_threads) const {
-  OpResolver::TfLiteDelegatePtrVector delegates;
-  auto xnnpack_delegate = tflite::MaybeCreateXNNPACKDelegate(num_threads);
-  if (xnnpack_delegate != nullptr) {
-    delegates.push_back(std::move(xnnpack_delegate));
-  }
-  return delegates;
-}
-
-OpResolver::TfLiteDelegatePtrVector
-BuiltinOpResolverWithoutDefaultDelegates::GetDelegates(int num_threads) const {
-  return OpResolver::TfLiteDelegatePtrVector();
+OpResolver::TfLiteDelegateCreators BuiltinOpResolver::GetDelegateCreators()
+    const {
+  OpResolver::TfLiteDelegateCreators delegate_creators;
+  delegate_creators.push_back([](int num_threads) {
+    return tflite::MaybeCreateXNNPACKDelegate(num_threads);
+  });
+  return delegate_creators;
 }
 
 }  // namespace builtin

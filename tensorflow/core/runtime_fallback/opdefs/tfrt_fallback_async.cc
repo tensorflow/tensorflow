@@ -193,7 +193,7 @@ static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
 }
 
 static void print(OpAsmPrinter &p, CreateOp op) {
-  p << "tfrt_fallback_async.createop(" << op.in_ch() << ") key("
+  p << "(" << op.in_ch() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") device("
     << op->getAttr("device") << ") " << op->getAttr("op_name") << "()";
 
@@ -205,9 +205,8 @@ static void print(OpAsmPrinter &p, CreateOp op) {
 }
 
 static void print(OpAsmPrinter &p, ExecuteOp op) {
-  p << "tfrt_fallback_async.executeop key("
-    << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
-    << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
+  p << " key(" << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt()
+    << ") cost(" << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
     << '(' << op.operands() << ')';
 
@@ -217,7 +216,7 @@ static void print(OpAsmPrinter &p, ExecuteOp op) {
 }
 
 static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
-  p << "tfrt_fallback_async.executeop.seq(" << op.in_op_chain() << ") key("
+  p << "(" << op.in_op_chain() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
@@ -229,8 +228,8 @@ static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
 }
 
 static void print(OpAsmPrinter &p, BatchFunctionOp op) {
-  p << "tfrt_fallback_async.batch_function(" << op.in_op_chain() << ") "
-    << op->getAttr("f") << " (" << op.operands() << ") ";
+  p << "(" << op.in_op_chain() << ") " << op->getAttr("f") << " ("
+    << op.operands() << ") ";
 
   fallback_common::PrintExecuteOpCommon(p, op);
   if (!op.results().empty()) p << " : " << op.results().size();

@@ -28,6 +28,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -461,6 +462,24 @@ class StatefulScatterNdTest(test.TestCase):
         indices = np.array([2, 0, 6])
         op(ref, indices, updates).eval()
 
+  def testScatterNdDeterminismThrowsError(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("XLA implementation does not raise exception")
+    indices = constant_op.constant([[1]], dtype=dtypes.int32)
+    updates = constant_op.constant([[11., 12.]], dtype=dtypes.float32)
+    ref = variables.Variable(
+        [[0., 0.], [0., 0.], [0., 0.]], dtype=dtypes.float32)
+
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(errors_impl.UnimplementedError,
+                                    "Determinism is not yet supported for "
+                                    "ScatterNdUpdate."):
+          scatter = state_ops.scatter_nd_update(ref, indices, updates)
+          init = variables.global_variables_initializer()
+          self.evaluate(init)
+          self.evaluate(scatter)
+
 
 class ScatterNdTest(test.TestCase, parameterized.TestCase):
   non_aliasing_add_test = False
@@ -738,6 +757,19 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     val = self.evaluate(self.scatter_nd(indices, values, shape))
     self.assertAllClose([np.sum(values)], val)
 
+  def testScatterNdDeterminismThrowError(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("XLA implementation does not raise exception")
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    shape = [1]
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError, "Determinism is not yet supported "
+            "for ScatterNd."):
+          self.evaluate(self.scatter_nd(indices, values, shape))
+
   def testSmokeScatterNdBatch2DSliceDim2(self):
     indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
     values = array_ops.zeros([3, 5, 7])
@@ -920,6 +952,19 @@ class ScatterNdTensorTest(test.TestCase):
         b,
         constant_op.constant([[0.], [0.], [0.], [0.], [0.], [8.], [0.], [0.],
                               [0.], [0.]]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateThrowDeterminismError(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("XLA implementation does not raise exception")
+    a = array_ops.zeros([10, 1])
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError, "Determinism is not yet supported "
+            "for TensorScatter."):
+          self.evaluate(array_ops.tensor_scatter_update(
+              a, [[5], [5]], [[4], [8]]))
 
   @test_util.run_in_graph_and_eager_modes
   def testUpdateRepeatedIndices2D(self):

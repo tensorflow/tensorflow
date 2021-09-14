@@ -30,10 +30,28 @@ namespace {
 
 const float kThreshold_zero_buffer_ratio = 10.0f;
 
+// Returns string representation of the given tensor of the subgraph.
+const std::string tensor_str(const int tensor_idx, const int subgraph_idx) {
+  std::stringstream ss;
+  if (subgraph_idx != 0 && tensor_idx != -1)
+    ss << "T#" << subgraph_idx << "_" << tensor_idx;
+  else
+    ss << "T#" << tensor_idx;
+  return ss.str();
+}
+
+// Returns string representation of the given subgraph.
+const std::string subgraph_str(const int subgraph_idx) {
+  std::stringstream ss;
+  ss << "Subgraph#" << subgraph_idx;
+  return ss.str();
+}
+
 // Dump details of the given tensor.
 void dump_tensor_detail(std::stringstream& out_stream,
-                        const tflite::Tensor* tensor, const int tensor_idx) {
-  out_stream << "T#" << tensor_idx;
+                        const tflite::Tensor* tensor, const int tensor_idx,
+                        const int subgraph_idx, const tflite::Model* model) {
+  out_stream << tensor_str(tensor_idx, subgraph_idx);
   out_stream << "(" << tensor->name()->str() << ") ";
   // Prints `shape_signature` instead of `shape` if it's available since it
   // supports dynamic shapes.
@@ -59,19 +77,28 @@ void dump_tensor_detail(std::stringstream& out_stream,
     out_stream << "]";
   }
   out_stream << ", type:" << EnumNameTensorType(tensor->type());
+
+  // Dump buffer size of constant tensors.
+  auto buffer_idx = tensor->buffer();
+  if (buffer_idx != 0 && buffer_idx < model->buffers()->Length()) {
+    auto* buffer = model->buffers()->Get(buffer_idx);
+    if (buffer->data() && buffer->data()->size() != 0) {
+      out_stream << " RO " << buffer->data()->size() << " bytes";
+    }
+  }
   out_stream << "\n";
 }
 
 // Dump list of input or output tensors.
 void dump_tensor_list(std::stringstream& out_stream,
                       const flatbuffers::Vector<int32_t>* tensors,
-                      bool verbose = false) {
+                      const int subgraph_idx, bool verbose = false) {
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
       out_stream << "tensor #" << tensor_idx;
     } else {
-      out_stream << "T#" << tensor_idx;
+      out_stream << tensor_str(tensor_idx, subgraph_idx);
     }
     if (i != tensors->Length() - 1) {
       if (verbose) {
@@ -96,12 +123,30 @@ const std::string get_op_name(const OperatorCode* op_code) {
 // Dump the given Operator node.
 void dump_node(std::stringstream& out_stream, const int node_no,
                const OperatorCode* op_code, const Operator* op,
-               const SubGraph* subgraph) {
+               const int subgraph_index) {
   out_stream << "Op#" << node_no << " " << get_op_name(op_code);
   out_stream << "(";
-  dump_tensor_list(out_stream, op->inputs());
+  dump_tensor_list(out_stream, op->inputs(), subgraph_index);
+  if (GetBuiltinCode(op_code) == BuiltinOperator_CALL_ONCE) {
+    out_stream << subgraph_str(
+        op->builtin_options_as_CallOnceOptions()->init_subgraph_index());
+  } else if (GetBuiltinCode(op_code) == BuiltinOperator_IF) {
+    out_stream << ", Then: "
+               << subgraph_str(op->builtin_options_as_IfOptions()
+                                   ->then_subgraph_index());
+    out_stream << ", Else: "
+               << subgraph_str(op->builtin_options_as_IfOptions()
+                                   ->else_subgraph_index());
+  } else if (GetBuiltinCode(op_code) == BuiltinOperator_WHILE) {
+    out_stream << ", Cond: "
+               << subgraph_str(op->builtin_options_as_WhileOptions()
+                                   ->cond_subgraph_index());
+    out_stream << ", Body: "
+               << subgraph_str(op->builtin_options_as_WhileOptions()
+                                   ->body_subgraph_index());
+  }
   out_stream << ") -> [";
-  dump_tensor_list(out_stream, op->outputs());
+  dump_tensor_list(out_stream, op->outputs(), subgraph_index);
   out_stream << "]\n";
 }
 
@@ -118,11 +163,11 @@ void dump_model_summary(std::stringstream& out_stream,
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);
     const OperatorCode* first_op_code =
         model->operator_codes()->Get(first_op->opcode_index());
-    out_stream << "For example, in Subgraph#0, the "
+    out_stream << "For example, in " << subgraph_str(0) << ", the "
                << get_op_name(first_op_code) << " op takes\n";
-    dump_tensor_list(out_stream, first_op->inputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->inputs(), 0, /*verbose=*/true);
     out_stream << " as input and produces ";
-    dump_tensor_list(out_stream, first_op->outputs(), /*verbose=*/true);
+    dump_tensor_list(out_stream, first_op->outputs(), 0, /*verbose=*/true);
     out_stream << " as output.\n\n";
   }
 }
@@ -235,21 +280,21 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   for (int i = 0; i < subgraphs->Length(); ++i) {
     std::vector<int> gpu_incompatibile_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
-    out_stream << "Subgraph#" << i;
+    out_stream << subgraph_str(i);
     if (subgraph->name()) {
       out_stream << " " << subgraph->name()->str();
     }
     out_stream << "(";
-    dump_tensor_list(out_stream, subgraph->inputs());
+    dump_tensor_list(out_stream, subgraph->inputs(), i);
     out_stream << ") -> [";
-    dump_tensor_list(out_stream, subgraph->outputs());
+    dump_tensor_list(out_stream, subgraph->outputs(), i);
     out_stream << "]\n";
     for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       const Operator* op = subgraph->operators()->Get(j);
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
       out_stream << "  ";  // indents for operators
-      dump_node(out_stream, /*node_no=*/j, op_code, op, subgraph);
+      dump_node(out_stream, /*node_no=*/j, op_code, op, i);
       if (check_gpu_compatibility) {
         auto status =
             CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
@@ -270,12 +315,12 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     }
 
     // Dump Subgraph Tensors.
-    out_stream << "\nTensors of Subgraph#" << i << "\n";
+    out_stream << "\nTensors of " << subgraph_str(i) << "\n";
     auto tensors = subgraph->tensors();
     for (int j = 0; j < tensors->Length(); ++j) {
       auto tensor = tensors->Get(j);
       out_stream << "  ";  // indents for tensors
-      dump_tensor_detail(out_stream, tensor, j);
+      dump_tensor_detail(out_stream, tensor, j, i, model);
     }
     out_stream << "\n";
   }

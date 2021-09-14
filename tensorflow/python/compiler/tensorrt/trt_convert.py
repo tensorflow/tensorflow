@@ -1180,15 +1180,14 @@ class TrtGraphConverterV2(object):
       input_fn: a generator function that yields input data as a list or tuple,
         which will be used to execute the converted signature to generate TRT
         engines. Example:
-        `def input_fn():
-             # Let's assume a network with 2 input tensors. We generate 3 sets
-             # of dummy input data:
-             input_shapes = [[(1, 16), (2, 16)], # 1st input list
-                             [(2, 32), (4, 32)], # 2nd list of two tensors
-                             [(4, 32), (8, 32)]] # 3rd input list
-             for shapes in input_shapes:
-                 # return a list of input tensors
-                 yield [np.zeros(x).astype(np.float32) for x in shapes]`
+        `def input_fn(): # Let's assume a network with 2 input tensors. We
+          generate 3 sets
+             # of dummy input data: input_shapes = [[(1, 16), (2, 16)], # 1st
+               input list [(2, 32), (4, 32)], # 2nd list of two tensors [(4,
+               32), (8, 32)]] # 3rd input list
+             for shapes in input_shapes: # return a list of input tensors yield
+               [np.zeros(x).astype(np.float32) for x in shapes]`
+
     Raises:
       NotImplementedError: build() is already called.
       RuntimeError: the input_fx is None.
@@ -1243,12 +1242,6 @@ class TrtGraphConverterV2(object):
       output_saved_model_dir: directory to saved the converted SavedModel.
     """
     assert self._converted
-
-    if self._need_trt_profiles() and not self._build_called_once:
-      raise NotImplementedError(
-          "build() is not called . Explicit batch mode "
-          "(use_implicit_batch=False) requires generating TensorRT optimization"
-          " profiles which is done by calling build().")
 
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.

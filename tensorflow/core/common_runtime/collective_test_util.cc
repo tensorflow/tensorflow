@@ -328,6 +328,7 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   op_params.forward_from_array = &forward_from;
   AllocatorAttributes generic_alloc_attr;
   op_params.output_attr_array = &generic_alloc_attr;
+  op_params.resource_manager = device->resource_manager();
   OpKernelContext ctx(&op_params, 1);
 
   // Prepare a collective instance.

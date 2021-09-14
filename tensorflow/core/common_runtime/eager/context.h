@@ -327,6 +327,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return local_device_mgr()->ListDevices();
   }
 
+  std::vector<Device*> ListAllTfDevices() override;
+
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
   bool ShouldStoreGraphs() TF_LOCKS_EXCLUDED(metadata_mu_);

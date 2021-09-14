@@ -764,6 +764,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(

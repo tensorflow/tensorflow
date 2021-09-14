@@ -1130,22 +1130,22 @@ func @roll_multiple_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x8x4xi32>
   return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_multiple_axis
-  // CHECK:  %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST0:.*]] = "tf.Const"() {value = dense<[2, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK:  %[[CST3:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST4:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST5:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST6:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST7:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK:  %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<2x8x4xi32>
-  // CHECK:  %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST5]], %[[CST1]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x8x4xi32>
-  // CHECK:  %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST2]]) : (tensor<2x8x4xi32>, tensor<1x8x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
-  // CHECK:  %[[SLICE2:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST3]], %[[CST4]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
-  // CHECK:  %[[SLICE3:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST5]], %[[CST6]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
-  // CHECK:  %[[CONCAT1:.*]] = "tf.ConcatV2"(%[[SLICE2]], %[[SLICE3]], %[[CST7]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
-  // CHECK:  return %[[CONCAT1]] : tensor<3x8x4xi32>
+  // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[2, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %[[CST3:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST4:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST5:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST6:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST7:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK:      %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<2x8x4xi32>
+  // CHECK:      %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST5]], %[[CST1]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x8x4xi32>
+  // CHECK:      %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST2]]) : (tensor<2x8x4xi32>, tensor<1x8x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
+  // CHECK:      %[[SLICE2:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST3]], %[[CST4]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
+  // CHECK:      %[[SLICE3:.*]] = "tf.Slice"(%[[CONCAT]], %[[CST5]], %[[CST6]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
+  // CHECK:      %[[CONCAT1:.*]] = "tf.ConcatV2"(%[[SLICE2]], %[[SLICE3]], %[[CST7]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
+  // CHECK:      return %[[CONCAT1]] : tensor<3x8x4xi32>
 }
 
 func @roll_dynamic_shape(%arg0: tensor<?x8x4xi32>) -> tensor<?x8x4xi32> {
@@ -1187,6 +1187,25 @@ func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %arg2: t
   // CHECK: %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %arg2) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
   // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[SCATTER1]]) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: return %[[ADD]] : tensor<14xf32>
+}
+
+func @scatter_nd_updates_bool(%arg0: tensor<1x24xi1>, %arg1: tensor<1x2x2xi32>, %arg2: tensor<1x2xi1>) -> tensor<1x24xi1> {
+  %0 = "tf.TensorScatterUpdate"(%arg0, %arg1, %arg2) : (tensor<1x24xi1>, tensor<1x2x2xi32>, tensor<1x2xi1>) -> tensor<1x24xi1>
+  return %0 : tensor<1x24xi1>
+
+// CHECK-LABEL: scatter_nd_updates_bool(
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %[[CST0:.*]] = "tf.Const"() {value = dense<1> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+// CHECK:           %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<1x24xi32>} : () -> tensor<1x24xi32>
+// CHECK:           %[[CAST0:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x24xi1>) -> tensor<1x24xi32>
+// CHECK:           %[[CAST1:.*]] = "tf.Cast"(%arg2) {Truncate = false} : (tensor<1x2xi1>) -> tensor<1x2xi32>
+// CHECK:           %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CST0]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<i32>, tensor<1x24xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %[[CAST0]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CAST1]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[SCATTER1]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[CAST2:.*]] = "tf.Cast"(%[[ADD]]) {Truncate = false} : (tensor<1x24xi32>) -> tensor<1x24xi1>
+// CHECK:           return %[[CAST2]] : tensor<1x24xi1>
 }
 
 //===----------------------------------------------------------------------===//

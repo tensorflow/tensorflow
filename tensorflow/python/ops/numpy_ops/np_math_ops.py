@@ -925,12 +925,16 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
     # TODO(agarwal): avoid depending on static rank.
     nd = a.shape.rank
     if nd is None:
-      raise ValueError('diff currently requires known rank for input `a`')
+      raise ValueError(
+          'Function `diff` currently requires a known rank for input `a`. '
+          f'Received: a={a} (unknown rank)')
     if (axis + nd if axis < 0 else axis) >= nd:
-      raise ValueError('axis %s is out of bounds for array of dimension %s' %
-                       (axis, nd))
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {nd}.')
     if n < 0:
-      raise ValueError('order must be non-negative but got %s' % n)
+      raise ValueError('Argument `order` must be a non-negative integer. '
+                       f'Received: axis={n}')
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd
     slice1[axis] = slice(1, None)
@@ -1061,7 +1065,9 @@ def linspace(  # pylint: disable=missing-docstring
   start = np_array_ops.array(start, dtype=dtype)
   stop = np_array_ops.array(stop, dtype=dtype)
   if num < 0:
-    raise ValueError('Number of samples {} must be non-negative.'.format(num))
+    raise ValueError(
+        'Argument `num` (number of samples) must be a non-negative integer. '
+        f'Received: num={num}')
   step = ops.convert_to_tensor(np.nan)
   if endpoint:
     result = math_ops.linspace(start, stop, num, axis=axis)
@@ -1132,7 +1138,8 @@ def concatenate(arys, axis=0):
   if not isinstance(arys, (list, tuple)):
     arys = [arys]
   if not arys:
-    raise ValueError('Need at least one array to concatenate.')
+    raise ValueError('Need at least one array to concatenate. Received empty '
+                     f'input: arys={arys}')
   dtype = np_utils.result_type(*arys)
   arys = [np_array_ops.array(array, dtype=dtype) for array in arys]
   return array_ops.concat(arys, axis)
@@ -1164,9 +1171,12 @@ def count_nonzero(a, axis=None):
 def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
   # TODO(nareshmodi): make string tensors also work.
   if kind not in ('quicksort', 'stable'):
-    raise ValueError("Only 'quicksort' and 'stable' arguments are supported.")
+    raise ValueError(
+        'Invalid value for argument `kind`. '
+        'Only kind="quicksort" and kind="stable" are supported. '
+        f'Received: kind={kind}')
   if order is not None:
-    raise ValueError("'order' argument to sort is not supported.")
+    raise ValueError('The `order` argument is not supported. Pass order=None')
   stable = (kind == 'stable')
 
   a = np_array_ops.array(a)
@@ -1188,9 +1198,12 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
 @np_utils.np_doc('sort')
 def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
   if kind != 'quicksort':
-    raise ValueError("Only 'quicksort' is supported.")
+    raise ValueError(
+        'Invalid value for argument `kind`. '
+        'Only kind="quicksort" is supported. '
+        f'Received: kind={kind}')
   if order is not None:
-    raise ValueError("'order' argument to sort is not supported.")
+    raise ValueError('The `order` argument is not supported. Pass order=None')
 
   a = np_array_ops.array(a)
 
@@ -1232,8 +1245,8 @@ def append(arr, values, axis=None):
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
   if axis is not None and not isinstance(axis, six.integer_types):
     # TODO(wangpeng): Support tuple of ints as `axis`
-    raise ValueError('`axis` must be an integer. Tuple of ints is not '
-                     'supported yet. Got type: %s' % type(axis))
+    raise ValueError('Argument `axis` must be an integer. '
+                     f'Received axis={axis} (of type {type(axis)})')
   a = np_array_ops.array(a)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
@@ -1313,11 +1326,14 @@ def meshgrid(*xi, **kwargs):
   """This currently requires copy=True and sparse=False."""
   sparse = kwargs.get('sparse', False)
   if sparse:
-    raise ValueError('meshgrid doesnt support returning sparse arrays yet')
+    raise ValueError(
+        'Function `meshgrid` does not support returning sparse arrays yet. '
+        f'Received: sparse={sparse}')
 
   copy = kwargs.get('copy', True)
   if not copy:
-    raise ValueError('meshgrid only supports copy=True')
+    raise ValueError('Function `meshgrid` only supports copy=True. '
+                     f'Received: copy={copy}')
 
   indexing = kwargs.get('indexing', 'xy')
 
@@ -1340,7 +1356,9 @@ def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstrin
   elif casting == 'no':
     operands = [np_array_ops.asarray(x) for x in operands]
   else:
-    raise ValueError('casting policy not supported: %s' % casting)
+    raise ValueError(
+        'Invalid value for argument `casting`. '
+        f'Expected casting="safe" or casting="no". Received: casting={casting}')
   if not optimize:
     # TF doesn't have a "no optimization" option.
     # TODO(wangpeng): Print a warning that np and tf use different
@@ -1353,7 +1371,11 @@ def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstrin
   elif optimize == 'optimal':
     tf_optimize = 'optimal'
   else:
-    raise ValueError('`optimize` method not supported: %s' % optimize)
+    raise ValueError(
+        'Invalid value for argument `optimize`. '
+        'Expected one of {True, "greedy", "optimal"}. '
+        f'Received: optimize={optimize}')
+
   res = special_math_ops.einsum(subscripts, *operands, optimize=tf_optimize)
   return res
 

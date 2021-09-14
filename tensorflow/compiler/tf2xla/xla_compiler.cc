@@ -188,8 +188,11 @@ Status BuildComputation(
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
   // cannot change the sharding of the existing output op. To do this, we build
   // a new identity op to which shardings can be applied.
-  auto identity_op = [builder](xla::XlaOp op) {
-    return xla::GetTupleElement(xla::Tuple(builder, {op}), 0);
+  auto identity_op = [builder](
+                         xla::XlaOp op,
+                         const absl::optional<xla::OpSharding>& sharding) {
+    xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
+    return xla::Copy(op);
   };
 
   std::vector<xla::XlaOp> elems;
@@ -237,9 +240,8 @@ Status BuildComputation(
                                   /*fast_mem=*/false));
         }
         if (it != retval_shardings.end()) {
-          xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
           // Apply the sharding to the output, if there is a core assignment.
-          value = identity_op(value);
+          value = identity_op(value, sharding);
         }
 
         elems.push_back(value);
@@ -337,12 +339,11 @@ Status BuildComputation(
       }
 
       // Request that the value be returned on a specific core.
-      xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
       if (it != arg_shardings.end()) {
         retval_index_and_sharding[elems.size()] = it->second;
       }
       // Ensures the correct sharding is applied to the output.
-      handle = identity_op(handle);
+      handle = identity_op(handle, sharding);
       elems.push_back(handle);
     }
   }

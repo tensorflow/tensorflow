@@ -349,6 +349,17 @@ class AssertTest(googletest.TestCase):
     pb2.double_ = 4
     compare.assertProtoEqual(self, pb1, pb2, normalize_numbers=True)
 
+  def testLargeProtoData(self):
+    # Proto size should be larger than 2**16.
+    number_of_entries = 2**13
+    string_value = 'dummystr'  # Has length of 2**3.
+    pb1_txt = 'strings: "dummystr"\n' * number_of_entries
+    pb2 = compare_test_pb2.Small(strings=[string_value] * number_of_entries)
+    compare.assertProtoEqual(self, pb1_txt, pb2)
+
+    with self.assertRaises(AssertionError):
+      compare.assertProtoEqual(self, pb1_txt + 'strings: "Should fail."', pb2)
+
   def testPrimitives(self):
     self.assertAll('string_: "x"')
     self.assertNone('string_: "x"', 'string_: "y"', """

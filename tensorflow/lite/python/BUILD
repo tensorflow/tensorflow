@@ -186,6 +186,7 @@ py_library(
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/optimize:calibrator",
+        "//tensorflow/lite/tools/optimize/debugging/python:debugger",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -237,7 +238,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",

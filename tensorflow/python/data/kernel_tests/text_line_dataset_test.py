@@ -86,7 +86,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
-  def testTextLineDataset(self, compression_type):
+  def testBasic(self, compression_type):
     test_filenames = self._createFiles(
         2, 5, crlf=True, compression_type=compression_type)
 
@@ -126,7 +126,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
                          [self._lineText(1, i) for i in range(5)]] * 10)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetParallelRead(self):
+  def testParallelRead(self):
     test_filenames = self._createFiles(10, 10)
     files = dataset_ops.Dataset.from_tensor_slices(test_filenames).repeat(10)
     expected_output = []
@@ -137,7 +137,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
         dataset, expected_output=expected_output * 10, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetBuffering(self):
+  def testBuffering(self):
     test_filenames = self._createFiles(2, 5, crlf=True)
 
     repeat_dataset = readers.TextLineDataset(test_filenames, buffer_size=10)
@@ -175,12 +175,20 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
     self.assertNotIn(filename, [open_file.path for open_file in open_files])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetPathlib(self):
+  def testPathlib(self):
     files = self._createFiles(1, 5)
     files = [pathlib.Path(f) for f in files]
 
     expected_output = [self._lineText(0, i) for i in range(5)]
     ds = readers.TextLineDataset(files)
+    self.assertDatasetProduces(
+        ds, expected_output=expected_output, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    files = self._createFiles(1, 5)
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    ds = readers.TextLineDataset(files, name="text_line_dataset")
     self.assertDatasetProduces(
         ds, expected_output=expected_output, assert_items_equal=True)
 

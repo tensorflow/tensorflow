@@ -44,19 +44,19 @@ using f32 = float;
 
 #define EXPR_BUILDER [](auto& in) { return in.log2(); }
 
-BM_Mlir(Log2, mlir_input, "log2_1d", 1, f32, 1.0, 1.0)
+BM_Mlir(Log2, mlir_input, "log2_1d", 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenScalar(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenScalar(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenVectorized(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenVectorized(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

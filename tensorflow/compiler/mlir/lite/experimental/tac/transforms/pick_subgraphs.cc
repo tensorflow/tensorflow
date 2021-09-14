@@ -125,6 +125,10 @@ inline CallOp GetProducerCallOpOrNull(Value output) {
 class PickSubgraphsPass
     : public mlir::PassWrapper<PickSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+  llvm::StringRef getArgument() const final { return "tfl-pick-subgraphs"; }
+  llvm::StringRef getDescription() const final {
+    return "Pick the best subgraphs to minimize the overall total costs.";
+  }
   void runOnOperation() override;
 
   std::unordered_map<std::string, std::vector<FuncOp>> CollectSubgraphFuncs(
@@ -515,9 +519,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePickSubgraphsPass() {
   return std::make_unique<PickSubgraphsPass>();
 }
 
-static PassRegistration<PickSubgraphsPass> pass(
-    "tfl-pick-subgraphs",
-    "Pick the best subgraphs to minimize the overall total costs.");
+static PassRegistration<PickSubgraphsPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

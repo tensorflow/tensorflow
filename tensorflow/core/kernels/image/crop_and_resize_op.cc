@@ -170,14 +170,15 @@ class CropAndResizeOp : public AsyncOpKernel {
         context, crop_height > 0 && crop_width > 0,
         errors::InvalidArgument("crop dimensions must be positive"), done);
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(num_boxes), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({num_boxes, crop_height, crop_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& image = context->input(0);
@@ -417,14 +418,15 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
           done);
     }
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(batch_size), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, image_height, image_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& grads = context->input(0);

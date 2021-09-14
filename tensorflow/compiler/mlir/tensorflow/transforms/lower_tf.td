@@ -49,6 +49,9 @@ def IsI32 : NativeCodeCall<
 def CreateTFCastOpF32 : NativeCodeCall<
     "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
 
+def CreateTFCastOpI32 : NativeCodeCall<
+    "CreateTFCastOpI32(&$_builder, $0.getLoc(), $1, $2)">;
+
 def CreateTensorScatterNdOp : NativeCodeCall<
     "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
 
@@ -478,6 +481,21 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
 //===----------------------------------------------------------------------===//
 // TensorScatterUpdate op patterns.
 //===----------------------------------------------------------------------===//
+
+def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_CastOp
+            (TF_TensorScatterUpdateOp
+              (CreateTFCastOpI32
+                $input,
+                $input,
+                /*truncate=*/ConstBoolAttrFalse),
+              $indices,
+              (CreateTFCastOpI32
+                $updates,
+                $updates,
+                /*truncate=*/ConstBoolAttrFalse)),
+             /*truncate=*/ConstBoolAttrFalse),
+          [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
 
 def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_AddOp

@@ -360,6 +360,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sharding_op_util",
+    srcs = ["sharding_op_util.cc"],
+    hdrs = ["sharding_op_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":status_macros",
+        ":util",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 tf_cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],

@@ -366,6 +366,10 @@ class ShapeUtil {
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
+  // Creates a tuple shape from a slice of element shapes within the tuple. If
+  // only one shape is passed, returns that.
+  static Shape MakeMaybeTupleShape(absl::Span<const Shape> shapes);
+
   // Creates an opaque shape. These are generally used for threading a context
   // into a custom operation.
   static Shape MakeOpaqueShape();

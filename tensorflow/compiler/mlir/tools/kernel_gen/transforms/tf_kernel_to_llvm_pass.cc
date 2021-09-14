@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -178,7 +179,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
                                binary_attr.getValue(), LLVM::Linkage::Internal);
 
   // Make sure the trailing zero is included in the constant.
-  auto kernel_name = launch_op.getKernelName();
+  auto kernel_name = launch_op.getKernelName().getValue();
   SmallString<128> kernel_name_buffer(kernel_name);
   kernel_name_buffer.push_back('\0');
 
@@ -200,8 +201,10 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
       launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
   auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
 
+  auto libraryLaunchNameAttr =
+      mlir::StringAttr::get(loc.getContext(), kTfWrapperLibaryLaunchHelperName);
   auto function = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
-      launch_op, kTfWrapperLibaryLaunchHelperName);
+      launch_op, libraryLaunchNameAttr);
   if (!function) {
     PatternRewriter::InsertionGuard guard(rewriter);
     auto function_type = LLVM::LLVMFunctionType::get(
@@ -224,7 +227,8 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
         loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }
   rewriter.create<LLVM::CallOp>(
-      loc, TypeRange(), rewriter.getSymbolRefAttr(function),
+      loc, TypeRange(), mlir::SymbolRefAttr::get(function),
+
       ArrayRef<Value>{
           context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
           adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),
@@ -272,17 +276,18 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
                                                               &patterns);
     patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(
         type_converter, blob_annotation_);
-    // Set target.
+    //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
                              gpu::GPUDialect, tf_framework::TFFrameworkDialect,
                              math::MathDialect>();
-    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.
     target.markOpRecursivelyLegal<gpu::GPUModuleOp>();
+    // Unrealized conversion casts are cleaned up by a separate pass.
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     if (failed(applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();

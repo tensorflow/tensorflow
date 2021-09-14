@@ -1,4 +1,4 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -107,6 +107,26 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
     ] + tf_additional_cupti_deps(),
+)
+
+cuda_library(
+    name = "cuda_test",
+    testonly = 1,
+    srcs = ["cuda_test.cu.cc"],
+    hdrs = ["cuda_test.h"],
+    copts = select({
+        "@local_config_cuda//cuda:using_nvcc": [
+            "-nvcc_options",
+            "ptxas-options=-v",
+        ],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:test",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudart",
+    ],
 )
 
 # Rationale for linkstatic: The symbols in libcupti_static.a have hidden

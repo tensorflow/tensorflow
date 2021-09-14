@@ -2074,6 +2074,21 @@ TEST_F(OpTest, FloorMod) {
   });
 }
 
+TEST_F(OpTest, Gather) {
+  Repeatedly([this]() {
+    auto params_type = Choose<DataType>(kAllXlaTypes);
+    std::vector<int64> params_shape = RandomDims();
+    auto indices_type = Choose<DataType>({DT_INT32, DT_INT64});
+    Tensor indices = RandomTensor(indices_type);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Gather")
+            .RandomInput(params_type, params_shape)
+            .Input(indices)
+            .Attr("Tparams", params_type)
+            .Attr("Tindices", indices_type));
+  });
+}
+
 TEST_F(OpTest, Greater) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT});

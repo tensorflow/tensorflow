@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
@@ -205,12 +206,13 @@ std::string PySignatureChecker::DebugString() const {
                        });
 }
 
-PyInstanceChecker::PyInstanceChecker(PyObject* py_class) : py_class_(py_class) {
+PyInstanceChecker::PyInstanceChecker(const std::vector<PyObject*>& py_classes) {
   DCheckPyGilState();
-  Py_INCREF(py_class);
-  match_type_ = IsRegisteredDispatchableType(py_class)
-                    ? MatchType::MATCH_DISPATCHABLE
-                    : MatchType::MATCH;
+  py_classes_.reserve(py_classes.size());
+  for (PyObject* py_class : py_classes) {
+    py_classes_.emplace_back(py_class);
+    Py_INCREF(py_class);
+  }
 }
 
 PyInstanceChecker::~PyInstanceChecker() {
@@ -225,13 +227,23 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   auto* type = Py_TYPE(value);
   auto it = py_class_cache_.find(type);
   if (it != py_class_cache_.end()) {
-    return it->second ? match_type_ : MatchType::NO_MATCH;
+    return it->second;
   }
 
-  int result = PyObject_IsInstance(value, py_class_.get());
-  if (result < 0) {
-    PyErr_Clear();
-    return MatchType::NO_MATCH;
+  MatchType result = MatchType::NO_MATCH;
+  for (const auto& py_class : py_classes_) {
+    int is_instance = PyObject_IsInstance(value, py_class.get());
+    if (is_instance == 1) {
+      if (IsRegisteredDispatchableType(py_class.get())) {
+        result = MatchType::MATCH_DISPATCHABLE;
+        break;
+      } else {
+        result = MatchType::MATCH;
+      }
+    } else if (is_instance < 0) {
+      PyErr_Clear();
+      return MatchType::NO_MATCH;
+    }
   }
 
   if (py_class_cache_.size() < kMaxItemsInCache) {
@@ -239,16 +251,30 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
     auto insert_result = py_class_cache_.insert({type, result});
     DCHECK(insert_result.second);
   }
-  return result ? match_type_ : MatchType::NO_MATCH;
+  return result;
 }
+
+int PyInstanceChecker::cost() const { return py_classes_.size(); }
 
 std::string PyInstanceChecker::DebugString() const {
   DCheckPyGilState();
-  return reinterpret_cast<PyTypeObject*>(py_class_.get())->tp_name;
+  std::vector<const char*> type_names;
+  for (const auto& py_class : py_classes_) {
+    type_names.push_back(
+        reinterpret_cast<PyTypeObject*>(py_class.get())->tp_name);
+  }
+  return absl::StrJoin(
+      py_classes_, ", ", [](std::string* out, const Safe_PyObjectPtr& v) {
+        out->append(reinterpret_cast<PyTypeObject*>(v.get())->tp_name);
+      });
 }
 
 PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
   DCheckPyGilState();
+  if (!(PyList_Check(value) || PyTuple_Check(value))) {
+    return MatchType::NO_MATCH;
+  }
+
   Safe_PyObjectPtr seq(PySequence_Fast(value, ""));
   if (!seq) {
     PyErr_Clear();
@@ -270,7 +296,7 @@ PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
   return result;
 }
 
-int PyListChecker::cost() { return 10 * element_type_->cost(); }
+int PyListChecker::cost() const { return 10 * element_type_->cost(); }
 
 std::string PyListChecker::DebugString() const {
   return absl::StrCat("List[", element_type_->DebugString(), "]");
@@ -292,7 +318,7 @@ PyTypeChecker::MatchType PyUnionChecker::Check(PyObject* value) {
   return result;
 }
 
-int PyUnionChecker::cost() {
+int PyUnionChecker::cost() const {
   int cost = 1;
   for (auto& type_option : options_) {
     cost += type_option->cost();

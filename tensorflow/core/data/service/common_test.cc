@@ -150,6 +150,26 @@ TEST(CommonTest, TargetWorkersToString) {
   EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_LOCAL), "LOCAL");
 }
 
+TEST(CommonTest, ParseDeploymentMode) {
+  EXPECT_THAT(ParseDeploymentMode("COLOCATED"),
+              IsOkAndHolds(DeploymentMode::COLOCATED));
+  EXPECT_THAT(ParseDeploymentMode("Colocated"),
+              IsOkAndHolds(DeploymentMode::COLOCATED));
+  EXPECT_THAT(ParseDeploymentMode("REMOTE"),
+              IsOkAndHolds(DeploymentMode::REMOTE));
+  EXPECT_THAT(ParseDeploymentMode("remote"),
+              IsOkAndHolds(DeploymentMode::REMOTE));
+  EXPECT_THAT(ParseDeploymentMode("HYBRID"),
+              IsOkAndHolds(DeploymentMode::HYBRID));
+  EXPECT_THAT(ParseDeploymentMode("hybrid"),
+              IsOkAndHolds(DeploymentMode::HYBRID));
+}
+
+TEST(CommonTest, ParseInvalidDeploymentMode) {
+  EXPECT_THAT(ParseDeploymentMode("UNSET"),
+              testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

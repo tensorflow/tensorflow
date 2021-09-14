@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
+#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -98,12 +100,12 @@ class BefThunk : public Thunk {
            std::vector<BufferAllocation::Slice> buffers,
            tfrt::BefBuffer bef_buffer,
            tfrt::RCReference<tfrt::BEFFile> bef_file,
-           mlir::Operation* op = nullptr)
+           mlir::Operation* op = nullptr,
+           CustomCallThunk::CustomCallTarget call_target = nullptr)
       : Thunk(kind, thunk_info),
         buffers_(std::move(buffers)),
         bef_buffer_(std::move(bef_buffer)),
         bef_file_(std::move(bef_file)) {
-    // TODO(hanbinyoon): Also handle other collective ops.
     if (auto all_gather_op =
             mlir::dyn_cast_or_null<mlir::lmhlo::AllGatherOp>(op)) {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
@@ -119,6 +121,35 @@ class BefThunk : public Thunk {
       xccl_config_ = GetNcclCollectiveConfigForMlir(
           reduce_scatter_op, reduce_scatter_op.use_global_device_ids());
     }
+    if (auto all_to_all_op =
+            mlir::dyn_cast_or_null<mlir::lmhlo::AllToAllOp>(op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          all_to_all_op, all_to_all_op.use_global_device_ids());
+    }
+    if (auto custom_call_op =
+            mlir::dyn_cast_or_null<mlir::lmhlo::CustomCallOp>(op)) {
+      custom_call_target_ = std::move(call_target);
+    }
+  }
+
+  // Constructor for performing Collective Permute.
+  BefThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+           std::vector<BufferAllocation::Slice> buffers,
+           tfrt::BefBuffer bef_buffer,
+           tfrt::RCReference<tfrt::BEFFile> bef_file, int64_t replica_count,
+           int64_t partition_count, mlir::Operation* op = nullptr)
+      : Thunk(kind, thunk_info),
+        buffers_(std::move(buffers)),
+        bef_buffer_(std::move(bef_buffer)),
+        bef_file_(std::move(bef_file)) {
+    if (auto collective_permute_op =
+            mlir::dyn_cast_or_null<mlir::lmhlo::CollectivePermuteOp>(op)) {
+      auto config = NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
+          collective_permute_op, replica_count, partition_count);
+      id_to_collective_permute_source_target_ =
+          std::move(config.id_to_source_target);
+      xccl_config_ = std::move(config);
+    }
   }
 
   Status Initialize(const GpuExecutable& executable,
@@ -129,7 +160,15 @@ class BefThunk : public Thunk {
   const std::vector<BufferAllocation::Slice> buffers_;
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
+
+  // Used only when performing collective ops.
   absl::optional<NcclCollectiveConfig> xccl_config_;
+  absl::flat_hash_map<int64_t,
+                      NcclCollectivePermuteConfig::SourceTargetMapEntry>
+      id_to_collective_permute_source_target_;
+
+  // Used only when performing CustomCall.
+  CustomCallThunk::CustomCallTarget custom_call_target_;
 
   // The module data will be set in the execution context for kernel thunk to
   // use during execution.
@@ -179,7 +218,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
                                  mlir::PassManager::Nesting::Implicit);
   pass_manager.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
   pass_manager.addPass(mlir::createGpuAsyncRegionPass());
-  pass_manager.addPass(tensorflow::createAsyncGpuTfrtConversionPass());
+  tfrt::gpu::populateGpuToTfrtGpuPasses(pass_manager);
 
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
@@ -219,6 +258,15 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   }
   if (mlir::isa<mlir::lmhlo::ReduceScatterOp>(op)) {
     return Thunk::Kind::kNcclReduceScatter;
+  }
+  if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {
+    return Thunk::Kind::kNcclAllToAll;
+  }
+  if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(op)) {
+    return Thunk::Kind::kCollectivePermute;
+  }
+  if (mlir::isa<mlir::lmhlo::CustomCallOp>(op)) {
+    return Thunk::Kind::kCustomCall;
   }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
@@ -307,7 +355,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
       loc, get_context_op, builder.getStringAttr(""),
       builder.getI64IntegerAttr(key));
 
-  auto function_get_op = builder.create<tfrt::gpu::FunctionGetOp>(
+  auto module_function_op = builder.create<tfrt::gpu::ModuleFunctionOp>(
       loc, module_load_op, builder.getStringAttr(kernel_name));
 
   auto grid_dim_x = builder.create<tfrt::compiler::ConstantUI32Op>(
@@ -333,7 +381,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
   }
 
   mlir::Value launch_op = builder.create<tfrt::gpu::LaunchOp>(
-      loc, chain_type, stream_arg, function_get_op, grid_dim_x, grid_dim_y,
+      loc, chain_type, stream_arg, module_function_op, grid_dim_x, grid_dim_y,
       grid_dim_z, block_dim_x, block_dim_y, block_dim_z, shared_mem_size,
       in_chain, mlir::ValueRange(buffer_values));
 
@@ -364,6 +412,29 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
       std::move(bef_result.second), op));
 }
 
+StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
+    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs, int64_t replica_count,
+    int64_t partition_count) {
+  TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
+  auto module = CreateModule(op);
+  TF_RETURN_IF_ERROR(RunLmhloGpuToTfrtConversionPipeline(*module));
+
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  TF_ASSIGN_OR_RETURN(
+      auto bef_result,
+      ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
+
+  std::vector<BufferAllocation::Slice> arg_buffers;
+  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
+  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
+
+  return std::unique_ptr<Thunk>(new BefThunk(
+      kind, thunk_info, std::move(arg_buffers), std::move(bef_result.first),
+      std::move(bef_result.second), replica_count, partition_count, op));
+}
+
 StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
@@ -392,6 +463,30 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
   return std::unique_ptr<Thunk>(
       new BefThunk(Thunk::Kind::kKernel, thunk_info, std::move(arg_buffers),
                    std::move(bef_result.first), std::move(bef_result.second)));
+}
+
+// TODO(hanbinyoon): Deduplicate common code for BefThunk instantiation.
+StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
+    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs,
+    CustomCallThunk::CustomCallTarget call_target) {
+  TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
+  auto module = CreateModule(op);
+  TF_RETURN_IF_ERROR(RunLmhloGpuToTfrtConversionPipeline(*module));
+
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  TF_ASSIGN_OR_RETURN(
+      auto bef_result,
+      ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
+
+  std::vector<BufferAllocation::Slice> arg_buffers;
+  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
+  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
+
+  return std::unique_ptr<Thunk>(new BefThunk(
+      kind, thunk_info, std::move(arg_buffers), std::move(bef_result.first),
+      std::move(bef_result.second), op, std::move(call_target)));
 }
 
 // Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
@@ -493,6 +588,40 @@ CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
       });
 }
 
+static StatusOr<XcclContext::CollectivePermuteSourceTarget>
+GetCollectivePermuteSourceTarget(
+    const Thunk::ExecuteParams& params, const NcclCollectiveConfig& xccl_config,
+    const absl::flat_hash_map<
+        int64_t, NcclCollectivePermuteConfig::SourceTargetMapEntry>&
+        id_to_collective_permute_source_target) {
+  // NCCL 2.8.x has an issue with point-to-point communication primitives if
+  // different ranks process different amounts of data. This can happen in the
+  // case of a collective permute as certain nodes may not do any send or
+  // receives, or do only send or only receive. Sending and receiving to self
+  // as well (identity pair) causes this imbalance. NCCL 2.8.x requires the
+  // use of NCCL_LAUNCH_MODE=PARALLEL to avoid these issues. See
+  // https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-8-4.html#rel_2-8-4
+  if (!IsNcclLaunchModeParallel()) {
+    LOG(WARNING) << "NCCL based collective permute may not work correctly if "
+                    "NCCL_LAUNCH_MODE is not set to PARALLEL";
+  }
+
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
+  const int64_t current_id =
+      xccl_config.group_mode == CollectiveOpGroupMode::kCrossReplica
+          ? current_logical_id.replica_id
+          : current_logical_id.computation_id;
+
+  auto it = id_to_collective_permute_source_target.find(current_id);
+  if (it != id_to_collective_permute_source_target.end())
+    return XcclContext::CollectivePermuteSourceTarget{it->second.source,
+                                                      it->second.target};
+  return XcclContext::CollectivePermuteSourceTarget{};
+}
+
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateKernelExecutionContext(absl::optional<llvm::StringRef> gpu_module_data) {
   if (!gpu_module_data.has_value()) {
@@ -515,6 +644,22 @@ CreateKernelExecutionContext(absl::optional<llvm::StringRef> gpu_module_data) {
     return tensorflow::errors::Internal(llvm::toString(std::move(error)));
   }
   return std::move(exec_ctx);
+}
+
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateCustomCallExecutionContext(
+    CustomCallThunk::CustomCallTarget& custom_call_target) {
+  if (!custom_call_target) {
+    return tensorflow::errors::FailedPrecondition(
+        "Custom call target is not set for a CustomCall thunk.");
+  }
+
+  return CreateExecutionContext(
+      [&](tfrt::RequestContextBuilder& request_context_builder) {
+        request_context_builder.context_data().emplace<CustomCallContext>(
+            custom_call_target);
+        return Status::OK();
+      });
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -549,10 +694,20 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_ASSIGN_OR_RETURN(
         exec_ctx,
         CreateXcclExecutionContext(params, *xccl_config_, &locked_clique_or));
+    if (!id_to_collective_permute_source_target_.empty()) {
+      auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
+      TF_ASSIGN_OR_RETURN(
+          xccl_ctx.collective_permute_source_target,
+          GetCollectivePermuteSourceTarget(
+              params, *xccl_config_, id_to_collective_permute_source_target_));
+    }
   } else if (kind() == Thunk::kKernel) {
     tensorflow::mutex_lock lock(mutex_);
     TF_ASSIGN_OR_RETURN(exec_ctx,
                         CreateKernelExecutionContext(gpu_module_data_));
+  } else if (kind() == Thunk::kCustomCall) {
+    TF_ASSIGN_OR_RETURN(exec_ctx,
+                        CreateCustomCallExecutionContext(custom_call_target_));
   } else {
     TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
   }
@@ -615,11 +770,27 @@ StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
+StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCollectivePermuteThunk(
+    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
+    absl::Span<const BufferAllocation::Slice> inputs,
+    absl::Span<const BufferAllocation::Slice> outputs, int64_t replica_count,
+    int64_t partition_count) {
+  return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
+}
+
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefKernelThunk(
     Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
   return tensorflow::errors::FailedPrecondition(
       "BefKernelThunks are disabled.");
+}
+
+StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCustomCallThunk(
+    Thunk::ThunkInfo, mlir::Operation*,
+    absl::Span<const BufferAllocation::Slice>,
+    absl::Span<const BufferAllocation::Slice>,
+    CustomCallThunk::CustomCallTarget) {
+  return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
 }  // namespace xla

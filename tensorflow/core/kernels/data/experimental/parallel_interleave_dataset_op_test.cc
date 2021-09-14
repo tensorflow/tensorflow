@@ -82,12 +82,12 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {ParallelInterleaveDatasetOp::kFunc, func_},
-        {ParallelInterleaveDatasetOp::kDeterministic, deterministic_},
-        {ParallelInterleaveDatasetOp::kTarguments, type_arguments_},
-        {ParallelInterleaveDatasetOp::kOutputShapes, output_shapes_},
-        {ParallelInterleaveDatasetOp::kOutputTypes, output_dtypes_}};
+    *attr_vector = {{"f", func_},
+                    {"deterministic", deterministic_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

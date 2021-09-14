@@ -211,6 +211,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:batch_dot_simplification",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
+        "//tensorflow/compiler/xla/service:dynamic_dimension_simplifier",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:cholesky_expander",

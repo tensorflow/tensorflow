@@ -210,15 +210,29 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 }
 
 void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
-  DeviceMgr const* all_devices = device_mgr_;
-  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
-    all_devices = parent_->remote_device_mgr();
-  }
-
+  // Reset device_set_ by one of the two following scenarios:
+  // 1) Both cluster-FLR and its remote_device_mgr is available: include local
+  //    devices (if any) from the local device_mgr_ as Device type, and include
+  //    remote devices from cluster's remote_device_mgr as RemoteDevice type.
+  // 2) Include local devices from the local device_mgr_.
+  // In both scenarios, no device is added more than one times.
   mutex_lock l(mu_);
   device_set_ = std::make_shared<DeviceSet>();
-  for (auto d : all_devices->ListDevices()) {
-    device_set_->AddDevice(d);
+  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
+    for (auto d : parent_->remote_device_mgr()->ListDevices()) {
+      Device* device = nullptr;
+      if (device_mgr_->LookupDevice(d->name(), &device) == Status::OK()) {
+        // If this device exists in device_mgr, i.e., a local device,
+        // add this device from the instance included in device_mgr_
+        device_set_->AddDevice(device);
+      } else {
+        device_set_->AddDevice(d);
+      }
+    }
+  } else {
+    for (auto d : device_mgr_->ListDevices()) {
+      device_set_->AddDevice(d);
+    }
   }
 
   // Update flr_map_ by adding new devices
@@ -1170,7 +1184,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             status.error_message());
-        refcounted_done->UpdateStatus(Status(status.code(), function_and_msg));
+        refcounted_done->UpdateStatus(
+            errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
         cm->StartCancel();
       } else {

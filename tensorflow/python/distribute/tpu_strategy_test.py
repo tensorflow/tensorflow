@@ -1014,6 +1014,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
 
   def test_tpu_cancellation_does_not_close_chips(self, enable_packed_var):
+    if not FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "`tpu_cancellation_closes_chip only applies to TFRT TPU Runtime.")
     strategy = get_tpu_strategy(enable_packed_var)
     num_replicas = strategy.num_replicas_in_sync
     with strategy.scope():

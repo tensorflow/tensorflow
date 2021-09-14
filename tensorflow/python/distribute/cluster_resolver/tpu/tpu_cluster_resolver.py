@@ -285,8 +285,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     ```python
 
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    tpu_system_medata = resolver.get_tpu_system_metadata()
-    num_hosts = tpu_system_medata.num_hosts
+    tpu_system_metadata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_metadata.num_hosts
     ```
 
     Returns:

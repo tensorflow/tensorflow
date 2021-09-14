@@ -81,6 +81,19 @@ static Value CreateTFCastOpF32(OpBuilder *builder, Location loc, Value x,
   return builder->create<CastOp>(loc, type, x, truncate);
 }
 
+// Returns a TF_CastOp to I32. This function is used for CastOps that are
+// intermediate nodes in a TableGen pattern result. In such a case, the
+// destination type is not inferred and must be given explicitly.
+//
+// Preconditions: The given value must have a ShapedType.
+static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
+                               BoolAttr truncate) {
+  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  if (!x_type) llvm_unreachable("unsupported type");
+  Type type = x_type.clone(builder->getI32Type());
+  return builder->create<CastOp>(loc, type, x, truncate);
+}
+
 static APFloat ConvertToAPFloat(double val, Type type) {
   if (type.getIntOrFloatBitWidth() == 32) {
     return APFloat(static_cast<float>(val));

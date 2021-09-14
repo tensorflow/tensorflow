@@ -111,8 +111,8 @@ def batch_jacobian(output, inp, use_pfor=True, parallel_iterations=None):
   """
   output_shape = output.shape
   if not output_shape[0].is_compatible_with(inp.shape[0]):
-    raise ValueError("Need first dimension of output shape (%s) and inp shape "
-                     "(%s) to match." % (output.shape, inp.shape))
+    raise ValueError(f"Need first dimension of `output` shape ({output.shape}) "
+                     f"and `inp` shape ({inp.shape}) to match.")
   if output_shape.is_fully_defined():
     batch_size = int(output_shape[0])
     output_row_size = output_shape.num_elements() // batch_size

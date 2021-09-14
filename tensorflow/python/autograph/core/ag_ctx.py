@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
+import inspect
 import threading
 
+from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -92,3 +94,16 @@ class NullCtx(object):
 
 def _default_control_status_ctx():
   return ControlStatusCtx(status=Status.UNSPECIFIED)
+
+
+INSPECT_SOURCE_SUPPORTED = True
+try:
+  inspect.getsource(ag_logging.log)
+except OSError:
+  INSPECT_SOURCE_SUPPORTED = False
+  ag_logging.warning(
+      'AutoGraph is not available in this environment: functions lack code'
+      ' information. This is typical of some environments like the interactive'
+      ' Python shell. See'
+      ' https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code'
+      ' for more information.')

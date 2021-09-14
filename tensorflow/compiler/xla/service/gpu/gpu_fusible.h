@@ -24,6 +24,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Fusion passes frequently do checks across all pairs of "interesting" nodes.
+// Computing e.g. FusionWouldBeTooLarge(a, b) requires computing expensive
+// properties of `a` and `b` individually.  This cache lets us avoid recomputing
+// those properties n^2 times.
+//
+// Invariant: After modifying or removing a fusion node, call Invalidate(node).
+struct FusionInfoCache {
+ public:
+  // Must be called after modifying or removing a fusion node (or other node
+  // that's part of this cache).
+  void Invalidate(const HloInstruction* instr) {
+    shared_memory_usage.erase(instr);
+    num_unnested_reductions.erase(instr);
+  }
+
+  // The rest of the members of this this class are for internal use within
+  // gpu_fusible. You shouldn't need to use them yourself.
+  absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
+  absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
+};
+
 constexpr int64_t kMaxOperandsAndOutputsPerFusion = 64;
 
 bool IsInputFusible(const HloInstruction& instr);
@@ -64,7 +85,8 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion = false);
+                           bool is_consumer_producer_fusion = false,
+                           FusionInfoCache* cache = nullptr);
 
 // Check if fusing producer and consumer will generate a nested loop, e.g. both
 // producer and consumer are `reduce-window` HLO instructions.

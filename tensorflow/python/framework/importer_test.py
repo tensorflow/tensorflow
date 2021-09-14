@@ -884,17 +884,17 @@ class ImportGraphDefTest(test.TestCase):
 
   def testInvalidInputForGraphDef(self):
     with ops.Graph().as_default():
-      with self.assertRaises(TypeError) as e:
+      with self.assertRaisesRegex(
+          TypeError, r"Argument `graph_def` must be a GraphDef proto."):
         importer.import_graph_def("")
-      self.assertEqual("graph_def must be a GraphDef proto.", str(e.exception))
 
   def testInvalidInputForInputMap(self):
     with ops.Graph().as_default():
-      with self.assertRaises(TypeError) as e:
+      with self.assertRaisesRegex(
+          TypeError,
+          r"Argument `input_map` must be a dictionary. Obtained list"):
         importer.import_graph_def(
             self._MakeGraphDef(""), input_map=[constant_op.constant(5.0)])
-      self.assertEqual("input_map must be a dictionary mapping strings to "
-                       "Tensor objects.", str(e.exception))
     graph_def = self._MakeGraphDef("""
          node { name: 'a' op: 'Placeholder'
                 attr { key: 'dtype' value { type: DT_FLOAT } }}
@@ -920,8 +920,8 @@ class ImportGraphDefTest(test.TestCase):
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegex(TypeError,
-                                  "return_elements must be a list of strings."):
+      with self.assertRaisesRegex(
+          TypeError, "Argument `return_elements` must be a list of strings."):
         importer.import_graph_def(self._MakeGraphDef(""), return_elements=[7])
 
       with self.assertRaisesRegex(ValueError,

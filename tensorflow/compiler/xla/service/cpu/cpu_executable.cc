@@ -363,14 +363,12 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
     HloExecutionProfile* hlo_execution_profile;
 
-    void operator()() {
-      // Failing a CHECK here is not great, but I don't see an obvious way to
-      // return a failed Status asynchronously.
-      TF_CHECK_OK(executable->ExecuteComputeFunction(
-          &run_options.run_options(), *task_buffers, hlo_execution_profile));
+    Status operator()() {
+      return executable->ExecuteComputeFunction(
+          &run_options.run_options(), *task_buffers, hlo_execution_profile);
     }
   };
-  host_stream->EnqueueTask(
+  host_stream->EnqueueTaskWithStatus(
       AsyncRunTask{this, *run_options,
                    std::make_shared<std::vector<MaybeOwningDeviceMemory>>(
                        std::move(buffers)),

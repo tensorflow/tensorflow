@@ -47,8 +47,9 @@ def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
     return sorted(list(dict_))
-  except TypeError:
-    raise TypeError("nest only supports dicts with sortable keys.")
+  except TypeError as e:
+    raise TypeError("nest only supports dicts with sortable keys. Error: "
+                    f"{e.message}")
 
 
 def _yield_value(iterable):
@@ -158,20 +159,22 @@ def pack_sequence_as(structure, flat_sequence):
     ValueError: If nest and structure have different element counts.
   """
   if not (is_sequence(flat_sequence) or isinstance(flat_sequence, list)):
-    raise TypeError("flat_sequence must be a sequence")
+    raise TypeError("Argument `flat_sequence` must be a sequence. Got "
+                    f"'{type(flat_sequence).__name__}'.")
 
   if not is_sequence(structure):
     if len(flat_sequence) != 1:
-      raise ValueError("Structure is a scalar but len(flat_sequence) == %d > 1"
-                       % len(flat_sequence))
+      raise ValueError("Argument `structure` is a scalar but "
+                       f"`len(flat_sequence)`={len(flat_sequence)} > 1")
     return flat_sequence[0]
 
   flat_structure = flatten(structure)
   if len(flat_structure) != len(flat_sequence):
     raise ValueError(
-        "Could not pack sequence. Structure had %d elements, but flat_sequence "
-        "had %d elements.  Structure: %s, flat_sequence: %s."
-        % (len(flat_structure), len(flat_sequence), structure, flat_sequence))
+        "Could not pack sequence. Argument `structure` had "
+        f"{len(flat_structure)} elements, but argument `flat_sequence` had "
+        f"{len(flat_sequence)} elements. Received structure: "
+        f"{structure}, flat_sequence: {flat_sequence}.")
 
   _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
   return nest._sequence_like(structure, packed)  # pylint: disable=protected-access
@@ -208,14 +211,15 @@ def map_structure(func, *structure, **check_types_dict):
     ValueError: If wrong keyword arguments are provided.
   """
   if not callable(func):
-    raise TypeError("func must be callable, got: %s" % func)
+    raise TypeError(f"Argument `func` must be callable, got: {func}")
 
   if not structure:
     raise ValueError("Must provide at least one structure")
 
   if check_types_dict:
     if "check_types" not in check_types_dict or len(check_types_dict) > 1:
-      raise ValueError("Only valid keyword argument is check_types")
+      raise ValueError("Only valid keyword argument for `check_types_dict` is "
+                       f"'check_types'. Got {check_types_dict}.")
     check_types = check_types_dict["check_types"]
   else:
     check_types = True
@@ -281,26 +285,26 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     if not is_sequence(input_tree):
       raise TypeError(
           "If shallow structure is a sequence, input must also be a sequence. "
-          "Input has type: %s." % type(input_tree))
+          f"Input has type: '{type(input_tree).__name__}'.")
 
     if check_types and not isinstance(input_tree, type(shallow_tree)):
       raise TypeError(
           "The two structures don't have the same sequence type. Input "
-          "structure has type %s, while shallow structure has type %s."
-          % (type(input_tree), type(shallow_tree)))
+          f"structure has type '{type(input_tree).__name__}', while shallow "
+          f"structure has type '{type(shallow_tree).__name__}'.")
 
     if len(input_tree) != len(shallow_tree):
       raise ValueError(
           "The two structures don't have the same sequence length. Input "
-          "structure has length %s, while shallow structure has length %s."
-          % (len(input_tree), len(shallow_tree)))
+          f"structure has length {len(input_tree)}, while shallow structure "
+          f"has length {len(shallow_tree)}.")
 
     if check_types and isinstance(shallow_tree, _collections_abc.Mapping):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "
-            "structure has keys %s, while shallow structure has keys %s." %
-            (list(input_tree), list(shallow_tree)))
+            f"structure has keys {list(input_tree)}, while shallow structure "
+            f"has keys {list(shallow_tree)}.")
       input_tree = sorted(_six.iteritems(input_tree))
       shallow_tree = sorted(_six.iteritems(shallow_tree))
 
@@ -444,7 +448,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
     `shallow_tree`.
   """
   if not inputs:
-    raise ValueError("Cannot map over no sequences")
+    raise ValueError("Argument `inputs` is empty. Cannot map over no "
+                     "sequences.")
   for input_tree in inputs:
     assert_shallow_structure(shallow_tree, input_tree)
 

@@ -91,12 +91,11 @@ TEST(NodeBuilderTest, TypeConstructorBasicType) {
   TF_EXPECT_OK(NodeBuilder("op", "FullTypeOpBasicType")
                    .Attr("out_type", DT_FLOAT)
                    .Finalize(&graph, &node));
-  FullTypeDef* ft;
-  graph.NodeType(node->name(), &ft);
-  ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ft->args_size(), 1);
-  auto ot = ft->args(0);
+  ASSERT_TRUE(node->def().has_experimental_type());
+  const FullTypeDef& ft = node->def().experimental_type();
+  ASSERT_EQ(ft.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft.args_size(), 1);
+  auto ot = ft.args(0);
   ASSERT_EQ(ot.type_id(), TFT_ARRAY);
   ASSERT_EQ(ot.args(0).type_id(), TFT_TENSOR);
   ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_FLOAT);
@@ -124,12 +123,11 @@ TEST(NodeBuilderTest, TypeConstructorListType) {
   TF_EXPECT_OK(NodeBuilder("op", "FullTypeOpListType")
                    .Attr("out_types", {DT_FLOAT, DT_INT32})
                    .Finalize(&graph, &node));
-  FullTypeDef* ft;
-  graph.NodeType(node->name(), &ft);
-  ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ft->args_size(), 1);
-  auto ot = ft->args(0);
+  ASSERT_TRUE(node->def().has_experimental_type());
+  const FullTypeDef& ft = node->def().experimental_type();
+  ASSERT_EQ(ft.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft.args_size(), 1);
+  auto ot = ft.args(0);
   ASSERT_EQ(ot.type_id(), TFT_ARRAY);
   ASSERT_EQ(ot.args(0).type_id(), TFT_PRODUCT);
   ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_TENSOR);

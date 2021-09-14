@@ -24,6 +24,7 @@ limitations under the License.
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
@@ -46,7 +47,7 @@ tensorflow::Tensor CopyShtToTfTensor(const tfrt::StringHostTensor& sht);
 
 // Converts tfrt shape to tensorflow shape.
 inline tensorflow::TensorShape GetTfShape(const tfrt::TensorShape& shape) {
-  llvm::SmallVector<ssize_t, 4> dimensions;
+  llvm::SmallVector<tfrt::Index, 4> dimensions;
   shape.GetDimensions(&dimensions);
   llvm::SmallVector<int64_t, 4> dims(dimensions.begin(), dimensions.end());
   return tensorflow::TensorShape(dims);
@@ -57,9 +58,10 @@ inline tfrt::TensorMetadata GetTensorMetadata(
     const tensorflow::Tensor& tf_tensor) {
   auto dtype = tfd::GetTfrtDtype(tf_tensor.dtype());
   auto dim_sizes = tf_tensor.shape().dim_sizes();
-  static_assert(sizeof(ssize_t) == sizeof(dim_sizes.front()));
-  auto shape = llvm::makeArrayRef(reinterpret_cast<ssize_t*>(dim_sizes.data()),
-                                  dim_sizes.size());
+  static_assert(sizeof(tfrt::Index) == sizeof(dim_sizes.front()),
+                "Invalid dimension type size");
+  auto shape = llvm::makeArrayRef(
+      reinterpret_cast<tfrt::Index*>(dim_sizes.data()), dim_sizes.size());
   return tfrt::TensorMetadata(dtype, shape);
 }
 

@@ -2100,9 +2100,9 @@ def TestFactory(xla_backend,
     def testSetSharding(self):
       c = self._NewComputation()
       sharding = xla_client.OpSharding()
-      sharding.type = sharding.type.REPLICATED
-      sharding.tile_assignment_dimensions.extend([1])
-      sharding.tile_assignment_devices.extend([0])
+      sharding.type = xla_client.OpSharding.Type.REPLICATED
+      sharding.tile_assignment_dimensions = [1]
+      sharding.tile_assignment_devices = [0]
       c.set_sharding(sharding)
       x = ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(2.0)))
       c.clear_sharding()

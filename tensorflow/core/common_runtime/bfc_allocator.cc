@@ -29,8 +29,8 @@ limitations under the License.
 #ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/core/platform/stacktrace.h"
 #endif
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
@@ -464,7 +464,8 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
-        << ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_op_name
+        << profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation()
+               .pending_op_name
         << "\nIf the cause is memory fragmentation maybe the environment "
         << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
         << "improve the situation. \nCurrent allocation summary follows."
@@ -505,11 +506,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
             int64_t bytes_available =
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
             const auto& annotation =
-                ScopedMemoryDebugAnnotation::CurrentAnnotation();
-            std::string tensor_shape;
-            if (annotation.pending_shape) {
-              tensor_shape = annotation.pending_shape->DebugString();
-            }
+                profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
             return tensorflow::profiler::TraceMeEncode(
                 traceme_name, {{"allocator_name", name_},
                                {"bytes_reserved", stats_.bytes_reserved},
@@ -524,7 +521,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
                                {"data_type", annotation.pending_data_type},
-                               {"shape", tensor_shape}});
+                               {"shape", annotation.pending_shape_func()}});
           },
       /*level=*/profiler::TraceMeLevel::kInfo);
 }
@@ -587,7 +584,7 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 #ifdef TENSORFLOW_MEM_DEBUG
         if (ShouldRecordOpName()) {
           const auto& annotation =
-              ScopedMemoryDebugAnnotation::CurrentAnnotation();
+              profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
           if (annotation.pending_op_name != nullptr) {
             chunk->op_name = annotation.pending_op_name;
           } else {

@@ -420,6 +420,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:handle_data_util",
+        "//tensorflow/python:lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
@@ -538,8 +539,22 @@ tf_py_test(
     srcs = ["registration_test.py"],
     deps = [
         ":registration",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking:base",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "registration_saving_test",
+    srcs = ["registration_saving_test.py"],
+    deps = [
+        ":registration",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/tracking",
         "@absl_py//absl/testing:parameterized",
     ],
 )

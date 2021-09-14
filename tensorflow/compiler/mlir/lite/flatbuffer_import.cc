@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
@@ -307,25 +306,12 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 }
 
 // Gets the MLIR op name with the dialect name for the flatbuffer operator.
-StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
-                                    const tflite::OperatorCodeT& op_code) {
+std::string GetMlirOpName(const tflite::OperatorT& op,
+                          const tflite::OperatorCodeT& op_code) {
   if (IsBasicLSTMOp(op.builtin_options)) {
     return std::string("tfl.basic_lstm");
   }
-
-  auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
-  if (builtin_code == tflite::BuiltinOperator_IF) {
-    return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
-  }
-
-  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
-  return llvm::Twine("tfl.", op_name.lower()).str();
+  return mlir::GetMlirOpNameFromOpCode(op_code);
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
@@ -698,36 +684,64 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
-llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
-    tflite::BuiltinOptionsUnion options,
-    const std::vector<std::string>& func_names, Builder builder) {
+StatusOr<llvm::SmallVector<mlir::NamedAttribute, 4>>
+ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
+                                   const std::vector<std::string>& func_names,
+                                   Builder builder) {
   if (auto* opts = options.AsCallOnceOptions()) {
     uint32_t init_idx = opts->init_subgraph_index;
+    if (init_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     init_idx);
+    }
     auto init_attr = builder.getStringAttr(func_names.at(init_idx));
 
-    return {builder.getNamedAttr("session_init_function", init_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("session_init_function", init_attr)};
   }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
-    auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
+    if (then_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     then_idx);
+    }
+    auto then_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
-    auto else_attr = builder.getSymbolRefAttr(func_names.at(else_idx));
+    if (else_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     else_idx);
+    }
+    auto else_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
 
-    return {builder.getNamedAttr("then_branch", then_attr),
-            builder.getNamedAttr("else_branch", else_attr),
-            // TODO(b/139667752): Analyze statelessness correctly
-            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("then_branch", then_attr),
+        builder.getNamedAttr("else_branch", else_attr),
+        // TODO(b/139667752): Analyze statelessness correctly
+        builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
   }
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
-    auto cond_attr = builder.getSymbolRefAttr(func_names.at(cond_idx));
+    if (cond_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     cond_idx);
+    }
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
-    auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
+    if (body_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     body_idx);
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
-    return {builder.getNamedAttr("cond", cond_attr),
-            builder.getNamedAttr("body", body_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("cond", cond_attr),
+        builder.getNamedAttr("body", body_attr)};
   }
-  return {};
+  return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
 Status AddOpIntermediatesForLstm(
@@ -773,7 +787,7 @@ StatusOr<Operation*> ConvertOp(
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
-  TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
+  const std::string op_name = GetMlirOpName(op, op_code);
 
   OperationState op_state(loc, op_name);
 
@@ -893,8 +907,9 @@ StatusOr<Operation*> ConvertOp(
 
   // Handle the conversion from subgraph index to functions for If and While. We
   // will add CallOps in the region to call the functions later for While.
-  auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
-      op.builtin_options, func_names, builder);
+  TF_ASSIGN_OR_RETURN(auto function_ref_attrs,
+                      ConvertSubgraphIdxsToFunctionAttrs(op.builtin_options,
+                                                         func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
   return builder.createOperation(op_state);
@@ -1444,6 +1459,11 @@ OwningModuleRef tflite::FlatBufferToMlir(
   if (!model->description.empty()) {
     module->setAttr("tfl.description",
                     builder.getStringAttr(model->description));
+  }
+
+  if (!model->signature_defs.empty()) {
+    module->setAttr("tf_saved_model.semantics",
+                    mlir::UnitAttr::get(builder.getContext()));
   }
 
   absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>

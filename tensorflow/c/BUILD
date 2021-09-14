@@ -200,7 +200,6 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/python:__subpackages__",
-        "//third_party/llvm/llvm-project:__subpackages__",
     ],
     deps = [
         ":c_api_internal",

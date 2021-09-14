@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Support/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
+#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #include "transforms/lhlo_gpu_to_tfrt_gpu/register_passes.h"
 
@@ -36,6 +37,7 @@ int main(int argc, char **argv) {
                   tfrt::gpu::conversion::GpuConversionDialect>();
   tfrt::RegisterTFRTDialects(registry);
   tensorflow::registerTFRTGPUPasses();
+  tfrt::gpu::registerPasses();
   return failed(mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n",
                                   registry,
                                   /*preloadDialectsInContext=*/false));

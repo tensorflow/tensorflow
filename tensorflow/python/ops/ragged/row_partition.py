@@ -208,7 +208,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RowPartition` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or greater than or equal to zero if
-        `value_rowids` is empty). Defaults to `value_rowids[-1]` (or zero if
+        `value_rowids` is empty). Defaults to `value_rowids[-1] + 1` (or zero if
         `value_rowids` is empty).
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
@@ -226,7 +226,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     >>> print(RowPartition.from_value_rowids(
     ...     value_rowids=[0, 0, 0, 0, 2, 2, 2, 3],
     ...     nrows=4))
-    tf.RowPartition(row_splits=tf.Tensor([0 4 4 7 8], shape=(5,), dtype=int64))
+    tf.RowPartition(row_splits=[0 4 4 7 8])
     """
     # Local import bincount_ops to avoid import-cycle since bincount_ops
     # imports ragged_tensor.
@@ -863,7 +863,11 @@ class RowPartition(composite_tensor.CompositeTensor):
   #=============================================================================
 
   def __repr__(self):
-    return "tf.RowPartition(row_splits=%s)" % (self._row_splits)
+    if self._uniform_row_length is not None:
+      return (f"tf.RowPartition(nrows={self._nrows}, "
+              f"uniform_row_length={self._uniform_row_length})")
+    else:
+      return f"tf.RowPartition(row_splits={self._row_splits})"
 
   #=============================================================================
   # Precomputed Encodings
