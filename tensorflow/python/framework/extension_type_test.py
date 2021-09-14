@@ -60,7 +60,7 @@ KEYWORD_ONLY = tf_inspect.Parameter.KEYWORD_ONLY
 class MaskedTensorV1(extension_type.ExtensionType):
   """Example subclass of ExtensionType, used for testing."""
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
 
 class MaskedTensorV2(extension_type.ExtensionType):
@@ -73,7 +73,7 @@ class MaskedTensorV2(extension_type.ExtensionType):
   __name__ = 'tf.test.MaskedTensorV2'
 
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
   def __repr__(self):
     if hasattr(self.values, 'numpy') and hasattr(self.mask, 'numpy'):
@@ -232,16 +232,13 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
         tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
         tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
-        tf_inspect.Parameter(
-            'y',
-            POSITIONAL_OR_KEYWORD,
-            annotation=tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)),
+        tf_inspect.Parameter('y', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
         tf_inspect.Parameter(
             'z',
             POSITIONAL_OR_KEYWORD,
@@ -789,8 +786,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(fields[0].value_type, ops.Tensor)
       self.assertEqual(fields[0].default, fields[0].NO_DEFAULT)
       self.assertEqual(fields[1].name, 'mask')
-      self.assertEqual(fields[1].value_type,
-                       tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool))
+      self.assertEqual(fields[1].value_type, ops.Tensor)
       self.assertEqual(fields[1].default, fields[0].NO_DEFAULT)
 
   def testHasExtensionTypeField(self):
@@ -1072,7 +1068,7 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
@@ -1343,13 +1339,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor, got None'
-      ],
-      [
-          lambda: extension_type.AnonymousExtensionType(
-              values=constant_op.constant([[1, 2], [3, 4]]),
-              mask=ragged_factory_ops.constant([[1, 2], [3]])), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor'
+          'mask: expected a Tensor, got None'
       ],
       [
           lambda: extension_type.AnonymousExtensionType(
