@@ -1266,8 +1266,8 @@ def save_and_return_nodes(obj,
         experimental_io_device=options.experimental_io_device)
     object_saver.save(
         utils_impl.get_variables_path(export_dir), options=ckpt_options)
-    builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
-                                                export_dir)
+  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
+                                              export_dir)
   # Note that this needs to be the last file operation when saving the
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.

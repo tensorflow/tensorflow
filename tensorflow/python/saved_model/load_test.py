@@ -2500,6 +2500,48 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     export_dir = create_and_save_module(weight_size)
     load_and_run_module(export_dir, weight_size)
 
+  def _make_asset(self, contents):
+    filename = tempfile.mktemp(prefix=self.get_temp_dir())
+    with open(filename, "w") as f:
+      f.write(contents)
+    return filename
+
+  def test_assets(self):
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save_and_return_nodes(
+        root, save_dir, experimental_skip_checkpoint=True)
+    file_io.delete_file(vocab_file)
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    imported = load.load(
+        load_dir,
+        options=load_options.LoadOptions(experimental_skip_checkpoint=True))
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
+
 
 if __name__ == "__main__":
   test.main()
