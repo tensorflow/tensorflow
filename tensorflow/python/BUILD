@@ -84,6 +84,11 @@ py_library(
     ],
 )
 
+# Some of the dependencies in keras_lib are possibly outdated or not generally
+# useful, so a future task is to determine a good set of dependencies.
+# keras_lib may be removed in the future, it should NOT be used as
+# a direct dependency.
+# TODO(b/199420795) investigate minimal set of dependencies ...
 py_library(
     name = "keras_lib",
     srcs_version = "PY3",
@@ -432,6 +437,15 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
+    # extra_py_tests_deps is public to allow the use of tf_py_test or
+    # cuda_py_test build rules for out-of-tree custom ops.
+    # extra_py_tests_deps should NOT be used as dependency directly
+    # in out-of-tree BUILD files.
+    # Some of the dependencies in :keras_lib are possibly outdated
+    # or not generally useful, so a future task is to determine a good
+    # set of dependencies.
+    # TODO(b/199420795) investigate minimal set of dependencies ...
+    visibility = ["//visibility:public"],
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
