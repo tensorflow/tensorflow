@@ -147,6 +147,11 @@ cc_library(
     hdrs = ["c_api_macros.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
+    deps = [
+        ":tf_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_cuda_library(
@@ -354,6 +359,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
     ],
 )

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -81,13 +82,30 @@ static Status InitKernelModule(void* dso_handle) {
   return Status::OK();
 }
 
+static Status InitProfilerModule(void* dso_handle) {
+  void* dso_symbol;
+  tensorflow::Env* env = tensorflow::Env::Default();
+
+  TF_RETURN_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitProfiler", &dso_symbol));
+  auto init_fn = reinterpret_cast<profiler::TFInitProfilerFn>(dso_symbol);
+  TF_RETURN_IF_ERROR(profiler::InitPluginProfiler(init_fn));
+  return Status::OK();
+}
+
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
-  // Step 1 Init Device/Graph Module
+  // Step 1 Init Device/Graph Module.
   TF_RETURN_IF_ERROR(InitDeviceAndGraphModule(dso_handle));
 
-  // Step 2 Init Kernel Module
+  // Step 2 Init Kernel Module.
   TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));
 
+  // Step 3 Init Profiler Module. (Profiler support is optional.)
+  Status status = InitProfilerModule(dso_handle);
+  if (!status.ok()) {
+    VLOG(1) << "Failed to load pluggable profiler module due to "
+            << status.error_message();
+  }
   return Status::OK();
 }
 
