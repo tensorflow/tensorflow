@@ -31,13 +31,13 @@ using tensorflow::py_dispatch::PyUnionChecker;
 
 namespace {
 
-py::handle Dispatch(PythonAPIDispatcher* self, py::handle args,
+py::object Dispatch(PythonAPIDispatcher* self, py::handle args,
                     py::handle kwargs) {
   auto result = self->Dispatch(args.ptr(), kwargs.ptr());
   if (result == nullptr) {
     throw py::error_already_set();
   } else {
-    return result.release();
+    return py::reinterpret_steal<py::object>(result.release());
   }
 }
 
