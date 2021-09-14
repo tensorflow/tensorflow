@@ -249,6 +249,10 @@ std::string PyInstanceChecker::DebugString() const {
 
 PyTypeChecker::MatchType PyListChecker::Check(PyObject* value) {
   DCheckPyGilState();
+  if (!(PyList_Check(value) || PyTuple_Check(value))) {
+    return MatchType::NO_MATCH;
+  }
+
   Safe_PyObjectPtr seq(PySequence_Fast(value, ""));
   if (!seq) {
     PyErr_Clear();
