@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
@@ -484,7 +485,10 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       y1 = [10, 20, 30, 40, 50]
       y2 = np.array([10, 20, 30, 40, 50])
       y3 = constant_op.constant([10, 20, 30, 40, 50])
-      for y in [y1, y2, y3]:
+      y4 = variables.Variable([5, 4, 3, 2, 1])
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+      for y in [y1, y2, y3, y4]:
         z = math_ops.add(x, y)
         self.assertAllEqual(z.values, x.values + y)
         self.assertAllEqual(z.mask, x.mask)
