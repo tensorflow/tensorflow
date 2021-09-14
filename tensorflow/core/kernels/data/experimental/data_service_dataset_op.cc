@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <memory>
@@ -555,6 +556,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         Heartbeat();
         UpdateLocalTasks();
+        UpdateBufferSize();
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
                      dataset()->task_refresh_interval_ms_ * 1000;
@@ -694,10 +696,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           break;
         }
       }
-      if (dataset()->max_outstanding_requests_ == model::kAutotune) {
-        // Adjust max_outstanding_requests to account for newly added tasks.
-        max_outstanding_requests_ = tasks_.size();
-      }
     }
 
     bool ShouldReadFromTask(const TaskInfo& task) const {
@@ -732,10 +730,24 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       local_tasks_ = std::move(local_tasks);
     }
 
+    void UpdateBufferSize() TF_LOCKS_EXCLUDED(mu_) {
+      if (dataset()->max_outstanding_requests_ == model::kAutotune) {
+        // Adjust `max_outstanding_requests_` to account for newly added tasks.
+        mutex_lock l(mu_);
+        int64_t max_outstanding_requests = tasks_.size() + local_tasks_.size();
+        if (max_outstanding_requests > max_outstanding_requests_) {
+          worker_thread_cv_.notify_all();
+        }
+        max_outstanding_requests_ = max_outstanding_requests;
+      }
+    }
+
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
-      while (num_running_worker_threads_ < max_outstanding_requests_ &&
-             !cancelled_ && status_.ok()) {
+      const int64_t max_num_threads =
+          std::min<int64_t>(tasks_.size(), max_outstanding_requests_);
+      while (num_running_worker_threads_ < max_num_threads && !cancelled_ &&
+             status_.ok()) {
         num_running_worker_threads_++;
         auto done = [this]() {
           mutex_lock l(mu_);
@@ -1106,7 +1118,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // to improve utilization of local resources.
       return local_results_buffer_.size() + outstanding_local_requests_ +
                  results_.size() + outstanding_requests_ <
-             max_outstanding_requests_ + local_tasks_.size();
+             max_outstanding_requests_;
     }
 
     bool StrictRoundRobin() const {
