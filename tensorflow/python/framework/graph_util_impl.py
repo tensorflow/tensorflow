@@ -239,10 +239,12 @@ def extract_sub_graph(graph_def, dest_nodes):
   """
 
   if not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def)}.")
 
   if isinstance(dest_nodes, six.string_types):
-    raise TypeError("dest_nodes must be an iterable of strings.")
+    raise TypeError("dest_nodes must be an iterable of strings, but got "
+                    f"type {type(dest_nodes)}.")
 
   name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
       graph_def)
@@ -462,9 +464,11 @@ def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
       `graph_pb2.GraphDef`.
   """
   if not isinstance(graph_def_1, graph_pb2.GraphDef):
-    raise TypeError("graph_def_1 must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def_1 must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def_1)}.")
   if not isinstance(graph_def_2, graph_pb2.GraphDef):
-    raise TypeError("graph_def_2 must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def_2 must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def_2)}.")
   options = _proto_comparators.ProtoComparisonOptions(treat_nan_as_equal)
   return _proto_comparators.EqualsGraphDef(graph_def_1.SerializeToString(),
                                            graph_def_2.SerializeToString(),

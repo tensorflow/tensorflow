@@ -1021,7 +1021,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     initial_state = array_ops.placeholder(np.uint64, shape=(None,))
     shape = (None, 3)
     with self.assertRaisesRegex(TypeError,
-                                'Failed to convert object .* to Tensor'):
+                                'Failed to convert elements .* to Tensor'):
       res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 
