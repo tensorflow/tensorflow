@@ -31,17 +31,17 @@ class HloControlFlowFlattening : public HloModulePass {
   explicit HloControlFlowFlattening(int while_execution_count,
                                     bool remove_infeed_outfeed = true,
                                     bool flatten_while_loop = true,
-                                    bool remove_all_reduce = true)
+                                    bool remove_comm = true)
       : while_execution_count_(while_execution_count),
         remove_infeed_outfeed_(remove_infeed_outfeed),
         flatten_while_loop_(flatten_while_loop),
-        remove_all_reduce_(remove_all_reduce) {}
+        remove_comm_(remove_comm) {}
   ~HloControlFlowFlattening() override = default;
   absl::string_view name() const override { return "control-flow-flattening"; }
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // Removes infeeds and replaces the infeeded values with constants.
+  // Replaces an infeed with a custom call.
   Status RemoveInfeed(HloInstruction* infeed_hlo) const;
   // Removes outfeeds and replaces the outfeed HLO with a side-effecting custom
   // call that ensures that XLA doesn't dead-code-eliminate the outfeeded values
@@ -49,13 +49,23 @@ class HloControlFlowFlattening : public HloModulePass {
   Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
   // Flattens the while loop. Precondition: while_hlo is a while instruction.
   Status FlattenWhileLoop(HloInstruction* while_hlo) const;
-  // Removes all reduce instructions.
-  Status RemoveAllReduce(HloInstruction* hlo) const;
+  // Replaces a collective op with a custom call.
+  Status RemoveCollective(HloInstruction* hlo) const;
+  // Replaces a partition-id or replica-id with a zero constant.
+  Status RemovePartitionOrReplicaId(HloInstruction* hlo) const;
+  // Removes send and send-done with a custom call.
+  Status RemoveSendDone(
+      HloInstruction* send_done,
+      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
+  // Removes recv and recv-done with a custom call.
+  Status RemoveRecvDone(
+      HloInstruction* recv_done,
+      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
 
   int while_execution_count_;
   bool remove_infeed_outfeed_;
   bool flatten_while_loop_;
-  bool remove_all_reduce_;
+  bool remove_comm_;
 };
 
 }  // namespace xla
