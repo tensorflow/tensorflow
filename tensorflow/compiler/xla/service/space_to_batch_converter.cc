@@ -159,6 +159,9 @@ class ConvolutionVisitor {
   // Method that checks validity of space-to-batch on a given convolution.
   bool IsConvSuitableForSpaceToBatch(HloInstruction* convolution);
 
+  // Method that returns true if this is a backprop filter convolution.
+  bool IsThisBackPropFilterConv(HloInstruction* convolution);
+
   // Once a convolution has been space-to-batch'ed, this function will
   // transitively propagate the space-to-batch-ness on rest of the graph.
   Status PropagateOnUsers(HloInstruction* old_conv);
@@ -400,6 +403,36 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
     return false;
   }
   VLOG(1) << "Legal space-to-batch convolution " << convolution->ToString();
+  return true;
+}
+
+bool ConvolutionVisitor::IsThisBackPropFilterConv(HloInstruction* convolution) {
+  auto activations = convolution->mutable_operand(0);
+  auto kernel = convolution->mutable_operand(1);
+  auto dim_numbers = convolution->convolution_dimension_numbers();
+
+  if (!old_to_new_instrs_.contains(kernel) &&
+      !old_to_new_instrs_.contains(activations)) {
+    return false;
+  }
+
+  if (old_to_new_instrs_.contains(kernel)) {
+    auto dim_map_val_op_0 = instr_to_dim_map_[kernel];
+    const int64_t old_batch_dim = dim_map_val_op_0.batch;
+    if (convolution->convolution_dimension_numbers()
+            .kernel_input_feature_dimension() != old_batch_dim) {
+      return false;
+    }
+  }
+
+  if (old_to_new_instrs_.contains(activations)) {
+    auto dim_map_val_op_0 = instr_to_dim_map_[activations];
+    const int64_t old_batch_dim = dim_map_val_op_0.batch;
+    if (dim_numbers.input_feature_dimension() != old_batch_dim) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -990,6 +1023,10 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     if (!ctrl_.enable_propagations_on_window_dilations) {
       return false;
     }
+
+    if (!IsThisBackPropFilterConv(consumer)) {
+      return false;
+    }
     // Check for space-to-depth readiness here. Note this is not done in
     // SupportedOpForPropagation because the readiness is dependent upon
     // space-to-batchedness of the operands.
@@ -1037,11 +1074,6 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
           !old_to_new_instrs_.contains(activations)) {
         return false;
       }
-    }
-
-    if (!old_to_new_instrs_.contains(kernel) &&
-        !old_to_new_instrs_.contains(activations)) {
-      return false;
     }
 
     if (!old_to_new_instrs_.contains(kernel)) {
