@@ -31,7 +31,10 @@ py_library(
     name = "saving",
     srcs = ["saving.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:framework_ops"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/saved_model:save_context",
+    ],
 )
 
 distribute_py_test(

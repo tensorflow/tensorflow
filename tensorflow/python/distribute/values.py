@@ -897,6 +897,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
+  def _gather_saveables_for_saved_model(self):
+    """Return a `Saveable` for each shard for SavedModel. See `Trackable`."""
+    if values_util.is_saving_non_distributed():
+      return {trackable.VARIABLE_VALUE_KEY: self._primary}
+    else:
+      return self._gather_saveables_for_checkpoint()
+
   def _as_graph_element(self):
     if values_util.is_saving_non_distributed():
       return self._primary._as_graph_element()  # pylint: disable=protected-access
@@ -1153,6 +1160,13 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
+  def _gather_saveables_for_saved_model(self):
+    """Return a `Saveable` for each shard for SavedModel. See `Trackable`."""
+    if values_util.is_saving_non_distributed():
+      return {trackable.VARIABLE_VALUE_KEY: self._primary}
+    else:
+      return self._gather_saveables_for_checkpoint()
+
   def _write_object_proto(self, proto, options):
     """Update a SavedObject proto for the caller.
 
@@ -1367,6 +1381,19 @@ class SyncOnReadVariable(DistributedVariable):
       return _SyncOnReadSaveable(self, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  def _gather_saveables_for_saved_model(self):
+    """Return a `Saveable` for each shard for SavedModel.
+
+    See `Trackable._gather_saveables_for_saved_model` for details.
+
+    Returns:
+      The dictionary mapping attribute names to `SaveableObject` factories.
+    """
+    if values_util.is_saving_non_distributed():
+      return {trackable.VARIABLE_VALUE_KEY: self._primary}
+    else:
+      return self._gather_saveables_for_checkpoint()
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a SyncOnReadVariable to a tensor."""

@@ -1051,6 +1051,37 @@ class Trackable(object):
     """
     return self._self_saveable_object_factories
 
+  def _gather_saveables_for_saved_model(self):
+    """Returns a dictionary that defines the checkpoint save/restore ops.
+
+    This is similar to `_gather_saveables_for_checkpoint`, but is only called
+    to write the save and restore ops to a SavedModel GraphDef. The SavedModel
+    checkpoint is still saved with `_gather_saveables_for_checkpoint`. To ensure
+    compatibility, make sure the dictionary keys and `SaveableObject` names
+    are the same in both functions.
+
+    By default, this function calls `_gather_saveables_for_checkpoint`.
+
+    This function should only be overwritten when the resources added to the
+    exported graph are different from the resources used to save the checkpoint.
+    As a general rule of thumb, if your class overrides `_map_resources` then
+    it should also override this function.
+
+    For example, distributed variables are saved to the SavedModel as normal
+    variables. In `_map_resources`, it returns a dictionary mapping itself to
+    a regular variable. In this function, it returns
+    `{VARIABLE_VALUE_KEY: mapped variable}`.
+
+    Returns:
+      The dictionary mapping attribute names to `SaveableObject` factories
+      described above. For example:
+      {VARIABLE_VALUE_KEY:
+       lambda name="global_name_for_this_object":
+       SaveableObject(name=name, ...)}
+
+    """
+    return self._gather_saveables_for_checkpoint()
+
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.
 
@@ -1106,6 +1137,10 @@ class Trackable(object):
     resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
     graph), which allows session based APIs (e.g, C++ loader API) to interact
     with resources owned by this object.
+
+    If you are overriding this function, make sure to implement
+    `_gather_saveables_for_saved_model`, which defines the save and restore ops
+    on the mapped resources.
 
     Args:
       save_options: A tf.saved_model.SaveOptions instance.

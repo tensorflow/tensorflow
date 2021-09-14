@@ -26,7 +26,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.training import optimizer as optimizer_v1
-from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import object_identity
@@ -47,6 +46,11 @@ _OPTIMIZER_SLOTS_NAME = _ESCAPE_CHAR + "OPTIMIZER_SLOT"
 # attribute in checkpoint names. Used like:
 #   <path to variable>/<_OBJECT_ATTRIBUTES_NAME>/<name of attribute>
 _OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
+
+# Factory and related info used to build a SaveableObject that saves a Trackable
+# to checkpoint.
+_CheckpointFactoryData = collections.namedtuple(
+    "_CheckpointFactoryData", ["factory", "name", "checkpoint_key"])
 
 
 def _escape_local_name(name):
@@ -139,6 +143,39 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
           slot_variables.setdefault(trackable, []).append(
               slot_variable_proto)
   return slot_variables
+
+
+def get_checkpoint_factories_and_keys(object_names, for_saved_model=False):
+  """Gets a map of saveable factories and corresponding checkpoint keys.
+
+  Args:
+    object_names: a dictionary that maps `Trackable` objects to auto-generated
+      string names.
+    for_saved_model: Whether to gather the Saveables for the SavedModel
+      GraphDef.
+  Returns:
+    A dictionary mapping Trackables -> a list of _CheckpointFactoryData.
+  """
+  checkpoint_factory_map = object_identity.ObjectIdentityDictionary()
+  for trackable, object_name in object_names.items():
+    checkpoint_factory_map[trackable] = []
+    for name, saveable_factory in (
+        _gather_saveables(trackable, for_saved_model).items()):
+      checkpoint_key = "%s/%s/%s" % (
+          object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
+      checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
+          factory=saveable_factory,
+          name=name,
+          checkpoint_key=checkpoint_key))
+  return checkpoint_factory_map
+
+
+def _gather_saveables(trackable, for_saved_model):
+  """Returns a dictionary of Saveables that define the save/restore ops."""
+  if for_saved_model:
+    return trackable._gather_saveables_for_saved_model()  # pylint: disable=protected-access
+  else:
+    return trackable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
 
 
 @tf_export("__internal__.tracking.ObjectGraphView", v1=[])
@@ -240,8 +277,7 @@ class ObjectGraphView(object):
     return bfs_sorted, path_to_root
 
   def _add_attributes_to_object_graph(
-      self, trackable_objects, object_graph_proto, node_ids, object_names,
-      object_map, call_with_mapped_captures):
+      self, trackable_objects, object_graph_proto, node_ids, object_names):
     """Create SaveableObjects and corresponding SerializedTensor protos."""
     named_saveable_objects = []
     if self._saveables_cache is None:
@@ -253,64 +289,40 @@ class ObjectGraphView(object):
       # functions computing volatile Python state to be saved with the
       # checkpoint.
       feed_additions = {}
+    checkpoint_factory_map = get_checkpoint_factories_and_keys(object_names)
     for checkpoint_id, (trackable, object_proto) in enumerate(
         zip(trackable_objects, object_graph_proto.nodes)):
       assert node_ids[trackable] == checkpoint_id
-      object_name = object_names[trackable]
-      if object_map is None:
-        object_to_save = trackable
-      else:
-        object_to_save = object_map.get(trackable, trackable)
       if self._saveables_cache is not None:
-        cached_attributes = self._saveables_cache.setdefault(object_to_save, {})
+        cached_attributes = self._saveables_cache.setdefault(trackable, {})
       else:
         cached_attributes = None
-
-      for name, saveable_factory in (
-          object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+      for factory_data in checkpoint_factory_map[trackable]:
         attribute = object_proto.attributes.add()
-        attribute.name = name
-        attribute.checkpoint_key = "%s/%s/%s" % (
-            object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
-        if cached_attributes is None:
-          saveables = None
-        else:
-          saveables = cached_attributes.get(name, None)
-          if saveables is not None:
-            for saveable in saveables:
-              if attribute.checkpoint_key not in saveable.name:
-                # The checkpoint key for this SaveableObject is different. We
-                # need to re-create it.
-                saveables = None
-                del cached_attributes[name]
-                break
-        if saveables is None:
-          if callable(saveable_factory):
-            maybe_saveable = saveable_object_util.create_saveable_object(
-                saveable_factory, attribute.checkpoint_key,
-                call_with_mapped_captures)
-          else:
-            maybe_saveable = saveable_factory
-          if isinstance(maybe_saveable, saveable_object_lib.SaveableObject):
-            saveables = (maybe_saveable,)
-          else:
-            # Figure out the name-based Saver's name for this variable. If it's
-            # already a SaveableObject we'd just get the checkpoint key back, so
-            # we leave full_name blank.
-            saver_dict = saveable_object_util.op_list_to_dict(
-                [maybe_saveable], convert_variable_to_tensor=False)
-            full_name, = saver_dict.keys()
-            saveables = tuple(saveable_object_util.saveable_objects_for_op(
-                op=maybe_saveable, name=attribute.checkpoint_key))
-            for saveable in saveables:
-              saveable.full_name = full_name
+        attribute.name = name = factory_data.name
+        attribute.checkpoint_key = key = factory_data.checkpoint_key
+        saveable_factory = factory_data.factory
+
+        # See if we can skip saving this checkpoint key.
+        saveables = cached_attributes.get(name) if cached_attributes else None
+        if saveables is not None:
           for saveable in saveables:
-            if attribute.checkpoint_key not in saveable.name:
+            if key not in saveable.name:
+              # The checkpoint key for this SaveableObject is different. We
+              # need to re-create it.
+              saveables = None
+              del cached_attributes[name]
+              break
+
+        if saveables is None:
+          saveables = saveable_object_util.create_saveables_from_factory(
+              saveable_factory, key)
+          for saveable in saveables:
+            if key not in saveable.name:
               raise AssertionError(
-                  ("The object %s produced a SaveableObject with name '%s' for "
-                   "attribute '%s'. Expected a name containing '%s'.")
-                  % (trackable, name, saveable.name,
-                     attribute.checkpoint_key))
+                  f"The object {trackable} produced a SaveableObject with name "
+                  f"'{saveable.name}' for attribute '{name}'. Expected a name"
+                  f" containing '{key}'.")
           if cached_attributes is not None:
             cached_attributes[name] = saveables
 
@@ -366,34 +378,6 @@ class ObjectGraphView(object):
         child_proto.local_name = child.name
     return object_graph_proto
 
-  def _serialize_gathered_objects(self, trackable_objects, path_to_root,
-                                  object_map=None,
-                                  call_with_mapped_captures=None):
-    """Create SaveableObjects and protos for gathered objects."""
-    object_names = object_identity.ObjectIdentityDictionary()
-    for obj, path in path_to_root.items():
-      object_names[obj] = _object_prefix_from_path(path)
-    node_ids = object_identity.ObjectIdentityDictionary()
-    for node_id, node in enumerate(trackable_objects):
-      node_ids[node] = node_id
-    slot_variables = _serialize_slot_variables(
-        trackable_objects=trackable_objects,
-        node_ids=node_ids,
-        object_names=object_names)
-    object_graph_proto = self._fill_object_graph_proto(
-        trackable_objects=trackable_objects,
-        node_ids=node_ids,
-        slot_variables=slot_variables)
-    named_saveable_objects, feed_additions = (
-        self._add_attributes_to_object_graph(
-            trackable_objects=trackable_objects,
-            object_graph_proto=object_graph_proto,
-            node_ids=node_ids,
-            object_names=object_names,
-            object_map=object_map,
-            call_with_mapped_captures=call_with_mapped_captures))
-    return named_saveable_objects, object_graph_proto, feed_additions
-
   def serialize_object_graph(self):
     """Determine checkpoint keys for variables and build a serialized graph.
 
@@ -415,31 +399,30 @@ class ObjectGraphView(object):
     Raises:
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
-    trackable_objects, path_to_root = self._breadth_first_traversal()
-    return self._serialize_gathered_objects(
-        trackable_objects, path_to_root)
+    (trackable_objects, unused_path_to_root, node_ids, slot_variables,
+     object_names) = self.objects_ids_and_slot_variables_and_paths()
+    object_graph_proto = self._fill_object_graph_proto(
+        trackable_objects=trackable_objects,
+        node_ids=node_ids,
+        slot_variables=slot_variables)
+    named_saveable_objects, feed_additions = (
+        self._add_attributes_to_object_graph(
+            trackable_objects=trackable_objects,
+            object_graph_proto=object_graph_proto,
+            node_ids=node_ids,
+            object_names=object_names))
+    return named_saveable_objects, object_graph_proto, feed_additions
 
-  def frozen_saveable_objects(self, object_map=None, to_graph=None,
-                              call_with_mapped_captures=None):
+  def frozen_saveable_objects(self):
     """Creates SaveableObjects with the current object graph frozen."""
-    trackable_objects, path_to_root = self._breadth_first_traversal()
-    if to_graph:
-      target_context = to_graph.as_default
-    else:
-      target_context = ops.NullContextmanager
-    with target_context():
-      named_saveable_objects, graph_proto, _ = self._serialize_gathered_objects(
-          trackable_objects,
-          path_to_root,
-          object_map,
-          call_with_mapped_captures)
-      with ops.device("/cpu:0"):
-        object_graph_tensor = constant_op.constant(
-            graph_proto.SerializeToString(), dtype=dtypes.string)
-      named_saveable_objects.append(
-          base.NoRestoreSaveable(
-              tensor=object_graph_tensor,
-              name=base.OBJECT_GRAPH_PROTO_KEY))
+    named_saveable_objects, graph_proto, _ = self.serialize_object_graph()
+    with ops.device("/cpu:0"):
+      object_graph_tensor = constant_op.constant(
+          graph_proto.SerializeToString(), dtype=dtypes.string)
+    named_saveable_objects.append(
+        base.NoRestoreSaveable(
+            tensor=object_graph_tensor,
+            name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects
 
   def objects_ids_and_slot_variables_and_paths(self):
@@ -465,10 +448,11 @@ class ObjectGraphView(object):
         trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
-    return trackable_objects, path_to_root, node_ids, slot_variables
+    return (trackable_objects, path_to_root, node_ids, slot_variables,
+            object_names)
 
   def objects_ids_and_slot_variables(self):
-    trackable_objects, _, node_ids, slot_variables = (
+    trackable_objects, _, node_ids, slot_variables, _ = (
         self.objects_ids_and_slot_variables_and_paths())
     return trackable_objects, node_ids, slot_variables
 

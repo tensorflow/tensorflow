@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -139,7 +138,7 @@ class MultiDeviceSaver(object):
   checkpointing are built on top of it.
   """
 
-  def __init__(self, saveable_objects):
+  def __init__(self, saveable_objects, saveable_device=None):
     """Specify a list of `SaveableObject`s to save and restore.
 
     Args:
@@ -147,6 +146,9 @@ class MultiDeviceSaver(object):
         Objects extending `SaveableObject` will be saved and restored, and
         objects extending `SaveableHook` will be called into at save and
         restore time.
+      saveable_device: A string referencing the device to use when saving or
+        restoring all `SaveableObject`s. This will override the `device`
+        property in `SaveableObject`.
     """
     self._before_save_callbacks = []
     self._after_restore_callbacks = []
@@ -167,29 +169,18 @@ class MultiDeviceSaver(object):
         self._after_restore_callbacks.append(saveable.after_restore)
 
       if is_saveable:
-        host_device = saveable_object_util.set_cpu0(saveable.device)
+        host_device = saveable_object_util.set_cpu0(
+            saveable.device if saveable_device is None else saveable_device)
         saveables_by_device.setdefault(host_device, []).append(saveable)
 
     self._single_device_savers = {
         device: _SingleDeviceSaver(saveables)
         for device, saveables in saveables_by_device.items()}
 
-  def to_proto(self):
-    """Serializes to a SaverDef referencing the current graph."""
-    filename_tensor = array_ops.placeholder(
-        shape=[], dtype=dtypes.string, name="saver_filename")
-    save_tensor = self._traced_save(filename_tensor)
-    restore_op = self._traced_restore(filename_tensor).op
-    return saver_pb2.SaverDef(
-        filename_tensor_name=filename_tensor.name,
-        save_tensor_name=save_tensor.name,
-        restore_op_name=restore_op.name,
-        version=saver_pb2.SaverDef.V2)
-
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.string),),
       autograph=False)
-  def _traced_save(self, file_prefix):
+  def traced_save(self, file_prefix):
     save_op = self.save(file_prefix)
     with ops.device("cpu:0"):
       with ops.control_dependencies([save_op]):
@@ -198,10 +189,10 @@ class MultiDeviceSaver(object):
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.string),),
       autograph=False)
-  def _traced_restore(self, file_prefix):
+  def traced_restore(self, file_prefix):
     restore_ops = self.restore(file_prefix)
     with ops.device("cpu:0"):
-      with ops.control_dependencies(restore_ops.values()):
+      with ops.control_dependencies(nest.flatten(restore_ops)):
         return array_ops.identity(file_prefix)
 
   def save(self, file_prefix, options=None):
