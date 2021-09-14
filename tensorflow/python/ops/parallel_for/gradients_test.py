@@ -439,7 +439,7 @@ class GradientsTest(test.TestCase):
   def test_batch_jacobian_bad_shapes(self):
     x = random_ops.random_uniform([2, 2])
     y = random_ops.random_uniform([3, 2])
-    with self.assertRaisesRegex(ValueError, "Need first dimension of output"):
+    with self.assertRaisesRegex(ValueError, "Need first dimension of `output`"):
       gradients.batch_jacobian(y, x, use_pfor=True)
 
   def test_batch_jacobian_bad_unknown_shapes(self):
