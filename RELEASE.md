@@ -40,6 +40,10 @@
     [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
     and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
     for the migration.
+  * Deprecate tflite::OpResolver::GetDelegates and the list returned by TfLite's
+    BuiltinOpResolver::GetDelegates is now always empty. Instead, recommend
+    using new method tflite::OpResolver::GetDelegateCreators in order to achieve
+    lazy initialization on TfLite delegate instances.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.

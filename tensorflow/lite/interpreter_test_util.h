@@ -43,8 +43,7 @@ class InterpreterTest : public ::testing::Test {
  protected:
   TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
-  std::vector<Interpreter::TfLiteDelegatePtr>*
-  mutable_lazy_delegate_providers() {
+  Interpreter::TfLiteDelegateCreators* mutable_lazy_delegate_providers() {
     return &interpreter_.lazy_delegate_providers_;
   }
 
