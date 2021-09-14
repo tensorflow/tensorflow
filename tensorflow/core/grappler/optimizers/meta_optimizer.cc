@@ -134,11 +134,8 @@ bool IsXlaGlobalJitOn(
   // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
   // graphs. This is a conservative approach that turns off the memory optimizer
   // when we are sure that all graphs will be processed by XLA JIT.
-  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
-               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.general == OptimizerOptions::ON_2);
-  return is_on;
+  return xla_global_jit_level.single_gpu >= OptimizerOptions::ON_1 &&
+         xla_global_jit_level.general >= OptimizerOptions::ON_1;
 }
 
 // A helper function to decide whether to enable the memory optimizer.

@@ -109,12 +109,14 @@ class MarkForCompilationPassImpl {
 
   MarkForCompilationPassImpl(DebugOptions debug_options, Graph* graph,
                              FunctionLibraryDefinition* flib_def, Env* env,
-                             OptimizerOptions::GlobalJitLevel global_jit_level)
+                             OptimizerOptions::GlobalJitLevel global_jit_level,
+                             bool cpu_global_jit)
       : debug_options_(debug_options),
         graph_(graph),
         flib_def_(flib_def),
         env_(env),
-        global_jit_level_(global_jit_level) {}
+        global_jit_level_(global_jit_level),
+        cpu_global_jit_(cpu_global_jit) {}
 
   Status Run();
 
@@ -425,6 +427,7 @@ class MarkForCompilationPassImpl {
   FunctionLibraryDefinition* flib_def_;
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
+  bool cpu_global_jit_;
   absl::flat_hash_map<const Cluster*, bool> should_compile_cluster_cache_;
   jit::DeviceInfoCache device_info_cache_;
 
@@ -1637,26 +1640,32 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
       << "; device type = " << device_type.type() << "; devices ("
       << device_info_cache_.DebugString(cluster.devices());
 
+  auto policy = registration->autoclustering_policy;
   bool should_compile =
       cluster.is_xla_compile_attr_true() ||
-      registration->autoclustering_policy ==
-          XlaOpRegistry::AutoclusteringPolicy::kAlways ||
-      (registration->autoclustering_policy ==
-           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
-       global_jit_level_ != OptimizerOptions::OFF);
+      policy == XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+      (policy == XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+       global_jit_level_ != OptimizerOptions::OFF) ||
+      (device_type.type_string() == DEVICE_CPU &&
+       policy == XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+       cpu_global_jit_);
 
-  if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
-      device_type.type_string() == DEVICE_CPU) {
+  if (!should_compile && device_type.type_string() == DEVICE_CPU &&
+      global_jit_level_ > OptimizerOptions::OFF) {
     static absl::once_flag once;
     absl::call_once(once, [] {
-      LOG(WARNING)
-          << "(One-time warning): Not using XLA:CPU for cluster because envvar "
-             "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "
-             "XLA:CPU, either set that envvar, or use experimental_jit_scope "
-             "to enable XLA:CPU.  To confirm that XLA is active, pass "
-             "--vmodule=xla_compilation_cache=1 (as a proper command-line "
-             "flag, not via TF_XLA_FLAGS) or set the envvar "
-             "XLA_FLAGS=--xla_hlo_profile.";
+      LOG(WARNING) << R"((One-time warning): Not using XLA:CPU for cluster.
+
+If you want XLA:CPU, do one of the following:
+
+ - set the TF_XLA_FLAGS to include "--tf_xla_cpu_global_jit", or
+ - set cpu_global_jit to true on this session's OptimizerOptions, or
+ - use experimental_jit_scope, or
+ - use tf.function(jit_compile=True).
+
+To confirm that XLA is active, pass --vmodule=xla_compilation_cache=1 (as a
+proper command-line flag, not via TF_XLA_FLAGS).)";
+
       MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
       if (flags->tf_xla_cpu_global_jit) {
         LOG(WARNING)
@@ -1710,11 +1719,16 @@ Status MarkForCompilation(
     }
   }
 
-  return MarkForCompilationPassImpl{debug_options, graph, flib_def,
-                                    options.session_options != nullptr
-                                        ? options.session_options->env
-                                        : Env::Default(),
-                                    GetGlobalJitLevelForGraph(options)}
+  return MarkForCompilationPassImpl{
+      debug_options,
+      graph,
+      flib_def,
+      options.session_options != nullptr ? options.session_options->env
+                                         : Env::Default(),
+      GetGlobalJitLevelForGraph(options),
+      options.session_options->config.graph_options()
+          .optimizer_options()
+          .cpu_global_jit()}
       .Run();
 }
 
