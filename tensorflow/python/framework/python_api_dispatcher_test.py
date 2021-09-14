@@ -66,6 +66,14 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(ragged_checker.cost(), 1)
       self.assertEqual(repr(ragged_checker), '<PyTypeChecker RaggedTensor>')
 
+    with self.subTest('int or float checker'):
+      int_checker = dispatch.MakeInstanceChecker(int, float)
+      self.assertEqual(int_checker.Check(3), MATCH)
+      self.assertEqual(int_checker.Check(3.0), MATCH)
+      self.assertEqual(int_checker.Check(t), NO_MATCH)
+      self.assertEqual(int_checker.cost(), 2)
+      self.assertEqual(repr(int_checker), '<PyTypeChecker int, float>')
+
     with self.subTest('subclasses'):
 
       class A(object):

@@ -612,6 +612,20 @@ def make_type_checker(annotation):
   """Builds a PyTypeChecker for the given type annotation."""
   if type_annotations.is_generic_union(annotation):
     type_args = type_annotations.get_generic_type_args(annotation)
+
+    # If the union contains two or more simple types, then use a single
+    # InstanceChecker to check them.
+    simple_types = [t for t in type_args if isinstance(t, type)]
+    simple_types = tuple(sorted(simple_types, key=id))
+    if len(simple_types) > 1:
+      if simple_types not in _is_instance_checker_cache:
+        checker = _api_dispatcher.MakeInstanceChecker(*simple_types)
+        _is_instance_checker_cache[simple_types] = checker
+      options = ([_is_instance_checker_cache[simple_types]] +
+                 [make_type_checker(t) for t in type_args
+                  if not isinstance(t, type)])
+      return _api_dispatcher.MakeUnionChecker(options)
+
     options = [make_type_checker(t) for t in type_args]
     return _api_dispatcher.MakeUnionChecker(options)
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import typing
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -36,6 +37,7 @@ from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -460,6 +462,32 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       z = math_ops.add(x, y)
       self.assertAllEqual(z.values, x.values + y)
       self.assertAllEqual(z.mask, x.mask)
+
+    finally:
+      # Clean up dispatch table.
+      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+
+  def testDispatchForTensorLike(self):
+    MaskedOrTensorLike = typing.Union[MaskedTensor, core_tf_types.TensorLike]
+
+    @dispatch.dispatch_for_api(math_ops.add)
+    def masked_add(x: MaskedOrTensorLike, y: MaskedOrTensorLike, name=None):
+      with ops.name_scope(name):
+        x_values = x.values if isinstance(x, MaskedTensor) else x
+        x_mask = x.mask if isinstance(x, MaskedTensor) else True
+        y_values = y.values if isinstance(y, MaskedTensor) else y
+        y_mask = y.mask if isinstance(y, MaskedTensor) else True
+        return MaskedTensor(x_values + y_values, x_mask & y_mask)
+
+    try:
+      x = MaskedTensor([1, 2, 3, 4, 5], [1, 0, 1, 1, 1])
+      y1 = [10, 20, 30, 40, 50]
+      y2 = np.array([10, 20, 30, 40, 50])
+      y3 = constant_op.constant([10, 20, 30, 40, 50])
+      for y in [y1, y2, y3]:
+        z = math_ops.add(x, y)
+        self.assertAllEqual(z.values, x.values + y)
+        self.assertAllEqual(z.mask, x.mask)
 
     finally:
       # Clean up dispatch table.
