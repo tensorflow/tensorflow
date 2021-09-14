@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests tf.data service with local and remote workers."""
 
+import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
@@ -128,6 +130,30 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleConsumers(self):
+    num_local_workers, num_remote_workers = 1, 3
+    cluster = multi_process_cluster.MultiProcessCluster(
+        num_local_workers=num_local_workers,
+        num_remote_workers=num_remote_workers)
+    num_elements = 300
+    num_consumers = 8
+    iterators = []
+    for _ in range(num_consumers):
+      dataset = self.make_distributed_range_dataset(
+          num_elements, cluster, job_name="shared_job")
+      iterators.append(self.getNext(dataset))
+
+    results = []
+    for _ in range(10):
+      for it in iterators:
+        results.append(self.evaluate(it()))
+    for it in iterators:
+      results.extend(self.getIteratorOutput(it))
+
+    self.assertCountEqual(results, (num_local_workers + num_remote_workers) *
+                          list(range(num_elements)))
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -159,6 +185,23 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     num_workers = num_local_workers + num_remote_workers
     self.assertDatasetProduces(
         ds, num_workers * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPreferLocalRead(self):
+    cluster = multi_process_cluster.MultiProcessCluster(
+        num_local_workers=1, num_remote_workers=0)
+    num_elements = 100
+    dataset = self.make_distributed_range_dataset(num_elements, cluster)
+    get_next = self.getNext(dataset)
+    self.assertEqual(self.evaluate(get_next()), 0)
+
+    for i in range(1, 4):
+      cluster.start_remote_worker()
+      # Waits for the new worker to register with the dispatcher.
+      while cluster._dispatcher._num_workers() < i + 1:
+        time.sleep(10 / 1000)  # 10ms
+      # Prefers reading from the local worker.
+      self.assertEqual(self.evaluate(get_next()), i)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoLocalWorker(self):

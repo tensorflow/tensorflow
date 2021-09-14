@@ -115,10 +115,8 @@ class MultiProcessCluster(object):
         port=port)
 
   def restart_local_workers(self):
-    num_workers = len(self._local_workers)
     for worker in self._local_workers:
-      worker.stop()
-    self._start_local_workers(num_workers)
+      worker.restart()
 
   def dispatcher_address(self):
     return self._dispatcher._address
