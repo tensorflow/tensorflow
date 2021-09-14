@@ -175,6 +175,28 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
+template <typename T, typename Container>
+void DefRepeatedProperty(py::class_<T>& cls, const char* name,
+                         Container* (T::*getter)()) {
+  cls.def_property(
+      name,
+      [getter](T& obj) {
+        Container* elems = (obj.*getter)();
+        std::vector<typename Container::value_type> result;
+        result.reserve(elems->size());
+        std::copy(elems->begin(), elems->end(), std::back_inserter(result));
+        return result;
+      },
+      [getter](T& obj, std::vector<typename Container::value_type> new_elems) {
+        Container* elems = (obj.*getter)();
+        elems->Clear();
+        elems->Reserve(new_elems.size());
+        for (typename Container::value_type& e : new_elems) {
+          elems->Add(std::move(e));
+        }
+      });
+}
+
 }  // namespace
 
 void BuildXlaCompilerSubmodule(py::module& m) {
@@ -418,7 +440,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
               &HloModule::ToString),
           py::arg("options") = HloPrintOptions())
-      .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto);
+      .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto)
+      .def_property_readonly(
+          "spmd_output_sharding",
+          [](const HloModule& m) -> absl::optional<xla::OpSharding> {
+            if (!m.has_spmd_output_sharding()) return absl::nullopt;
+            return m.spmd_output_sharding().ToProto();
+          });
 
   m.def("hlo_module_to_dot_graph",
         [](const HloModule& hlo_module) -> StatusOr<std::string> {
@@ -645,16 +673,34 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::
               set_allow_spmd_sharding_propagation_to_output);
 
+  py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
+  op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
+      .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("TUPLE", OpSharding::TUPLE)
+      .value("OTHER", OpSharding::OTHER);
+
+  py::class_<OpSharding> op_sharding(m, "OpSharding");
+  op_sharding
+      .def_property_readonly_static(
+          "Type",
+          [op_sharding_type](const py::object&) { return op_sharding_type; })
+      .def(py::init<>())
+      .def_property("type", &xla::OpSharding::type, &xla::OpSharding::set_type)
+      .def_property("replicate_on_last_tile_dim",
+                    &xla::OpSharding::replicate_on_last_tile_dim,
+                    &xla::OpSharding::set_replicate_on_last_tile_dim)
+      .def("__repr__", &xla::OpSharding::DebugString);
+  DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
+                      &xla::OpSharding::mutable_tile_assignment_dimensions);
+  DefRepeatedProperty(op_sharding, "tile_assignment_devices",
+                      &xla::OpSharding::mutable_tile_assignment_devices);
+  DefRepeatedProperty(op_sharding, "tuple_shardings",
+                      &xla::OpSharding::mutable_tuple_shardings);
+
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
-
-  py::enum_<OpSharding::Type>(m, "OpSharding_Type")
-      .value("REPLICATED", OpSharding::REPLICATED)
-      .value("MAXIMAL", OpSharding::MAXIMAL)
-      .value("TUPLE", OpSharding::TUPLE)
-      .value("OTHER", OpSharding::OTHER);
 
   py::enum_<ChannelHandle::ChannelType>(m, "ChannelHandle_ChannelType")
       .value("CHANNEL_TYPE_INVALID", ChannelHandle::CHANNEL_TYPE_INVALID)
