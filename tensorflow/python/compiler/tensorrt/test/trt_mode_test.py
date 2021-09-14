@@ -42,7 +42,9 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   def ShouldRunTest(self, run_params):
     # Squeeze op produces dynamic shaped values. Therefore, we don't run the
     # test with static engine to avoid native segment execution.
-    return (run_params.dynamic_engine, "test dynamic engine only")
+    return (run_params.dynamic_engine and run_params.is_v2 and
+            not run_params.use_calibration, "test v2 dynamic engine and "
+            "non-calibration")
 
   def GetParams(self):
     """The input has 1 as a first dimension, which is removed by the squeeze.
@@ -59,15 +61,6 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
                             [[12, 5]])
 
-  @classmethod
-  def setUpClass(cls):
-    if cls is TrtModeTestBase:
-      raise SkipTest("TrtModeTestBase defines base class for other test.")
-    super(TrtModeTestBase, cls).setUpClass()
-
-
-class ImplicitBatchTest(TrtModeTestBase):
-
   def GetMaxBatchSize(self, run_params):
     if run_params.dynamic_engine:
       return None
@@ -75,6 +68,12 @@ class ImplicitBatchTest(TrtModeTestBase):
     # The first dimension of the input is squeezed and the batch size for the
     # rest OPs is 12.
     return 12
+
+  @classmethod
+  def setUpClass(cls):
+    if cls is TrtModeTestBase:
+      raise SkipTest("TrtModeTestBase defines base class for other test.")
+    super(TrtModeTestBase, cls).setUpClass()
 
   def ExpectedEnginesToBuild(self, run_params):
     """Check that the expected engine is built.
@@ -89,11 +88,16 @@ class ImplicitBatchTest(TrtModeTestBase):
     Because of this we have two TRTEngineOp in the graphs: one for the
     subgraph before 'squeeze(q,0)', and another one for the rest of the ops
     after the 'squeeze(q,0)'.
+
+    In explicit batch mode the whole graph is converted using a single engine.
     """
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    if run_params.dynamic_shape:
+      return ["TRTEngineOp_0"]
+    else:
+      return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
-class ExplicitBatchTest(TrtModeTestBase):
+class StaticInputTest(TrtModeTestBase):
 
   def GetParams(self):
     """We specify input/output masks with static (known) shapes."""
@@ -105,42 +109,19 @@ class ExplicitBatchTest(TrtModeTestBase):
         extra_inputs=[],
         extra_outputs=[])
 
-  def ExpectedEnginesToBuild(self, run_params):
-    """Check that the expected engine is built.
 
-    Args:
-      run_params: the run parameters.
-
-    Returns:
-      the expected engines to build.
-
-    In explicit batch mode the whole graph is converted using a single engine.
-    """
-    return ["TRTEngineOp_0"]
-
-  def ShouldRunTest(self, run_params):
-    return (run_params.is_v2 and
-            not run_params.use_calibration, "test v2 and non-calibration")
-
-  def setUp(self):
-    super().setUp()
-    self.SetDynamicShapeModeAndProfileStrategy(
-        profile_strategy="ImplicitBatchModeCompatible")
-
-
-class DynamicShapesTest(TrtModeTestBase):
+class DynamicInputTest(TrtModeTestBase):
   """Test with dynamic input shapes.
 
-  DynamicShapesTest is different from ExplicitBatchTest in that it uses input
-  and output masks to change the input and output shapes to unknown shapes.
+  The difference to the previous test is that we use input and output masks to
+  change the input and output shapes to unknown shapes.
   """
 
   def GetParams(self):
     """We specify input/output mask with dynamic (unknown) shapes.
 
-    A single
-    engine with three optimization profiles can handle the three different
-    input shapes.
+    In dynamic shape mode, single engine with three optimization profiles can
+    handle the three different input shapes.
     """
     return self.BuildParamsWithMask(
         self.GraphFn,
@@ -149,20 +130,6 @@ class DynamicShapesTest(TrtModeTestBase):
         extra_outputs=[[[2, 3]], [[4, 6]]],
         input_mask=[[False, False, False]],
         output_mask=[[False, False]])
-
-  def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
-
-  def ShouldRunTest(self, run_params):
-    return (run_params.is_v2 and
-            not run_params.use_calibration, "test v2 and non-calibration")
-
-  def setUp(self):
-    super().setUp()
-    self.SetDynamicShapeModeAndProfileStrategy(
-        profile_strategy="ImplicitBatchModeCompatible")
-
 
 if __name__ == "__main__":
   test.main()
