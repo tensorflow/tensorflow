@@ -502,19 +502,12 @@ class NativeInterpreterWrapper implements AutoCloseable {
       ownedDelegates.add(optionalNnApiDelegate);
       delegates.add(optionalNnApiDelegate);
     }
+    // Finally add the XNNPACK delegate if enabled.
+    maybeAddXnnpackDelegate(options);
   }
 
-  // Apply all the delegates specified in this.delegates, and optionally also the XNNPACK delegate.
-  private void applyDelegates(InterpreterImpl.Options options) {
-    for (Delegate delegate : delegates) {
-      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-    }
-    // Finally apply the XNNPACK delegate if enabled.
-    maybeUseXNNPACK(options);
-  }
-
-  // Optionally apply the XNNPACK delegate.
-  private void maybeUseXNNPACK(InterpreterImpl.Options options) {
+  // Optionally add the XNNPACK delegate.
+  private void maybeAddXnnpackDelegate(InterpreterImpl.Options options) {
     // Simply use "-1" to represent the default mode.
     int applyXNNPACKMode = -1;
     if (options.useXNNPACK != null) {
@@ -524,7 +517,17 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
     // enabled for C++ TfLite library on Android platform.
     if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
-      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+      XnnpackDelegate xnnpackDelegate =
+          createXNNPACKDelegate(
+              interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+      delegates.add(xnnpackDelegate);
+    }
+  }
+
+  // Apply all the delegates specified in this.delegates.
+  private void applyDelegates(InterpreterImpl.Options options) {
+    for (Delegate delegate : delegates) {
+      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
     }
   }
 
@@ -631,7 +634,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
 
-  private static native void useXNNPACK(
+  private static native XnnpackDelegate createXNNPACKDelegate(
       long interpreterHandle, long errorHandle, int state, int numThreads);
 
   private static native long createErrorReporter(int size);
