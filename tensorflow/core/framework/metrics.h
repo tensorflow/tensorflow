@@ -110,6 +110,15 @@ void RecordTFDataFilename(const string& name, const string& filename);
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas);
 
+// Records statistics of whether we can rewrite batch size in tf.data auto
+// sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `eligible`
+// indicates whether the input pipeline is eligible for the rewrite. The
+// `ineligible_reason` is the reason if the input pipeline is ineligible.
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
 

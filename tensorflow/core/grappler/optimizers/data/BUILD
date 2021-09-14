@@ -63,6 +63,25 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "auto_shard_test",
+    srcs = ["auto_shard_test.cc"],
+    deps = [
+        ":auto_shard",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "autotune_buffer_sizes",
     srcs = ["autotune_buffer_sizes.cc"],

@@ -87,6 +87,8 @@ constexpr char kTFDataResourceTag[] = "tfdata";
 constexpr char kTraceInfoUnavailable[] = "unavailable";
 constexpr char kMetadata[] = "metadata";
 
+constexpr char kCardinalityAttrForRewrite[] = "_cardinality";
+
 class DatasetBase;
 class SerializationContext;
 
@@ -289,6 +291,13 @@ class GraphDefBuilderWrapper {
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
     SetAttrValue(value, attr);
+  }
+
+  template <typename T>
+  AttrValue BuildAttrValue(const T& value) {
+    AttrValue attr;
+    SetAttrValue(value, &attr);
+    return attr;
   }
 
  protected:
@@ -628,6 +637,8 @@ class SerializationContext {
     //   * Datasets that use random seeds should not serialize the random seeds.
     //     This doesn't affect datasets that use fixed seeds; fixed seeds will
     //     always be preserved.
+    //   * Cardinality is serialized as an unregistered attribute
+    //     `_cardinality`.
     // If false:
     //   * A dataset that doesn't implement serialization should result in an
     //     error.
