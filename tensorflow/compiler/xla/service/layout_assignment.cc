@@ -2077,19 +2077,38 @@ Status LayoutAssignment::RunOnComputation(
 
   // Copy the root instruction's result if its layout does not match the result
   // layout constraint.
-  if (constraints.ResultLayout() != nullptr &&
-      !constraints.ResultLayout()->MatchesLayoutInShape(
-          computation->root_instruction()->shape(),
-          /*minor_to_major_only=*/true)) {
-    if (conditional_mismatch_.count(computation) > 0) {
-      *FindOrDie(computation_layouts_, computation).mutable_result_layout() =
-          FindOrDie(conditional_mismatch_, computation).result_layout();
+  if (constraints.ResultLayout() != nullptr) {
+    // Layout assignment at this point only does minor-to-major assignment so
+    // tiling info should be ignored here for comparison.
+    if (!constraints.ResultLayout()->MatchesLayoutInShape(
+            computation->root_instruction()->shape(),
+            /*minor_to_major_only=*/true)) {
+      if (conditional_mismatch_.count(computation) > 0) {
+        *FindOrDie(computation_layouts_, computation).mutable_result_layout() =
+            FindOrDie(conditional_mismatch_, computation).result_layout();
+      }
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_root,
+          CreateCopyWithNewLayout(constraints.ResultLayout()->shape(),
+                                  computation->root_instruction()));
+      computation->set_root_instruction(new_root);
+    } else {
+      // Copy the tiling info specified in result layout.
+      auto copy_tiling = [&constraints](xla::Shape* subshape,
+                                        const xla::ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          const Shape& result_shape = ShapeUtil::GetSubshape(
+              constraints.ResultLayout()->shape(), index);
+          if (result_shape.layout().tiles_size() != 0) {
+            subshape->mutable_layout()->mutable_tiles()->assign(
+                result_shape.layout().tiles().begin(),
+                result_shape.layout().tiles().end());
+          }
+        }
+      };
+      xla::ShapeUtil::ForEachMutableSubshape(
+          computation->root_instruction()->mutable_shape(), copy_tiling);
     }
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_root,
-        CreateCopyWithNewLayout(constraints.ResultLayout()->shape(),
-                                computation->root_instruction()));
-    computation->set_root_instruction(new_root);
   }
   return Status::OK();
 }
