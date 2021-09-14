@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -95,6 +95,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
     const int64_t n = input.dim_size(ndims - 1);
+#if GOOGLE_CUDA
+    cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
+#elif TENSORFLOW_USE_ROCM
+    rocblas_fill fill = rocblas_fill_upper;
+#endif
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -158,7 +163,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
       dev_info.push_back(
           solver->GetDeviceLapackInfo(batch_size, "potrfBatched"));
       OP_REQUIRES_OK_ASYNC(context,
-                           solver->PotrfBatched(CUBLAS_FILL_MODE_UPPER, n,
+                           solver->PotrfBatched(fill, n,
                                                 output_reshaped_ptrs_base, n,
                                                 &dev_info.back(), batch_size),
                            done);
@@ -178,7 +183,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(context,
-                             solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
+                             solver->Potrf(fill, n,
                                            &output_reshaped(batch, 0, 0), n,
                                            &dev_info.back()(batch)),
                              done);

@@ -133,7 +133,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )
