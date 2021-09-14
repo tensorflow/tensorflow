@@ -15,10 +15,28 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
+
+tfrt::TaskFunction WrapWork(int64_t id, tfrt::TaskFunction work) {
+  tensorflow::Context context(tensorflow::ContextKind::kThread);
+  return tfrt::TaskFunction(
+      [id, context = std::move(context), work = std::move(work)]() mutable {
+        tensorflow::profiler::TraceMeConsumer activity(
+            [id]() {
+              return tensorflow::profiler::TraceMeEncode("inter", {{"id", id}});
+            },
+            tensorflow::profiler::ContextType::kTfrtExecutor, id,
+            tensorflow::profiler::TraceMeLevel::kInfo);
+        tensorflow::WithContext wc(context);
+        work();
+      });
+}
 
 class DefaultWorkQueueWrapper final : public WorkQueueInterface {
  public:
@@ -31,51 +49,32 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
   std::string name() const override { return work_queue_->name(); }
 
   void AddTask(tfrt::TaskFunction work) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    work_queue_->AddTask(std::move(wrapped_work));
+    work_queue_->AddTask(WrapWork(/*id=*/0, std::move(work)));
   }
 
   void AddTask(const tfrt::ExecutionContext& exec_ctx,
                tfrt::TaskFunction work) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    work_queue_->AddTask(exec_ctx, std::move(wrapped_work));
+    int64_t id = 0;
+    if (auto* request_context = exec_ctx.request_ctx()) {
+      id = request_context->id();
+    }
+    work_queue_->AddTask(exec_ctx, WrapWork(id, std::move(work)));
   }
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    return work_queue_->AddBlockingTask(std::move(wrapped_work), allow_queuing);
+    return work_queue_->AddBlockingTask(WrapWork(/*id=*/0, std::move(work)),
+                                        allow_queuing);
   }
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       const tfrt::ExecutionContext& exec_ctx, tfrt::TaskFunction work,
       bool allow_queuing) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    return work_queue_->AddBlockingTask(exec_ctx, std::move(wrapped_work),
+    int64_t id = 0;
+    if (auto* request_context = exec_ctx.request_ctx()) {
+      id = request_context->id();
+    }
+    return work_queue_->AddBlockingTask(exec_ctx, WrapWork(id, std::move(work)),
                                         allow_queuing);
   }
 
