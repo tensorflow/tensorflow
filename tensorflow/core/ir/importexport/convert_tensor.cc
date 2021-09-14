@@ -337,7 +337,10 @@ template <typename T, typename Cord>
 void ConvertFloatElementsAttr(const DenseElementsAttr attr,
                               RepeatedField<T>* output, Cord* tensor_content) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<T>() != T(0)) output->Add(attr.getSplatValue<T>());
+    auto value = attr.getSplatValue<T>();
+    // Emit the value if it isn't 0 (default), but be careful about -0.0.
+    if (value != T(0) || std::signbit(value))
+      output->Add(attr.getSplatValue<T>());
   } else {
     CopyFromArray(tensor_content, attr.getRawData().data(),
                   attr.getRawData().size());
@@ -349,8 +352,9 @@ void ConvertFloatElementsAttr(const DenseElementsAttr attr,
 void ConvertHalfElementsAttr(const DenseElementsAttr attr,
                              RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<Eigen::half>().x != Eigen::half(0))
-      output->Add(attr.getSplatValue<Eigen::half>().x);
+    auto value = attr.getSplatValue<Eigen::half>().x;
+    if (value != Eigen::half(0) || std::signbit(static_cast<float>(value)))
+      output->Add(value);
   } else {
     output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
