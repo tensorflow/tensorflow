@@ -128,18 +128,19 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 
 StatusOr<RCReference<RequestContext>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
-    const ModelMetadata& model_metadata,
-    const tensorflow::tfrt_stub::Runtime& runtime,
+    const ModelMetadata& model_metadata, tfrt::HostContext* host,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
-  auto* host = runtime.core_runtime()->GetHostContext();
+  DCHECK(host);
+  DCHECK(work_queue);
   // Create request context and prepare deadline tracker.
   RequestContextBuilder request_context_builder(host, resource_context,
                                                 GetNextStepId());
 
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  auto status = runtime.work_queue()->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool);
+  auto status = work_queue->InitializeRequest(&request_context_builder,
+                                              &intra_op_threadpool);
   if (!status.ok()) return status;
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
@@ -236,13 +237,13 @@ tensorflow::Status RunInitializers(
     const tensorflow::tfrt_stub::Runtime& runtime,
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
-  TF_ASSIGN_OR_RETURN(
-      auto req_ctx,
-      SetUpRequestContext(/*run_options=*/{}, model_metadata, runtime,
-                          resource_context, fallback_state));
+  auto* host = runtime.core_runtime()->GetHostContext();
+  TF_ASSIGN_OR_RETURN(auto req_ctx,
+                      SetUpRequestContext(/*run_options=*/{}, model_metadata,
+                                          host, runtime.work_queue(),
+                                          resource_context, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(req_ctx.CopyRef());
-  auto* host = exec_ctx.host();
 
   // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
   // is the special function created by compiler, which calls a sequence of
@@ -1175,7 +1176,9 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   TF_ASSIGN_OR_RETURN(
       auto req_ctx,
-      SetUpRequestContext(run_options, options_.model_metadata, runtime(),
+      SetUpRequestContext(run_options, options_.model_metadata, host,
+                          run_options.work_queue ? run_options.work_queue
+                                                 : runtime().work_queue(),
                           resource_context, *fallback_state_));
 
   tensorflow::profiler::TraceMeProducer traceme(
