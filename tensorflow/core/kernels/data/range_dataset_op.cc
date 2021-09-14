@@ -164,7 +164,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t Cardinality() const override {
-    if (step_ > 0) {
+    if (start_ == stop_) {
+      return 0;
+    } else if (step_ > 0) {
       return std::max(int64_t{0}, (stop_ - start_ - 1) / step_ + 1);
     } else {
       return std::max(int64_t{0}, (start_ - stop_ - 1) / -step_ + 1);
