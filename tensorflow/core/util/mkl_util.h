@@ -135,6 +135,17 @@ inline void execute_primitives(
   }
 }
 
+bool inline AreWeightsFrozen() {
+  static bool weights_const = false;
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_ASSUME_FROZEN_WEIGHTS",
+                                   /*default_value*/ false,
+                                   &weights_const));
+  });
+  return weights_const;
+}
+
 // In MKL-DNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
