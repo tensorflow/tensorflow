@@ -178,7 +178,7 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
   s.SetPayload("Invalid", "Invalid Val");
-  ASSERT_EQ(s.GetPayload("Invalid"), tensorflow::StringPiece());
+  ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
 }
@@ -199,7 +199,7 @@ TEST(Status, ErasePayloadRemovesIt) {
   ASSERT_EQ(is_err_erased, true);
   is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, false);
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
+  ASSERT_FALSE(s.GetPayload("Error key").has_value());
 }
 
 TEST(Status, GetAllPayloads) {

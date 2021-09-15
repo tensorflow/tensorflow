@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
@@ -214,11 +215,11 @@ void Status::SetPayload(tensorflow::StringPiece type_url,
   state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-tensorflow::StringPiece Status::GetPayload(
+absl::optional<tensorflow::StringPiece> Status::GetPayload(
     tensorflow::StringPiece type_url) const {
-  if (ok()) return tensorflow::StringPiece();
+  if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
-  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
+  if (payload_iter == state_->payloads.end()) return absl::nullopt;
   return tensorflow::StringPiece(payload_iter->second);
 }
 

@@ -75,8 +75,8 @@ TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
 
   Status combined =
       StatusGroup({status_a, status_b, status_c}).as_summary_status();
-  ASSERT_FALSE(combined.GetPayload("payload_key").empty());
-  std::string payload(combined.GetPayload("payload_key"));
+  ASSERT_TRUE(combined.GetPayload("payload_key").has_value());
+  std::string payload(combined.GetPayload("payload_key").value());
 
   EXPECT_EQ(payload, StatusGroup({status_a, status_b, status_c})
                          .as_summary_status()
@@ -114,12 +114,8 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
   EXPECT_THAT(status_group.GetPayloads(), ::testing::SizeIs(3));
 
   Status combined = status_group.as_summary_status();
-  EXPECT_THAT(combined.GetPayload("payload_key_a"),
-              ::testing::Not(::testing::IsEmpty()));
-  EXPECT_THAT(combined.GetPayload("payload_key_b"),
-              ::testing::Not(::testing::IsEmpty()));
-  EXPECT_THAT(combined.GetPayload("payload_key_c"),
-              ::testing::Not(::testing::IsEmpty()));
+  EXPECT_EQ(combined.GetPayload("payload_key_a"), "payload_value_a");
+  EXPECT_EQ(combined.GetPayload("payload_key_b"), "payload_value_b");
   EXPECT_EQ(combined.GetPayload("payload_key_c"), "payload_value_c");
 }
 
