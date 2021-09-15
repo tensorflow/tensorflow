@@ -23,6 +23,7 @@ import gc
 import os
 import re
 import sys
+import traceback
 
 from absl import logging
 import numpy
@@ -855,9 +856,10 @@ def _trace_gradient_functions(graph, saveable_view):
             def_function.function(custom_gradient).get_concrete_function(
                 None, *op.inputs))
       except Exception as exc:
+        traceback.print_exc()
         raise ValueError(
             "Error when tracing gradients for SavedModel.\n\n"
-            "See the stack trace above to see the error that was raised when "
+            "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
             "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
