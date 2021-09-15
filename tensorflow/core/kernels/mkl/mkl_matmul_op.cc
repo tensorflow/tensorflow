@@ -162,7 +162,7 @@ class MklMatMulOp : public OpKernel {
     // the kernel single threaded. Here we are coming up with a cost model based
     // on L1 sizes. If we find that matrices are small enough, we will execute
     // single threaded. This may need tuning.
-    if (ExecuteSingleThreadedGemm(m, n, k)) {
+    if (ExecuteSingleThreadedGemm(m, n, k, sizeof(float))) {
       // For now, call single-threaded gemm.
       dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
                                       a, lda, b, ldb, beta, c, ldc, nullptr);
