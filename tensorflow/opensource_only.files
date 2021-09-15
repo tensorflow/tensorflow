@@ -183,6 +183,7 @@ third_party/gpus/rocm/BUILD.tpl
 third_party/gpus/rocm/build_defs.bzl.tpl
 third_party/gpus/rocm/rocm_config.h.tpl
 third_party/gpus/rocm_configure.bzl
+third_party/grpc/BUILD
 third_party/icu/udata.patch
 third_party/jsoncpp.BUILD
 third_party/libxsmm.BUILD
@@ -215,6 +216,7 @@ third_party/opt_einsum.BUILD
 third_party/png.BUILD
 third_party/png_fix_rpi.patch
 third_party/pprof.BUILD
+third_party/protobuf/BUILD
 third_party/py/BUILD
 third_party/py/BUILD.tpl
 third_party/py/numpy/BUILD
