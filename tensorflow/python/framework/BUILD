@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_te
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -1186,14 +1189,16 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "type_spec",
     srcs = ["type_spec.py"],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
+        ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/python:platform",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],

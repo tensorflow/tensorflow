@@ -218,6 +218,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
       raise ValueError("Unbatching a tensor is only supported for rank >= 1")
     return TensorSpec(self._shape[1:], self._dtype)
 
+  @property
+  def _flat_tensor_specs(self):
+    return [self]
+
+  def _to_tensor_list(self, value):
+    return [self._to_components(value)]
+
+  def _to_batched_tensor_list(self, value):
+    return self._to_tensor_list(value)
+
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
 @type_spec.register("tf.BoundedTensorSpec")
