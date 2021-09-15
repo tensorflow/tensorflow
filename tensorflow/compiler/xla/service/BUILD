@@ -4211,6 +4211,7 @@ cc_library(
         ":hlo_cost_analysis",
         ":memory_space_assignment_repacking",
         ":memory_space_assignment_utils",
+        ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
     ],
