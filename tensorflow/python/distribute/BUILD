@@ -1644,6 +1644,9 @@ cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # TODO(b/197981388): Re-enable this.
+    ],
     deps = [
         ":combinations",
         ":distribute_lib",
