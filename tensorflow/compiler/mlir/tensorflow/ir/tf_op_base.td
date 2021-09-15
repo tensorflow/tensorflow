@@ -109,7 +109,7 @@ class TF_AllTypesMatch<list<string> names> :
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 // This trait indicates that all returned resources are unique for a
-// resource-allocating op (i.e. op with `MemAlloc` side-effect).
+// resource-allocating op (i.e. op with `MemAlloc` side effect).
 //
 // Note that if the trait is used where this invariant is not true, then this
 // might lead to incorrect execution order, while if not used where it should
@@ -145,14 +145,14 @@ class TF_ResultHasRank<int n, int m> :
       ").getType().cast<ShapedType>().getRank() == " # m>]>>;
 
 //===----------------------------------------------------------------------===//
-// TensorFlow op side effects
+// TensorFlow resources and side effects
 //===----------------------------------------------------------------------===//
 
 class TF_ResourceBase<string resourceKind> :
   Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
 }
 
-// Value-based side-effects
+// Resource types
 def TF_VariableResource : TF_ResourceBase<"Variable">;
 def TF_StackResource : TF_ResourceBase<"Stack">;
 def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
@@ -164,6 +164,10 @@ def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
 
+// Value-based side effects
+//
+// Value-based side effect traits are attached to op operands or results to
+// signal what type of resource is accessed and in which way.
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
 def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
@@ -197,9 +201,25 @@ def TF_DatasetSeedGeneratorFree : MemFree<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheFree : MemFree<TF_DatasetMemoryCacheResource>;
 def TF_DatasetIteratorFree : MemFree<TF_DatasetIteratorResource>;
 
-// Op-based side-effects
-def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
+// Op-based side effects
+
+// Op-based side effect traits can be used to enforce certain execution order
+// constraints, in particular for ops that don't use resource handles (those
+// typically have value-based side effects). For a `read` effect, all instances
+// of ops with the trait keep their order to all ops with unknown side effects
+// (e.g. `stateful` ops). For a `write` effect, all instances of ops with the
+// trait stay in order, and they also keep their order to all unknown side-
+// effecting ops. Note that for `read` effects ops might be pruned if nothing
+// depends on them.
 def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>;
+// Note: We actually want a `read` effect here but then some ops with this
+// effect are considered dead and are deleted which is not desired (see
+// b/195782952).
+// Therefore, we use a `write` effect + special handling in side effect
+// analysis. Once we have proper dependencies that avoid deletion (see
+// b/196857154), or once MLIR supports a trait to mark an op as not dead, this
+// hack can be removed.
+def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
