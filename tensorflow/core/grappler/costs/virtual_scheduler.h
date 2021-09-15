@@ -377,10 +377,9 @@ class SchedulerState {
     return &node_map_;
   }
 
-  virtual OpContext CreateOpContext(const NodeDef* node) const;
+  OpContext CreateOpContext(const NodeDef* node) const;
   std::vector<const NodeDef*> MarkNodeExecuted(
       const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
-      bool extract_execution_count_attr = true,
       const std::string& override_device_name = "");
 
   // Some getter functions.
