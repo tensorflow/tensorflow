@@ -438,11 +438,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
+        std::shared_ptr<IteratorContext> new_ctx =
+            std::make_shared<IteratorContext>(*ctx);
         prefetch_thread_ = ctx->StartThread(
-            "tf_data_prefetch",
-            [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
-              PrefetchThread(ctx.get());
-            });
+            "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
       return Status::OK();
     }
@@ -450,9 +449,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // Prefetches elements of the input, storing results in an internal buffer.
     //
     // It owns the iterator context passed to it.
-    void PrefetchThread(IteratorContext* ctx) {
-      RecordStart(ctx);
-      auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx); });
+    void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
+      RecordStart(ctx.get());
+      auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       // Keep track of where we are in an iteration "burst"
       int num_produced = 0;
       while (true) {
@@ -460,9 +459,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(*mu_);
           while (!cancelled_ && buffer_.size() >= buffer_limit()) {
-            RecordStop(ctx);
+            RecordStop(ctx.get());
             cond_var_->wait(l);
-            RecordStart(ctx);
+            RecordStart(ctx.get());
           }
 
           if (cancelled_) {
@@ -496,7 +495,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
               },
               profiler::kInfo);
           buffer_element.status = input_impl_->GetNext(
-              ctx, &buffer_element.value, &end_of_sequence);
+              ctx.get(), &buffer_element.value, &end_of_sequence);
         }
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(*mu_);
@@ -508,7 +507,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // 3. Signal that the element has been produced.
         {
           mutex_lock l(*mu_);
-          RecordBufferEnqueue(ctx, buffer_element.value);
+          RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
           buffer_.push_back(std::move(buffer_element));
           cond_var_->notify_all();
