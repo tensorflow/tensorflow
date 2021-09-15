@@ -866,6 +866,7 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    bool extract_execution_count_attr,
     const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
@@ -874,11 +875,18 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   bool previously_executed_merge =
       IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
 
-  // If there is annotation in the graph about execution times, we use that
-  // number, otherwise, we assume the node is executed once.
-  node_state.execution_count = node->attr().count(kExecutionCount) == 0
-                                   ? 1
-                                   : node->attr().at(kExecutionCount).i();
+  // Our approach to modeling loops is to extract the annotated _execution_count
+  // attribute and to multiply node_costs by the value of the attribute. If
+  // the attribute is not found then we assume a default execution count of 1.
+  // Note that in some simulation flows we will perform this multiplication
+  // elsewhere, as such we only perform this multiplication here if
+  // extract_execution_count_attr is true. Otherwise node_costs are unmodified
+  // and we assume the multiplication has been correctly carried out elsewhere.
+  node_state.execution_count = 1;
+
+  if (extract_execution_count_attr && node->attr().count(kExecutionCount) > 0) {
+    node_state.execution_count = node->attr().at(kExecutionCount).i();
+  }
 
   node_state.node_costs = node_costs;
   // TotalNodeCosts() Should be called after node_costs and execution_count.
