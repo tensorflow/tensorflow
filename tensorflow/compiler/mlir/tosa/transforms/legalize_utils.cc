@@ -119,8 +119,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                  weight_type.getElementType()
                      .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     // Per-channel quantization
-    auto output_last_axis = output_type.getShape().size() - 1;
-    uint32_t output_channels = output_type.getShape()[output_last_axis];
+    uint32_t output_channels = weight_type.getShape().front();
 
     SmallVector<int32_t> multiplier_arr;
     SmallVector<int32_t> shift_arr;
