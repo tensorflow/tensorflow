@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -218,6 +219,7 @@ TEST_F(RemapperTest, FuseBatchNormWithRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with MKL";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -454,6 +456,7 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with MKL";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
