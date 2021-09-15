@@ -1,0 +1,88 @@
+{
+  "activationEvents": [
+    "SEP"=\,
+    "NAME","TYPEDISPLAYNAME","RESOURCE GROUP","LOCATIONDISPLAYNAME","SUBSCRIPTIONDISPLAYNAME","NAME","TYPE","KIND","LOCATION","SUBSCRIPTION","TAGS"
+    "kubernetes","Load balancer","mc_dgn-asr_dgb_westcentralus","West Central US","Azure subscription 1","kubernetes","Load balancer","","West Central US","Azure subscription 1","{""DGN"":"".00000000000012244""}"
+  
+  "name": "@alch/alchemy-web3",
+    "version": "1.1.4",
+    "description": "Web3 client extended with Alchemy and browser provider integration.",
+    "module": "dist/esm/index.js",
+    "main": "dist/cjs/index.js",
+    "types": "dist/esm/index.d.ts",
+    "files": [
+      "dist/"
+    ],
+    "sideEffects": false,
+    "keywords": [
+      "Alchemy",
+      "Ethereum",
+      "JavaScript",
+      "API",
+      "Web3",
+      "Metamask"
+    ],
+    "license": "MIT",
+    "scripts": {
+      "build": "yarn run clean && tsc -p tsconfig.build-esm.json && tsc -p tsconfig.build-cjs.json && webpack",
+      "clean": "rm -rf dist/*",
+      "format-file": "prettier --write",
+      "format": "git ls-files | egrep '\\.(js(on)?|md|scss|tsx?)?$' | xargs yarn run format-file",
+      "jest": "jest",
+      "lint-file": "tslint",
+      "lint": "tslint --project .",
+      "prepublishOnly": "yarn run test && yarn run build",
+      "test": "yarn run lint && tsc && yarn run jest"
+    },
+    "husky": {
+      "hooks": {
+        "pre-commit": "lint-staged"
+      }
+    },
+    "lint-staged": {
+      "**/*.{js,json}": [
+        "yarn run format-file",
+        "git add"
+      ],
+      "**/*.ts": [
+        "yarn run lint-file --fix",
+        "yarn run format-file",
+        "git add"
+      ],
+      "package.json": [
+        "./injectVersion.js",
+        "git add src/version.ts"
+      ]
+    },
+    "devDependencies": {
+      "@types/jest": "^24.0.18",
+      "@types/websocket": "^0.0.40",
+      "husky": "^3.0.5",
+      "jest": "^24.9.0",
+      "lint-staged": "^9.2.5",
+      "prettier": "^2.2.1",
+      "ts-jest": "^24.0.2",
+      "tslint": "^5.20.0",
+      "tslint-config-prettier": "^1.18.0",
+      "typescript": "^4.1.5",
+      "webpack": "^4.46.0",
+      "webpack-cli": "^4.5.0"
+    },
+    "dependencies": {
+      "@types/web3": "^1.2.2",
+      "assert-never": "^1.2.0",
+      "eventemitter3": "^3.1.2",
+      "fetch-ponyfill": "^6.0.2",
+      "sturdy-websocket": "^0.2.1",
+      "tslib": "^2.1.0",
+      "web3": "1.5.2",
+      "web3-core": "1.5.2",
+      "web3-core-helpers": "1.5.2",
+      "web3-core-method": "1.5.2",
+      "web3-core-subscriptions": "1.5.2",
+      "web3-eth": "1.5.2",
+      "web3-eth-abi": "1.5.2",
+      "web3-utils": "1.5.2",
+      "websocket": "^1.0.28"
+    }
+  }
