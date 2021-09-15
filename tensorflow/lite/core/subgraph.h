@@ -330,9 +330,9 @@ class Subgraph {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -630,6 +630,9 @@ class Subgraph {
   // Returns true if the subgraph has delegates applied.
   bool HasDelegates();
 
+  // Returns true if the subgraph has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -767,8 +770,8 @@ class Subgraph {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
-  std::vector<std::pair<int, TfLiteCustomAllocation>> custom_allocations_;
+  // Maps tensor index to custom allocation for all applicable tensors.
+  std::map<int, TfLiteCustomAllocation> custom_allocations_;
 
   // Tracking bit for whether a tensor was resized in the course of an op
   // invocation. This is a useful hint to ensure that dynamic tensor outputs

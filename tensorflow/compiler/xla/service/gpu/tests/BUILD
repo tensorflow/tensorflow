@@ -59,6 +59,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "element_wise_row_vectorization_test",
+    srcs = ["element_wise_row_vectorization_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "mlir_gpu_test_base",
     testonly = True,
@@ -165,9 +177,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "gpu_spmd_single_partition_test",
+    name = "gpu_spmd_e2e_compile_test",
     size = "small",
-    srcs = ["gpu_spmd_single_partition_test.cc"],
+    srcs = ["gpu_spmd_e2e_compile_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",

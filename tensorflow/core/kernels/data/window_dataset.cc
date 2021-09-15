@@ -84,7 +84,7 @@ class Window : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
-    if (!ctx->serialize_data_tensors()) {
+    if (ctx->is_graph_rewrite()) {
       // If data tensors are not to be serialized (e.g. when the serialization
       // is done for the sake of graph optimizations), we return
       // `errors::Unimplemented` to short-circuit the computation.
@@ -188,7 +188,7 @@ Status NewWindow(std::vector<std::vector<Tensor>> elements,
   // the elements match the output_types and output_shapes.
   *out_dataset = new Window(std::move(elements), std::move(output_types),
                             std::move(output_shapes));
-  (*out_dataset)->Initialize();
+  (*out_dataset)->Initialize(/*metadata=*/{});
   return Status::OK();
 }
 

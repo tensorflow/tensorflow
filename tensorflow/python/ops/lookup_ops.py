@@ -305,7 +305,11 @@ class StaticHashTable(InitializableLookupTableBase):
 
   """
 
-  def __init__(self, initializer, default_value, name=None):
+  def __init__(self,
+               initializer,
+               default_value,
+               name=None,
+               experimental_is_anonymous=False):
     """Creates a non-initialized `HashTable` object.
 
     Creates a table, the type of its keys and values are specified by the
@@ -318,30 +322,44 @@ class StaticHashTable(InitializableLookupTableBase):
         supported key and value types.
       default_value: The value to use if a key is missing in the table.
       name: A name for the operation (optional).
+      experimental_is_anonymous: Whether to use anonymous mode for the
+        table (default is False). In anonymous mode, the table
+        resource can only be accessed via a resource handle. It can't
+        be looked up by a name. When all resource handles pointing to
+        that resource are gone, the resource will be deleted
+        automatically.
 
     Returns:
       A `HashTable` object.
     """
     self._initializer = initializer
     self._default_value = default_value
-    self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
-    if not self._shared_name:
-      # Force using a shared name so that StaticHashTable resources can be
-      # shared across different kernels. If no "shared_name" is set and
-      # "use_node_name_sharing" is False, then each kernel gets its own local
-      # resource.
-      self._shared_name = "hash_table_%s" % (str(uuid.uuid4()),)
+    self._is_anonymous = experimental_is_anonymous
+    if not self._is_anonymous:
+      self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
+      if not self._shared_name:
+        # Force using a shared name so that StaticHashTable resources can be
+        # shared across different kernels. If no "shared_name" is set and
+        # "use_node_name_sharing" is False, then each kernel gets its own local
+        # resource.
+        self._shared_name = "hash_table_%s" % (str(uuid.uuid4()),)
     self._name = name or "hash_table"
     self._table_name = None
     super(StaticHashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
   def _create_resource(self):
-    table_ref = gen_lookup_ops.hash_table_v2(
-        shared_name=self._shared_name,
-        key_dtype=self._initializer.key_dtype,
-        value_dtype=self._initializer.value_dtype,
-        name=self._name)
+    if self._is_anonymous:
+      table_ref = gen_lookup_ops.anonymous_hash_table(
+          key_dtype=self._initializer.key_dtype,
+          value_dtype=self._initializer.value_dtype,
+          name=self._name)
+    else:
+      table_ref = gen_lookup_ops.hash_table_v2(
+          shared_name=self._shared_name,
+          key_dtype=self._initializer.key_dtype,
+          value_dtype=self._initializer.value_dtype,
+          name=self._name)
     if context.executing_eagerly():
       self._table_name = None
     else:
@@ -404,6 +422,10 @@ class StaticHashTableV1(StaticHashTable):
   print(table.lookup(input_tensor))
   ```
   """
+
+  def __init__(self, initializer, default_value, name=None):
+    super().__init__(
+        initializer, default_value, name=name, experimental_is_anonymous=False)
 
   @property
   def initializer(self):

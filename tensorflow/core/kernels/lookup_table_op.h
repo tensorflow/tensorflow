@@ -133,6 +133,40 @@ class LookupTableOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
 };
 
+// An anonymous version of LookupTableOp, which creates a new table resource
+// everytime `Compute` is called. The resource can only be accessed by the
+// returned resource handle (e.g. it can't be looked up by a name in a resource
+// manager). The resource will be automatically deleted when all resource
+// handles pointing to it are gone.
+template <class Container, class key_dtype, class value_dtype>
+class AnonymousLookupTableOp : public OpKernel {
+ public:
+  explicit AnonymousLookupTableOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table = new Container(ctx, this);
+    if (!ctx->status().ok()) {
+      table->Unref();
+      return;
+    }
+    Tensor table_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                tensorflow::TensorShape({}), &table_tensor));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() +
+                                               table_tensor.AllocatedBytes());
+    }
+    table_tensor.scalar<ResourceHandle>()() =
+        ResourceHandle::MakeRefCountingHandle<lookup::LookupInterface>(
+            table, ctx->device()->name());
+    ctx->set_output(0, table_tensor);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(AnonymousLookupTableOp);
+};
+
 namespace lookup {
 
 // Ensure that the compiler cannot elide a copy into a local, for

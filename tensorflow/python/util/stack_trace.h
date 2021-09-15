@@ -44,11 +44,11 @@ inline void DCheckPyGilStateForStackTrace() {
 }
 
 // A class for capturing Python stack trace.
-class PythonStackTrace final {
+class StackTrace final {
  public:
   static constexpr int kStackTraceInitialSize = 30;
 
-  PythonStackTrace() {}
+  StackTrace() {}
 
   // Returns `StackTrace` object that captures the current Python stack trace.
   // `limit` determines how many stack frames at most are returned: set to -1
@@ -56,11 +56,11 @@ class PythonStackTrace final {
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
   ABSL_ATTRIBUTE_HOT
-  static PythonStackTrace Capture(int limit) {
+  static StackTrace Capture(int limit) {
     DCheckPyGilStateForStackTrace();
     if (limit == -1) limit = std::numeric_limits<int>::max();
 
-    PythonStackTrace result;
+    StackTrace result;
     const PyFrameObject* frame = PyThreadState_GET()->frame;
     int i = 0;
     for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
@@ -75,15 +75,13 @@ class PythonStackTrace final {
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
-  ~PythonStackTrace() { Clear(); }
+  ~StackTrace() { Clear(); }
 
-  PythonStackTrace(PythonStackTrace&& other) {
-    std::swap(code_objs_, other.code_objs_);
-  }
+  StackTrace(StackTrace&& other) { std::swap(code_objs_, other.code_objs_); }
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
-  PythonStackTrace& operator=(PythonStackTrace&& other) {
+  StackTrace& operator=(StackTrace&& other) {
     Clear();
     std::swap(code_objs_, other.code_objs_);
     return *this;
@@ -112,13 +110,13 @@ class PythonStackTrace final {
   absl::InlinedVector<std::pair<PyCodeObject*, int>, kStackTraceInitialSize>
       code_objs_;
 
-  PythonStackTrace(const PythonStackTrace&) = delete;
-  PythonStackTrace& operator=(const PythonStackTrace&) = delete;
+  StackTrace(const StackTrace&) = delete;
+  StackTrace& operator=(const StackTrace&) = delete;
 };
 
 // A class that manages Python stack traces in a circular buffer. Users can
 // insert stack trace entries and retrive them by ids.
-class PythonStackTraceManager {
+class StackTraceManager {
  public:
   static constexpr int kStackTraceCircularBufferSize = 1024;
 
@@ -130,7 +128,7 @@ class PythonStackTraceManager {
     DCheckPyGilStateForStackTrace();
     const int id = next_id_++;
     const int index = id & (kStackTraceCircularBufferSize - 1);
-    stack_traces_[index] = PythonStackTrace::Capture(limit);
+    stack_traces_[index] = StackTrace::Capture(limit);
     return id;
   }
 
@@ -138,15 +136,15 @@ class PythonStackTraceManager {
   // requested stack trace is evicted from the circular buffer.
   // Python GIL must be acquired beforehand.
   ABSL_MUST_USE_RESULT
-  PythonStackTrace* Get(int id);
+  StackTrace* Get(int id);
 
  private:
   int next_id_ = 0;
-  std::array<PythonStackTrace, kStackTraceCircularBufferSize> stack_traces_;
+  std::array<StackTrace, kStackTraceCircularBufferSize> stack_traces_;
 };
 
 // Singleton StackTraceManager.
-extern PythonStackTraceManager* const python_stack_trace_manager;
+extern StackTraceManager* const stack_trace_manager;
 
 // Converts the ManagedStackTrace (identified by ID) to a vector of stack
 // frames.
@@ -154,7 +152,7 @@ inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
     int id, const SourceMap& source_map, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) {
   PyGILState_STATE gstate = PyGILState_Ensure();
-  PythonStackTrace* stack_trace = python_stack_trace_manager->Get(id);
+  StackTrace* stack_trace = stack_trace_manager->Get(id);
   if (!stack_trace) {
     // Must have evicted the stack trace by now. Do best effort.
     return {};
@@ -170,15 +168,11 @@ inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline ManagedStackTrace GetPythonStackTrace(int limit) {
+inline ManagedStackTrace GetStackTrace(int limit) {
   DCheckPyGilStateForStackTrace();
-  return ManagedStackTrace(python_stack_trace_manager->Capture(limit),
+  return ManagedStackTrace(stack_trace_manager->Capture(limit),
                            &ManagedStackTraceToStackFrames);
 }
-
-// Returns Python stack trace as a string. Expects Python interpreter to be
-// initialized.
-std::string GetPythonStackTraceString();
 
 }  // namespace tensorflow
 

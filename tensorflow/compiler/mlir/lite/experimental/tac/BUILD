@@ -112,11 +112,13 @@ cc_library(
     deps = [
         ":common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
@@ -146,6 +148,26 @@ cc_library(
 )
 
 cc_library(
+    name = "device_transform_nnapi",
+    srcs = [
+        "transforms/device_transform_nnapi.cc",
+    ],
+    deps = [
+        ":common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:nnapi_hardware",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "device_transform",
     srcs = [
         "transforms/device_transform.cc",
@@ -156,6 +178,7 @@ cc_library(
     deps = [
         ":common",
         ":device_transform_gpu",
+        ":device_transform_nnapi",
         ":device_transform_patterns",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",

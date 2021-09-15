@@ -40,6 +40,7 @@ package_group(
     packages = [
         "//tensorflow/...",
         "//tensorflow_models/...",
+        "//third_party/deepmind/deepmind_research/density_functional_approximation_dm21/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
@@ -1154,6 +1155,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "@llvm-project//mlir:IR",
     ],
 )
 

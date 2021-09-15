@@ -142,7 +142,7 @@ class SparseConcatTest(test.TestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testConcat1(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       # concat(A):
       # [    1]
       # [2    ]
@@ -165,7 +165,7 @@ class SparseConcatTest(test.TestCase):
           self.assertAllEqual(concat_out.dense_shape, [3, 3])
 
   def testConcat2(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       # concat(A, B):
       # [    1          ]
       # [2       1      ]
@@ -188,7 +188,7 @@ class SparseConcatTest(test.TestCase):
             self.assertAllEqual(concat_out.dense_shape, [3, 8])
 
   def testConcatDim0(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       # concat(A, D):
       # [    1]
       # [2    ]
@@ -214,7 +214,7 @@ class SparseConcatTest(test.TestCase):
         self.assertAllEqual(concat_out.dense_shape, np.array([5, 3]))
 
   def testConcat3(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       # concat(A, B, C):
       # [    1              ]
       # [2       1       1  ]
@@ -243,7 +243,7 @@ class SparseConcatTest(test.TestCase):
     sp_b = self._SparseTensor_NoNonZeros((2, 7, 4))
     sp_c = self._SparseTensor_NoNonZeros((2, 5, 4))
 
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       concat_dim = 1
       sp_concat = sparse_ops.sparse_concat(concat_dim, [sp_a, sp_b, sp_c])
 
@@ -263,7 +263,7 @@ class SparseConcatTest(test.TestCase):
     sp_c = self._SparseTensor_NoNonZeros((2, 5, 4))
     output_nnz = sp_b.indices.get_shape()[0]
 
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       concat_dim = 1
       sp_concat = sparse_ops.sparse_concat(concat_dim, [sp_a, sp_b, sp_c])
 
@@ -305,7 +305,7 @@ class SparseConcatTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMismatchedRank(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_a = self._SparseTensor_3x3()
       sp_e = self._SparseTensor_2x3x4()
 
@@ -316,7 +316,7 @@ class SparseConcatTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMismatchedRankExpandNonconcatDim(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_a = self._SparseTensor_3x3()
       sp_e = self._SparseTensor_2x3x4()
 
@@ -329,7 +329,7 @@ class SparseConcatTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMismatchedShapes(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_a = self._SparseTensor_3x3()
       sp_b = self._SparseTensor_3x5()
       sp_c = self._SparseTensor_3x2()
@@ -343,7 +343,7 @@ class SparseConcatTest(test.TestCase):
           self.evaluate(sp_concat)
 
   def testMismatchedShapesExpandNonconcatDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_a = self._SparseTensor_3x3()
       sp_b = self._SparseTensor_3x5()
       sp_c = self._SparseTensor_3x2()
@@ -376,7 +376,7 @@ class SparseConcatTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testShapeInferenceUnknownShapes(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_inputs = [
           self._SparseTensor_UnknownShape(),
           self._SparseTensor_UnknownShape(val_shape=[3]),

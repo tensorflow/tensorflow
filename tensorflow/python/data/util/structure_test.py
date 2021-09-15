@@ -686,7 +686,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_tensor, value_nest)
 
     with self.assertRaisesRegex(TypeError,
-                                "Neither a SparseTensor nor SparseTensorValue"):
+                                "neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_sparse_tensor, value_tensor)
 
     with self.assertRaisesRegex(
@@ -775,7 +775,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_0, value_2)
 
     with self.assertRaisesRegex(TypeError,
-                                "Neither a SparseTensor nor SparseTensorValue"):
+                                "neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_1, value_0)
 
     with self.assertRaisesRegex(

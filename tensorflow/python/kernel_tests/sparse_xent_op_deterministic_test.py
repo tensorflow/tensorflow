@@ -26,70 +26,68 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests import sparse_xent_op_test_base
 # The following import is required to register the gradient function.
 from tensorflow.python.ops.nn_grad import _SparseSoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
-class SparseSoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(
-    test.TestCase):
-  """Test d9m-unimplemented exceptions from SparseSoftmaxCrossEntropyWithLogits.
+class SparseXentOpDeterminismExceptionsTest(test.TestCase):
+  """Test d9m-unimplemented exceptions from SparseSoftmaxXentWithLogitsOp.
 
-  Test that tf.errors.UnimplementedError is thrown or not thrown, as
-  appropriate, by the GPU code-paths for SparseSoftmaxCrossEntropyWithLogits
-  when deterministic ops are enabled.
+  Test that tf.errors.UnimplementedError is thrown, as
+  appropriate, by the GPU code-paths through SparseSoftmaxXentWithLogitsOp when
+  deterministic ops are enabled.
 
-  This test assumes that sparse_xent_op_test.py runs all the same test cases
+  This test assumes that sparse_xent_op_test.py runs equivalent test cases
   when deterministic ops are not enabled and will therefore detect erroneous
   exception throwing in those cases.
   """
 
-  @test_util.run_cuda_only
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testExceptionThrowing(self):
-    with self.session(force_gpu=True):
-      for logits_dtype in [dtypes.float16, dtypes.float32]:
+    with self.session(), test_util.force_gpu():
+      for features_dtype in [dtypes.float16, dtypes.float32]:
         for labels_dtype in [dtypes.int32, dtypes.int64]:
+          features = constant_op.constant([[0.3, 0.5], [0.2, 0.6]],
+                                          dtype=features_dtype)
           labels = constant_op.constant([1, 0], dtype=labels_dtype)
-          logits = constant_op.constant([[0.3, 0.5], [0.2, 0.6]],
-                                        dtype=logits_dtype)
           with self.assertRaisesRegex(
               errors_impl.UnimplementedError,
-              "Deterministic GPU implementation of " +
-              "SparseSoftmaxXentWithLogitsOp not available."):
-            result = nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
-                labels=labels, logits=logits)
+              "The GPU implementation of SparseSoftmaxCrossEntropyWithLogits " +
+              "that would have been executed is not deterministic. Note that " +
+              "the Python API uses an alternative, deterministic, " +
+              "GPU-accelerated path when determinsim is enabled."):
+            result = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+                features=features, labels=labels)
             self.evaluate(result)
 
 
-class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
+class SparseXentOpDeterministicTest(
+    sparse_xent_op_test_base.SparseXentOpTestBase):
   """Test that SparseSoftmaxCrossEntropyWithLogits operates reproducibly.
 
-  Note that the deterministic functionality currently tested by this class is
-  always activated (not enabled by TF_DETERMINISTIC_OPS), so this class does not
-  currently need to inherit from a base op test class derived from
-  sparse_xent_op_test.py (to ensure that the op still functions correctly when
-  determinism is enabled).
+  Inheriting from sparse_xent_op_test_base.SparseXentOpTestBase ensures that
+  regular op functionality is correct when the deterministic code-path is
+  selected.
+
+  Note that because nn_ops.sparse_softmax_cross_entropy_with_logits_v2 calls
+  nn_ops.sparse_softmax_cross_entropy_with_logits directly, the focus of
+  testing is on the former in order to test both.
   """
 
   def _randomInts(self, shape, high, dtype):
     return constant_op.constant(
         np.random.randint(low=0, high=high, size=shape).astype(dtype))
 
-  def _randomFloats(self, shape, dtype, normalized_rows=False):
-    a = (2 * np.random.random_sample(shape) - 1).astype(dtype)
+  def _randomFloats(self, shape, dtype):
+    return constant_op.constant(
+        (2 * np.random.random_sample(shape) - 1).astype(dtype))
 
-    if normalized_rows:
-
-      def normalize(row):
-        return row / row.sum()
-
-      a = np.apply_along_axis(normalize, 1, a)
-
-    return constant_op.constant(a)
-
-  def _generateInputs(self, labels_dtype, logits_dtype, seed=123):
+  def _generateInputs(self, labels_dtype, logits_dtype, seed):
     batch_size = 1024
     classes_count = 1000
     np.random.seed(seed)
@@ -102,7 +100,7 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
-    with self.session(), test_util.force_cpu():
+    with self.cached_session():
       for logits_dtype in [np.float16, np.float32, np.float64]:
         for labels_dtype in [np.int32, np.int64]:
           for trial in range(5):
@@ -117,14 +115,14 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
-    with self.session(), test_util.force_cpu():
+    with self.cached_session():
       for logits_dtype in [np.float16, np.float32, np.float64]:
         for labels_dtype in [np.int32, np.int64]:
           labels, logits = self._generateInputs(
               labels_dtype, logits_dtype, seed=456)
           output_shape = labels.shape[0]
 
-          def gradients(seed=789):
+          def gradients(seed):
             np.random.seed(seed)
             upstream_gradients = self._randomFloats(output_shape, logits_dtype)
             with backprop.GradientTape(persistent=True) as tape:
@@ -139,6 +137,55 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
             result_a = gradients(seed=seed)
             result_b = gradients(seed=seed)
             self.assertAllEqual(result_a, result_b)
+
+  # Modifications to the parent class
+  # (sparse_xent_op_test_base.SparseXentOpTestBase) follow
+
+  def testInvalidLabelGPU(self):
+    """Modified test for invalid labels on GPU.
+
+    When running on GPU, the pre-existing, nondeterministic implementation
+    produces NaN (in both the forward and backward directions) for results
+    associated with invalid labels (less than zero or greater than the number of
+    classes minus one). However, while the deterministic implementation also
+    produces NaN in the forward direction, it produces zeros in the backward
+    direction.
+    """
+    self._testInvalidLabelGPU(invalid_label_gradient=0.0)
+
+  def testInvalidLabelCPU(self):
+    """Modified test for invalid labels on CPU.
+
+    When running on CPU, the pre-existing, nondeterministic implementation
+    throws a custom exception when any of the label values are invalid (less
+    than zero or greater than the number of classes minus one). However, in the
+    deterministic implementation, tf.gather throws an exception instead.
+    """
+    self._testInvalidLabelCPU(
+        expected_regex="indices\[0\] = 4 is not in \[0, 4\)")
+
+  def testLabelsPlaceholderScalar(self):
+    """Test exception-throwing for non-statically-shaped, zero-rank labels.
+
+    The deterministic implementation cannot check for this case because it does
+    not have a specific implementation of SparseSoftmaxXentWithLogitsOp.
+    Instead tf.gather, which is used to create the deterministic implementation,
+    throws an error.
+    """
+    self._testLabelsPlaceholderScalar(
+        expected_error_message="Expected batch_dims in the range \[0, 0\], " +
+        "but got 1")
+
+  def testScalarHandling(self):
+    """Test exception-throwing for non-statically-shaped, zero-rank labels.
+
+    The deterministic implementation cannot check for this case because it does
+    not have a specific implementation of SparseSoftmaxXentWithLogitsOp.
+    Instead tf.gather, which is used to create the deterministic implementation,
+    throws an error.
+    """
+    self._testScalarHandling(
+        expected_regex="Expected batch_dims in the range \[0, 0\], but got 1.*")
 
 
 if __name__ == "__main__":

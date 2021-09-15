@@ -50,6 +50,16 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(const std::string& address,
+                              const std::string& protocol,
+                              const std::string& transfer_protocol) {
+  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
+                                                           transfer_protocol);
+  TF_RETURN_IF_ERROR(client->Initialize());
+  return client;
+}
+
 Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
                                            GetElementResult& result) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -62,21 +72,19 @@ Status DataServiceWorkerClient::EnsureInitialized() {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
-      transfer_protocol_, {protocol_, address_}, &client_));
+      GetDataTransferProtocol(), {protocol_, address_}, &client_));
   return Status::OK();
 }
 
-void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
-
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& address,
-                              const std::string& protocol,
-                              const std::string& transfer_protocol) {
-  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
-                                                           transfer_protocol);
-  TF_RETURN_IF_ERROR(client->Initialize());
-  return client;
+std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
+  if (transfer_protocol_ == kGrpcTransferProtocol &&
+      LocalWorkers::Get(address_) != nullptr) {
+    return kLocalTransferProtocol;
+  }
+  return transfer_protocol_;
 }
+
+void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
 
 class GrpcDataTransferClient : public DataTransferClient {
  public:
@@ -217,8 +225,8 @@ class LocalDataTransferClient : public DataTransferClient {
         LocalWorkers::Get(worker_address_);
     if (!worker) {
       return errors::Cancelled(absl::Substitute(
-          "Worker at address $0 is no longer available; cancel request for "
-          "task $1.",
+          "Local worker at address $0 is no longer available; cancel request "
+          "for task $1.",
           worker_address_, req.task_id()));
     }
     return worker;

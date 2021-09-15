@@ -60,8 +60,8 @@ def _recursive_apply(tensors, apply_fn):
   elif tensors_type is dict:
     return dict((k, _recursive_apply(v, apply_fn)) for k, v in tensors.items())
   else:
-    raise TypeError('_recursive_apply argument %r has invalid type %r' %
-                    (tensors, tensors_type))
+    raise TypeError(f'_recursive_apply argument {tensors!r} has invalid type '
+                    f'{tensors_type!r}')
 
 
 class _ControlOutputCache(object):

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import functools
 import os
 import sys
 
@@ -61,6 +62,14 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
+
+# Only run jax related tests when we can import jax.
+DISABLE_JAX_TEST = False
+try:
+  import jax
+  from jax import numpy as jnp
+except ImportError:
+  DISABLE_JAX_TEST = True
 # pylint: enable=g-import-not-at-top
 
 
@@ -276,6 +285,25 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         'The inference_input_type and inference_output_type '
         'must be tf.float32.', str(error.exception))
+
+  @parameterized.named_parameters(
+      ('EnableMlirQuantizer', True),  # enable mlir quantizer
+      ('DisableMlirQuantizer', False))  # disable mlir quantizer
+  def testQuantizationRemovesQDQsForFloatIO(self, mlir_quantizer):
+    func, calibration_gen = self._getSqrtModel()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [func.get_concrete_function()])
+    converter.representative_dataset = calibration_gen
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.experimental_new_quantizer = mlir_quantizer
+    quantized_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_model)
+    interpreter.allocate_tensors()
+    # The model should have only one sqrt op.
+    op_details = interpreter._get_ops_details()
+    self.assertLen(op_details, 1)
+    self.assertEqual(op_details[0]['op_name'], 'SQRT')
 
   @parameterized.named_parameters(
       ('_Default', False, False, dtypes.float32),
@@ -815,6 +843,107 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLen(output_details, 2)
     self.assertEqual(output_details[0]['dtype'], expected_dtype)
     self.assertEqual(output_details[1]['dtype'], expected_ceil_dtype)
+
+  def _getIntegerQuantizationModelWithControlFlow(self):
+    def true_fn(x):
+      return x
+
+    def false_fn(x):
+      return x
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, 2], dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.bool)
+    ])
+    def model(x, b):
+      x = x + x
+      x = tf.cond(b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
+      return x + x
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(
+                1,
+                2,
+            )).astype(np.float32),
+            tf.constant(True),
+        ]
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(
+                1,
+                2,
+            )).astype(np.float32),
+            tf.constant(False),
+        ]
+
+    return (model, model.get_concrete_function(), calibration_gen)
+
+  @parameterized.named_parameters(
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      # TODO(b/198231624): Support control flow ops in MLIR quantizer
+      # ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      # ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True),
+  )
+  @test_util.run_v2_only
+  def testIntegerQuantizationWithControlFlow(self,
+                                             is_int_only,
+                                             is_int16_quantize,
+                                             inference_input_output_type,
+                                             enable_mlir_quantizer=False):
+    root, func, calib_gen = self._getIntegerQuantizationModelWithControlFlow()
+
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func], root)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calib_gen
+    if is_int_only:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8, lite.OpsSet.TFLITE_BUILTINS
+        ]
+    else:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEqual(input_details[0]['dtype'], expected_dtype)
+    self.assertEqual(input_details[1]['dtype'], dtypes.bool)
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(output_details[0]['dtype'], expected_dtype)
 
   @parameterized.named_parameters(
       ('_BlocklistedNoneWithLowering', None, None, True),
@@ -1663,6 +1792,112 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     sub_output = sub_signature_runner(x=input_data)
     self.assertEqual(sub_output['output_0'], -2)
 
+  @parameterized.named_parameters(
+      ('_Default', False, False, dtypes.float32, False),
+      ('_DefaultMlirQuant', False, False, dtypes.float32, True),
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
+  @test_util.run_v2_only
+  def testMultipleFunctionQuantizedModel(self,
+                                         is_int_only,
+                                         is_int16_quantize,
+                                         inference_input_output_type,
+                                         enable_mlir_quantizer=False):
+    """Convert multiple functions in a multi-functional model."""
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+    add_func = root.add.get_concrete_function(input_data)
+    sub_func = root.sub.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'add': add_func, 'sub': sub_func})
+
+    # Try converting multiple functions.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield ('add', {
+            'x': np.random.uniform(low=0, high=1, size=(1,)).astype(np.float32),
+        })
+      for _ in range(2):
+        yield ('sub', {
+            'x': np.random.uniform(low=0, high=1, size=(1,)).astype(np.float32),
+        })
+
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    if is_int_only:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    else:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS]
+    converter.inference_input_type = inference_input_output_type
+    converter.inference_output_type = inference_input_output_type
+    converter.experimental_new_quantizer = enable_mlir_quantizer
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1,)).astype(
+            inference_input_output_type.as_numpy_dtype))
+    add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertIsNotNone(add_output['output_0'])
+    input_details = add_signature_runner.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertStartsWith(input_details['x']['name'], 'add_x:0')
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details['x']['dtype'])
+    self.assertTrue(([1] == input_details['x']['shape']).all())
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), input_details['x']['quantization'])
+
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertIsNotNone(sub_output['output_0'])
+    output_details = sub_signature_runner.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertStartsWith(output_details['output_0']['name'],
+                          'StatefulPartitionedCall:0')
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details['output_0']['dtype'])
+    self.assertTrue(([1] == output_details['output_0']['shape']).all())
+    if inference_input_output_type == dtypes.float32:
+      self.assertEqual((0.0, 0), output_details['output_0']['quantization'])
+
   @test_util.run_v2_only
   def testMultipleFunctionModelWithSharedWeight(self):
     """Convert multiple functions with the shared weight."""
@@ -2065,6 +2300,198 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
                           ['tensor_input'])
     self.assertEqual(
         list(signature_defs['serving_default']['outputs']), ['output_tensor'])
+
+
+class FromJaxModelTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testInvalidInputsModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def simple_model(input1, input2):
+      return jnp.sin(input1) + jnp.cos(input2)
+
+    input_tensor = jnp.zeros([10, 10])
+    # Invalid case: not specify serving_func
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        None, [{
+            'input1': input_tensor
+        }])
+    with self.assertRaisesRegex(ValueError, 'No serving func is specified.'):
+      converter.convert()
+
+    # Invalid case: not specify input
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
+                                                             None)
+    with self.assertRaisesRegex(ValueError, 'Input tensors are not specified.'):
+      converter.convert()
+
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model], [])
+    with self.assertRaisesRegex(ValueError, 'Input tensors are not specified.'):
+      converter.convert()
+
+    # Invalid case: not wrap input_tensor in a list.
+    converter = lite.TFLiteConverterV2.experimental_from_jax([simple_model],
+                                                             input_tensor)
+    with self.assertRaisesRegex(
+        ValueError,
+        'The truth value of an array with more than one element is ambiguous.'):
+      converter.convert()
+
+    # Invalid case: only partial inputs are provided.
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model], [[('input1', input_tensor)]])
+    with self.assertRaisesRegex(
+        ValueError, 'Failed to convert the given Jax function to hlo.'):
+      converter.convert()
+
+    # Invalid case: serving functions length does not match input mapping.
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model, simple_model], [[
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ]])
+    with self.assertRaisesRegex(
+        ValueError,
+        'Input tensor mapping len 1 does not match serving func len 2.'):
+      converter.convert()
+
+    # Invalid case: multiple serving function is provided.
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [simple_model, simple_model], [[
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ], [
+            ('input1', input_tensor),
+            ('input2', input_tensor),
+        ]])
+    with self.assertRaisesRegex(
+        ValueError, 'Currently only support single serving function.'):
+      converter.convert()
+
+  @test_util.run_v2_only
+  def testSingleInputModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def single_input(input_tensor):
+      return jnp.sin(input_tensor)
+
+    # Convert model.
+    input_tensor = jnp.zeros([10, 10])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [single_input], [[('input_tensor', input_tensor)]])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((10, 10))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = single_input(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testMultipleInputsModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def multiple_inputs(input1, input2):
+      return input1 + input2
+
+    # Convert model.
+    input1 = jnp.zeros([10, 10])
+    input2 = jnp.zeros([10, 1])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [multiple_inputs], [[('input1', input1), ('input2', input2)]])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input1_data = np.random.random_sample((10, 10))
+    tf_input1_data = tf.constant(input1_data, dtype=np.float32)
+    input2_data = np.random.random_sample((10, 1))
+    tf_input2_data = tf.constant(input2_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [tf_input1_data, tf_input2_data])[0]
+    expected_value = multiple_inputs(input1_data, input2_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testInputSignaturesModel(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def multiple_inputs(input1, input2):
+      return input1 + input2
+
+    # Convert model.
+    input1 = jnp.zeros([10, 10])
+    input2 = jnp.zeros([10, 1])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [multiple_inputs], [[('input1', input1), ('input2', input2)]])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input1_data = np.random.random_sample((10, 10))
+    tf_input1_data = tf.constant(input1_data, dtype=np.float32)
+    input2_data = np.random.random_sample((10, 1))
+    tf_input2_data = tf.constant(input2_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [tf_input1_data, tf_input2_data])[0]
+    expected_value = multiple_inputs(input1_data, input2_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testModelWithParams(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def model(inputs, weights):
+      return jnp.matmul(weights, inputs)
+
+    weights = np.random.random_sample((10, 10))
+    serving_func = functools.partial(model, weights=weights)
+
+    # Convert model
+    input_tensor = jnp.zeros([10, 10])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [serving_func], [[('inputs', input_tensor)]])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((10, 10))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = serving_func(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testWhileLoop(self):
+    if DISABLE_JAX_TEST:
+      return
+
+    def condition(x):
+      return jnp.sum(x, keepdims=False) < 100
+
+    def body(x):
+      return jnp.add(x, 2.0)
+
+    def model(x):
+      result = jax.lax.while_loop(condition, body, x)
+      return result[0]
+
+    # Convert model.
+    input_tensor = jnp.zeros([3, 3])
+    converter = lite.TFLiteConverterV2.experimental_from_jax(
+        [model], [[('x', input_tensor)]])
+    tflite_model = converter.convert()
+
+    # Check values from converted_model
+    input_data = np.random.random_sample((3, 3))
+    tf_input_data = tf.constant(input_data, dtype=np.float32)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [tf_input_data])[0]
+    expected_value = model(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):

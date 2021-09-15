@@ -139,6 +139,7 @@ class Node {
   // Sets 'original_node_names' field of this node's DebugInfo proto to
   // 'names'.
   void set_original_node_names(const std::vector<string>& names);
+  void set_original_func_names(const std::vector<string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
@@ -363,6 +364,7 @@ class Node {
 struct NodeDebugInfo {
   const std::string name;
   std::vector<string> original_node_names;
+  std::vector<string> original_func_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
@@ -735,10 +737,6 @@ class Graph {
     return construction_context_;
   }
 
-  void SetNodeType(StringPiece name, const FullTypeDef& type);
-
-  void NodeType(StringPiece name, FullTypeDef** result);
-
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -764,29 +762,6 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
-
-  // Types table.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_set<TypeRef, TypeHasher> types_;
-
-  // Experimental.
-  // Map from node node names to their outputs' FullType. Typically, the values
-  // in this map are identical to those in types_, but that is not enforced or
-  // guaranteed.
-  //
-  // The full type specification combines a Tensor's dtype, tensor_shape,
-  // variant_val, etc. into a unified representation.
-  // This definition may only contain concrete types (for example,
-  // Tensor<TypeVar<'T'>> is not a valid node type).
-  //
-  // Presently, FullType duplicates any information found in `dtype`. When set,
-  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
-  // with FullType.
-  //
-  // For example, if a TensorProto has `dtype=DT_INT32`, then
-  // `full_type=FT_TENSOR[FT_INT32]`.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
   int64_t num_nodes_ = 0;

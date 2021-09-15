@@ -132,6 +132,8 @@ struct AdrenoInfo {
 
   int GetWaveSize(bool full_wave) const;
 
+  int GetComputeUnitsCount() const;
+
   // Not supported on some Adreno devices with specific driver version.
   // b/131099086
   bool support_one_layer_texture_array = true;
@@ -210,6 +212,8 @@ struct MaliInfo {
   bool IsBifrostGen2() const;
   bool IsBifrostGen3() const;
   bool IsBifrost() const;
+  bool IsValhallGen1() const;
+  bool IsValhallGen2() const;
   bool IsValhall() const;
 };
 

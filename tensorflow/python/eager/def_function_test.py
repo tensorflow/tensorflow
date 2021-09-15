@@ -34,6 +34,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -324,6 +325,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, msg):
       foo(False)
     self.assertEqual(foo.trace_count, 3)
+
+  def testMethodExtensionType(self):
+
+    class MaskedTensor(extension_type.ExtensionType):
+      values: ops.Tensor
+      mask: ops.Tensor
+
+      @def_function.function
+      def with_default(self, default_value):
+        return array_ops.where_v2(self.mask, self.values, default_value)
+
+      @def_function.function
+      def sum(self):
+        # Use a loop & conditional to test that autograph works correctly.
+        result = 0
+        for i in range(array_ops.size(self.values)):
+          if self.mask[i]:
+            result += self.values[i]
+        return result
+
+    mt = MaskedTensor([1, 2, 3], [True, False, True])
+    self.assertAllEqual(mt.with_default(-1), [1, -1, 3])
+    self.assertAllEqual(mt.sum(), 4)
 
   def test_functools_partial(self):
     self.assertAllClose(
@@ -776,10 +800,12 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    self.assertEqual(trace_count[0], 2)
+    # No retracing because v2's data type and shape are the same as v1
+    self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    self.assertEqual(trace_count[0], 3)
+    # Retracing because of data type change
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):

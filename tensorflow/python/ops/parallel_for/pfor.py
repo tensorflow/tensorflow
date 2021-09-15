@@ -2580,7 +2580,9 @@ def _convert_strided_slice_grad(pfor_input):
   new_axis_mask = pfor_input.get_attr("new_axis_mask")
   shrink_axis_mask = pfor_input.get_attr("shrink_axis_mask")
 
-  shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  shape = array_ops.concat(
+      [math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype), shape],
+      axis=0)
   begin = array_ops.concat([[0], begin], axis=0)
   end = array_ops.concat([[0], end], axis=0)
   strides = array_ops.concat([[1], strides], axis=0)

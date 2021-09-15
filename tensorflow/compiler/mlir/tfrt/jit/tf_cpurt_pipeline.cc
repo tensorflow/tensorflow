@@ -59,7 +59,8 @@ struct AddTensorflowProducerVersion
 // buffers via progressive lowering to MHLO and Linalg.
 // -------------------------------------------------------------------------- //
 
-void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
+void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
+                           const TfCpuRtPipelineOptions& options) {
   // Break Tensorflow fused operations into primitive operations before
   // lowering to HLO.
   pm.addNestedPass<mlir::FuncOp>(CreateFissionPass());
@@ -117,8 +118,6 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   pm.addPass(mlir::createTensorConstantBufferizePass());
-  // Run canonicalizer for dead code removal.
-  pm.addPass(mlir::createCanonicalizerPass());
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
@@ -146,7 +145,12 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 }
 
-static mlir::PassPipelineRegistration<> tf_cpurt_pipeline(
+void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {
+  TfCpuRtPipelineOptions options;
+  CreateTfCpuRtPipeline(pm, options);
+}
+
+static mlir::PassPipelineRegistration<TfCpuRtPipelineOptions> tf_cpurt_pipeline(
     "tf-cpurt-pipeline",
     "Convert Tensorflow dialect to TFRT's CPURT compatible dialects",
     CreateTfCpuRtPipeline);

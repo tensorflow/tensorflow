@@ -30,12 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ConvertFunctionToBef(mlir::StringRef function_name,
-                            const tensorflow::FunctionBody* fbody,
-                            const FunctionLibraryDefinition& flib_def,
-                            tfrt::ArrayRef<tfrt::string_view> devices,
-                            tensorflow::TfrtFunctionCompileOptions options,
-                            tfrt::BefBuffer* bef_buffer) {
+Status ConvertFunctionToBef(
+    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
+    const FunctionLibraryDefinition& flib_def,
+    tfrt::ArrayRef<tfrt::string_view> devices,
+    const tensorflow::TfrtFunctionCompileOptions& options,
+    tfrt::BefBuffer* bef_buffer) {
   mlir::MLIRContext context;
   // FunctionDef -> TF Dialect
   auto expected_module =

@@ -389,11 +389,11 @@ Status MakeIteratorFromInputElement(
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
-    const std::shared_ptr<model::Node>& node) {
+    std::shared_ptr<model::Node> node) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
-      ctx, input_element, &return_values, node));
+      ctx, input_element, &return_values, std::move(node)));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
@@ -501,7 +501,7 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    if (ctx->serialize_data_tensors()) {
+    if (!ctx->is_graph_rewrite()) {
       TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
     } else {
       TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
@@ -516,13 +516,21 @@ Status CapturedFunction::AddToGraph(
   return Status::OK();
 }
 
-// TODO(b/190831948): Check whether the function creates a resource and if so,
-// produce a warning.
 Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
+  return CapturedFunction::Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                       instantiated_captured_function);
+}
+
+// TODO(b/190831948): Check whether the function creates a resource and if so,
+// produce a warning.
+Status CapturedFunction::Instantiate(
+    InstantiateCapturedFunctionParams params,
+    std::unique_ptr<InstantiatedCapturedFunction>*
+        instantiated_captured_function) {
   // The context's runtime will be used for all subsequent calls.
-  FunctionLibraryRuntime* lib = ctx->flr();
+  FunctionLibraryRuntime* lib = params.flr;
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
@@ -533,7 +541,7 @@ Status CapturedFunction::Instantiate(
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
-  if (!ctx->function_handle_cache()) {
+  if (!params.function_handle_cache) {
     // If the caller does not provide a cache, we use the FLR cache.
     inst_opts.use_function_cache = true;
   }
@@ -639,8 +647,8 @@ Status CapturedFunction::Instantiate(
   }
 
   FunctionLibraryRuntime::Handle f_handle;
-  if (ctx->function_handle_cache()) {
-    TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
+  if (params.function_handle_cache) {
+    TF_RETURN_IF_ERROR(params.function_handle_cache->Instantiate(
         metadata_->func().name(), AttrSlice(&metadata_->func().attr()),
         inst_opts, &f_handle));
   } else {
@@ -653,10 +661,11 @@ Status CapturedFunction::Instantiate(
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
   bool is_multi_device;
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
-  return InstantiatedCapturedFunction::Create(
-      lib, f_handle, std::move(ret_types), *ctx->runner(), this,
-      is_multi_device, instantiated_captured_function);
+  TF_RETURN_IF_ERROR(IsMultiDevice(lib, &is_multi_device));
+  *instantiated_captured_function = absl::WrapUnique(
+      new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
+                                       *params.runner, this, is_multi_device));
+  return Status::OK();
 }
 
 Status CapturedFunction::CheckExternalState() const {
@@ -673,7 +682,7 @@ CapturedFunction::CapturedFunction(
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
 
-Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
                                        bool* is_multi_device) const {
   if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
@@ -684,7 +693,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   TF_RETURN_IF_ERROR(
       LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
 
-  Device* current_device = ctx->flr()->device();
+  Device* current_device = flr->device();
   DeviceType current_device_type(current_device->device_type());
   DeviceNameUtils::ParsedName current_device_name;
   if (!DeviceNameUtils::ParseFullName(current_device->name(),
@@ -745,17 +754,6 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   return Status::OK();
 }
 
-/* static */
-Status InstantiatedCapturedFunction::Create(
-    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func, bool is_multi_device,
-    std::unique_ptr<InstantiatedCapturedFunction>* out_function) {
-  out_function->reset(new InstantiatedCapturedFunction(
-      lib, f_handle, ret_types, runner, captured_func, is_multi_device));
-  return Status::OK();
-}
-
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
@@ -775,7 +773,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
 
 Status InstantiatedCapturedFunction::Run(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
-    const std::shared_ptr<model::Node>& node) const {
+    std::shared_ptr<model::Node> node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, std::move(args), captured_func_, rets);
@@ -797,8 +795,7 @@ Status InstantiatedCapturedFunction::Run(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
@@ -839,7 +836,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
-    std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
+    std::vector<Tensor>* rets, std::shared_ptr<model::Node> node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, args, captured_func_, rets);
@@ -861,8 +858,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -925,10 +921,13 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   return frame.ConsumeRetvals(rets);
 }
 
+// NOTE: The `done` callback will be invoked asynchronously from the calling
+// thread. The caller is therefore responsible for making sure that any objects
+// accessed by the callback exist at least until the callback returns.
 void InstantiatedCapturedFunction::RunAsync(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done,
-    const std::shared_ptr<model::Node>& node) const {
+    std::shared_ptr<model::Node> node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     // Run the `done` callback on a threadpool thread, because it will
@@ -941,9 +940,6 @@ void InstantiatedCapturedFunction::RunAsync(
     return;
   }
 
-  // NOTE(mrry): This method does not transfer ownership of `ctx`, and it may
-  // be deleted before `done` is called. Take care not to capture `ctx` in any
-  // code that may execute asynchronously in this function.
   OwnedArgsCallFrame* frame = new OwnedArgsCallFrame(
       std::move(args), &captured_func_->captured_inputs(), ret_types_);
 
@@ -957,7 +953,7 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   auto cancellation_manager =
-      absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+      std::make_shared<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
   f_opts.collective_executor = ctx->collective_executor();
 
@@ -965,23 +961,16 @@ void InstantiatedCapturedFunction::RunAsync(
   if (node || ctx->stats_aggregator()) {
     stats_collector = std::make_shared<SimpleStepStatsCollector>();
   }
-  const bool collect_usage =
-      node && ctx->model() && ctx->model()->collect_resource_usage();
+  const bool collect_usage = node && ctx->model();
   f_opts.stats_collector = stats_collector.get();
 
-  // Transfer ownership of the cancellation manager to `callback`.
-  CancellationManager* raw_cancellation_manager =
-      cancellation_manager.release();
-  auto callback = std::bind(
-      [this, rets, step_container, raw_cancellation_manager, frame, node,
-       collect_usage](
-          const FunctionLibraryRuntime::DoneCallback& done,
-          IteratorContext* ctx,
-          const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
-          // Begin unbound arguments.
-          Status s) {
+  // Transferring ownership of `step_container` and `frame` into `callback`.
+  auto callback =
+      [this, stats_collector = std::move(stats_collector),
+       stats_aggregator = ctx->stats_aggregator(), done = std::move(done),
+       cancellation_manager = std::move(cancellation_manager), node, rets,
+       step_container, frame, collect_usage](Status s) {
         delete step_container;
-        delete raw_cancellation_manager;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
         }
@@ -990,11 +979,11 @@ void InstantiatedCapturedFunction::RunAsync(
           // TODO(b/129085499) Utilize the `node_name` which would be unique
           // than the prefix for the function execution time statistics.
           // prefix_with_func_name would then be node_name + func_name.
-          if (ctx->stats_aggregator()) {
+          if (stats_aggregator) {
             string prefix_with_func_name =
                 strings::StrCat(node->name(), stats_utils::kDelimiter,
                                 captured_func_->func().name());
-            ctx->stats_aggregator()->AddToHistogram(
+            stats_aggregator->AddToHistogram(
                 stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
                 {static_cast<float>(stats_collector->processing_time())},
                 node->num_elements());
@@ -1008,8 +997,7 @@ void InstantiatedCapturedFunction::RunAsync(
         if (collect_usage) {
           node->record_stop(EnvTime::NowNanos());
         }
-      },
-      std::move(done), ctx, std::move(stats_collector), std::placeholders::_1);
+      };
 
   profiler::TraceMe activity(
       [&] {

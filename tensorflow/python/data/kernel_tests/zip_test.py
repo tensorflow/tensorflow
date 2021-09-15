@@ -129,6 +129,13 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
     self.assertDatasetProduces(dataset, expected)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    x = dataset_ops.Dataset.from_tensors(4)
+    y = dataset_ops.Dataset.from_tensors(2)
+    dataset = dataset_ops.Dataset.zip((x, y), name="zip")
+    self.assertDatasetProduces(dataset, [(4, 2)])
+
 
 class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):

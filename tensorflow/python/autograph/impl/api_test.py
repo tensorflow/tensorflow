@@ -24,6 +24,7 @@ import contextlib
 import functools
 import gc
 import imp
+import inspect
 import os
 import re
 import sys
@@ -815,7 +816,7 @@ class ApiTest(test.TestCase):
     def fail_if_warning(*_):
       self.fail('No warning should be issued')
 
-    with test.mock.patch.object(ag_logging, 'warn', fail_if_warning):
+    with test.mock.patch.object(ag_logging, 'warning', fail_if_warning):
       with self.assertRaisesRegex(ValueError, 'fault'):
         api.converted_call(
             np.power, (bad_obj, 2), None, options=DEFAULT_RECURSIVE)
@@ -1293,6 +1294,31 @@ class ApiTest(test.TestCase):
       self.assertEqual(error.exception.experimental_payloads[b'key2'],
                        b'value2')
 
+  def test_inspect_source_unsupported(self):
+
+    @def_function.function
+    def test_func(a):
+      if constant_op.constant(True):
+        return a
+      else:
+        return a + a
+
+    patch = test.mock.patch
+    with patch.dict(os.environ, {'AUTOGRAPH_STRICT_CONVERSION': '0'}), \
+         patch.object(inspect, 'findsource', side_effect=OSError()), \
+         patch.object(ag_logging, 'warning') as warning_log_mock:
+
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', False):
+        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                    'AutoGraph is unavailable in this runtime'):
+          test_func(2)
+      warning_log_mock.assert_not_called()
+
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', True):
+        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                    'AutoGraph did convert this function'):
+          test_func(2)
+      warning_log_mock.called_once_with('AutoGraph could not transform')
 
 if __name__ == '__main__':
   os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'

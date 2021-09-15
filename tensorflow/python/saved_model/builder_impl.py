@@ -419,12 +419,12 @@ class _SavedModelBuilder(object):
       file_io.recursive_create_dir(self._export_dir)
 
     if as_text:
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
       file_io.write_string_to_file(path, str(self._saved_model))
     else:
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
@@ -770,7 +770,7 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir):
 
   # Copy each asset from source path to destination path.
   for asset_basename, asset_source_filepath in asset_filename_map.items():
-    asset_destination_filepath = os.path.join(
+    asset_destination_filepath = file_io.join(
         compat.as_bytes(assets_destination_dir),
         compat.as_bytes(asset_basename))
 

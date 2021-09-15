@@ -1022,7 +1022,8 @@ Status RangeDatasetParams::GetInputNames(
 
 Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"output_types", output_dtypes_},
-                  {"output_shapes", output_shapes_}};
+                  {"output_shapes", output_shapes_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1044,7 +1045,8 @@ Status BatchDatasetParams::GetInputNames(
 Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"parallel_copy", parallel_copy_},
                   {"output_types", output_dtypes_},
-                  {"output_shapes", output_shapes_}};
+                  {"output_shapes", output_shapes_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1068,7 +1070,8 @@ Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
                   {"output_shapes", output_shapes_},
                   {"output_types", output_dtypes_},
                   {"use_inter_op_parallelism", use_inter_op_parallelism_},
-                  {"preserve_cardinality", preserve_cardinality_}};
+                  {"preserve_cardinality", preserve_cardinality_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1079,10 +1082,11 @@ std::vector<FunctionDef> MapDatasetParams::func_lib() const {
 }
 
 TensorSliceDatasetParams::TensorSliceDatasetParams(
-    std::vector<Tensor> components, string node_name)
+    std::vector<Tensor> components, string node_name, bool is_files)
     : DatasetParams(TensorSliceDtypes(components),
                     TensorSliceShapes(components), std::move(node_name)),
-      components_(std::move(components)) {}
+      components_(std::move(components)),
+      is_files_(is_files) {}
 
 std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
   return components_;
@@ -1100,7 +1104,9 @@ Status TensorSliceDatasetParams::GetInputNames(
 Status TensorSliceDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
   *attr_vector = {{"Toutput_types", output_dtypes_},
-                  {"output_shapes", output_shapes_}};
+                  {"output_shapes", output_shapes_},
+                  {"is_files", is_files_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1140,7 +1146,8 @@ Status TakeDatasetParams::GetInputNames(
 
 Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"output_shapes", output_shapes_},
-                  {"output_types", output_dtypes_}};
+                  {"output_types", output_dtypes_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1159,7 +1166,8 @@ Status ConcatenateDatasetParams::GetInputNames(
 Status ConcatenateDatasetParams::GetAttributes(
     AttributeVector* attr_vector) const {
   *attr_vector = {{"output_types", output_dtypes_},
-                  {"output_shapes", output_shapes_}};
+                  {"output_shapes", output_shapes_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 
@@ -1176,7 +1184,8 @@ Status OptionsDatasetParams::GetInputNames(
 Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"serialized_options", serialized_options_},
                   {"output_shapes", output_shapes_},
-                  {"output_types", output_dtypes_}};
+                  {"output_types", output_dtypes_},
+                  {"metadata", ""}};
   return Status::OK();
 }
 

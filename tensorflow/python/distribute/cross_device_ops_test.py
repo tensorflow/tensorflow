@@ -993,7 +993,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       v = make_per_replica_value(1.0, devices)
       options = collective_util.Options(
-          timeout_seconds=1, implementation=implementation)
+          timeout_seconds=1., implementation=implementation)
 
       @def_function.function
       def reduce_dense():
@@ -1030,7 +1030,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       v = make_per_replica_value(1.0, devices)
       options = collective_util.Options(
-          timeout_seconds=1, implementation=implementation)
+          timeout_seconds=1., implementation=implementation)
 
       @def_function.function
       def batch_reduce_dense():
@@ -1070,7 +1070,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           IndexedSlicesValue(
               values=[[4., 6.]], indices=[1], dense_shape=[5, 2]), devices)
       options = collective_util.Options(
-          timeout_seconds=1, implementation=implementation)
+          timeout_seconds=1., implementation=implementation)
 
       @def_function.function
       def reduce_sparse():
@@ -1109,7 +1109,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           IndexedSlicesValue(
               values=[[4., 6.]], indices=[1], dense_shape=[5, 2]), devices)
       options = collective_util.Options(
-          timeout_seconds=1, implementation=implementation)
+          timeout_seconds=1., implementation=implementation)
 
       @def_function.function
       def batch_reduce_sparse():

@@ -76,8 +76,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (options.allowCancellation != null && options.allowCancellation) {
       this.cancellationFlagHandle = createCancellationFlag(interpreterHandle);
     }
-    this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
-    this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    this.inputTensors = new TensorImpl[getInputCount(interpreterHandle)];
+    this.outputTensors = new TensorImpl[getOutputCount(interpreterHandle)];
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
           interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
@@ -157,7 +157,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
 
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
-      Tensor tensor = signatureRunnerWrapper.getInputTensor(input.getKey());
+      TensorImpl tensor = getInputTensor(input.getKey(), signatureKey);
       int[] newShape = tensor.getInputShapeIfDifferent(input.getValue());
       if (newShape != null) {
         signatureRunnerWrapper.resizeInput(input.getKey(), newShape);
@@ -199,7 +199,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // Rather than forcing an immediate resize + allocation if an input's shape differs, we first
     // flush all resizes, avoiding redundant allocations.
     for (int i = 0; i < inputs.length; ++i) {
-      Tensor tensor = getInputTensor(i);
+      TensorImpl tensor = getInputTensor(i);
       int[] newShape = tensor.getInputShapeIfDifferent(inputs[i]);
       if (newShape != null) {
         resizeInput(i, newShape);
@@ -352,29 +352,30 @@ class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   /**
-   * Gets the input {@link Tensor} for the provided input index.
+   * Gets the input {@link TensorImpl} for the provided input index.
    *
    * @throws IllegalArgumentException if the input index is invalid.
    */
-  Tensor getInputTensor(int index) {
+  TensorImpl getInputTensor(int index) {
     if (index < 0 || index >= inputTensors.length) {
       throw new IllegalArgumentException("Invalid input Tensor index: " + index);
     }
-    Tensor inputTensor = inputTensors[index];
+    TensorImpl inputTensor = inputTensors[index];
     if (inputTensor == null) {
       inputTensor =
           inputTensors[index] =
-              Tensor.fromIndex(interpreterHandle, getInputTensorIndex(interpreterHandle, index));
+              TensorImpl.fromIndex(
+                  interpreterHandle, getInputTensorIndex(interpreterHandle, index));
     }
     return inputTensor;
   }
 
   /**
-   * Gets the input {@link Tensor} given the tensor name and method in the signature.
+   * Gets the input {@link TensorImpl} given the tensor name and method in the signature.
    *
    * @throws IllegalArgumentException if the input name is invalid.
    */
-  Tensor getInputTensor(String inputName, String signatureKey) {
+  TensorImpl getInputTensor(String inputName, String signatureKey) {
     if (inputName == null) {
       throw new IllegalArgumentException("Invalid input tensor name provided (null)");
     }
@@ -409,29 +410,30 @@ class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   /**
-   * Gets the output {@link Tensor} for the provided output index.
+   * Gets the output {@link TensorImpl} for the provided output index.
    *
    * @throws IllegalArgumentException if the output index is invalid.
    */
-  Tensor getOutputTensor(int index) {
+  TensorImpl getOutputTensor(int index) {
     if (index < 0 || index >= outputTensors.length) {
       throw new IllegalArgumentException("Invalid output Tensor index: " + index);
     }
-    Tensor outputTensor = outputTensors[index];
+    TensorImpl outputTensor = outputTensors[index];
     if (outputTensor == null) {
       outputTensor =
           outputTensors[index] =
-              Tensor.fromIndex(interpreterHandle, getOutputTensorIndex(interpreterHandle, index));
+              TensorImpl.fromIndex(
+                  interpreterHandle, getOutputTensorIndex(interpreterHandle, index));
     }
     return outputTensor;
   }
 
   /**
-   * Gets the output {@link Tensor} given the tensor name and method in the signature.
+   * Gets the output {@link TensorImpl} given the tensor name and method in the signature.
    *
    * @throws IllegalArgumentException if the output name is invalid.
    */
-  Tensor getOutputTensor(String outputName, String signatureKey) {
+  TensorImpl getOutputTensor(String outputName, String signatureKey) {
     if (outputName == null) {
       throw new IllegalArgumentException("Invalid output tensor name provided (null)");
     }
@@ -556,8 +558,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private Map<String, NativeSignatureRunnerWrapper> signatureRunnerMap;
 
   // Lazily constructed and populated arrays of input and output Tensor wrappers.
-  private Tensor[] inputTensors;
-  private Tensor[] outputTensors;
+  private TensorImpl[] inputTensors;
+  private TensorImpl[] outputTensors;
 
   // Whether subgraph's tensor memory space is allocated.
   private boolean isMemoryAllocated = false;

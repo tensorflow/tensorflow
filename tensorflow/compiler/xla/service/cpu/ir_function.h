@@ -88,6 +88,9 @@ class IrFunction {
   // argument.
   llvm::Value* profile_counters_arg() { return profile_counters_arg_; }
 
+  // Get the llvm::BasicBlock* that contains this function's "ret" instruction.
+  llvm::BasicBlock* return_block() { return return_block_; }
+
  private:
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
@@ -112,6 +115,8 @@ class IrFunction {
   llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
+  // Basic block containing return.
+  llvm::BasicBlock* return_block_;
 };
 
 // Returns arguments in `arguments` encoded as a single buffer, suitable for a

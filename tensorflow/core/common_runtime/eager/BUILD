@@ -397,6 +397,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         ],
     }),
 )
@@ -512,6 +513,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -637,6 +639,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/c/eager:abstract_function",
         "//tensorflow/core/platform:errors",
     ] + select({

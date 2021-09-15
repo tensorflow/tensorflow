@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
@@ -127,20 +125,21 @@ class MethodNameUpdater(object):
       errors.OpError: If there are errors during the file save operation.
     """
 
-    is_input_text_proto = file_io.file_exists(os.path.join(
-        compat.as_bytes(self._export_dir),
-        compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT)))
+    is_input_text_proto = file_io.file_exists(
+        file_io.join(
+            compat.as_bytes(self._export_dir),
+            compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT)))
     if not new_export_dir:
       new_export_dir = self._export_dir
 
     if is_input_text_proto:
       # TODO(jdchung): Add a util for the path creation below.
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(new_export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
       file_io.write_string_to_file(path, str(self._saved_model))
     else:
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(new_export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(

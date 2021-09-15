@@ -343,6 +343,11 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                          ([[3, 3, 3, -1], [4, 4, 4, 4]], [[3, 3, 3, -1],
                                                           [4, 4, 4, 4]])])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.range(5).padded_batch(5, name='padded_batch')
+    self.assertDatasetProduces(dataset, [list(range(5))])
+
 
 class PaddedBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):

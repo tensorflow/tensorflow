@@ -83,7 +83,10 @@ cc_library(
 cc_library(
     name = "base_gpu_op",
     hdrs = ["base_gpu_op.h"],
-    deps = [":base_op"],
+    deps = [
+        ":base_op",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(

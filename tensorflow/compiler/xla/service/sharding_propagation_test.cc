@@ -55,9 +55,26 @@ struct MetadataTestParameter {
   bool clear_metadata = false;
 };
 
+struct MetadataTestParameterWithOutput {
+  explicit MetadataTestParameterWithOutput(bool propagate_metadata,
+                                           bool clear_metadata,
+                                           bool allow_root_sharding_propagation)
+      : propagate_metadata(propagate_metadata),
+        clear_metadata(clear_metadata),
+        allow_root_sharding_propagation(allow_root_sharding_propagation) {}
+
+  bool propagate_metadata = false;
+  bool clear_metadata = false;
+  bool allow_root_sharding_propagation = false;
+};
+
 class ParameterizedMetadataTest
     : public HloTestBase,
       public ::testing::WithParamInterface<MetadataTestParameter> {};
+
+class ParameterizedMetadataTestWithOutput
+    : public HloTestBase,
+      public ::testing::WithParamInterface<MetadataTestParameterWithOutput> {};
 
 std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {
   std::vector<std::string> metadata_strings;
@@ -134,6 +151,51 @@ INSTANTIATE_TEST_SUITE_P(
                           "_",
                           info.param.clear_metadata ? "NoMetadataInModule"
                                                     : "MetadataInModule");
+    });
+
+INSTANTIATE_TEST_SUITE_P(
+    ShardingPropagation, ParameterizedMetadataTestWithOutput,
+    ::testing::Values(MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/true)),
+    [](const ::testing::TestParamInfo<MetadataTestParameterWithOutput>& info) {
+      return absl::StrCat(
+          info.param.propagate_metadata ? "MetadataPropagation"
+                                        : "NoMetadataPropagation",
+          "_",
+          info.param.clear_metadata ? "NoMetadataInModule" : "MetadataInModule",
+          "_",
+          info.param.allow_root_sharding_propagation ? "PropagateToRoot"
+                                                     : "NoPropagateToRoot");
     });
 
 TEST_P(ParameterizedMetadataTest, ShardingMetadataFromInstruction) {
@@ -300,7 +362,7 @@ ENTRY %elementwise {
 }
 
 // Regression Test for b/129569657.
-TEST_P(ParameterizedMetadataTest, BroadcastForwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -316,7 +378,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "broadcast");
@@ -327,6 +390,10 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[1,2,2,1]0,1,2,3}"));
   }
 }
 
@@ -360,7 +427,7 @@ ENTRY %broadcast {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, BroadcastForwardPartial) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPartial) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -376,7 +443,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "broadcast");
@@ -389,6 +457,11 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
   }
 }
 
@@ -453,7 +526,7 @@ ENTRY %broadcast {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, BroadcastUserPartial) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastUserPartial) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -469,7 +542,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "copy");
@@ -482,6 +556,11 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[4,2,1,1]0,1,2,3,4,5,6,7}"));
   }
 }
 
@@ -670,7 +749,8 @@ ENTRY %reduce {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, ShardedTupleReduceForwardAndBackwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput,
+       ShardedTupleReduceForwardAndBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -706,7 +786,8 @@ ENTRY %main {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* reduce = FindInstruction(module.get(), "reduce");
@@ -724,9 +805,13 @@ ENTRY %main {
       EXPECT_THAT(sharding, ShardingMetadata({}));
     }
   }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{{devices=[2]0,1},{devices=[2]0,1}}"));
+  }
 }
 
-TEST_P(ParameterizedMetadataTest, GetTupleElementForwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput, GetTupleElementForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %gte {
@@ -752,7 +837,8 @@ ENTRY %gte {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* gte = FindInstruction(module.get(), "gte");
@@ -777,6 +863,10 @@ ENTRY %gte {
           gte1->sharding().tuple_elements()[1], gte2->sharding()}) {
       EXPECT_THAT(sharding, ShardingMetadata({}));
     }
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{replicated}"));
   }
 }
 
@@ -3025,7 +3115,7 @@ ENTRY %entry {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, EinsumLHSBatchPartitioned) {
+TEST_P(ParameterizedMetadataTestWithOutput, EinsumLHSBatchPartitioned) {
   const char* hlo_string = R"(
 HloModule module
 
@@ -3046,7 +3136,8 @@ ENTRY entry {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* rhs_copy = FindInstruction(module.get(), "rhs.copy");
@@ -3062,6 +3153,10 @@ ENTRY entry {
     } else {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[2,1,1]0,1}"));
   }
 }
 
@@ -5230,6 +5325,116 @@ ENTRY %entry {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_F(ShardingPropagationTest, SimpleManual) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %entry {
+  %param0 = f32[6,3] parameter(0)
+  %copy = f32[6,3] copy(%param0), sharding={devices=[2,1]0,1}
+  %annotate = f32[6,3] custom-call(%copy), custom_call_target="Sharding",
+    sharding={devices=[2,1]0,1}
+  %to_manual = f32[3,3] custom-call(%annotate),
+    custom_call_target="SPMDFullToShardShape", sharding={manual}
+  %zero = f32[] constant(0)
+  %reduce = f32[3] reduce(%to_manual, %zero), dimensions={1}, to_apply=%add
+  %annotate2 = f32[3] custom-call(%reduce), custom_call_target="Sharding",
+    sharding={manual}
+  %to_auto = f32[6] custom-call(%annotate2),
+    custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
+  ROOT %copy.2 = f32[6] copy(%to_auto)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{manual}"));
+}
+
+TEST_F(ShardingPropagationTest, RefineUnspecifiedDims) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3] parameter(0)
+  %copy = f32[6,3] copy(%param0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %annotate = f32[6,3] custom-call(%copy), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1]",
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  %copy.2 = f32[6,3] copy(%annotate)
+  ROOT %copy.3 = f32[6,3] copy(%copy.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "copy.2");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
+}
+
+TEST_F(ShardingPropagationTest, RefineUnspecifiedDimsWithManualConversion) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3,8] parameter(0)
+  %copy = f32[6,3,8] copy(%param0),
+    sharding={devices=[1,2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %annotate = f32[6,3,8] custom-call(%copy), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[2,1,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %to_manual = f32[3,3,8] custom-call(%annotate),
+    custom_call_target="SPMDFullToShardShape",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[1,1,1,4,2]0,2,1,3,4,6,5,7 last_tile_dims={replicated,manual}}
+  %annotate2 = f32[3,3,8] custom-call(%to_manual), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[1,1,1,4,2]0,2,1,3,4,6,5,7 last_tile_dims={replicated,manual}}
+  %to_auto = f32[6,3,8] custom-call(%annotate2),
+    custom_call_target="SPMDShardToFullShape",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[2,1,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %copy.2 = f32[6,3,8] copy(%to_auto)
+  ROOT %copy.3 = f32[6,3,8] copy(%copy.2),
+    sharding={devices=[1,1,2,4]0,2,4,6,1,3,5,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* copy2 = FindInstruction(module.get(), "copy.2");
+  ASSERT_NE(copy2, nullptr);
+  EXPECT_THAT(copy2, op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7}"));
+  auto* to_manual = FindInstruction(module.get(), "to_manual");
+  ASSERT_NE(to_manual, nullptr);
+  EXPECT_THAT(
+      to_manual,
+      op::Sharding(
+          "{devices=[1,2,2,2]0,2,1,3,4,6,5,7 last_tile_dims={manual}}"));
+  auto* to_auto = FindInstruction(module.get(), "to_auto");
+  ASSERT_NE(to_auto, nullptr);
+  EXPECT_THAT(to_auto, op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7}"));
 }
 
 }  // namespace

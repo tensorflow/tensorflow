@@ -2384,7 +2384,8 @@ Sets up the centralized structures for a distributed TPU system.
     DefaultValuedAttr<StrAttr, "">:$tpu_embedding_config,
     DefaultValuedAttr<BoolAttr, "false">:$is_global_init,
     DefaultValuedAttr<BoolAttr, "false">:$enable_whole_mesh_compilations,
-    DefaultValuedAttr<BoolAttr, "true">:$compilation_failure_closes_chips
+    DefaultValuedAttr<BoolAttr, "true">:$compilation_failure_closes_chips,
+    DefaultValuedAttr<I64Attr, "0">:$tpu_cancellation_closes_chips
   );
 
   let results = (outs
@@ -18118,7 +18119,8 @@ Creates a dataset that emits each dim-0 slice of `components` once.
   let arguments = (ins
     Variadic<TF_Tensor>:$components,
 
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "false">:$is_files
   );
 
   let results = (outs

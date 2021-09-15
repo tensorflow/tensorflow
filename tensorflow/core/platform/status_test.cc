@@ -42,4 +42,85 @@ TEST(ToStringTest, MatchesAbslStatus) {
 
   EXPECT_EQ(status.ToString(), absl_status.ToString());
 }
+
+TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
+  Status status_a = errors::Aborted("Status A");
+  Status status_b = errors::Aborted("Status B");
+  Status status_c = errors::Aborted("Status C");
+
+  Status combined =
+      StatusGroup({status_a, status_b, status_c}).as_summary_status();
+
+  EXPECT_EQ(combined,
+            StatusGroup({status_a, status_b, status_c}).as_summary_status());
+  EXPECT_EQ(combined,
+            StatusGroup({status_a, status_c, status_b}).as_summary_status());
+  EXPECT_EQ(combined,
+            StatusGroup({status_b, status_a, status_c}).as_summary_status());
+  EXPECT_EQ(combined,
+            StatusGroup({status_b, status_c, status_a}).as_summary_status());
+  EXPECT_EQ(combined,
+            StatusGroup({status_c, status_a, status_b}).as_summary_status());
+  EXPECT_EQ(combined,
+            StatusGroup({status_c, status_b, status_a}).as_summary_status());
+}
+
+TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
+  Status status_a = errors::Aborted("Status A");
+  status_a.SetPayload("payload_key", "payload_value_a");
+  Status status_b = errors::Aborted("Status B");
+  status_b.SetPayload("payload_key", "payload_value_b");
+  Status status_c = errors::Aborted("Status C");
+  status_c.SetPayload("payload_key", "payload_value_c");
+
+  Status combined =
+      StatusGroup({status_a, status_b, status_c}).as_summary_status();
+  ASSERT_FALSE(combined.GetPayload("payload_key").empty());
+  std::string payload(combined.GetPayload("payload_key"));
+
+  EXPECT_EQ(payload, StatusGroup({status_a, status_b, status_c})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+  EXPECT_EQ(payload, StatusGroup({status_a, status_c, status_b})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+  EXPECT_EQ(payload, StatusGroup({status_b, status_a, status_c})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+  EXPECT_EQ(payload, StatusGroup({status_b, status_c, status_a})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+  EXPECT_EQ(payload, StatusGroup({status_c, status_a, status_b})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+  EXPECT_EQ(payload, StatusGroup({status_c, status_b, status_a})
+                         .as_summary_status()
+                         .GetPayload("payload_key"));
+}
+
+TEST(StatusGroupTest, PayloadsMergedProperly) {
+  Status status_a = errors::Aborted("Status A");
+  status_a.SetPayload("payload_key_a", std::string("payload_value_a"));
+  Status status_b = errors::Aborted("Status B");
+  status_b.SetPayload("payload_key_b", std::string("payload_value_b"));
+  Status status_c = errors::Aborted("Status C");
+  status_c.SetPayload("payload_key_c", std::string("payload_value_c"));
+  Status derived_status_c =
+      StatusGroup::MakeDerived(errors::Aborted("Status C"));
+  derived_status_c.SetPayload("payload_key_c",
+                              std::string("derived_payload_value_c"));
+
+  StatusGroup status_group({status_a, status_b, status_c, derived_status_c});
+  EXPECT_THAT(status_group.GetPayloads(), ::testing::SizeIs(3));
+
+  Status combined = status_group.as_summary_status();
+  EXPECT_THAT(combined.GetPayload("payload_key_a"),
+              ::testing::Not(::testing::IsEmpty()));
+  EXPECT_THAT(combined.GetPayload("payload_key_b"),
+              ::testing::Not(::testing::IsEmpty()));
+  EXPECT_THAT(combined.GetPayload("payload_key_c"),
+              ::testing::Not(::testing::IsEmpty()));
+  EXPECT_EQ(combined.GetPayload("payload_key_c"), "payload_value_c");
+}
+
 }  // namespace tensorflow

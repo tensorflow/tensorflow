@@ -238,8 +238,85 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   } else if (IsAdreno5xx() || IsAdreno4xx()) {
     return full_wave ? 64 : 32;
   } else {
-    // all other versions not supported
-    return 1;
+    return full_wave ? 32 : 16;
+  }
+}
+
+int AdrenoInfo::GetComputeUnitsCount() const {
+  // can provide not correct numbers.
+  switch (adreno_gpu) {
+    // Adreno 6xx series
+    case AdrenoGpu::kAdreno685:
+      return 4;
+    case AdrenoGpu::kAdreno680:
+      return 4;
+    case AdrenoGpu::kAdreno675:
+      return 4;
+    case AdrenoGpu::kAdreno660:
+      return 3;
+    case AdrenoGpu::kAdreno650:
+      return 3;
+    case AdrenoGpu::kAdreno640:
+      return 2;
+    case AdrenoGpu::kAdreno630:
+      return 2;
+    case AdrenoGpu::kAdreno620:
+      return 1;
+    case AdrenoGpu::kAdreno618:
+      return 1;
+    case AdrenoGpu::kAdreno616:
+      return 1;
+    case AdrenoGpu::kAdreno615:
+      return 1;
+    case AdrenoGpu::kAdreno612:
+      return 1;
+    case AdrenoGpu::kAdreno610:
+      return 1;
+    case AdrenoGpu::kAdreno605:
+      return 1;
+    // Adreno 5xx series
+    case AdrenoGpu::kAdreno540:
+      return 4;
+    case AdrenoGpu::kAdreno530:
+      return 4;
+    case AdrenoGpu::kAdreno512:
+      return 2;
+    case AdrenoGpu::kAdreno510:
+      return 2;
+    case AdrenoGpu::kAdreno509:
+      return 2;
+    case AdrenoGpu::kAdreno508:
+      return 1;
+    case AdrenoGpu::kAdreno506:
+      return 1;
+    case AdrenoGpu::kAdreno505:
+      return 1;
+    case AdrenoGpu::kAdreno504:
+      return 1;
+    // Adreno 4xx series
+    case AdrenoGpu::kAdreno430:
+      return 4;
+    case AdrenoGpu::kAdreno420:
+      return 4;
+    case AdrenoGpu::kAdreno418:
+      return 2;
+    case AdrenoGpu::kAdreno405:
+      return 1;
+    // Adreno 3xx series
+    case AdrenoGpu::kAdreno330:
+      return 4;
+    case AdrenoGpu::kAdreno320:
+      return 2;
+    case AdrenoGpu::kAdreno308:
+      return 1;
+    case AdrenoGpu::kAdreno306:
+      return 1;
+    case AdrenoGpu::kAdreno305:
+      return 1;
+    case AdrenoGpu::kAdreno304:
+      return 1;
+    default:
+      return 1;
   }
 }
 
@@ -344,10 +421,15 @@ bool MaliInfo::IsBifrost() const {
   return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
-bool MaliInfo::IsValhall() const {
-  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77 ||
-         gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+bool MaliInfo::IsValhallGen1() const {
+  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77;
 }
+
+bool MaliInfo::IsValhallGen2() const {
+  return gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+}
+
+bool MaliInfo::IsValhall() const { return IsValhallGen1() || IsValhallGen2(); }
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
@@ -554,6 +636,9 @@ int GpuInfo::GetComputeUnitsCount() const {
   }
   if (IsAMD() && IsApiVulkan()) {
     return amd_info.GetComputeUnitsCount();
+  }
+  if (IsAdreno()) {
+    return adreno_info.GetComputeUnitsCount();
   }
   return 1;
 }

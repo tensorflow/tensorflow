@@ -64,13 +64,17 @@ def _ParseTensorName(tensor_name):
     try:
       output_index = int(components[1])
     except ValueError:
-      raise ValueError('Cannot convert %r to a tensor name.' % (tensor_name,))
+      raise ValueError(f'Cannot convert {tensor_name!r} to a tensor name. '
+                       'Second component of the name following the `:` should '
+                       f'be an int. Got {components[1]}.')
     return components[0], output_index
   elif len(components) == 1:
     # Expected format: 'operation_name' (implicit 0th output).
     return components[0], 0
   else:
-    raise ValueError('Cannot convert %r to a tensor name.' % (tensor_name,))
+    raise ValueError(f"Cannot convert '{tensor_name}' to a tensor name. Tensor "
+                     'names should not contain more than 1 `:`. Obtained '
+                     f'{len(components) - 1}')
 
 
 @contextlib.contextmanager
@@ -93,7 +97,7 @@ def _ProcessGraphDefParam(graph_def):
       graph_def = graph_pb2.GraphDef()
       graph_def.MergeFrom(old_graph_def)
     except TypeError:
-      raise TypeError('graph_def must be a GraphDef proto.')
+      raise TypeError('Argument `graph_def` must be a GraphDef proto.')
   else:
     # If we're using the graph_def provided by the caller, modify graph_def
     # in-place to add attr defaults to the NodeDefs (this is visible to the
@@ -118,10 +122,13 @@ def _ProcessInputMapParam(input_map):
   if input_map is None:
     input_map = {}
   else:
-    if not (isinstance(input_map, dict) and all(
-        isinstance(k, compat.bytes_or_text_types) for k in input_map.keys())):
-      raise TypeError('input_map must be a dictionary mapping strings to '
-                      'Tensor objects.')
+    if not isinstance(input_map, dict):
+      raise TypeError('Argument `input_map` must be a dictionary. Obtained '
+                      f'{type(input_map).__name__}')
+    if not all(
+        isinstance(k, compat.bytes_or_text_types) for k in input_map.keys()):
+      raise TypeError('All keys for argument `input_map` must be strings. '
+                      f'Obtained keys: {list(input_map.keys())}')
   return input_map
 
 
@@ -131,7 +138,8 @@ def _ProcessReturnElementsParam(return_elements):
     return None
   if not all(
       isinstance(x, compat.bytes_or_text_types) for x in return_elements):
-    raise TypeError('return_elements must be a list of strings.')
+    raise TypeError('Argument `return_elements` must be a list of strings. '
+                    f'Obtained {return_elements}.')
   return tuple(compat.as_str(x) for x in return_elements)
 
 
@@ -277,9 +285,8 @@ def _ProcessNewOps(graph):
         if tf2.enabled() or control_flow_util.EnableControlFlowV2(graph):
           continue
 
-        raise ValueError('Specified colocation to an op that '
-                         'does not exist during import: %s in %s' %
-                         (coloc_op_name, op.name))
+        raise ValueError(f'Specified colocation to an op: {coloc_op_name} that '
+                         f'does not exist during import for op: {op.name}')
       if coloc_op.device:
         coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
         break
@@ -526,9 +533,10 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
     missing_unused_input_keys = [
         compat.as_str(s) for s in missing_unused_input_keys
     ]
+    missing_keys = ', '.join(missing_unused_input_keys)
     raise ValueError(
-        'Attempted to map inputs that were not found in graph_def: [%s]' %
-        ', '.join(missing_unused_input_keys))
+        'Attempted to map inputs that were not found in graph_def: '
+        f'[{missing_keys}]')
 
   if return_elements is None:
     return None

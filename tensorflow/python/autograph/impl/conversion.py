@@ -76,7 +76,7 @@ def is_unsupported(o):
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(o, 'wrapt', 'FunctionWrapper') or
       _is_known_loaded_type(o, 'wrapt', 'BoundFunctionWrapper')):
-    logging.warn(
+    logging.warning(
         '{} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will run as-is.'
         ' You may still apply AutoGraph before the wrapt decorator.'.format(o))

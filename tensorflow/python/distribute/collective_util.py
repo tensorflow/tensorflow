@@ -69,7 +69,7 @@ class _OptionsExported(object):
   ```python
   options = tf.distribute.experimental.CommunicationOptions(
       bytes_per_pack=50 * 1024 * 1024,
-      timeout_seconds=120,
+      timeout_seconds=120.0,
       implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
   )
   grads = tf.distribute.get_replica_context().all_reduce(
@@ -195,7 +195,7 @@ class Hints(object):
   ```python
   strategy = tf.distribute.MirroredStrategy()
   hints = tf.distribute.experimental.CollectiveHints(
-      timeout_seconds=120)
+      timeout_seconds=120.0)
   try:
     strategy.reduce("sum", v, axis=None, experimental_hints=hints)
   except tf.errors.DeadlineExceededError:

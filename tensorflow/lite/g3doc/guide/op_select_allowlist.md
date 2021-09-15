@@ -190,6 +190,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.FIFOQueue`
 *   `raw_ops.FIFOQueueV2`
 *   `raw_ops.Fill`
+*   `raw_ops.FilterDataset`
 *   `raw_ops.FinalizeDataset`
 *   `raw_ops.Fingerprint`
 *   `raw_ops.FlatMapDataset`

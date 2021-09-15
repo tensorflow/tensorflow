@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import weakref
 
@@ -236,6 +237,17 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status = ckpt.restore(save_path=save_path)
     del ckpt
     status.assert_consumed()
+
+  def testDeepCopyCheckpoint(self):
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    v = variables_lib.Variable(1.)
+    original_ckpt = trackable_utils.Checkpoint(v=v)
+    copied_ckpt = copy.deepcopy(original_ckpt)
+    copied_ckpt.v.assign(2.)
+    self.assertAllClose(1., v)
+    save_path = copied_ckpt.save(file_prefix=prefix)
+    original_ckpt.restore(save_path=save_path).assert_consumed()
+    self.assertAllClose(2., v)
 
   @test_util.run_in_graph_and_eager_modes
   def testPassingCheckpointOptions(self):

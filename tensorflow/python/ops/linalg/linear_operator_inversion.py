@@ -128,13 +128,16 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     # Auto-set and check hints.
     if operator.is_non_singular is False or is_non_singular is False:
       raise ValueError(
-          "operator and supplied hints must have `is_non_singular` equal to "
-          "`True` or `None`.  Found %s, %s" % (operator.is_non_singular,
-                                               is_non_singular))
+          f"Argument `is_non_singular` or argument `operator` must have "
+          f"supplied hint `is_non_singular` equal to `True` or `None`. "
+          f"Found `operator.is_non_singular`: {operator.is_non_singular}, "
+          f"`is_non_singular`: {is_non_singular}.")
     if operator.is_square is False or is_square is False:
       raise ValueError(
-          "operator and supplied hints must have `is_square` equal to "
-          "`True` or `None`.  Found %s, %s" % (operator.is_square, is_square))
+          f"Argument `is_square` or argument `operator` must have supplied "
+          f"hint `is_square` equal to `True` or `None`. Found "
+          f"`operator.is_square`: {operator.is_square}, "
+          f"`is_square`: {is_square}.")
 
     # The congruency of is_non_singular and is_self_adjoint was checked in the
     # base operator.  Other hints are, in this special case of inversion, ones

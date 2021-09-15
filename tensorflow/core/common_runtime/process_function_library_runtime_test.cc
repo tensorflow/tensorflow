@@ -353,19 +353,18 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, DeviceSet) {
           /*device_mgr=*/device_mgr_.get(), Env::Default(),
           /*config=*/nullptr, TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
           /*thread_pool=*/nullptr));
-  EXPECT_EQ(proc_flr->device_set()->devices().at(0)->name(),
-            "/job:a/replica:0/task:0/device:CPU:0");
-  EXPECT_EQ(proc_flr->device_set()->devices().at(1)->name(),
-            "/job:a/replica:0/task:0/device:CPU:1");
+  EXPECT_NE(nullptr, proc_flr->device_set()->FindDeviceByName(
+                         "/job:a/replica:0/task:0/device:CPU:0"));
+  EXPECT_NE(nullptr, proc_flr->device_set()->FindDeviceByName(
+                         "/job:a/replica:0/task:0/device:CPU:1"));
 
   cluster_flr_.reset(new TestClusterFLR(mgr.get()));
   proc_flr.reset(new ProcessFunctionLibraryRuntime(
       /*device_mgr=*/device_mgr_.get(), Env::Default(),
       /*config=*/nullptr, TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
       /*thread_pool=*/nullptr, /*parent_=*/cluster_flr_.get()));
-  EXPECT_EQ(proc_flr->device_set()->devices().size(), 1);
-  EXPECT_EQ(proc_flr->device_set()->devices().at(0)->name(),
-            "/job:a/replica:0/task:0/device:CPU:2");
+  EXPECT_NE(nullptr, proc_flr->device_set()->FindDeviceByName(
+                         "/job:a/replica:0/task:0/device:CPU:2"));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {
@@ -940,7 +939,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
   ASSERT_TRUE(status.ok()) << status.error_message();
 
-  // Run the function taking a resource and outputing it
+  // Run the function taking a resource and outputting it
   FunctionLibraryRuntime::Options opts;
   Tensor x1 = CPUToGPU(test::AsTensor<float>({1, 2}));
   Tensor x2 = GetResourceHandle("my_gpu_var", mgr->default_container(),

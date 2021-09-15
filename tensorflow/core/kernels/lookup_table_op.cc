@@ -1091,7 +1091,14 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
           .TypeConstraint<key_dtype>("key_dtype")                         \
           .TypeConstraint<value_dtype>("value_dtype"),                    \
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
-                    value_dtype>)
+                    value_dtype>)                                         \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("AnonymousHashTable")                                          \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<key_dtype>("key_dtype")                         \
+          .TypeConstraint<value_dtype>("value_dtype"),                    \
+      AnonymousLookupTableOp<lookup::HashTable<key_dtype, value_dtype>,   \
+                             key_dtype, value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);

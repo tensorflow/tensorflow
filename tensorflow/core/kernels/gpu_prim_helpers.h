@@ -210,6 +210,45 @@ Status GpuSegmentedReduce(
   return Status::OK();
 }
 
+template <typename InputIteratorT, typename FlagIteratorT,
+          typename OutputIteratorT, typename NumSelectedT = int>
+Status GpuSelectFlagged(OpKernelContext* context, int size,
+                        InputIteratorT input, FlagIteratorT flags,
+                        OutputIteratorT output,
+                        NumSelectedT* out_num_selected = nullptr) {
+  const auto& cu_stream = GetGpuStream(context);
+  Tensor out_num_selected_t;
+  if (!out_num_selected) {
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DataTypeToEnum<NumSelectedT>::value,
+                               TensorShape({}), &out_num_selected_t));
+    out_num_selected = out_num_selected_t.scalar<NumSelectedT>().data();
+  }
+  size_t temp_storage_bytes;
+  auto err =
+      gpuprim::DeviceSelect::Flagged(nullptr, temp_storage_bytes, input, flags,
+                                     output, out_num_selected, size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSelect::Flagged to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  Tensor temp_storage;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+      &temp_storage));
+  err = gpuprim::DeviceSelect::Flagged(temp_storage.flat<int8>().data(),
+                                       temp_storage_bytes, input, flags, output,
+                                       out_num_selected, size, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSelect::Flagged, temp_storage_bytes: ",
+        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

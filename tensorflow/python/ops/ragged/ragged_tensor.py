@@ -374,7 +374,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RaggedTensor` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or zero if `value_rowids` is empty).
-        Defaults to `value_rowids[-1]` (or zero if `value_rowids` is empty).
+        Defaults to `value_rowids[-1] + 1` (or zero if `value_rowids` is empty).
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
@@ -2088,7 +2088,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     # np.ndarray with dtype=object and rank=1.  If they have uniform lengths,
     # they will be combined into a single np.ndarray with dtype=row.dtype and
     # rank=row.rank+1.
-    return np.array(rows)
+    #
+    # Manually set dtype as numpy now complains when given ragged rows.
+    dtype = np.object if any(len(row) != len(rows[0]) for row in rows) else None
+    return np.array(rows, dtype=dtype)
 
   def to_list(self):
     """Returns a nested Python `list` with the values for this `RaggedTensor`.

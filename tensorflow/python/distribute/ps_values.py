@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
 import weakref
 
 import numpy as np
@@ -28,11 +29,16 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
+from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 
@@ -529,3 +535,110 @@ ops.register_tensor_conversion_function(CachingVariable,
                                         _tensor_conversion_caching)
 
 CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
+
+
+class DistributedTable(lookup_ops.StaticHashTable):
+  """A distributed StaticHashTable for ParameterServerStrategy.
+
+  An instance of DistributedTable has copies of a StaticHashTable and its
+  resource handle on the coordinator of each worker, created at the
+  DistributedTable instance initialization time with initializers on each
+  worker. Users can call methods on a DistributedTable as if it were a
+  StaticHashTable, which leads to execution with the resource local to the
+  consumer worker (or the coordinator, if calling from the coordinator). This
+  implementation relies on the fact that the methods of StaticHashTable are
+  queried with the resource handle (instead of the python object).
+
+  Currently, at saving time, a DistributedTable is saved as a StaticHashTable on
+  the coordinator, and restoring a DistributedTable from SavedModel is not
+  supported.
+  """
+
+  def __init__(self, strategy, wrapped_creator):
+
+    self._coordinator_instance = wrapped_creator()
+    self._wrapped_creator = wrapped_creator
+    self._coordinator = strategy._cluster_coordinator
+    # self._distributed_table is a RemoteValue mapping worker_index to
+    # RemoteValue that wraps a resource handle on the worker
+    self._distributed_table = None
+    self._distributed_table_creation_lock = threading.Lock()
+
+    if not save_context.in_save_context():
+      self._maybe_build_distributed_table()
+
+  def __getattr__(self, attr):
+    # This allows copy.copy(DistributedTable), e.g. at saving time.
+    # (DistributedVariable uses the same fix.) When copying an object, copy.copy
+    # doesn't invoke its __init__ method, instead it makes a new empty object,
+    # then copies the attributes over. copy.copy looks for attributes like
+    # "__setstate__" in case the object implements its custom unpickling. Since
+    # DistributedTable doesn't have those attributes defined, __getattr__ will
+    # be invoked, which tries to access the `_coordinator_instance` attribute.
+    # But that doesn't exist either because this is an empty object, and again
+    # __getattr__ is invoked, leading to an infinite recursion.
+    if attr == "_coordinator_instance":
+      raise AttributeError()
+
+    if attr in self._coordinator_instance.__dict__:
+      attr_value = self._coordinator_instance.__dict__[attr]
+      if callable(attr_value):
+
+        def wrapper(*args, **kwargs):
+          return attr_value(self, *args, **kwargs)
+
+        return wrapper
+      elif isinstance(attr_value, property):
+        return attr_value
+      else:
+        return getattr(self._coordinator_instance, attr)
+    else:
+      return getattr(self._coordinator_instance, attr)
+
+  def resource_handle_call_time_value(self):
+    """Returns a closure to run for a resource handle at call time and its spec.
+
+    This function is called in self.resource_handle to create a placeholder
+    which returns a resource handle on some worker or on the coordinator.
+    """
+
+    def closure():
+      # function to be evaluated at function call time, returning a nest of
+      # tensors compatible with `spec`.
+      dispatch_context = coordinator_context.get_current_dispatch_context()
+      if dispatch_context:
+        remote_value = self._distributed_table._values[  # pylint: disable=protected-access
+            dispatch_context.worker_index]
+        dispatch_context.maybe_rebuild_remote_values(remote_value)
+        ret = dispatch_context.maybe_get_remote_value(remote_value)
+        return ret
+
+      else:
+        return self._coordinator_instance.resource_handle
+
+    return closure, tensor_spec.TensorSpec([], dtype=dtypes.resource)
+
+  def _maybe_build_distributed_table(self):
+    """Create table objects and resources on each worker if hasn't been created."""
+    with self._distributed_table_creation_lock:
+      if not self._distributed_table:
+
+        def create_copy():
+          new_table = self._wrapped_creator()
+          ret = new_table.resource_handle
+          return ret
+
+        self._distributed_table = (
+            self._coordinator._create_per_worker_resources(create_copy))  # pylint: disable=protected-access
+
+  @property
+  def resource_handle(self):
+    if context.executing_eagerly() or save_context.in_save_context():
+      return self._coordinator_instance.resource_handle
+    else:
+      self._maybe_build_distributed_table()
+      closure, spec = self.resource_handle_call_time_value()
+      return ops.get_default_graph().capture_call_time_value(
+          closure,
+          spec,
+          default_value=self._coordinator_instance.resource_handle)

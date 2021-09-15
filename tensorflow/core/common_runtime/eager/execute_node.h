@@ -204,8 +204,10 @@ class AsyncExecuteNode : public EagerNode {
         cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
-        status = Status(status.code(), status.error_message(),
-                        stack_trace_->ToStackFrames({}, {}));
+        Status with_stack_trace(status.code(), status.error_message(),
+                                stack_trace_->ToStackFrames({}, {}));
+        errors::CopyPayloads(status, with_stack_trace);
+        status = std::move(with_stack_trace);
       }
       Abort(status);
       return status;

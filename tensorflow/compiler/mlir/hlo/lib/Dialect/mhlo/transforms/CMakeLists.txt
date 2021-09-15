@@ -174,6 +174,9 @@ add_mlir_library(MhloLhloToLinalg
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
+  MLIRMhloPassIncGen
+  MLIRLmhloPassIncGen
+  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core

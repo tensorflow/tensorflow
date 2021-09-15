@@ -1860,27 +1860,16 @@ class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
   LogicalResult matchAndRewrite(TF::LeakyReluOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    float alpha = op.alpha().convertToFloat();
     Value features = op.features();
-    auto featureType = features.getType().cast<RankedTensorType>();
-    ArrayRef<int64_t> featureShape = featureType.getShape();
-    Type eltType = featureType.getElementType();
+    auto featureType = features.getType();
 
-    auto alphaVal = rewriter.create<mhlo::ConstOp>(
-        loc, rewriter.getFloatAttr(eltType, alpha));
-
-    // Broadcast `alpha` to match the shape of feature.
-    auto featureShapeAttr = DenseIntElementsAttr::get(
-        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
-        featureShape);
-    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
-        loc, featureType, alphaVal, featureShapeAttr);
-
-    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
-    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+    // Use ConstantLike for `alpha` to match the shape of feature.
+    auto alphaVal = chlo::getConstantLike(
+        rewriter, loc, op.alpha().convertToFloat(), features);
+    Value zeroVal = chlo::getConstantLike(rewriter, loc, 0.0, features);
 
     Value leakyActivationVal = rewriter.create<mhlo::MulOp>(
-        loc, features.getType(), features, broadcastAlphaVal);
+        loc, features.getType(), features, alphaVal);
 
     StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
     Value compareGtZero = rewriter.create<mhlo::CompareOp>(
@@ -1901,26 +1890,17 @@ class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
   LogicalResult matchAndRewrite(TF::LeakyReluGradOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    float alpha = op.alpha().convertToFloat();
     Value gradients = op.gradients();
     Value features = op.features();
-    auto featureType = features.getType().cast<RankedTensorType>();
-    ArrayRef<int64_t> featureShape = featureType.getShape();
-    Type eltType = featureType.getElementType();
+    auto featureType = features.getType();
 
-    auto alphaVal = rewriter.create<mhlo::ConstOp>(
-        loc, rewriter.getFloatAttr(eltType, alpha));
-    auto featureShapeAttr = DenseIntElementsAttr::get(
-        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
-        featureShape);
-    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
-        loc, featureType, alphaVal, featureShapeAttr);
-
-    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
-    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+    // Use ConstantLike for `alpha` to match the shape of feature.
+    auto alphaVal = chlo::getConstantLike(
+        rewriter, loc, op.alpha().convertToFloat(), features);
+    Value zeroVal = chlo::getConstantLike(rewriter, loc, 0.0, features);
 
     Value leakyGradientVal = rewriter.create<mhlo::MulOp>(
-        loc, features.getType(), gradients, broadcastAlphaVal);
+        loc, features.getType(), gradients, alphaVal);
 
     StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
 

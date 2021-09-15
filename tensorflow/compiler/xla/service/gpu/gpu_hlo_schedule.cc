@@ -312,7 +312,7 @@ GpuHloSchedule::GpuHloSchedule() {}
 
 /* static */
 StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
-    HloModule* module, const StreamAssignment& stream_assignment,
+    const HloModule* module, const StreamAssignment& stream_assignment,
     int64_t pointer_size) {
   std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
 

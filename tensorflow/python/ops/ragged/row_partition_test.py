@@ -308,14 +308,26 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRowPartitionStr(self):
     row_splits = [0, 2, 5, 6, 6, 7]
     rp = RowPartition.from_row_splits(row_splits, validate=False)
-    splits_type = 'int64'
     if context.executing_eagerly():
-      expected_repr = ('tf.RowPartition(row_splits=tf.Tensor([0 2 5 6 6 7], '
-                       'shape=(6,), dtype=int64))')
+      expected_repr = 'tf.RowPartition(row_splits=[0 2 5 6 6 7])'
     else:
       expected_repr = ('tf.RowPartition(row_splits='
                        'Tensor("RowPartitionFromRowSplits/row_splits:0", '
-                       'shape=(6,), dtype={}))').format(splits_type)
+                       'shape=(6,), dtype=int64))')
+    self.assertEqual(repr(rp), expected_repr)
+    self.assertEqual(str(rp), expected_repr)
+
+  def testRowPartitionStrUniformRowLength(self):
+    rp = RowPartition.from_uniform_row_length(5, nvals=10, nrows=2)
+    if context.executing_eagerly():
+      expected_repr = ('tf.RowPartition(nrows=2, uniform_row_length=5)')
+    else:
+      expected_repr = (
+          'tf.RowPartition(nrows='
+          'Tensor("RowPartitionFromUniformRowLength/'
+          'nrows:0", shape=(), dtype=int64), '
+          'uniform_row_length=Tensor("RowPartitionFromUniformRowLength/'
+          'uniform_row_length:0", shape=(), dtype=int64))')
     self.assertEqual(repr(rp), expected_repr)
     self.assertEqual(str(rp), expected_repr)
 

@@ -30,6 +30,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -452,6 +453,29 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     tensor_2, tensor_id_2 = debug_summary(c)
     self.assertAllEqual(tensor_1, tensor_2)
     self.assertEqual(tensor_id_1, tensor_id_2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpDeterminism(self):
+    x = np.zeros([100, 100, 50], dtype=np.float64)
+    x = constant_op.constant(x)
+    modes = (
+        debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+        debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+        )
+    for mode in modes:
+      debug_mode = debug_event_pb2.TensorDebugMode.Name(mode)
+      with test_util.deterministic_ops():
+        if test_util.is_gpu_available(cuda_only=True):
+          with self.assertRaisesRegex(
+              errors_impl.UnimplementedError, "Determinism is not yet "
+              "supported for DebugNumericSummaryV2 when tensor_debug_mode is "
+              + debug_mode + "."):
+            self.evaluate(
+                gen_debug_ops.debug_numeric_summary_v2(
+                    x,
+                    tensor_debug_mode=mode,
+                    tensor_id=x._id,
+                    output_dtype=dtypes.float64))
 
   @test_util.run_in_graph_and_eager_modes
   def testDebugNumericSummaryV2OpConciseHealthSmall(self):

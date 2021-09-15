@@ -142,7 +142,7 @@ def log(level, msg, *args, **kwargs):
       _output_to_stdout(msg, *args, **kwargs)
 
 
-def warn(msg, *args, **kwargs):
+def warning(msg, *args, **kwargs):
   logging.warning(msg, *args, **kwargs)
   if echo_log_to_stdout:
     _output_to_stdout('WARNING: ' + msg, *args, **kwargs)

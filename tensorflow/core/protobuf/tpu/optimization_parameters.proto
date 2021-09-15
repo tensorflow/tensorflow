@@ -88,7 +88,9 @@ message AdagradParameters {
 }
 
 // This optimizer combines the Adagrad and Momentum update rules.
-// accum(new) = accum(old) + grad^2
+// accum(new) = beta2 == 1.0 ?
+//              accum(old) + grad^2 :
+//              beta2 * accum(old) + (1 - beta2) * grad^2
 // mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
 // update = use_nesterov ?
 //          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
@@ -96,9 +98,17 @@ message AdagradParameters {
 // var(new) = var(old) - lr * grad * update
 // Algorithm described in https://arxiv.org/abs/2002.11803.
 message AdagradMomentumParameters {
+  // Moving average parameter for the momentum accumulator.
   float momentum = 1;
+
+  // Whether to use the Nesterov variant of momentum.
   bool use_nesterov = 2;
+
+  // Exponent for the gradient^2 accumulator.
   float exponent = 3;
+
+  // Moving average parameter for the gradient^2 accumulator.
+  float beta2 = 4;
 }
 
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.

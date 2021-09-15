@@ -740,8 +740,7 @@ LogicalResult VerifySameScales(Operation* op) {
 
   llvm::SmallVector<QuantizedType, 4> collected_quant_params;
   for (auto input : op->getOperands()) {
-    auto quant_params =
-        UniformQuantizedType::getQuantizedElementType(input.getType());
+    auto quant_params = QuantizedType::getQuantizedElementType(input.getType());
     // Skip non-quantizable operands.
     if (quant_params) {
       collected_quant_params.push_back(quant_params);
@@ -750,7 +749,7 @@ LogicalResult VerifySameScales(Operation* op) {
 
   for (auto output : op->getResults()) {
     auto quant_params =
-        UniformQuantizedType::getQuantizedElementType(output.getType());
+        QuantizedType::getQuantizedElementType(output.getType());
     // Skip non-quantizable results.
     if (quant_params) {
       collected_quant_params.push_back(quant_params);
@@ -758,17 +757,38 @@ LogicalResult VerifySameScales(Operation* op) {
   }
 
   if (collected_quant_params.size() <= 1) return success();
+  const auto& expected_params = collected_quant_params[0];
   for (int i = 1; i < collected_quant_params.size(); i++) {
-    auto expected_params = collected_quant_params[0];
-    auto compared_paras = collected_quant_params[i];
+    const auto& compared_params = collected_quant_params[i];
+    // For some ops (such as Transpose or Squeeze), the quantized axis might not
+    // be the same, this function only verifies the scale and zero point in
+    // that case. The quantized axis should be verified in their own verifier
+    // method.
+    if (!same_scale_op.RequiredSameQuantizedAxes()) {
+      auto expected_per_axis_qtype =
+          expected_params.dyn_cast<UniformQuantizedPerAxisType>();
+      auto compared_per_axis_qtype =
+          compared_params.dyn_cast<UniformQuantizedPerAxisType>();
+      if (expected_per_axis_qtype && compared_per_axis_qtype &&
+          llvm::equal(expected_per_axis_qtype.getScales(),
+                      compared_per_axis_qtype.getScales()) &&
+          llvm::equal(expected_per_axis_qtype.getZeroPoints(),
+                      compared_per_axis_qtype.getZeroPoints()) &&
+          expected_params.getStorageType() ==
+              compared_params.getStorageType() &&
+          expected_params.getExpressedType() ==
+              compared_params.getExpressedType()) {
+        continue;
+      }
+    }
     // Same quantization parameters are always ok.
-    if (expected_params == compared_paras) continue;
+    if (expected_params == compared_params) continue;
     // If the quantization parameters are not the same, as long as it has the
     // same storage type and the op interface doesn't require same scale
     // constraint for this storage type, it is still ok.
-    if ((expected_params.isSigned() == compared_paras.isSigned() &&
+    if ((expected_params.isSigned() == compared_params.isSigned() &&
          expected_params.getStorageTypeIntegralWidth() ==
-             compared_paras.getStorageTypeIntegralWidth()) &&
+             compared_params.getStorageTypeIntegralWidth()) &&
         !same_scale_op.RequiredSameOperandsAndResultsScale(
             expected_params.isSigned(),
             expected_params.getStorageTypeIntegralWidth()))
@@ -777,9 +797,9 @@ LogicalResult VerifySameScales(Operation* op) {
     std::string err_msg =
         "quantization parameters violate the same scale constraint: ";
     llvm::raw_string_ostream os(err_msg);
-    collected_quant_params[0].print(os);
+    expected_params.print(os);
     os << " vs. ";
-    collected_quant_params[i].print(os);
+    compared_params.print(os);
     os.flush();
     return op->emitOpError(err_msg);
   }

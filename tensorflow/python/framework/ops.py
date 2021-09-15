@@ -236,6 +236,32 @@ def numpy_text(tensor, is_repr=False):
   return text
 
 
+def value_text(tensor, is_repr=False):
+  """Either the NumPy value or a custom TensorFlow formatting of `tensor`.
+
+  Custom formatting is used for custom device tensors, e.g. parallel tensors
+  with multiple components on different devices.
+
+  Args:
+    tensor: The tensor to format.
+    is_repr: Controls the style/verbosity of formatting.
+
+  Returns:
+    The formatted tensor.
+  """
+  # pylint: disable=protected-access  # friend access
+  if tensor._prefer_custom_summarizer():
+    text = tensor._summarize_value()
+    # pylint: enable=protected-access
+    if is_repr:
+      text = "value=" + text
+  else:
+    text = numpy_text(tensor, is_repr=is_repr)
+    if is_repr:
+      text = "numpy=" + text
+  return text
+
+
 @tf_export(v1=["enable_tensor_equality"])
 def enable_tensor_equality():
   """Compare Tensors with element-wise comparison and thus be unhashable.
@@ -316,6 +342,19 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   A number of specialized tensors are available: see `tf.Variable`,
   `tf.constant`, `tf.placeholder`, `tf.sparse.SparseTensor`, and
   `tf.RaggedTensor`.
+
+  Caution: when constructing a tensor from a numpy array or pandas dataframe
+  the underlying buffer may be re-used:
+
+  ```python
+  a = np.array([1, 2, 3])
+  b = tf.constant(a)
+  a[0] = 4
+  print(b)  # tf.Tensor([4 2 3], shape=(3,), dtype=int64)
+  ```
+
+  Note: this is an implementation detail that is subject to change and users
+  should not rely on this behaviour.
 
   For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
 
@@ -482,23 +521,32 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     raise ValueError(
         "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
+  def _disallow_when_autograph_unavailable(self, task):
+    raise errors.OperatorNotAllowedInGraphError(
+        f"{task} is not allowed: AutoGraph is unavailable in this runtime. See"
+        " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
+        " for more information.")
+
   def _disallow_when_autograph_disabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph is disabled in this function."
-        " Try decorating it directly with @tf.function.".format(task))
+        f"{task} is not allowed: AutoGraph is disabled in this function."
+        " Try decorating it directly with @tf.function.")
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did convert this function. This might"
-        " indicate you are trying to use an unsupported feature.".format(task))
+        f"{task} is not allowed: AutoGraph did convert this function. This"
+        " might indicate you are trying to use an unsupported feature.")
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed in Graph execution. Use Eager execution or decorate"
-        " this function with @tf.function.".format(task))
+        f"{task} is not allowed in Graph execution. Use Eager execution or"
+        " decorate this function with @tf.function.")
 
   def _disallow_bool_casting(self):
-    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
+      self._disallow_when_autograph_unavailable(
+          "using a `tf.Tensor` as a Python `bool`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
       self._disallow_when_autograph_disabled(
           "using a `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
@@ -509,7 +557,9 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       self._disallow_in_graph_mode("using a `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
-    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
+      self._disallow_when_autograph_unavailable("iterating over `tf.Tensor`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
       self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
@@ -1033,20 +1083,12 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    if self._prefer_custom_summarizer():
-      value_text = self._summarize_value()
-    else:
-      value_text = numpy_text(self)
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (value_text, self.shape,
-                                                  self.dtype.name)
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
+        value_text(self, is_repr=False), self.shape, self.dtype.name)
 
   def __repr__(self):
-    if self._prefer_custom_summarizer():
-      value_text = "value=" + self._summarize_value()
-    else:
-      value_text = "numpy=" + numpy_text(self, is_repr=True)
-    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (self.shape, self.dtype.name,
-                                                    value_text)
+    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
+        self.shape, self.dtype.name, value_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""

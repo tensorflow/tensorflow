@@ -117,7 +117,7 @@ func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
   // CHECK-NEXT: [[R1:%.*]] = "mhlo.real"([[INPUT]])
   // CHECK-NEXT: [[R2:%.*]] = "mhlo.imag"([[INPUT]])
   // CHECK-NEXT: [[R3:%.*]] = "mhlo.negate"([[R2]])
-  // CHECK-NEXT: [[R4:%.*]] = "mhlo.complex"([[R1]], [[R3]])
+  // CHECK-NEXT: [[R4:%.*]] = mhlo.complex([[R1]], [[R3]])
   %1 = "chlo.conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
   return %1 : tensor<3xcomplex<f32>>
 }
