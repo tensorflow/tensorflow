@@ -210,7 +210,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
                                       NUM_THREADS,                          \
                                       /*lower_from_tensorflow=*/true);      \
   }                                                                         \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                  \
@@ -224,7 +224,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
                                       NUM_THREADS,                            \
                                       /*lower_from_tensorflow=*/false);       \
   }                                                                           \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_EigenScalar(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   static void BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS(                \
@@ -232,7 +232,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
     RunUnaryEigenBenchmark<TYPE, RANK, false>(state, FN, SCALE, OFFSET,  \
                                               NUM_THREADS);              \
   }                                                                      \
-  BENCHMARK(BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_EigenVectorized(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   static void BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS(                    \
@@ -240,6 +240,6 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
     RunUnaryEigenBenchmark<TYPE, RANK, true>(state, FN, SCALE, OFFSET,       \
                                              NUM_THREADS);                   \
   }                                                                          \
-  BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
