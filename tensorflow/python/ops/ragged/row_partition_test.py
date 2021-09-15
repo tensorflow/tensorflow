@@ -677,6 +677,47 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError, message):
       self.evaluate(y.merge_precomputed_encodings(x).row_splits())
 
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='from_uniform_row_length',
+          x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
+          expected=True),
+      dict(
+          testcase_name='from_row_splits',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          expected=False),
+      dict(
+          testcase_name='from_row_lengths',
+          x=lambda: RowPartition.from_row_lengths([2, 0, 2]),
+          expected=False),
+      dict(
+          testcase_name='from_row_lengths_uniform',
+          x=lambda: RowPartition.from_row_lengths([3, 3, 3]),
+          expected=False),
+  ])
+  def testIsUniform(self, x, expected):
+    x = x()
+    self.assertEqual(expected, x.is_uniform())
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='doc_example',
+          x=lambda: RowPartition.from_row_lengths([3, 2, 0, 2]),
+          expected=[0, 1, 2, 0, 1, 0, 1]),
+      dict(
+          testcase_name='from_uniform_row_length',
+          x=lambda: RowPartition.from_uniform_row_length(4, nvals=12),
+          expected=[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]),
+      dict(
+          testcase_name='from_row_splits',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          expected=[0, 1, 2, 0, 1, 2, 3, 4]),
+  ])
+  def testOffsetsInRows(self, x, expected):
+    x = x()
+    actual = x.offsets_in_rows()
+    self.assertAllEqual(expected, actual)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionSpecTest(test_util.TensorFlowTestCase,

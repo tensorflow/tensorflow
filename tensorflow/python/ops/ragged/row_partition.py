@@ -32,9 +32,9 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
-
 
 #===============================================================================
 # RowPartition
@@ -826,6 +826,37 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._uniform_row_length is not None:
       return tensor_util.constant_value(self._uniform_row_length)
     return None
+
+  def offsets_in_rows(self):
+    """Return the offset of each value.
+
+    RowPartition takes an array x and converts it into sublists.
+    offsets[i] is the index of x[i] in its sublist.
+    Given a shape, such as:
+    [*,*,*],[*,*],[],[*,*]
+    This returns:
+    0,1,2,0,1,0,1
+
+    Returns:
+      an offset for every value.
+    """
+    return gen_ragged_math_ops.ragged_range(
+        starts=constant_op.constant(0, self.dtype),
+        limits=self.row_lengths(),
+        deltas=constant_op.constant(1, self.dtype)).rt_dense_values
+
+  def is_uniform(self):
+    """Returns true if the partition is known to be uniform statically.
+
+    This is based upon the existence of self._uniform_row_length. For example:
+    RowPartition.from_row_lengths([3,3,3]).is_uniform()==false
+    RowPartition.from_uniform_row_length(5, nvals=20).is_uniform()==true
+    RowPartition.from_row_lengths([2,0,2]).is_uniform()==false
+
+    Returns:
+      Whether a RowPartition is known to be uniform statically.
+    """
+    return self._uniform_row_length is not None
 
   #=============================================================================
   # Transformation
