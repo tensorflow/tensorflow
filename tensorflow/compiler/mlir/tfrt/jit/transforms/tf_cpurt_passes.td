@@ -86,6 +86,21 @@ def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
   ];
 }
 
+def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
+  let summary = "Tile and fuse linalg.generic reduction on tensors.";
+  let constructor = "tensorflow::CreateCodegenStrategyForReductionPass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::scf::SCFDialect"
+  ];
+
+  let description = [{
+    Matches linalg.generic to understand whether it is a reduction or not.
+    After that performs tiling for vectorization and fusion of producers.
+  }];
+}
+
 def Fission : FunctionPass<"tf-cpurt-fission"> {
   let summary = "Split _Fused Tensorflow kernels into primitives";
   let constructor = "tensorflow::CreateFissionPass()";
