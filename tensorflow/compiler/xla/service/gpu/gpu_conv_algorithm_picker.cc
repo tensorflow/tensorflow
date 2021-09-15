@@ -102,27 +102,6 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         se::StreamExecutor* stream_exec) {
-  std::vector<AlgorithmDesc> algorithms;
-  bool succ = false;
-  switch (kind) {
-    case CudnnConvKind::kBackwardFilter:
-      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kForward:
-    case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(&algorithms);
-      break;
-  }
-  DCHECK(succ);
-
-  return algorithms;
-}
-
 StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
     const HloCustomCallInstruction* instr,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
@@ -418,7 +397,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind dnn_kind,
+                      GetDNNConvKindFromCudnnConvKind(config.kind));
+
+  std::vector<AlgorithmDesc> algorithms;
+  if (!stream_exec_->GetConvolveAlgorithms(dnn_kind, &algorithms)) {
+    return Status(tensorflow::error::UNKNOWN, "GetConvolveAlgorithms failed.");
+  }
+  for (const AlgorithmDesc& alg : algorithms) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      alg.ToString()),
