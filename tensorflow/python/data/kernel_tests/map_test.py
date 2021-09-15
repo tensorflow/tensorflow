@@ -1472,8 +1472,6 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     verify_fn(self, lambda: _build_ds(num_outputs), num_outputs=num_outputs)
 
 
-# TODO(shilpakrish): Simplify the dataset.from_tensor_slices(range(N)) to
-# dataset.range(N) once we implement random access for the range dataset.
 class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
@@ -1504,8 +1502,7 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.v2_only_combinations(),
                          combinations.combine(elements=[0, 10, 20, 40])))
   def testMultipleCombinations(self, elements):
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        range(elements)).map(lambda x: x // 2)
+    dataset = dataset_ops.Dataset.range(elements).map(lambda x: x // 2)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)), i // 2)
@@ -1519,8 +1516,7 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     def _map_fn(x):
       return math_ops.square(x)
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        range(elements)).map(_map_fn)
+    dataset = dataset_ops.Dataset.range(elements).map(_map_fn)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)),

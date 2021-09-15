@@ -121,16 +121,13 @@ class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         num_outputs=elems // num_shards)
 
 
-# TODO(shilpakrish): Simplify the dataset.from_tensor_slices(range(N)) to
-# dataset.range(N) once we implement random access for the range dataset.
 class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(index=[-1, 2, 3, 4])))
   def testInvalidIndex(self, index):
-    dataset = dataset_ops.Dataset.from_tensor_slices(range(4)).shard(
-        num_shards=2, index=0)
+    dataset = dataset_ops.Dataset.range(4).shard(num_shards=2, index=0)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, index=index))
 
@@ -143,7 +140,7 @@ class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testNumShardsAndIndexLessThanNumElements(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(range(10)).shard(5, 0)
+    dataset = dataset_ops.Dataset.range(10).shard(5, 0)
     self.assertEqual(0, self.evaluate(random_access.at(dataset, 0)))
     self.assertEqual(5, self.evaluate(random_access.at(dataset, 1)))
     with self.assertRaises(errors.OutOfRangeError):
@@ -151,14 +148,14 @@ class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testNumShardsGreaterThanNumElementsIndexLess(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(range(7)).shard(8, 3)
+    dataset = dataset_ops.Dataset.range(7).shard(8, 3)
     self.assertEqual(3, self.evaluate(random_access.at(dataset, 0)))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, 1))
 
   @combinations.generate(test_base.default_test_combinations())
   def testNumShardsAndIndexGreaterThanNumElements(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(range(13)).shard(23, 21)
+    dataset = dataset_ops.Dataset.range(13).shard(23, 21)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, 0))
 
@@ -172,11 +169,14 @@ class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
           )))
   def testMultipleCombinations(self, elements, num_shards, index):
     components = range(elements)
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).shard(
+    dataset = dataset_ops.Dataset.range(elements).shard(
         num_shards=num_shards, index=index)
+    len_dataset = self.evaluate(dataset.cardinality())
     for i in range(self.evaluate(dataset.cardinality())):
       self.assertAllEqual(components[index + (num_shards * i)],
                           self.evaluate(random_access.at(dataset, i)))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=len_dataset))
 
 
 if __name__ == "__main__":

@@ -118,6 +118,8 @@ def _test_combinations():
       ("Range7", lambda: dataset_ops.Dataset.range(0, 0, -2), 0),
       ("Range8", lambda: dataset_ops.Dataset.range(3, 3, 1), 0),
       ("Range9", lambda: dataset_ops.Dataset.range(-4, -4, 2), 0),
+      ("Range10", lambda: dataset_ops.Dataset.range(1, 0, 3), 0),
+      ("Range11", lambda: dataset_ops.Dataset.range(0, 1, -3), 0),
       ("Repeat1", lambda: dataset_ops.Dataset.range(0).repeat(0), 0),
       ("Repeat2", lambda: dataset_ops.Dataset.range(1).repeat(0), 0),
       ("Repeat3", lambda: dataset_ops.Dataset.range(0).repeat(5), 0),
