@@ -22,11 +22,13 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"         // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"    // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"             // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"                     // from @llvm-project
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -118,6 +120,54 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
+
+// Creates a TOSA operation and performs shape inference on the individual
+// op. This allows shape inference during the TFLite to TOSA lowering.
+template <typename TosaOp, typename... Args>
+TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+                        Args&&... args) {
+  auto op = rewriter.create<TosaOp>(loc, result_ty, args...);
+
+  InferShapedTypeOpInterface shapeInterface =
+      dyn_cast<InferShapedTypeOpInterface>(op.getOperation());
+  if (!shapeInterface) return op;
+
+  SmallVector<ShapedTypeComponents> returnedShapes;
+  if (shapeInterface
+          .inferReturnTypeComponents(op.getContext(), op.getLoc(),
+                                     op->getOperands(), op->getAttrDictionary(),
+                                     op->getRegions(), returnedShapes)
+          .failed())
+    return op;
+
+  auto result = op->getResult(0);
+  auto predictedShape = returnedShapes[0];
+  auto currentKnowledge = ValueKnowledge::getKnowledgeFromType(result_ty);
+
+  // Compute the knowledge based on the inferred type.
+  auto inferredKnowledge = ValueKnowledge::getPessimisticValueState();
+  inferredKnowledge.dtype = result_ty.cast<ShapedType>().getElementType();
+  inferredKnowledge.hasRank = predictedShape.hasRank();
+  if (predictedShape.hasRank()) {
+    for (auto dim : predictedShape.getDims()) {
+      inferredKnowledge.sizes.push_back(dim);
+    }
+  }
+
+  // Compute the new type based on the joined version.
+  auto newKnowledge = ValueKnowledge::join(currentKnowledge, inferredKnowledge);
+  auto new_ty = newKnowledge.getType();
+  op->getResult(0).setType(new_ty);
+  return op;
+};
+
+template <typename TosaOp, typename... Args>
+void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
+                             Type result_ty, Args&&... args) {
+  auto result =
+      CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), result_ty, args...);
+  rewriter.replaceOp(op, result->getResults());
+}
 
 }  // namespace tosa
 }  // namespace mlir

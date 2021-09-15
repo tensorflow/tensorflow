@@ -37,8 +37,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   computeMultiplierAndShift(scale, multiplier, shift, scale_width);
 
-  auto rescale_op = rewriter.create<tosa::RescaleOp>(
-      op->getLoc(), output_type, input_val,
+  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+      rewriter, op->getLoc(), output_type, input_val,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getI32ArrayAttr({multiplier}), rewriter.getI32ArrayAttr({shift}),
@@ -106,9 +106,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     computeMultiplierAndShift(op_tensor_scale, multiplier, shift, scale_width);
 
-    auto rescale_op = rewriter.create<tosa::RescaleOp>(
-        op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
-        rewriter.getI32IntegerAttr(output_zp),
+    auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr({multiplier}),
         rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(false));
@@ -147,9 +147,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
       shift_arr.push_back(shift);
     }
 
-    auto rescale_op = rewriter.create<tosa::RescaleOp>(
-        op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
-        rewriter.getI32IntegerAttr(output_zp),
+    auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr(multiplier_arr),
         rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(true));
