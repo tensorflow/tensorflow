@@ -148,10 +148,6 @@ static const char* const kMklEagerOpPrefix = "_MklEager";
 // _MklEager prefix.
 static const char* const kMklNativeOpPrefix = "_MklNative";
 
-// Map used to store kernel registration status
-thread_local static auto* registered_kernels_map =
-    new absl::flat_hash_map<string, bool>();
-
 // Get the name of Mkl Native (does not depend on layout propagation) op
 // from original TensorFlow op.
 inline string GetMklNativeOpName(const string& name) {
@@ -211,11 +207,13 @@ static inline bool IsMklOp(const string& op_name, DataType T,
   string label = is_native_op ? kMklNameChangeOpLabelPattern
                               : kMklLayoutDependentOpLabelPattern;
   string registered_kernels_key = op_name + label + std::to_string(T);
+  thread_local static auto* registered_kernels_map =
+      new absl::flat_hash_map<string, bool>();
   auto kernel_element = registered_kernels_map->find(registered_kernels_key);
   bool kernel_registered = false;
 
   if (kernel_element == registered_kernels_map->end()) {
-    string kernel = KernelsRegisteredForOp(op_name);
+    string registered_kernels = KernelsRegisteredForOp(op_name);
     // String returned by KernelsRegisteredForOp looks like below:
     //
     // Op = _MklMatMul, kernels =
@@ -225,17 +223,16 @@ static inline bool IsMklOp(const string& op_name, DataType T,
     // device='CPU'; label='MklNameChangeOp'; T in [DT_FLOAT]
 
     if (is_native_op &&
-        kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+        registered_kernels.find(kMklQuantizedOpLabelPattern) != string::npos) {
       // Restrict quantized ops to QUINT8, QINT8 and DT_QINT32
       kernel_registered = (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
     }
 
     // Now we just construct a search string to match what we are looking for.
-    string search_string = label;
-    search_string += string(";") + string(" T in [");
-    search_string += DataType_Name(T) + string("]");
+    string search_string =
+        label + string("; T in [") + DataType_Name(T) + string("]");
 
-    if (kernel.find(search_string) != string::npos) {
+    if (registered_kernels.find(search_string) != string::npos) {
       kernel_registered = is_native_op
                               ? (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
                                  T == DT_DOUBLE || T == DT_FLOAT)
