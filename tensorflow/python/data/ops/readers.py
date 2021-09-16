@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -114,6 +115,15 @@ def _create_dataset_reader(dataset_creator,
         buffer_output_elements=None,
         prefetch_input_elements=None,
         name=name)
+
+
+def _get_type(value):
+  """Returns the type of `value` if it is a TypeSpec."""
+
+  if isinstance(value, type_spec.TypeSpec):
+    return value.value_type()
+  else:
+    return type(value)
 
 
 class _TextLineDataset(dataset_ops.DatasetSource):
@@ -336,7 +346,9 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
-      raise TypeError("`map_func` must return a `Dataset` object.")
+      raise TypeError(
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._element_spec = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")

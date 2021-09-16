@@ -124,6 +124,15 @@ def _validate_and_encode(name):
   return name.encode("utf-8")
 
 
+def _get_type(value):
+  """Returns the type of `value` if it is a TypeSpec."""
+
+  if isinstance(value, type_spec.TypeSpec):
+    return value.value_type()
+  else:
+    return type(value)
+
+
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
@@ -5572,8 +5581,8 @@ class InterleaveDataset(UnaryDataset):
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
-          "`map_func` must return a `Dataset` object. Got {}".format(
-              type(self._map_func.output_structure)))
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -5624,8 +5633,8 @@ class ParallelInterleaveDataset(UnaryDataset):
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
-          "`map_func` must return a `Dataset` object. Got {}".format(
-              type(self._map_func.output_structure)))
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
