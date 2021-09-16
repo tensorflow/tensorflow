@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SLICE_H_
 
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -33,8 +33,8 @@ inline void Slice(const tflite::SliceParams& op_params,
   const int begin_count = op_params.begin_count;
   const int size_count = op_params.size_count;
   // We front-pad the begin and size vectors.
-  std::array<int, 5> start;
-  std::array<int, 5> stop;
+  int start[5];
+  int stop[5];
   for (int i = 0; i < 5; ++i) {
     int padded_i = 5 - i;
     start[i] =
