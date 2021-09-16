@@ -15,21 +15,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
-
-#if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/profiler/internal/gpu/cupti_error_manager.h"
-#endif
 
 namespace tensorflow {
 namespace profiler {
 
 CuptiInterface* GetCuptiInterface() {
   static CuptiInterface* cupti_interface =
-#if defined(PLATFORM_GOOGLE)
       new CuptiErrorManager(absl::make_unique<CuptiWrapper>());
-#else
-      new CuptiWrapper();
-#endif
   return cupti_interface;
 }
 
