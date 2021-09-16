@@ -70,6 +70,14 @@ def LinalgMatmulSpecialization
   }];
 }
 
+def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
+  let summary = "Tile elementwise ops on tensors";
+  let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+  ];
+}
+
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";

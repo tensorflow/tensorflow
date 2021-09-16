@@ -50,6 +50,9 @@ std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
+// Pass to tile elementwise ops on tensors.
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass();
+
 // Pass to specialize linalg.matmul to dot, matvec or vecmat.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 
