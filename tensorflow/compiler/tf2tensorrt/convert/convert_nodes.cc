@@ -1562,8 +1562,17 @@ Status Converter::BuildCudaEngine(
     VLOG(2) << "TRT engine created";
     int nbBindings = (*engine)->getNbBindings();
     VLOG(2) << "Number of engine bindings: " << nbBindings;
+
     for (int i = 0; i < nbBindings; i++) {
-      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i);
+      auto get_location_string = [&engine](int i) {
+        if ((*engine)->getLocation(i) == nvinfer1::TensorLocation::kDEVICE)
+          return "on device";
+        else
+          return "on host";
+      };
+
+      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i)
+              << get_location_string(i);
     }
   }
   return Status::OK();
@@ -7013,6 +7022,7 @@ Status ConvertSegmentToGraphDef(
   std::vector<EngineConnection>* connections = &engine_info->connections;
   GraphDef* segment_def = &engine_info->segment_graph_def;
   bool has_int32_input = false;
+  bool has_int32_output = false;
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
@@ -7089,6 +7099,9 @@ Status ConvertSegmentToGraphDef(
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"
               << connection.outside_port;
+      if (dtype == DT_INT32 && !has_int32_output) {
+        has_int32_output = true;
+      }
     }
   }  // for each connection.
 
@@ -7176,7 +7189,9 @@ Status ConvertSegmentToGraphDef(
     }
   }
   engine_info->engine_name = StrCat(local_scope, engine_info->engine_name);
-  engine_info->has_int32_input = has_int32_input;
+  engine_info->has_int32_input = has_int32_input || has_int32_output;
+  // engine_info->has_int32_output = has_int32_output;
+
   return Status::OK();
 }
 
