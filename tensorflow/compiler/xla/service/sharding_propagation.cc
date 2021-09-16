@@ -444,7 +444,7 @@ bool InferGatherParallelShardingFromOperands(
     HloSharding replicate_non_parallel_dims =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
             operand_sharding, index_non_parallel_dims);
-    if (replicate_non_parallel_dims.NumTiles() == 1) {
+    if (replicate_non_parallel_dims.IsTileMaximal()) {
       return replicate_non_parallel_dims;
     }
     for (int64_t i = replicate_non_parallel_dims.TiledDataRank();
@@ -548,7 +548,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   if (!IsSpatiallyPartitioned(lhs)) {
     return false;
   }
-  if (lhs->sharding().NumTiles() == 1) {
+  if (lhs->sharding().IsTileMaximal()) {
     return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
                                            may_combine_partial_sharding);
   }
@@ -567,8 +567,9 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   // If the kernel is large (e.g backward convolution) then we only support
   // replicated output.
   return MaybeImproveInstructionSharding(
-      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding()), instruction,
-      may_combine_partial_sharding);
+      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding(),
+                                              instruction->shape().rank()),
+      instruction, may_combine_partial_sharding);
 }
 
 bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
@@ -1328,8 +1329,13 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       return reduce_window->sharding();
     }
     case HloOpcode::kReshape: {
-      return hlo_sharding_util::ReshapeSharding(
+      auto reshaped_sharding = hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
+      if (reshaped_sharding.has_value()) {
+        return reshaped_sharding;
+      }
+      return hlo_sharding_util::ReplicateAllDataDims(
+          user.sharding(), instruction.shape().rank());
     }
     case HloOpcode::kPad: {
       if (&instruction != user.operand(0)) {
@@ -1540,7 +1546,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       return false;
     }
     for (const HloInstruction* op : instruction->operands()) {
-      if (op->has_sharding() && op->sharding().NumTiles() == 1 &&
+      if (op->has_sharding() && op->sharding().IsTileMaximal() &&
           !op->sharding().HasUniqueDevice()) {
         return MaybeImproveInstructionSharding(op->sharding(), instruction,
                                                may_combine_partial_sharding);
@@ -1801,6 +1807,11 @@ bool ShardingPropagation::InferShardingFromOperands(
                                                instruction,
                                                may_combine_partial_sharding);
       }
+      if (!instruction->has_sharding()) {
+        instruction->set_sharding(hlo_sharding_util::ReplicateAllDataDims(
+            instruction->operand(0)->sharding(), instruction->shape().rank()));
+        return true;
+      }
       return false;
     }
     case HloOpcode::kReverse: {
@@ -1988,6 +1999,15 @@ bool ShardingPropagation::InferShardingFromOperands(
         bool changed = false;
         for (auto operand : instruction->operands()) {
           if (IsSpatiallyPartitioned(operand)) {
+            if (instruction->opcode() == HloOpcode::kRng) {
+              // Rng is considered elementwise but has operands with different
+              // shapes.
+              changed |= MaybeImproveInstructionSharding(
+                  hlo_sharding_util::ReplicateAllDataDims(
+                      operand->sharding(), instruction->shape().rank()),
+                  instruction, may_combine_partial_sharding);
+              continue;
+            }
             changed |= MaybeImproveInstructionSharding(
                 operand->sharding(), instruction, may_combine_partial_sharding);
           }
