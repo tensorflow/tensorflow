@@ -147,7 +147,9 @@ tf_cuda_cc_test(
         "nomac",
         "gpu_cupti",
     ],
-    deps = [] + if_cuda_is_configured([
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_cuda_is_configured([
         ":cuda_test",
         ":cupti_error_manager",
         ":cupti_tracer",
@@ -155,7 +157,6 @@ tf_cuda_cc_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/utils:time_utils",
     ]),
 )
