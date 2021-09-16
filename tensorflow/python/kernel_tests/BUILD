@@ -3138,7 +3138,6 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-        "notap",  # TOOD(b/195753631): Re-enable when not flaky
     ],
     deps = [
         "//tensorflow/python:array_ops",

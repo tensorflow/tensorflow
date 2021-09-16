@@ -282,7 +282,8 @@ class DepthwiseConv2DTest(test.TestCase):
                     use_gpu,
                     grouped_conv=False,
                     data_format="NHWC",
-                    dilations=None):
+                    dilations=None,
+                    tolerance=None):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -297,6 +298,7 @@ class DepthwiseConv2DTest(test.TestCase):
       grouped_conv: Whether to use cuDNN 7's grouped convolution.
       data_format: The data_format of the input. "NHWC" or "NCHW".
       dilations: A list of 2 elements, representing the dilations.
+      tolerance: The absolute and relative tolarance when verifying the output.
     """
     input_size = 1
     filter_size = 1
@@ -319,7 +321,7 @@ class DepthwiseConv2DTest(test.TestCase):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.session(graph=graph, use_gpu=use_gpu) as sess:
-      tolerance = {
+      tolerance = tolerance or {
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
           dtypes.float64: 1e-12,
@@ -376,8 +378,10 @@ class DepthwiseConv2DTest(test.TestCase):
       interface_result = self.evaluate(conv_interface)
 
     if dilations is None:
-      self.assertAllClose(native_result, np_result, atol=tolerance, rtol=0.)
-    self.assertAllClose(interface_result, np_result, atol=tolerance, rtol=0.)
+      self.assertAllClose(native_result, np_result, atol=tolerance,
+                          rtol=tolerance)
+    self.assertAllClose(interface_result, np_result, atol=tolerance,
+                        rtol=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   @test_util.run_cuda_only
@@ -412,9 +416,10 @@ class DepthwiseConv2DTest(test.TestCase):
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
       for data_type in ([dtypes.float32] + optional_float64):
         tf_logging.info("Testing without grouped_conv")
+        tolerance = 1e-4 if data_type == dtypes.float32 else 1e-12
         self._VerifyValues(
             input_size, filter_size, stride, padding, data_type, use_gpu=True,
-            dilations=dilations)
+            dilations=dilations, tolerance=tolerance)
         tf_logging.info("Testing with grouped_conv")
         self._VerifyValues(
             input_size,
@@ -424,7 +429,8 @@ class DepthwiseConv2DTest(test.TestCase):
             data_type,
             use_gpu=True,
             grouped_conv=True,
-            dilations=dilations)
+            dilations=dilations,
+            tolerance=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DWithUnknownShape(self):
@@ -454,6 +460,7 @@ class DepthwiseConv2DTest(test.TestCase):
       # on the ROCm platform
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
       for data_type in ([dtypes.float32] + optional_float64):
+        tolerance = 1e-4 if data_type == dtypes.float32 else 1e-12
         self._VerifyValues(
             input_size,
             filter_size,
@@ -462,7 +469,8 @@ class DepthwiseConv2DTest(test.TestCase):
             data_type,
             use_gpu=True,
             data_format="NCHW",
-            dilations=dilations)
+            dilations=dilations,
+            tolerance=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DExplicit(self):
