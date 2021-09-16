@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace xla {
 namespace {
@@ -1229,21 +1228,11 @@ TEST_F(LiteralUtilTest, F16) {
   half h1(1.0f);
   half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
-  if (!tensorflow::port::kLittleEndian) {
-    auto array_16 = reinterpret_cast<uint16_t*>(m2.data<half>().data());
-    for (int i = 0; i < 4; i++) {
-        array_16[i] = BYTE_SWAP_16(array_16[i]);
-    }
-  }
-  const char* d2 = reinterpret_cast<const char*>(m2.data<half>().data());
-  EXPECT_EQ(d2[0], 0);
-  EXPECT_EQ(d2[1], 0x3C);
-  EXPECT_EQ(d2[2], 0);
-  EXPECT_EQ(d2[3], 0x40);
-  EXPECT_EQ(d2[4], 0);
-  EXPECT_EQ(d2[5], 0x40);
-  EXPECT_EQ(d2[6], 0);
-  EXPECT_EQ(d2[7], 0x3C);
+  const uint16_t* d2 = reinterpret_cast<const uint16_t*>(m2.data<half>().data());
+  EXPECT_EQ(d2[0], 0x3C00);
+  EXPECT_EQ(d2[1], 0x4000);
+  EXPECT_EQ(d2[2], 0x4000);
+  EXPECT_EQ(d2[3], 0x3C00);
 }
 
 TEST_F(LiteralUtilTest, Populate) {
