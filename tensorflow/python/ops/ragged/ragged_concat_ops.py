@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import typing
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -32,8 +30,7 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
-@dispatch.dispatch_for_api(array_ops.concat)
-def concat(values: typing.List[ragged_tensor.RaggedOrDense], axis, name=None):
+def concat(values, axis, name=None):
   """Concatenates potentially ragged tensors along one dimension.
 
   Given a list of tensors with the same rank `K` (`K >= axis`), returns a
@@ -75,10 +72,7 @@ def concat(values: typing.List[ragged_tensor.RaggedOrDense], axis, name=None):
 
 @tf_export('ragged.stack')
 @dispatch.add_dispatch_support
-@dispatch.dispatch_for_api(array_ops.stack)
-def stack(values: typing.List[ragged_tensor.RaggedOrDense],
-          axis=0,
-          name=None):
+def stack(values, axis=0, name=None):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 
   Given a list of tensors or ragged tensors with the same rank `R`

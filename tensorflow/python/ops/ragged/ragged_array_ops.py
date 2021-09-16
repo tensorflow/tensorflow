@@ -24,7 +24,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
@@ -209,8 +208,7 @@ def boolean_mask(data, mask, name=None):
 #===============================================================================
 # Tiling
 #===============================================================================
-@dispatch.dispatch_for_api(array_ops.tile)
-def tile(input: ragged_tensor.Ragged, multiples, name=None):  # pylint: disable=redefined-builtin
+def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
   """Constructs a `RaggedTensor` by tiling a given `RaggedTensor`.
 
   The values of `input` are replicated `multiples[i]` times along the
@@ -383,8 +381,7 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
 #===============================================================================
 
 
-@dispatch.dispatch_for_api(array_ops.expand_dims_v2)
-def expand_dims(input: ragged_tensor.Ragged, axis, name=None):  # pylint: disable=redefined-builtin
+def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   """Inserts a dimension with shape 1 into a potentially ragged tensor's shape.
 
   Given a potentially ragged tenor `input`, this operation inserts a
@@ -456,24 +453,12 @@ def expand_dims(input: ragged_tensor.Ragged, axis, name=None):  # pylint: disabl
         return input.with_values(array_ops.expand_dims(input.values, axis - 1))
 
 
-@dispatch.dispatch_for_api(array_ops.expand_dims)
-def _ragged_expand_dims_v1(
-    input: ragged_tensor.Ragged,  # pylint: disable=redefined-builtin
-    axis=None,
-    name=None,
-    dim=None):
-  if dim is not None:
-    axis = dim
-  return expand_dims(input=input, axis=axis, name=name)
-
-
 #===============================================================================
 # RaggedTensor Size
 #===============================================================================
 
 
-@dispatch.dispatch_for_api(array_ops.size_v2)
-def size(input: ragged_tensor.Ragged, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-builtin
+def size(input, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-builtin
   """Returns the size of a potentially ragged tensor.
 
   The size of a ragged tensor is the size of its inner values.
@@ -497,19 +482,10 @@ def size(input: ragged_tensor.Ragged, out_type=dtypes.int32, name=None):  # pyli
     return array_ops.size(input, out_type=out_type, name=name)
 
 
-@dispatch.dispatch_for_api(array_ops.size)
-def _ragged_size_v1(
-    input: ragged_tensor.Ragged,  # pylint: disable=redefined-builtin
-    name=None,
-    out_type=dtypes.int32):
-  return size(input=input, out_type=out_type, name=name)
-
-
 #===============================================================================
 # ragged.rank
 #===============================================================================
-@dispatch.dispatch_for_api(array_ops.rank)
-def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-builtin
+def rank(input, name=None):  # pylint: disable=redefined-builtin
   """Returns the rank of a RaggedTensor.
 
   Returns a 0-D `int32` `Tensor` representing the rank of `input`.
@@ -538,8 +514,7 @@ def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-b
 #===============================================================================
 # ragged.one_hot
 #===============================================================================
-@dispatch.dispatch_for_api(array_ops.one_hot)
-def ragged_one_hot(indices: ragged_tensor.Ragged,
+def ragged_one_hot(indices,
                    depth,
                    on_value=None,
                    off_value=None,
@@ -673,8 +648,7 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
 #===============================================================================
 # Reverse
 #===============================================================================
-@dispatch.dispatch_for_api(array_ops.reverse)
-def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
+def reverse(tensor, axis, name=None):
   """Reverses a RaggedTensor along the specified axes.
 
   #### Example:
@@ -864,18 +838,3 @@ def _cross_internal(inputs,
 
     return ragged_tensor.RaggedTensor.from_row_splits(
         values_out, splits_out, validate=False)
-
-
-#===============================================================================
-# dynamic_partition
-#===============================================================================
-@dispatch.dispatch_for_api(data_flow_ops.dynamic_partition)
-def dynamic_partition(data: ragged_tensor.RaggedOrDense,
-                      partitions: ragged_tensor.RaggedOrDense,
-                      num_partitions,
-                      name=None):
-  """RaggedTensor dispatch override for tf.dynamic_partition."""
-  if not isinstance(num_partitions, int) or num_partitions < 0:
-    raise TypeError('num_partitions must be a non-negative integer')
-  result = stack_dynamic_partitions(data, partitions, num_partitions, name)
-  return [result[i] for i in range(num_partitions)]

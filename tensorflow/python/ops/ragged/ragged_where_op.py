@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import typing
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -28,14 +26,9 @@ from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
-from tensorflow.python.util import dispatch
 
 
-@dispatch.dispatch_for_api(array_ops.where_v2)
-def where_v2(condition: ragged_tensor.RaggedOrDense,
-             x: typing.Optional[ragged_tensor.RaggedOrDense] = None,
-             y: typing.Optional[ragged_tensor.RaggedOrDense] = None,
-             name=None):
+def where_v2(condition, x=None, y=None, name=None):
   """Return the elements where `condition` is `True`.
 
   : If both `x` and `y` are None: Retrieve indices of true elements.
@@ -96,11 +89,7 @@ def where_v2(condition: ragged_tensor.RaggedOrDense,
       return _elementwise_where_v2(condition, x, y)
 
 
-@dispatch.dispatch_for_api(array_ops.where)
-def where(condition: ragged_tensor.RaggedOrDense,
-          x: typing.Optional[ragged_tensor.RaggedOrDense] = None,
-          y: typing.Optional[ragged_tensor.RaggedOrDense] = None,
-          name=None):
+def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
 
   : If both `x` and `y` are `None`:
