@@ -33,6 +33,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Attribute used to keep track of when we're inside a user-defined constructor
 # (in which case the fields of `self` may be modified).
@@ -89,6 +90,7 @@ class ExtensionTypeMetaclass(abc.ABCMeta):
 # ==============================================================================
 # Base class for user-defined types
 # ==============================================================================
+@tf_export('experimental.ExtensionType')
 class ExtensionType(
     composite_tensor.CompositeTensor, metaclass=ExtensionTypeMetaclass):
   """Base class for TensorFlow `ExtensionType` classes.

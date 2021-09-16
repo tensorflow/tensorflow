@@ -259,6 +259,7 @@ add_dispatch_list = add_fallback_dispatch_list
 ################################################################################
 
 
+@tf_export("experimental.dispatch_for_api")
 def dispatch_for_api(api, *signatures):
   """Decorator that overrides the default implementation for a TensorFlow API.
 
@@ -477,6 +478,7 @@ def _add_name_scope_wrapper(func, api_signature):
   return wrapped_func
 
 
+@tf_export("experimental.unregister_dispatch_for")
 def unregister_dispatch_for(dispatch_target):
   """Unregisters a function that was registered with `@dispatch_for_*`.
 
@@ -731,6 +733,7 @@ _ELEMENTWISE_API_HANDLERS = {}
 _ELEMENTWISE_API_TARGETS = {}
 
 
+@tf_export("experimental.dispatch_for_unary_elementwise_apis")
 def dispatch_for_unary_elementwise_apis(x_type):
   """Decorator to override default implementation for unary elementwise APIs.
 
@@ -798,6 +801,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
   return decorator
 
 
+@tf_export("experimental.dispatch_for_binary_elementwise_apis")
 def dispatch_for_binary_elementwise_apis(x_type, y_type):
   """Decorator to override default implementation for binary elementwise APIs.
 
