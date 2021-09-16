@@ -258,8 +258,8 @@ class TensorProtocol(Protocol):
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.
-TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, complex,
-                   tuple, list, np.ndarray, np.generic]
+TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, bytes,
+                   complex, tuple, list, np.ndarray, np.generic]
 doc_typealias.document(
     obj=TensorLike,
     doc=textwrap.dedent("""\
