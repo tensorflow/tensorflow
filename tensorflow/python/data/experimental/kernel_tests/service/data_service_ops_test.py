@@ -275,7 +275,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testExplicitProtocolFromDatasetId(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol="grpc")
     range_ds = dataset_ops.Dataset.range(10)
     dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
                                                    range_ds)
