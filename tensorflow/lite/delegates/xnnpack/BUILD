@@ -585,6 +585,8 @@ cc_test(
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
         "@pthreadpool",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops"
     ],
 )
 

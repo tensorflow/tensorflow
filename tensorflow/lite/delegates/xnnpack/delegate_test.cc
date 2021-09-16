@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <random>
 
-#include <gtest/gtest.h>
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -60,6 +63,47 @@ TEST(Delegate, GetThreadPool) {
       TfLiteXNNPackDelegateGetThreadPool(xnnpack_delegate.get()));
   ASSERT_TRUE(threadpool);
   ASSERT_EQ(2, pthreadpool_get_threads_count(threadpool));
+}
+
+TEST(Delegate, CreateWithStaticUnpackNodes) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::unique_ptr<tflite::Interpreter> interpreter(new tflite::Interpreter);
+
+  interpreter->AddTensors(2);
+  interpreter->SetInputs({0});
+  interpreter->SetOutputs({1});
+
+  TfLiteQuantization quant = {
+      .type = kTfLiteAffineQuantization,
+      .params = malloc(sizeof(TfLiteAffineQuantization))};
+  TfLiteAffineQuantization* aq =
+      reinterpret_cast<TfLiteAffineQuantization*>(quant.params);
+  aq->scale = TfLiteFloatArrayCreate(1);
+  aq->scale->data[0] = 0.5;
+  aq->zero_point = TfLiteIntArrayCreate(1);
+  aq->zero_point->data[0] = 127;
+  aq->quantized_dimension = 0;
+
+  uint16_t src;
+  float target;
+
+  TfLiteQuantization no_quant = {kTfLiteNoQuantization, 0};
+  interpreter->SetTensorParametersReadOnly(0, kTfLiteFloat16, "src", {1}, quant,
+                                           (char*)&src, sizeof(src));
+  interpreter->SetTensorParametersReadOnly(1, kTfLiteFloat32, "target", {1},
+                                           no_quant, (char*)&target,
+                                           sizeof(target));
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  const TfLiteRegistration* deq_op =
+      resolver.FindOp(tflite::BuiltinOperator::BuiltinOperator_DEQUANTIZE, 1);
+  interpreter->AddNodeWithParameters({0}, {1}, nullptr, 0, 0, deq_op);
+
+  ASSERT_EQ(kTfLiteOk,
+            interpreter->ModifyGraphWithDelegate(xnnpack_delegate.get()));
 }
 
 }  // namespace xnnpack

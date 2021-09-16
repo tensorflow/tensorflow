@@ -210,7 +210,11 @@ class Subgraph {
     std::sort(tensors.begin(), tensors.end());
 
     // XNNPACK Value IDs for TFLite tensors
-    std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
+    size_t tensor_size = 0;
+    if (tensors.size() > 0) {
+      tensor_size = tensors.back() + 1;
+    }
+    std::vector<uint32_t> xnnpack_tensors(tensor_size);
     for (int t : tensors) {
       xnn_datatype datatype = xnn_datatype_invalid;
       switch (context->tensors[t].type) {
