@@ -457,7 +457,7 @@ Stream &Stream::ThenConvolve(
     const dnn::BatchDescriptor &output_descriptor,
     DeviceMemory<float> *output) {
   if (ok()) {
-    CheckError(ConvolveForwardWithAlgorithm(
+    CheckError(ConvolveWithAlgorithm(
                    input_descriptor, input_data, filter_descriptor, filter_data,
                    convolution_descriptor, output_descriptor, output,
                    /*scratch_allocator=*/nullptr, dnn::AlgorithmConfig(),

@@ -1135,9 +1135,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       }
     } else {
       OP_REQUIRES(
-          ctx,
-          stream->parent()->GetConvolveAlgorithms(
-              se::dnn::ConvolutionKind::FORWARD, &algorithms),
+          ctx, stream->parent()->GetConvolveAlgorithms(&algorithms),
           errors::Unknown("Failed to get convolution algorithm. This is "
                           "probably because cuDNN failed to initialize, so try "
                           "looking to see if a warning log message was printed "
@@ -1171,12 +1169,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       ProfileResult profile_result;
       Status cudnn_launch_status;
       if (CudnnUseFrontend()) {
-        cudnn_launch_status = stream->ConvolveForwardWithExecutionPlan(
+        cudnn_launch_status = stream->ConvolveWithExecutionPlan(
             input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
             output_desc, &output_tensor, allocator_used, profile_config,
             &profile_result);
       } else {
-        cudnn_launch_status = stream->ConvolveForwardWithAlgorithm(
+        cudnn_launch_status = stream->ConvolveWithAlgorithm(
             input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
             output_desc, &output_tensor, allocator_used, profile_config,
             &profile_result);
@@ -1250,7 +1248,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        auto miopen_launch_status = stream->ConvolveForwardWithAlgorithm(
+        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
             input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
             output_desc, &output_ptr, &scratch_allocator,
             AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
@@ -1295,7 +1293,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     } else {
       VLOG(4) << "Convolution Autotune has been turned off";
     }
-    cudnn_launch_status = stream->ConvolveForwardWithExecutionPlan(
+    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
         input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
         &output_ptr, &scratch_allocator, algorithm_config, nullptr);
   } else {
@@ -1304,7 +1302,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     VLOG(4) << "tensor_ops_enabled: "
             << algorithm_config.algorithm()->tensor_ops_enabled();
 
-    cudnn_launch_status = stream->ConvolveForwardWithAlgorithm(
+    cudnn_launch_status = stream->ConvolveWithAlgorithm(
         input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
         &output_ptr, &scratch_allocator, algorithm_config, nullptr);
   }
