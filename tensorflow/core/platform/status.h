@@ -143,8 +143,8 @@ class Status {
   // may attach multiple payloads (with differing type URLs) to any given
   // status object, provided that the status is currently exhibiting an error
   // code (i.e. is not OK).
+  // TODO(b/197552541): Use absl::Cord for payload value type.
 
-  // TODO(b/197552541): Match payload function signatures with absl::Status.
   // The Payload-related APIs are cloned from absl::Status.
   //
   // Returns the payload of a status given its unique `type_url` key, if
@@ -163,14 +163,15 @@ class Status {
   // the payload was present.
   bool ErasePayload(tensorflow::StringPiece type_url);
 
-  // Returns all the payload information.
-  // Returns an empty result if status is ok.
-  const std::unordered_map<std::string, std::string> GetAllPayloads() const;
-
-  // Copies all the payloads using the input and discards existing payloads.
-  // Does nothing if status is ok or 'payloads' is empty.
-  void ReplaceAllPayloads(
-      const std::unordered_map<std::string, std::string>& payloads);
+  // Iterates over the stored payloads and calls the
+  // `visitor(type_key, payload)` callable for each one.
+  //
+  // The order of calls to `visitor()` is not specified and may change at
+  // any time and any mutation on the same Status object during visitation is
+  // forbidden and could result in undefined behavior.
+  void ForEachPayload(
+      const std::function<void(tensorflow::StringPiece,
+                               tensorflow::StringPiece)>& visitor) const;
 
  private:
   static const std::string& empty_string();

@@ -119,4 +119,37 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
   EXPECT_EQ(combined.GetPayload("payload_key_c"), "payload_value_c");
 }
 
+TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
+  Status s(error::INTERNAL, "Error message");
+  s.SetPayload("key1", "value1");
+  s.SetPayload("key2", "value2");
+  s.SetPayload("key3", "value3");
+
+  std::unordered_map<std::string, std::string> payloads;
+  s.ForEachPayload(
+      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        payloads[std::string(key)] = std::string(value);
+      });
+
+  EXPECT_EQ(payloads.size(), 3);
+  EXPECT_EQ(payloads["key1"], "value1");
+  EXPECT_EQ(payloads["key2"], "value2");
+  EXPECT_EQ(payloads["key3"], "value3");
+}
+
+TEST(Status, OkStatusForEachPayloadNoIteration) {
+  Status s = Status::OK();
+  s.SetPayload("key1", "value1");
+  s.SetPayload("key2", "value2");
+  s.SetPayload("key3", "value3");
+
+  std::unordered_map<std::string, std::string> payloads;
+  s.ForEachPayload(
+      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        payloads[std::string(key)] = std::string(value);
+      });
+
+  EXPECT_EQ(payloads.size(), 0);
+}
+
 }  // namespace tensorflow
