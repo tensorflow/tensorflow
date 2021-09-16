@@ -259,7 +259,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
     with self.assertRaisesRegex(ValueError,
-                                "compression_type .ZLIB. is not supported"):
+                                "`compression_type` ZLIB is not supported"):
       self._test_dataset(
           inputs,
           expected_output=expected_output,
