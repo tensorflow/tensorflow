@@ -38,7 +38,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     return self.BuildParamsWithMask(self.GraphFn, dtypes.float32,
-                            [[1, 2, 5, 3]], [[4]],
+                            [[2, 2, 5, 3]], [[4]],
                             extra_inputs=[], # [[[1, 1, 2, 3]]],
                             extra_outputs=[], #[[[4]]],
                             input_mask=[[False, False, False, False]],
@@ -46,13 +46,11 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
-
-  def setUp(self):
-    super().setUp()
-    self.SetDynamicShapeModeAndProfileStrategy(
-        profile_strategy="ImplicitBatchModeCompatible")
-
+    if run_params.dynamic_shape:
+      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    else:
+      # Second segment not converted because its tensors have only one dimensions
+      return ["TRTEngineOp_0"]
 
 if __name__ == "__main__":
   test.main()
