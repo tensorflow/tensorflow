@@ -196,6 +196,10 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     self.assertIn("# of -Inf elements: 1\n", message)
     self.assertTrue(re.search(r"Input tensor.*0\.", message))
 
+  @test_util.enable_eager_op_as_function
+  def testCatchEagerOpFloat16NaNWithEagerOpAsFunctionEnabled(self):
+    self.testCatchEagerOpFloat16NaN()
+
   @test_util.run_in_graph_and_eager_modes
   def testCatchFunctionOpInfFloat64(self):
     """Test catching infinites generated in a FuncGraph."""
