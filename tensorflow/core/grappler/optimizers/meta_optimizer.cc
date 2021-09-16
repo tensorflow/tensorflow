@@ -58,6 +58,11 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
 
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+#include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
+#endif
+
 namespace tensorflow {
 namespace grappler {
 
@@ -263,6 +268,12 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
+
+  // #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+  // Hooks the MLIR optimizer, it won't run any optimizations right now.
+  optimizers->push_back(MakeUnique<mlir::tfg::TfgGrapplerOptimizer>(""));
+#endif
 
 #define USER_IS_ON(CFG) cfg_.CFG() == RewriterConfig::ON
 #define USER_NOT_OFF(CFG) cfg_.CFG() != RewriterConfig::OFF
