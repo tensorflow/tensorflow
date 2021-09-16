@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,11 +34,13 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_test_ops as test_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import dispatch
 
 
 # pylint: disable=g-complex-comprehension
@@ -108,6 +111,10 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'x': ragged_factory_ops.constant_value(
                [['abcd', 'efgh'], ['aabbccdd']]),
            'num_buckets': 1000},
+          {'op': string_ops.string_to_hash_bucket_v1,
+           'x': ragged_factory_ops.constant_value(
+               [['abcd', 'efgh'], ['aabbccdd']]),
+           'num_buckets': 1000},
           {'op': string_ops.string_to_hash_bucket_fast,
            'x': ragged_factory_ops.constant_value(
                [['abcd', 'efgh'], ['aabbccdd']]),
@@ -127,6 +134,12 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'pattern': r'\d',
            'rewrite': '#'},
           {'op': string_ops.substr,
+           'x': ragged_factory_ops.constant_value([['hello', '123'], ['1+1']]),
+           'pos': 2, 'len': 3},
+          {'op': string_ops.substr_deprecated,
+           'x': ragged_factory_ops.constant_value([['hello', '123'], ['1+1']]),
+           'pos': 2, 'len': 3},
+          {'op': string_ops.substr_v2,
            'x': ragged_factory_ops.constant_value([['hello', '123'], ['1+1']]),
            'pos': 2, 'len': 3},
           {'op': array_ops.check_numerics,
@@ -344,6 +357,39 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       result_flat_values = array_ops.reshape(result, [-1])
     self.assertAllEqual(expected_flat_values, result_flat_values)
+
+  def testAllElementwiseOpsAreIncludedInRaggedTensorTestOps(self):
+    other_tested_ops = [
+        # Elementwise ops that have explicit/bespoke test cases in this file.
+        string_ops.string_to_hash_bucket,
+        string_ops.string_to_hash_bucket_v1,
+        string_ops.string_to_hash_bucket_fast,
+        string_ops.string_to_hash_bucket_strong,
+        string_ops.string_to_number,
+        string_ops.regex_full_match,
+        string_ops.substr,
+        string_ops.substr_v2,
+        string_ops.substr_deprecated,
+        clip_ops.clip_by_value,
+        array_ops.check_numerics,
+        math_ops.cast,
+        math_ops.saturate_cast,
+        math_ops.nextafter,
+        math_ops.tensor_equals,
+        math_ops.tensor_not_equals,
+        string_ops.regex_replace,
+    ]
+    untested_ops = (
+        set(dispatch.unary_elementwise_apis() +
+            dispatch.binary_elementwise_apis()) -
+        set(test_ops.UNARY_FLOAT_OPS + test_ops.UNARY_BOOL_OPS +
+            test_ops.UNARY_STRING_OPS + test_ops.UNARY_INT_OPS +
+            test_ops.BINARY_FLOAT_OPS + test_ops.BINARY_BOOL_OPS +
+            test_ops.BINARY_INT_OPS + other_tested_ops))
+    untested_ops = sorted(f'{x.__module__}.{x.__name__}' for x in untested_ops)
+    self.assertEmpty(
+        list(untested_ops), 'One or more ops elementwise are not tested; please'
+        ' add them to ragged_tensor_test_ops.py or ragged_dispatch_test.py')
 
   def testElementwiseOpUnknownRankError(self):
     if context.executing_eagerly():
@@ -748,6 +794,35 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       assert_fn(result, expected)
 
+  def testTensorEquals(self):
+    a = ragged_factory_ops.constant([[1, 2], [3]])
+    b = ragged_factory_ops.constant([[4, 5], [3]])
+    c = 2
+    d = ragged_factory_ops.constant([[4, 5], [3, 2, 1]])
+
+    if tf2.enabled() and ops.executing_eagerly_outside_functions():
+      # Value-based equality:
+      self.assertAllEqual(
+          math_ops.tensor_equals(a, b), [[False, False], [True]])
+      self.assertAllEqual(
+          math_ops.tensor_not_equals(a, b), [[True, True], [False]])
+
+      # Value-based equality (w/ broadcasting):
+      self.assertAllEqual(
+          math_ops.tensor_equals(a, c), [[False, True], [False]])
+      self.assertAllEqual(
+          math_ops.tensor_not_equals(a, c), [[True, False], [True]])
+      self.assertEqual(
+          math_ops.tensor_equals(a, d), False)  # not broadcast-compatible
+      self.assertEqual(
+          math_ops.tensor_not_equals(a, d), True)  # not broadcast-compatible
+
+    else:
+      # Identity-based equality:
+      self.assertAllEqual(math_ops.tensor_equals(a, a), True)
+      self.assertAllEqual(math_ops.tensor_equals(a, b), False)
+      self.assertAllEqual(math_ops.tensor_not_equals(a, b), True)
+
   def testUnaryElementwiseOpsPreserveUniformRowLength(self):
     # Unary elementwise op
     rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
@@ -820,6 +895,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertIn('`tf.' + element + '`', v2_ragged_ops)
     for element in supported_ops_v1:
       self.assertNotIn('`tf.' + element + '`', v2_ragged_ops)
+
+  def testDispatchWithVariable(self):
+    x = ragged_factory_ops.constant([[1, 2], [3, 4, 5]])
+    v = variables.Variable(10)
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(math_ops.add(x, v), [[11, 12], [13, 14, 15]])
 
 
 if __name__ == '__main__':

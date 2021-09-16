@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import typing
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat as util_compat
@@ -473,7 +476,7 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   """Split elements of `input` based on `sep` into a `RaggedTensor`.
 
   Let N be the size of `input` (typically N will be the batch size). Split each
-  element of `input` based on `sep` and return a `RaggedTensor` containing the 
+  element of `input` based on `sep` and return a `RaggedTensor` containing the
   split tokens. Empty tokens are ignored.
 
   Example:
@@ -661,7 +664,12 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
 
 
-def reduce_join(inputs, axis=None, keepdims=None, separator="", name=None):
+@dispatch.dispatch_for_api(string_ops.reduce_join_v2)
+def reduce_join(inputs: ragged_tensor.Ragged,
+                axis=None,
+                keepdims=None,
+                separator="",
+                name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   return ragged_math_ops.ragged_reduce_aggregate(
       string_ops.reduce_join, string_ops.unsorted_segment_join, inputs, axis,
@@ -823,7 +831,14 @@ def ngrams(data,
                              dense_shape) if to_tensor else output
 
 
-def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
+@dispatch.dispatch_for_api(string_ops.string_format)
+def string_format(
+    template: str,
+    inputs: typing.Union[ragged_tensor.Ragged,
+                         typing.List[ragged_tensor.RaggedOrDense]],
+    placeholder="{}",
+    summarize=3,
+    name=None):
   """Version of tf.strings.format that handles RaggedTensors."""
   if tensor_util.is_tf_type(inputs) or ragged_tensor.is_ragged(inputs):
     inputs = [inputs]
@@ -926,3 +941,15 @@ def _nrows(tensor, out_type=dtypes.int32):
     return tensor.nrows(out_type=out_type)
   else:
     return array_ops.shape(tensor, out_type=out_type)[0]
+
+
+@dispatch.dispatch_for_api(string_ops.string_join)
+def string_join(inputs: typing.List[ragged_tensor.RaggedOrDense],
+                separator="",
+                name=None):
+  """RaggedTensor implementation for tf.strings.join."""
+  if len(inputs) < 0:
+    raise ValueError("tf.strings.join: expected at least one input.")
+  with ops.name_scope(name, "RaggedStringJoin", inputs):
+    return ragged_functional_ops.map_flat_values(string_ops.string_join, inputs,
+                                                 separator)
