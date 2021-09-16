@@ -656,7 +656,7 @@ cc_library(
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
-    hdrs = ["gpu_solvers.h"],
+    hdrs = ["cuda_solvers.h"],
     compatible_with = [],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
@@ -680,7 +680,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "rocm_solvers",
     srcs = ["rocm_solvers.cc"],
-    hdrs = ["gpu_solvers.h"],
+    hdrs = ["rocm_solvers.h"],
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
@@ -692,7 +692,6 @@ tf_kernel_library(
         "//tensorflow/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -701,10 +700,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cuda_sparse",
     srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
-    hdrs = [
-        "cuda_sparse.h",
-        "gpu_solvers.h",
-    ],
+    hdrs = ["cuda_sparse.h"],
     compatible_with = [],
     deps = [
         ":cuda_solvers",
@@ -714,7 +710,6 @@ tf_kernel_library(
         "//tensorflow/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
         "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
