@@ -83,6 +83,7 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 #include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/util/util.h"
 #endif
 
 namespace tensorflow {
@@ -762,7 +763,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     }
 
 #ifdef INTEL_MKL
-    if (IsMklEnabled() &&
+    if (IsMKLEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
       // All MKL eager ops have `_kernel` private attribute that needs to be set
       // to a fixed label.
@@ -1146,6 +1147,13 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   core::RefCountPtr<KernelAndDevice> kernel;
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
+
+  if (IsMKLEnabled() && kernel != nullptr && !ctx.RunEagerOpAsFunction() &&
+      op->Device() == kVariantDeviceNull) {
+    // oneDNN optimization pass relies on the op's assigned device to determine
+    // whether it can be rewritten.
+    op->SetDevice(kernel->device());
+  }
 
   // Run all the registered rewrite pass after the placement, regardless whether
   // the placement is successful or not. The passes can either create new ops
