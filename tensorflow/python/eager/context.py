@@ -523,6 +523,11 @@ class Context(object):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
         spec = pydev.DeviceSpec.from_string(dev_name)
+        # Initialize only the local devices and skip the non-local ones.
+        # Note that some local devices might not have the same job name as
+        # specified in server_def.
+        if current_task is not None and spec.task != current_task:
+          continue
         # If the job is localhost, we assume that the cluster has not yet been
         # configured and thus clear the job, replica & task.
         if spec.job == "localhost":
@@ -1618,9 +1623,18 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
+
     self.ensure_initialized()
-    # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+
+    # Error out if there are already multiple logical local CPUs in the context.
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
