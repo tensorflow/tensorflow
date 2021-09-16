@@ -1089,10 +1089,11 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
         for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
           self._testForwardCase(use_cudnn, data_format, dtype=dtype)
 
-  @test_util.skip_if(len(tf_config.list_physical_devices("GPU")))
   def testForwardCPU(self):
+    if tf_config.list_physical_devices("GPU"):
+      self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+    for dtype in [dtypes.float32, dtypes.float64]:
       self._testForwardCase(data_format=data_format, dtype=dtype)
 
   def _testBackwardCase(self,
@@ -1105,9 +1106,7 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
 
     with test_util.deterministic_ops():
 
-      def gradients(seed):
-        random_seed.set_seed(seed)
-        upstream_gradients = random_ops.random_normal(output_shape, dtype=dtype)
+      def Gradients(upstream_gradients):
         with backprop.GradientTape() as tape:
           tape.watch(input_data)
           tape.watch(filter_data)
@@ -1128,9 +1127,12 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
         ctx_mgr = contextlib.suppress()
 
       with ctx_mgr:
-        for seed in range(987, 992):
-          input_gradients_a, filter_gradients_a = gradients(seed)
-          input_gradients_b, filter_gradients_b = gradients(seed)
+        # Test only two seeds, since testing takes a long time
+        for seed in (987, 988):
+          upstream_gradients = random_ops.random_normal(output_shape,
+                                                        dtype=dtype, seed=seed)
+          input_gradients_a, filter_gradients_a = Gradients(upstream_gradients)
+          input_gradients_b, filter_gradients_b = Gradients(upstream_gradients)
           self.assertAllEqual(input_gradients_a, input_gradients_b)
           self.assertAllEqual(filter_gradients_a, filter_gradients_b)
 
@@ -1142,10 +1144,11 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
         for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
           self._testBackwardCase(using_gpu, use_cudnn, data_format, dtype)
 
-  @test_util.skip_if(len(tf_config.list_physical_devices("GPU")))
   def testBackwardCPU(self):
+    if tf_config.list_physical_devices("GPU"):
+      self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+    for dtype in [dtypes.float32, dtypes.float64]:
       self._testBackwardCase(data_format=data_format, dtype=dtype)
 
 
