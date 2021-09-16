@@ -452,6 +452,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:op_def_builder.h",
         "//tensorflow/core/framework:op_def_util.h",
         "//tensorflow/core/framework:op_kernel.h",
+        "//tensorflow/core/framework:op_requires.h",
         "//tensorflow/core/framework:ops_util.h",
         "//tensorflow/core/framework:partial_tensor_shape.h",
         "//tensorflow/core/framework:queue_interface.h",
