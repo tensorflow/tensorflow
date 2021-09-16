@@ -559,7 +559,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testDistributeInvalidProcessingMode(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
-        ValueError, "should be a ShardingPolicy, `\"parallel_epochs\"`, or "
+        ValueError,
+        "should be a `tf.data.experimental.service.ShardingPolicy`, "
+        "`\"parallel_epochs\"`, or "
         "`\"distributed_epoch\"`. Got 'invalid'."):
       ds = ds.apply(
           data_service_ops.distribute(

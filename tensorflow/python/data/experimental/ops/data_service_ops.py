@@ -121,9 +121,7 @@ class ShardingPolicy(enum.IntEnum):
       return data_service_pb2.ProcessingModeDef.FILE_OR_DATA
     if self == ShardingPolicy.HINT:
       return data_service_pb2.ProcessingModeDef.HINT
-    raise ValueError(
-        f"Unable to convert sharding policy {self!r} to proto. Please verify "
-        "the policy mapping.")
+    raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
 def _get_validated_sharding_policy(processing_mode):
@@ -139,10 +137,10 @@ def _get_validated_sharding_policy(processing_mode):
   elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
     return processing_mode
 
-  raise ValueError(
-      "tf.data service processing mode should be a ShardingPolicy, "
-      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-      f"{processing_mode!r}.")
+  raise ValueError("tf.data service processing mode should be a "
+                   "`tf.data.experimental.service.ShardingPolicy`, "
+                   "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+                   f"{processing_mode!r}.")
 
 
 def _serialize(processing_mode):
@@ -158,10 +156,10 @@ def _serialize(processing_mode):
   if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
     return processing_mode
 
-  raise ValueError(
-      "tf.data service processing mode should be a ShardingPolicy, "
-      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-      f"{processing_mode!r}.")
+  raise ValueError("tf.data service processing mode should be a "
+                   "`tf.data.experimental.service.ShardingPolicy`, "
+                   "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+                   f"{processing_mode!r}.")
 
 
 def _validate_job_name(job_name):
@@ -248,7 +246,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
-          "Must either set both `consumer_index` and `num_consumers`, or neither. ",
+          "Must either set both `consumer_index` and `num_consumers`, "
+          "or neither. ",
           f"consumer_index={consumer_index}, num_consumers={num_consumers}")
     if num_consumers is not None and job_name is None:
       raise ValueError("`job_name` must be set when setting `num_consumers`. "
@@ -353,9 +352,8 @@ def _parse_service(service):
     The (protocol, address) tuple
   """
   if not isinstance(service, six.string_types):
-    raise ValueError(
-        f"`service` must be a string, but `service` was of type {type(service)}. "
-        f"service={service}")
+    raise ValueError("`service` must be a string, but `service` was of type "
+                     f"{type(service)}. service={service}")
   if not service:
     raise ValueError("`service` must not be empty")
   parts = service.split("://")
