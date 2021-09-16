@@ -1404,7 +1404,7 @@ Status DirectSession::CreateExecutors(
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =

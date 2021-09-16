@@ -202,7 +202,9 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
         metadata, arg_shapes, graph->get(), flr, &shape_info));
     std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-    optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+    GraphOptimizer::Options optimizer_opts;
+    optimizer_opts.shape_map = &shape_map;
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
