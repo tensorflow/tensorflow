@@ -994,6 +994,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_elu_test",
+    srcs = ["signed_quantized_elu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_unary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_fully_connected_test",
     srcs = ["signed_quantized_fully_connected_test.cc"],
     linkopts = select({
