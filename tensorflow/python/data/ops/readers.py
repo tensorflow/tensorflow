@@ -54,25 +54,27 @@ def _create_or_validate_filenames_dataset(filenames, name=None):
     A dataset of filenames.
   """
   if isinstance(filenames, dataset_ops.DatasetV2):
-    if dataset_ops.get_legacy_output_types(filenames) != dtypes.string:
+    element_type = dataset_ops.get_legacy_output_types(filenames)
+    if element_type != dtypes.string:
       raise TypeError(
-          "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")
-    if not dataset_ops.get_legacy_output_shapes(filenames).is_compatible_with(
-        tensor_shape.TensorShape([])):
+          "The `filenames` argument must contain `tf.string` elements. Got a "
+          f"dataset of `{element_type!r}` elements.")
+    element_shape = dataset_ops.get_legacy_output_shapes(filenames)
+    if not element_shape.is_compatible_with(tensor_shape.TensorShape([])):
       raise TypeError(
-          "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
-          "elements.")
+          "The `filenames` argument must contain `tf.string` elements of shape "
+          "[] (i.e. scalars). Got a dataset of element shape "
+          f"{element_shape!r}.")
   else:
     filenames = nest.map_structure(_normalise_fspath, filenames)
     filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
     if filenames.dtype != dtypes.string:
       raise TypeError(
-          "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
-          " Got {}".format(filenames.dtype))
+          "The `filenames` argument must contain `tf.string` elements. Got "
+          f"`{filenames.dtype!r}` elements.")
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
     filenames = dataset_ops.TensorSliceDataset(
         filenames, is_files=True, name=name)
-
   return filenames
 
 
@@ -210,8 +212,9 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
     will be stripped off of each element.
 
     Args:
-      filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
-        more filenames.
+      filenames: A `tf.data.Dataset` whose elements are `tf.string` scalars, a
+        `tf.string` tensor, or a value that can be converted to a `tf.string`
+        tensor (such as a list of Python strings).
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes

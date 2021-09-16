@@ -979,6 +979,8 @@ tf_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
     ],
 )
 
