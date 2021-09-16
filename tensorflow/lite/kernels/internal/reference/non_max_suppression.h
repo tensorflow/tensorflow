@@ -142,12 +142,14 @@ inline T ComputeIou(const T* boxes, int i, int j,
 
   CalcT iou_sym = 0;  // If union_area == 0, we return quantized 0.
   if (union_area != 0) {
-    // 16 bit: union and intersection area might need to be rescaled to 8 bits
-    // in order to avoid overflow during the final computation.
-    while (union_area >= std::numeric_limits<int16_t>::max()) {
-      union_area >>= 8;
-      intersection_area >>= 8;
-    }
+    // Union and intersection area might need to be rescaled in order to avoid
+    // overflow during the final computation (16 bit only).
+    int leading_zeros = CountLeadingZeros(
+        static_cast<std::make_unsigned<CalcT>::type>(union_area));
+    int shift = std::max(17 - leading_zeros, 0);
+
+    union_area = union_area >> shift;
+    intersection_area = intersection_area >> shift;
 
     iou_sym = (intersection_area * params.iou_inverse_scale) / union_area;
   }
