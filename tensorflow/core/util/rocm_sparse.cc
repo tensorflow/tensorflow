@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
