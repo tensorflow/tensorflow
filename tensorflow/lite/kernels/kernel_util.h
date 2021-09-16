@@ -179,6 +179,11 @@ inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
 }
 
+inline bool IsConstantOrPersistentTensor(const TfLiteTensor* tensor) {
+  return IsConstantTensor(tensor) ||
+         (tensor->allocation_type == kTfLitePersistentRo);
+}
+
 // Determines whether tensor is dynamic. Note that a tensor can be non-const and
 // not dynamic. This function specifically checks for a dynamic tensor.
 inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
