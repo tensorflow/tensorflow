@@ -493,7 +493,8 @@ Status CreateTRTNode(const ConversionParams& params,
       .Attr("use_calibration", info.use_calibration)
       .Attr("_use_implicit_batch", params.use_implicit_batch)
       .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
-      .Attr("OutT", out_types);
+      .Attr("OutT", out_types)
+      .Attr("_n_build_pass", params.n_build_pass);
 
   if (!params.use_implicit_batch) {
     node_builder.Attr("profile_strategy",

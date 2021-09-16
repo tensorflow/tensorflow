@@ -193,6 +193,8 @@ Status UpdateFunctionSpecificConversionParams(
       GetAttrValue(attr, "_tftrt_profile_strategy", &cp.profile_strategy));
   TF_RETURN_IF_ERROR(GetAttrValue(attr, "_tftrt_allow_build_at_runtime",
                                   &cp.allow_build_at_runtime));
+  TF_RETURN_IF_ERROR(
+      GetAttrValue(attr, "_tftrt_n_build_pass", &cp.n_build_pass));
   return Status::OK();
 }
 
@@ -240,6 +242,9 @@ Status TRTOptimizationPass::Init(
   if (params.count("profile_strategy")) {
     TF_RETURN_IF_ERROR(ProfileStrategyFromName(
         params.at("profile_strategy").s(), &profile_strategy_));
+  }
+  if (params.count("n_build_pass")) {
+    n_build_pass_ = params.at("n_build_pass").i();
   }
   return Status::OK();
 }
@@ -406,6 +411,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.use_implicit_batch = use_implicit_batch_;
   cp.profile_strategy = profile_strategy_;
   cp.allow_build_at_runtime = allow_build_at_runtime_;
+  cp.n_build_pass = n_build_pass_;
 
   if (item.id != "tf_graph" && do_function_conversion) {
     const grappler::GrapplerFunctionItem& func_item =

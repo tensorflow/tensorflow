@@ -48,7 +48,8 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
         use_calibration_(true),
         use_implicit_batch_(true),
         profile_strategy_(ProfileStrategy::kRange),
-        allow_build_at_runtime_(true) {
+        allow_build_at_runtime_(true),
+        n_build_pass_(0) {
     VLOG(1) << "Constructing " << name_;
   }
 
@@ -80,6 +81,7 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
   bool use_implicit_batch_;
   ProfileStrategy profile_strategy_;
   bool allow_build_at_runtime_;
+  int n_build_pass_;
 };
 
 }  // namespace convert

@@ -255,6 +255,12 @@ class TRTEngineOp : public AsyncOpKernel {
   // user-provided quantization ranges.
   bool use_calibration_;
 
+  // The number of times the model needs to be inferred in build mode. While
+  // this number is positive we are running profile generation mode and decease
+  // n_build_pass_. We exit profile generation mode and build the engine when
+  // n_build_pass_ reaches zero.
+  int n_build_pass_;
+
   // Array of all input shapes, collected from the input_shapes attribute when
   // constructing the TRTEngineOp. The input_shapes attribute is set during
   // graph conversion time. This data is used to retrieve which input dimensions
@@ -454,6 +460,16 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << context->device()->name()
             << ", thus setting _profile_generation_mode=false";
     profile_generation_mode_ = false;
+  }
+  status = context->GetAttr("_n_build_pass", &n_build_pass_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _n_build_pass in " << context->device()->name()
+            << ", thus setting default 0";
+    n_build_pass_ = 0;
+  }
+  if (static_engine_) {
+    if (n_build_pass_ > 0) n_build_pass_ = 0;
+    if (profile_generation_mode_) profile_generation_mode_ = false;
   }
   if (use_implicit_batch_) {
     OP_REQUIRES(context, !profile_generation_mode_,
@@ -755,7 +771,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
     OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
                          dummy_async_helper);
-    if (profile_generation_mode_) {
+    if (profile_generation_mode_ || n_build_pass_ > 0) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
       // anymore.
@@ -766,17 +782,21 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
       cache_res->profiles_.AddShape(input_concrete_shapes);
+      n_build_pass_--;
+    }
+    if (profile_generation_mode_ || n_build_pass_ > 0) {
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, async_helper);
       return;
-    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+    } else if (cache_res->profiles_.GetNumProfiles() == 0 && !static_engine_) {
       // Add current shape if we did not collect any shapes so far.
       if (!cache_res->profiles_.HasShape()) {
         cache_res->profiles_.AddShape(input_concrete_shapes);
       }
       // Create profiles out of collected shapes during profile generation.
-      cache_res->profiles_.InitProfiles(input_partial_shapes_,
-                                        profile_strategy_);
+      if (!static_engine_)
+        cache_res->profiles_.InitProfiles(input_partial_shapes_,
+                                          profile_strategy_);
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
