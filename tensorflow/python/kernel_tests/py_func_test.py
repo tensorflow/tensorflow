@@ -35,13 +35,17 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -776,6 +780,94 @@ class EagerPyFuncTest(PyFuncTestBase):
 
     with self.assertRaisesRegex(ValueError, "callable"):
       _ = script_ops.eager_py_func(x, inp=[x], Tout=dtypes.string)
+
+  def testStructuredRaggedTensorArg(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    y, = script_ops.eager_py_func(math_ops.reduce_sum, [x], [dtypes.int32])
+    self.assertAllEqual(y, 21)
+
+  def testStructuredRaggedTensorReturn(self):
+
+    def fn(v, l):
+      return ragged_tensor.RaggedTensor.from_row_lengths(v, l)
+
+    values = [1, 2, 3, 4, 5, 6]
+    lengths = [3, 1, 2]
+    out_signature = [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]
+    y, = script_ops.eager_py_func(fn, [values, lengths], out_signature)
+    self.assertIsInstance(y, ragged_tensor.RaggedTensor)
+    self.assertAllEqual(y, [[1, 2, 3], [4], [5, 6]])
+
+  def testStructuredNestedArgsAndReturns(self):
+    rt = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
+    st = sparse_tensor.SparseTensor([[1, 2], [3, 4]], [1, 2], [10, 10])
+    x = constant_op.constant(10)
+
+    def fn(d):
+      result = {
+          "rt": d["rt"] + d["x"],
+          "st": d["st"].with_values(d["st"].values + d["x"])
+      }
+      return result
+
+    args = [{"rt": rt, "st": st, "x": x}]
+
+    output_signature = {
+        "rt": ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32),
+        "st": sparse_tensor.SparseTensorSpec([None, None], dtypes.int32)
+    }
+
+    result = script_ops.eager_py_func(fn, args, output_signature)
+    self.assertIsInstance(result, dict)
+    self.assertEqual(set(result.keys()), {"rt", "st"})
+    self.assertAllEqual(result["rt"], [[11, 12], [13], [14, 15, 16]])
+    self.assertAllEqual(result["st"].indices, st.indices)
+    self.assertAllEqual(result["st"].dense_shape, st.dense_shape)
+    self.assertAllEqual(result["st"].values, [11, 12])
+
+  def testStructuredExpectedListGotList(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: [v], [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testStructuredExpectedListGotTuple(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: (v,), [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testStructuredExpectedListGotSingleValue(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: v, [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testStructuredNoReturnValue(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    result = self.evaluate(script_ops.eager_py_func(lambda v: None, [x], []))
+    if context.executing_eagerly():
+      self.assertEqual(result, [])
+    else:
+      self.assertIsNone(result)
+
+  def testStructuredBadReturnTypeExpectedTensorReturnedRagged(self):
+    rt = ragged_factory_ops.constant([[1, 2], [3, 4, 5]])
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "py_function: func=.* returned .* which did not match Tout=.*"):
+      result = script_ops.eager_py_func(lambda x: x + 3, [rt], [dtypes.int32])
+      self.evaluate(result)
+
+  def testStructuredBadReturnTypeExpectedRaggedReturnedTensor(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "py_function: func=.* returned .* which did not match Tout=.*"):
+      result = script_ops.eager_py_func(
+          func=lambda x: x,
+          inp=[constant_op.constant([[1, 2, 3]])],
+          Tout=[ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)])
+      self.evaluate(result)
 
 
 if __name__ == "__main__":
