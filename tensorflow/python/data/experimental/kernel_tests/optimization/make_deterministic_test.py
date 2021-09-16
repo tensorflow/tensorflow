@@ -284,7 +284,7 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def test_no_determinism(self):
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
     v = variables.Variable(0.)
 
     def interleave_fn(x):

@@ -1821,10 +1821,10 @@ def force_cpu():
 def deterministic_ops():
   """Enables deterministic ops."""
   try:
-    config.enable_deterministic_ops(True)
+    config.enable_op_determinism()
     yield
   finally:
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
 
 
 class CapturedWrites(object):

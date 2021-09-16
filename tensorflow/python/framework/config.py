@@ -920,8 +920,8 @@ def disable_mlir_graph_optimization():
   context.context().enable_mlir_graph_optimization = False
 
 
-def enable_deterministic_ops(enabled):
-  """Enable or disable the use of deterministic ops.
+def enable_op_determinism():
+  """Enable op determinism.
 
   When enabled, many ops will be made deterministic. This means that if you run
   the same op multiple times, it will have the same outputs (and stateful ops
@@ -942,13 +942,15 @@ def enable_deterministic_ops(enabled):
   Autotune for ops like Conv2D may select and cache a nondeterministic
   algorithm, which will still be used once determinism is enabled. It is
   therefore recommended to enable determinism only before running any ops.
-
-  Args:
-    enabled: Bool indicating whether to enable deterministic ops.
   """
-  _pywrap_determinism.enable(enabled)
+  _pywrap_determinism.enable(True)
 
 
-def deterministic_ops_enabled():
-  """Returns True if deterministic ops have been enabled."""
+def disable_op_determinism():
+  """Disables op determinism."""
+  _pywrap_determinism.enable(False)
+
+
+def is_op_determinism_enabled():
+  """Returns True if op determinism is enabled."""
   return _pywrap_determinism.is_enabled()

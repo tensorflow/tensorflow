@@ -190,5 +190,5 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

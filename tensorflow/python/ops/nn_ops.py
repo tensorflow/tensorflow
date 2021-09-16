@@ -3467,7 +3467,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
     # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
     #   level.
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       # Note that this code does not implement the same error checks as the
       # pre-existing C++ ops.
       if data_format == "NCHW":
@@ -4048,7 +4048,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       log_probs = log_softmax_v2(precise_logits)
       cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
     else:
@@ -4154,7 +4154,7 @@ def softmax_cross_entropy_with_logits(
 
 
 def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
-  if config.deterministic_ops_enabled():
+  if config.is_op_determinism_enabled():
     # TODO(duncanriach): Implement a GPU-deterministic version of this op at
     #     the C++/CUDA level.
 

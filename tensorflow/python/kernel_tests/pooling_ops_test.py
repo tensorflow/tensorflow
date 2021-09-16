@@ -1035,7 +1035,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testMaxPoolingGradThrowDeterminismError(self):
     if test.is_gpu_available(cuda_only=True):
       try:
-        config_exec.enable_deterministic_ops(True)
+        config_exec.enable_op_determinism()
         orig_input = [
             1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 1.0
@@ -1060,10 +1060,10 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                 include_batch_in_index=False)
             self.evaluate(out_op)
       finally:
-        config_exec.enable_deterministic_ops(False)
+        config_exec.disable_op_determinism()
     else:
       try:
-        config_exec.enable_deterministic_ops(True)
+        config_exec.enable_op_determinism()
         orig_input = [
             1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 1.0
@@ -1085,7 +1085,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               include_batch_in_index=False)
           self.evaluate(out_op)
       finally:
-        config_exec.enable_deterministic_ops(False)
+        config_exec.disable_op_determinism()
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
