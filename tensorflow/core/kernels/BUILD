@@ -78,7 +78,7 @@ load(
 #   # for CPU tests
 #   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
 #   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
+#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmark_filter=..
 #
 package(
     default_visibility = ["//visibility:public"],
