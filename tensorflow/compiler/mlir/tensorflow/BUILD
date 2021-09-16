@@ -1670,10 +1670,6 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = [
-        ":friends",
-        "//tensorflow:__subpackages__",
-    ],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

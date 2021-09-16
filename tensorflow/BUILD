@@ -925,7 +925,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
-            "-Wl,-unexported_symbols_list,$(location //tensorflow:tf_private_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
@@ -941,7 +940,6 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1041,7 +1039,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
-            "-Wl,-unexported_symbols_list,$(location //tensorflow:tf_private_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -1065,7 +1062,6 @@ tf_cc_shared_object(
     # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
-        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -1166,7 +1162,6 @@ exports_files(
     [
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
-        "tf_private_symbols.lds",
     ],
 )
 
