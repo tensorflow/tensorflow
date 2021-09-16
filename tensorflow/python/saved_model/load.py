@@ -349,7 +349,7 @@ class Loader(object):
       # TODO(andresp): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
-      concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+      concrete_function.set_external_captures(bound_inputs)
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
       if bound_inputs:
         for bound_input, internal_capture in zip(
