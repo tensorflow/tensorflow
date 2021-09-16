@@ -98,6 +98,12 @@ def enable_run_eager_op_as_function():
   _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
 
 
+def disable_run_eager_op_as_function():
+  # Must be called before context is actually built.
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+
+
 def run_eager_op_as_function_enabled():
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
 
