@@ -76,6 +76,7 @@ except ImportError:
 defaultdict = collections.defaultdict  # pylint:disable=invalid-name
 
 
+@test_util.with_eager_op_as_function
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1962,7 +1963,9 @@ class SessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(c, 3)
     self.assertEqual(d, 3)
     # Ensure that we did log device placement.
-    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    add_executions = [
+        l for l in str(log).splitlines() if 'Executing op AddV2' in l
+    ]
     self.assertEqual(len(add_executions), 2)
 
     @def_function.function
