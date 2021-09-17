@@ -15,8 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-import org.tensorflow.lite.annotations.UsedByReflection;
-
 /**
  * Wrapper for a native TensorFlow Lite Delegate.
  *
@@ -26,7 +24,6 @@ import org.tensorflow.lite.annotations.UsedByReflection;
  * technically allows sharing of a single delegate instance across multiple interpreter instances,
  * the delegate implementation must explicitly support this.
  */
-@UsedByReflection("nativeinterpreterwrapper_jni.cc")
 public interface Delegate {
   /**
    * Returns a native handle to the TensorFlow Lite delegate implementation.
@@ -37,6 +34,5 @@ public interface Delegate {
    * @return The native delegate handle. In C/C++, this should be a pointer to
    *     'TfLiteOpaqueDelegate'.
    */
-  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   public long getNativeHandle();
 }
