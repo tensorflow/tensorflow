@@ -4,8 +4,8 @@
 
 // CHECK-LABEL: tensorlistConst
 func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
-  // CHECK: %[[ELEMENT0:.*]] = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
-  // CHECK: %[[ELEMENT1:.*]] = "tf.Const"() {value = dense<[3, 4, 5]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-DAG: %[[ELEMENT0:.*]] = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-DAG: %[[ELEMENT1:.*]] = "tf.Const"() {value = dense<[3, 4, 5]> : tensor<3xi32>} : () -> tensor<3xi32>
   // CHECK: %[[LIST:.*]] = "tf.Pack"(%[[ELEMENT0]], %[[ELEMENT1]]) {axis = 0 : i64} : (tensor<3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %0 = "tf.Const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F56415249414E542074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A2022485C6E5C30323674656E736F72666C6F773A3A54656E736F724C6973745C3032325C3032305C3030305C3030335C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3030315C3032325C3030325C3031305C3030335C3033325C725C3031305C3030335C3032325C3030345C3032325C3030325C3031305C3030333A5C3030335C3030305C3030315C3030325C3033325C725C3031305C3030335C3032325C3030345C3032325C3030325C3031305C3030333A5C3030335C3030335C3030345C30303522"> : tensor<!tf_type.variant>} : () -> tensor<!tf_type.variant<tensor<3xi32>>>
 
@@ -433,8 +433,8 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 
 // CHECK-LABEL:  func @cond_false
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<3x10xf32>, [[SHAPE:%.*]]: tensor<?xi32>, [[SIZE_DIFF:%.*]]: tensor<i32>, [[SIZE:%.*]]: tensor<i32>)
-// CHECK:  [[ZERO:%.*]] = constant dense<0> : tensor<i32>
-// CHECK:  [[ONE:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK-DAG:  [[ZERO:%.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:  [[ONE:%.*]] = constant dense<1> : tensor<1xi32>
 // CHECK:  [[RANK:%.*]] = "tf.Rank"([[INPUT]]) : (tensor<3x10xf32>) -> tensor<i32>
 // CHECK:  [[ELEM_RANK:%.*]] = "tf.Sub"([[RANK]], [[ONE]]) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
 // CHECK:  [[ZERO_1:%.*]] = constant dense<0> : tensor<i32>
