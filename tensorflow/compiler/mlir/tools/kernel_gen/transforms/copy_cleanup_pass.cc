@@ -16,9 +16,11 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -29,8 +31,14 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-// A pass to remove memref::AllocOps and memref::CopyOps ops if the only user
-// of the copy is only reading and the source is not mutated.
+// A pass to remove memref::AllocOps and memref::CopyOps ops.
+//
+// The idea behind this pass is to collect all patterns we are interested in in
+// a single place. Eventually, this should be replaced by a generalized copy
+// removal pass.
+
+// Handles the pattern where an input operand of a linalg generic is copied
+// even though the producer is not mutated.
 void RemoveCopyIfTargetOnlyRead(FuncOp func) {
   llvm::SmallVector<memref::AllocOp, 8> allocs_to_remove;
   llvm::SmallVector<memref::CopyOp, 8> copies_to_remove;
@@ -106,18 +114,44 @@ void RemoveCopyIfTargetOnlyRead(FuncOp func) {
     }
     if (source_is_mutated) return;
 
+    op->replaceAllUsesWith(ValueRange{copy.getSource()});
     allocs_to_remove.push_back(op);
     copies_to_remove.push_back(copy);
   });
-  for (auto it : llvm::zip(allocs_to_remove, copies_to_remove)) {
-    auto alloc_op = std::get<0>(it);
-    auto copy_op = std::get<1>(it);
-    auto source = copy_op.getSource();
-    copy_op->erase();
-    alloc_op->replaceAllUsesWith(ValueRange{source});
-    alloc_op->erase();
-  }
+  llvm::for_each(allocs_to_remove, [](Operation *op) { op->erase(); });
+  llvm::for_each(copies_to_remove, [](Operation *op) { op->erase(); });
 }
+
+// Handles the case where the last instructions of a function implements a copy
+// back to a function argument.
+void RemoveCopyIfTargetIsFunctionArg(FuncOp func) {
+  // For now only support this on functions with a single block.
+  if (!func.getBody().hasOneBlock()) return;
+
+  llvm::SmallVector<memref::AllocOp> allocs_to_remove;
+  llvm::SmallVector<memref::CopyOp> copies_to_remove;
+
+  Block &body = func.getBody().front();
+  for (auto &op : llvm::reverse(body.without_terminator())) {
+    if (auto copy = dyn_cast<memref::CopyOp>(op)) {
+      auto block_arg = copy.getTarget().dyn_cast<BlockArgument>();
+      if (!block_arg) break;
+      if (!isa<FuncOp>(block_arg.getOwner()->getParentOp()) ||
+          !block_arg.hasOneUse())
+        break;
+      auto alloc = copy.getSource().getDefiningOp<memref::AllocOp>();
+      if (!alloc) break;
+      alloc->replaceAllUsesWith(ValueRange{block_arg});
+      allocs_to_remove.push_back(alloc);
+      copies_to_remove.push_back(copy);
+      continue;
+    }
+    break;
+  }
+  llvm::for_each(allocs_to_remove, [](Operation *op) { op->erase(); });
+  llvm::for_each(copies_to_remove, [](Operation *op) { op->erase(); });
+}
+
 }  // namespace
 
 struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
@@ -125,7 +159,10 @@ struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
     registry.insert<memref::MemRefDialect>();
   }
 
-  void runOnFunction() override { RemoveCopyIfTargetOnlyRead(getFunction()); }
+  void runOnFunction() override {
+    RemoveCopyIfTargetOnlyRead(getFunction());
+    RemoveCopyIfTargetIsFunctionArg(getFunction());
+  }
 };
 
 std::unique_ptr<FunctionPass> CreateCopyCleanupPass() {
