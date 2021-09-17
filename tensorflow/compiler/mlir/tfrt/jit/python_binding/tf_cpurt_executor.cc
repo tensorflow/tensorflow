@@ -284,7 +284,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   result_storage.reserve(num_results);
   for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
 
-  RemainingResults results(&host_context_, result_storage);
+  RemainingResults results(result_storage);
 
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);

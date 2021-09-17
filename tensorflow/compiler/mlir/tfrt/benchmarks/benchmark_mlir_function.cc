@@ -96,7 +96,7 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
   llvm::SmallVector<RCReference<AsyncValue>> result_values;
   for (int i = 0; i < executable->signature().num_results(); ++i)
     result_values.emplace_back();
-  RemainingResults results(host.get(), result_values);
+  RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
   ReturnValueConverter<ResultConversionCtx> converter(results);

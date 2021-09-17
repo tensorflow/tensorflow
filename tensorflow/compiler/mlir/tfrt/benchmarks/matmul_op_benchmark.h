@@ -72,7 +72,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
                                         TensorToMemrefDesc(rhs)};
 
   auto result_values = std::array<RCReference<AsyncValue>, 2>{{}};
-  RemainingResults results(host.get(), result_values);
+  RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
   ReturnValueConverter<ResultConversionCtx> converter(results);

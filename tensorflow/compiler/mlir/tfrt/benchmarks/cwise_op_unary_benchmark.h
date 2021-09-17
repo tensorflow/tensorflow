@@ -70,7 +70,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
-  RemainingResults results(host.get(), result_values);
+  RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
   ReturnValueConverter<ResultConversionCtx> converter(results);
