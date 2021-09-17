@@ -103,6 +103,24 @@ class MultiDeviceIteratorCommonTest(test_base.DatasetTestBase,
     self.assertEqual(1,
                      multi_device_iterator.get_next(self._devices[2]).numpy())
 
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(), cls_combination))
+  def testEmptyDataset(self, cls):
+    dataset = dataset_ops.Dataset.range(0)
+    multi_device_iterator = cls(
+        dataset, devices=[self._devices[1], self._devices[2]])
+    with self.assertRaises(errors.OutOfRangeError):
+      multi_device_iterator.get_next()
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(), cls_combination))
+  def testEmptyDeviceList(self, cls):
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Length for attr 'devices' of 0 must be at least minimum 1"):
+      cls(dataset, devices=[])
+
 
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
@@ -413,6 +431,42 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
               dataset2, [self._devices[1], self._devices[2]]))
       self.assertEqual(self.evaluate(f(multi_device_iterator2)), 45)
       self.assertEqual(trace_count[0], 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testMissingDevices(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaisesRegex(ValueError, "`devices` must be provided."):
+      multi_device_iterator_ops.OwnedMultiDeviceIterator(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testMissingInput(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "When `dataset` is not provided, both `components` and `element_spec` "
+        "must be specified."):
+      multi_device_iterator_ops.OwnedMultiDeviceIterator(
+          dataset=None, devices=[self._devices[1], self._devices[2]])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testExtraElementSpecInput(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaisesRegex(
+        ValueError,
+        "When `dataset` is provided, `element_spec` and `components` must "
+        "not be specified."):
+      multi_device_iterator_ops.OwnedMultiDeviceIterator(
+          dataset, devices=[self._devices[1], self._devices[2]],
+          element_spec=dataset.element_spec)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testGraphMode(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "OwnedMultiDeviceIterator is only supported inside of tf.function or "
+        "when eager execution is enabled."):
+      multi_device_iterator_ops.OwnedMultiDeviceIterator(
+          dataset, devices=[self._devices[1], self._devices[2]])
 
 
 if __name__ == "__main__":
