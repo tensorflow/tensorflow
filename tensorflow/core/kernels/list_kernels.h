@@ -63,28 +63,29 @@ void SetZero(OpKernelContext* ctx, Tensor& tensor) {
     auto ptr =
         se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
     auto stream = ctx->op_device_context()->stream();
-    CHECK_EQ(true, stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok());
+    DCHECK_EQ(true, stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok());
   } else {
     functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
                                          tensor.flat<T>());
   }
 }
 
+template <typename T>
+void CopyTensorPluggableDevice(OpKernelContext* ctx, Tensor& src, Tensor& dst) {
+  auto src_t = src.unaligned_flat<T>();
+  auto dst_t = dst.flat<T>();
+  DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+  auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
+  auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
+  auto stream = ctx->op_device_context()->stream();
+  DCHECK_EQ(true, stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok());
+}
+
 template <typename Device, typename T>
 void CopyTensor(OpKernelContext* ctx, Tensor& src, Tensor& dst) {
   auto src_t = src.unaligned_flat<T>();
   auto dst_t = dst.flat<T>();
-  if (ctx->op_device_context() &&
-      ctx->op_device_context()->IsPluggableDevice()) {
-    DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
-    auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
-    auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
-    auto stream = ctx->op_device_context()->stream();
-    CHECK_EQ(true,
-             stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok());
-  } else {
-    dst_t.device(ctx->eigen_device<Device>()) = src_t;
-  }
+  dst_t.device(ctx->eigen_device<Device>()) = src_t;
 }
 
 template <typename T>
@@ -591,6 +592,16 @@ class TensorListSplit : public OpKernel {
                     "Expected lengths to be a vector, received shape: ",
                     lengths.shape().DebugString()));
     output_list.tensors().reserve(lengths.shape().dim_size(0));
+
+    void (*copy_tensor)(OpKernelContext * ctx, Tensor&, Tensor&);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      copy_tensor = &CopyTensorPluggableDevice<T>;
+    } else {
+      copy_tensor = &CopyTensor<Device, T>;
+    }
+
     int64_t start = 0;
     int64_t end = 0;
     for (int i = 0; i < lengths.shape().dim_size(0); ++i) {
@@ -609,7 +620,7 @@ class TensorListSplit : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      CopyTensor<Device, T>(c, tmp, aligned);
+      copy_tensor(c, tmp, aligned);
       output_list.tensors().emplace_back(aligned);
     }
     OP_REQUIRES(c, end == input_tensor.shape().dim_size(0),
@@ -752,6 +763,16 @@ class TensorListFromTensor : public OpKernel {
                     " from a tensor with shape ", output_shape.DebugString()));
     output_list.element_shape = element_shape;
     output_list.tensors().reserve(t.shape().dim_size(0));
+
+    void (*copy_tensor)(OpKernelContext * ctx, Tensor&, Tensor&);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      copy_tensor = &CopyTensorPluggableDevice<T>;
+    } else {
+      copy_tensor = &CopyTensor<Device, T>;
+    }
+
     for (int i = 0; i < t.shape().dim_size(0); ++i) {
       Tensor tmp = t.Slice(i, i + 1);
       TensorShape tmp_shape = tmp.shape();
@@ -762,7 +783,7 @@ class TensorListFromTensor : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      CopyTensor<Device, T>(c, tmp, aligned);
+      copy_tensor(c, tmp, aligned);
       output_list.tensors().push_back(aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
@@ -787,7 +808,15 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     TF_RETURN_IF_ERROR(c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
     // TODO(apassos) do all slices in a single kernel invocation instead of
     // many small ones.
-    CopyTensor<Device, T>(c, tmp, aligned);
+    void (*copy_tensor)(OpKernelContext * ctx, Tensor&, Tensor&);
+    bool is_pluggable_device =
+        c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+    if (is_pluggable_device) {
+      copy_tensor = &CopyTensorPluggableDevice<T>;
+    } else {
+      copy_tensor = &CopyTensor<Device, T>;
+    }
+    copy_tensor(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
   return Status::OK();
@@ -1088,7 +1117,7 @@ class TensorListPushBackBatch : public OpKernel {
           input_reshaped.CopyFrom(input, input_t_shape);
 
           auto input_batch = input_reshaped.Slice(b, b + 1);
-          CopyTensor<Device, T>(c, input_batch, frame);
+          CopyTensorPluggableDevice<T>(c, input_batch, frame);
         } else {
           frame_t.device(c->eigen_device<Device>()) =
               input_t.template chip<0>(b);
