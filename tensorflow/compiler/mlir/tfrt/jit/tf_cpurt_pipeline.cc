@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -156,6 +158,11 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  mlir::VectorTransferToSCFOptions vec_to_scf_options;
+  vec_to_scf_options.unroll = true;
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
 }
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {

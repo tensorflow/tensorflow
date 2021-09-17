@@ -115,6 +115,7 @@ cc_library(
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToSCF",
     ],
     alwayslink = 1,
 )
