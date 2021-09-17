@@ -183,6 +183,7 @@ COMMON_PROTO_SRCS = [
     "//tensorflow/core/protobuf:rewriter_config.proto",
     "//tensorflow/core/protobuf:tensor_bundle.proto",
     "//tensorflow/core/protobuf:saver.proto",
+    "//tensorflow/core/protobuf:status.proto",
     "//tensorflow/core/protobuf:verifier_config.proto",
 ]
 

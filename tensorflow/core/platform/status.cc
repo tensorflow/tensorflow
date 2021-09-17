@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/status.pb.h"
 
 namespace tensorflow {
 
@@ -96,7 +97,7 @@ Status::Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
-  state_->msg = string(msg);
+  state_->msg = std::string(msg);
   state_->stack_trace = std::move(stack_trace);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
@@ -116,7 +117,7 @@ void Status::SlowCopyFrom(const State* src) {
   }
 }
 
-const string& Status::empty_string() {
+const std::string& Status::empty_string() {
   static string* empty = new string;
   return *empty;
 }
@@ -126,7 +127,7 @@ const std::vector<StackFrame>& Status::empty_stack_trace() {
   return *empty;
 }
 
-string error_name(error::Code code) {
+std::string error_name(error::Code code) {
   switch (code) {
     case tensorflow::error::OK:
       return "OK";
@@ -187,11 +188,11 @@ string error_name(error::Code code) {
   }
 }
 
-string Status::ToString() const {
+std::string Status::ToString() const {
   if (state_ == nullptr) {
     return "OK";
   } else {
-    string result(error_name(code()));
+    std::string result(error_name(code()));
     result += ": ";
     result += state_->msg;
 
@@ -245,9 +246,9 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
-string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
-                                 const char* msg) {
-  string r("Non-OK-status: ");
+std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
+                                      const char* msg) {
+  std::string r("Non-OK-status: ");
   r += msg;
   r += " status: ";
   r += v.ToString();
@@ -263,21 +264,24 @@ StatusGroup::StatusGroup(std::initializer_list<Status> statuses) {
   }
 }
 
-// kDerivedMarker is appended to the Status message string to indicate whether a
-// Status object is the root cause of an error or if it has been triggered by
-// cancelling/aborting a step.
-static const char* kDerivedMarker = "[_Derived_]";
+static constexpr const char kDerivedStatusProtoUrl[] =
+    "type.googleapis.com/tensorflow.DerivedStatus";
 
 Status StatusGroup::MakeDerived(const Status& s) {
   if (IsDerived(s)) {
     return s;
   } else {
-    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+    Status derived(s);
+    // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
+    // of using the string directly. The string is never used so it is not
+    // causing any issues at the moment.
+    derived.SetPayload(kDerivedStatusProtoUrl, "");
+    return derived;
   }
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
-  return absl::StrContains(s.error_message(), kDerivedMarker);
+  return s.GetPayload(kDerivedStatusProtoUrl).has_value();
 }
 
 void StatusGroup::ConfigureLogHistory() {
@@ -316,6 +320,8 @@ std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
   for (const auto& status : non_derived_) {
     status.ForEachPayload(capture_payload);
   }
+
+  payloads.erase(kDerivedStatusProtoUrl);
 
   return payloads;
 }
