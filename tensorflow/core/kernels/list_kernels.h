@@ -63,7 +63,8 @@ void SetZero(OpKernelContext* ctx, Tensor& tensor) {
     auto ptr =
         se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
     auto stream = ctx->op_device_context()->stream();
-    DCHECK_EQ(true, stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok());
+    auto result = stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok();
+    DCHECK_EQ(true, result);
   } else {
     functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
                                          tensor.flat<T>());
@@ -78,7 +79,8 @@ void CopyTensorPluggableDevice(OpKernelContext* ctx, Tensor& src, Tensor& dst) {
   auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
   auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
   auto stream = ctx->op_device_context()->stream();
-  DCHECK_EQ(true, stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok());
+  auto result = stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
+  DCHECK_EQ(true, result);
 }
 
 template <typename Device, typename T>
