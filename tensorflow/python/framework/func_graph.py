@@ -858,10 +858,7 @@ class FuncGraph(ops.Graph):
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
     if capture is None:
-      # We clear all control dependencies and place the Const op on the same
-      # device as the source tensor. The device placement may be relaxed at
-      # a later date.
-      with ops.control_dependencies(None), self.device(tensor.device):
+      with ops.control_dependencies(None):
         constant_value = tensor_util.constant_value(tensor)
         if constant_value is None:
           # Some eager tensors, e.g. parallel tensors, are not convertible to a
