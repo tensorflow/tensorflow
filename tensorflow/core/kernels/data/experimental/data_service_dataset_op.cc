@@ -709,6 +709,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void UpdateLocalTasks() TF_LOCKS_EXCLUDED(mu_) {
+      if (StrictRoundRobin()) {
+        return;
+      }
       std::vector<std::shared_ptr<Task>> tasks;
       absl::flat_hash_map<std::string, std::shared_ptr<Task>>
           previous_local_tasks, local_tasks;
