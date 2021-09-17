@@ -376,6 +376,16 @@ Status DispatcherState::JobForJobClientId(int64_t job_client_id,
   return Status::OK();
 }
 
+std::vector<int64_t> DispatcherState::ListActiveClientIds() {
+  std::vector<int64_t> ids;
+  for (const auto& it : jobs_for_client_ids_) {
+    if (it.second && !it.second->finished) {
+      ids.push_back(it.first);
+    }
+  }
+  return ids;
+}
+
 int64_t DispatcherState::NextAvailableJobClientId() const {
   return next_available_job_client_id_;
 }

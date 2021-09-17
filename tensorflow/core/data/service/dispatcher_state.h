@@ -106,6 +106,8 @@ class DispatcherState {
       return H::combine(std::move(h), k.name, k.index);
     }
 
+    std::string DebugString() const { return absl::StrCat(name, "/", index); }
+
     const std::string name;
     const int64_t index;
   };
@@ -231,6 +233,8 @@ class DispatcherState {
   // if the job_client_id is unknown or has been released.
   Status JobForJobClientId(int64_t job_client_id,
                            std::shared_ptr<const Job>& job);
+  // Returns a list of all active client ids.
+  std::vector<int64_t> ListActiveClientIds();
   // Returns the next available job client id.
   int64_t NextAvailableJobClientId() const;
 

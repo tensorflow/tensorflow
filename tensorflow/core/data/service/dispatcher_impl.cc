@@ -70,6 +70,7 @@ constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 constexpr char kDatasetsDir[] = "datasets";
 constexpr int64_t kDefaultJobGcCheckIntervalMs = 10 * 60 * 1000;  // 10 minutes.
 constexpr int64_t kDefaultJobGcTimeoutMs = 5 * 60 * 1000;         // 5 minutes.
+constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;        // 2 minutes.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -137,6 +138,9 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   }
   if (new_config.job_gc_timeout_ms() == 0) {
     new_config.set_job_gc_timeout_ms(kDefaultJobGcTimeoutMs);
+  }
+  if (new_config.client_timeout_ms() == 0) {
+    new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
   }
   return new_config;
 }
@@ -210,11 +214,27 @@ Status DataServiceDispatcherImpl::Start() {
           RestoreSplitProviders(*job, split_providers_[job->job_id]));
     }
   }
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    // Conservatively pretend we just received a heartbeat from all clients, so
+    // that we don't garbage collect jobs too early.
+    latest_client_heartbeats_us_[client_id] = env_->NowMicros();
+  }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   started_ = true;
   return Status::OK();
+}
+
+size_t DataServiceDispatcherImpl::NumActiveJobs() TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  int64 count = 0;
+  for (const auto& job : state_.ListJobs()) {
+    if (!job->finished) {
+      count++;
+    }
+  }
+  return count;
 }
 
 Status DataServiceDispatcherImpl::RestoreSplitProviders(
@@ -697,6 +717,7 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
   acquire_job_client->set_job_client_id(job_client_id);
   acquire_job_client->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(Apply(update));
+  latest_client_heartbeats_us_[job_client_id] = env_->NowMicros();
   return Status::OK();
 }
 
@@ -821,6 +842,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  latest_client_heartbeats_us_[request->job_client_id()] = env_->NowMicros();
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
@@ -996,13 +1018,40 @@ void DataServiceDispatcherImpl::JobGcThread() {
     if (cancelled_) {
       return;
     }
-    Status s = GcOldJobs();
-    if (!s.ok()) {
-      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    {
+      Status s = ReleaseMissingClients();
+      if (!s.ok()) {
+        LOG(WARNING) << "Error releasing missing clients: " << s;
+      }
+    }
+
+    {
+      Status s = GcOldJobs();
+      if (!s.ok()) {
+        LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+      }
     }
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
+}
+
+Status DataServiceDispatcherImpl::ReleaseMissingClients()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64_t now = env_->NowMicros();
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    if (now > latest_client_heartbeats_us_[client_id] +
+                  config_.client_timeout_ms() * 1000) {
+      LOG(INFO) << "Releasing timed-out client with id " << client_id;
+      Update update;
+      ReleaseJobClientUpdate* release_client =
+          update.mutable_release_job_client();
+      release_client->set_job_client_id(client_id);
+      release_client->set_time_micros(now);
+      TF_RETURN_IF_ERROR(Apply(update));
+    }
+  }
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

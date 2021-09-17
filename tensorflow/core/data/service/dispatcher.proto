@@ -181,7 +181,7 @@ message ClientHeartbeatResponse {
 // Next tag: 3
 message WorkerInfo {
   string address = 1;
-  int64 id = 2;
+  reserved 2;
 }
 
 // Next tag: 1

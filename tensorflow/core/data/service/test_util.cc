@@ -167,6 +167,17 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
           .mutable_tensor());
   return dataset;
 }
+
+Status WaitWhile(std::function<StatusOr<bool>()> f) {
+  while (true) {
+    TF_ASSIGN_OR_RETURN(bool result, f());
+    if (!result) {
+      return Status::OK();
+    }
+    Env::Default()->SleepForMicroseconds(10 * 1000);  // 10ms.
+  }
+}
+
 }  // namespace testing
 }  // namespace data
 }  // namespace tensorflow

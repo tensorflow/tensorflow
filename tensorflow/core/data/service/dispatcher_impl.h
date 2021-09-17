@@ -135,6 +135,9 @@ class DataServiceDispatcherImpl {
   // journal to restore the dispatcher's state.
   Status Start();
 
+  // Returns the number of active jobs.
+  size_t NumActiveJobs() TF_LOCKS_EXCLUDED(mu_);
+
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
@@ -271,6 +274,8 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
   void JobGcThread();
+  // Releases job clients that haven't heartbeated recently.
+  Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
@@ -305,6 +310,9 @@ class DataServiceDispatcherImpl {
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
       remove_task_requests_ TF_GUARDED_BY(mu_);
+  // Map from client id to the time of the client's last heartbeat.
+  absl::flat_hash_map<int64_t, int64_t> latest_client_heartbeats_us_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

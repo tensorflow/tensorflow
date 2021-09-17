@@ -47,6 +47,10 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
     const std::vector<tstring>& filenames,
     const std::vector<tstring>& contents);
 
+// Repeatedly calls `f()`, blocking until `f()` returns `false`.
+//
+// Returns an error if `f()` returns an error.
+Status WaitWhile(std::function<StatusOr<bool>()> f);
 }  // namespace testing
 }  // namespace data
 }  // namespace tensorflow
