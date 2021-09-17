@@ -2416,3 +2416,91 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadBias(%arg: tensor<2xi32>) -> t
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x3xf32>, tensor<5x3xf32>, tensor<f32>) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
 }
+
+// CHECK-LABEL:   func @optimizeTopK(
+// CHECK-SAME:                        %[[ARG:.*]]: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[VALUES]], %[[INDICES]] : tensor<3x5xf32>, tensor<3x5xi32>
+// CHECK:         }
+func @optimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0, %1 : tensor<3x5xf32>, tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @optimizeTopKOnlyValues(
+// CHECK-SAME:                                 %[[ARG:.*]]: tensor<3x10xf32>) -> tensor<3x5xf32> {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[VALUES]] : tensor<3x5xf32>
+// CHECK:         }
+func @optimizeTopKOnlyValues(%arg: tensor<3x10xf32>) -> tensor<3x5xf32>{
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  return %0 : tensor<3x5xf32>
+}
+
+// CHECK-LABEL:   func @optimizeTopKOnlyIndices(
+// CHECK-SAME:                                  %[[ARG:.*]]: tensor<3x10xf32>) -> tensor<3x5xi32> {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[INDICES]] : tensor<3x5xi32>
+// CHECK:         }
+func @optimizeTopKOnlyIndices(%arg: tensor<3x10xf32>) -> tensor<3x5xi32>{
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0 : tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @nonZeroBeginDontOptimizeTopK
+func @nonZeroBeginDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0, %1 : tensor<3x5xf32>, tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @invalidSliceSizeDontOptimizeTopK
+func @invalidSliceSizeDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<2x5xf32>, tensor<2x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<[0, 0]> : tensor<2xi32>
+  %cst_1 = constant dense<[2, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x5xi32>
+  return %0, %1 : tensor<2x5xf32>, tensor<2x5xi32>
+}
+
+// CHECK-LABEL:   func @multiUsesDontOptimizeTopK
+func @multiUsesDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>, tensor<3x10xf32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  %2 = "tfl.add"(%values, %values) {fused_activation_function = "NONE"} : (tensor<3x10xf32>, tensor<3x10xf32>) -> tensor<3x10xf32>
+  return %0, %1, %2 : tensor<3x5xf32>, tensor<3x5xi32>, tensor<3x10xf32>
+}
+
+
