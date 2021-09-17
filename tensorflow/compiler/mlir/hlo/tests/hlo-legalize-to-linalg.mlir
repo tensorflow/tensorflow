@@ -3079,8 +3079,8 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK-SAME:   %[[VAL_0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_2:[a-zA-Z0-9_]*]]
-// CHECK:           %[[VAL_3:.*]] = constant 0 : index
-// CHECK:           %[[VAL_4:.*]] = constant 0 : index
+// CHECK-DAG:       %[[VAL_3:.*]] = constant 0 : index
+// CHECK-DAG:       %[[VAL_4:.*]] = constant 0 : index
 // CHECK:           %[[VAL_5:.*]] = tensor.dim %[[VAL_0]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_6:.*]] = constant 1 : index
 // CHECK:           %[[VAL_7:.*]] = tensor.dim %[[VAL_0]], %[[VAL_6]] : tensor<?x?xi32>
@@ -3140,8 +3140,8 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-DAG:      %[[A_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[A_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:      %[[B_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[B_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:      %[[C_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[C_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK:          %[[VAL_3:.*]] = constant 0 : index
-// CHECK:          %[[VAL_4:.*]] = constant 0 : index
+// CHECK-DAG:      %[[VAL_3:.*]] = constant 0 : index
+// CHECK-DAG:      %[[VAL_4:.*]] = constant 0 : index
 // CHECK:          %[[VAL_5:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_6:.*]] = constant 1 : index
 // CHECK:          %[[VAL_7:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_6]] : tensor<?x?xi32>

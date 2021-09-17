@@ -48,9 +48,9 @@ module {
 // CHECK:         }
 
 // CHECK:   func private @func_2_GPU_FLOAT(%[[VAL_0:.*]]: tensor<1xf32>, %[[VAL_1:.*]]: tensor<1xf32>) -> tensor<2x1xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
-// CHECK:           %[[VAL_2:.*]] = constant dense<1> : tensor<4xi32>
-// CHECK:           %[[VAL_3:.*]] = constant dense<2> : tensor<1xi32>
-// CHECK:           %[[VAL_4:.*]] = constant dense<[2, 1]> : tensor<2xi32>
+// CHECK-DAG:       %[[VAL_2:.*]] = constant dense<1> : tensor<4xi32>
+// CHECK-DAG:       %[[VAL_3:.*]] = constant dense<2> : tensor<1xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = constant dense<[2, 1]> : tensor<2xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.reshape"(%[[VAL_1]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.concatenation"(%[[VAL_5]], %[[VAL_6]]) {axis = 3 : i32, fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x2xf32>
@@ -151,8 +151,8 @@ func private @quantize_ops_CPU_QUANTIZED_INT8(%arg0: tensor<384x512x!quant.unifo
 // CHECK:         }
 
 // CHECK:   func private @quantize_ops_CPU_FLOAT(%[[VAL_0:.*]]: tensor<384x512x!quant.uniform<i8:f32, 1.000000e-01>>, %[[VAL_1:.*]]: tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>, %[[VAL_2:.*]]: tensor<128x!quant.uniform<i8:f32, 2.000000e-01:-128>>, %[[VAL_3:.*]]: tensor<128x!quant.uniform<i8:f32, 2.000000e-01:-4>>) -> tensor<1x384x128x!quant.uniform<i8:f32, 3.000000e-01:-3>> attributes {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "quantize_ops"} {
-// CHECK:           %[[VAL_4:.*]] = constant dense<0.000000e+00> : tensor<128xf32>
-// CHECK:           %[[VAL_5:.*]] = constant dense<[1, 384, 128]> : tensor<3xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = constant dense<0.000000e+00> : tensor<128xf32>
+// CHECK-DAG:       %[[VAL_5:.*]] = constant dense<[1, 384, 128]> : tensor<3xi32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.dequantize"(%[[VAL_0]]) {tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<384x512x!quant.uniform<i8:f32, 1.000000e-01>>) -> tensor<384x512xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.dequantize"(%[[VAL_1]]) {tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>) -> tensor<128x512xf32>
 // CHECK:           %[[VAL_8:.*]] = "tfl.fully_connected"(%[[VAL_6]], %[[VAL_7]], %[[VAL_4]]) {fused_activation_function = "NONE", keep_num_dims = false, tac.device = "CPU", tac.inference_type = "FLOAT", weights_format = "DEFAULT"} : (tensor<384x512xf32>, tensor<128x512xf32>, tensor<128xf32>) -> tensor<384x128xf32>
