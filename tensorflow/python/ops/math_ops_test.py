@@ -1013,7 +1013,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert elements of .* to Tensor")
 
     class RHSReturnsTrue(object):
 

@@ -67,7 +67,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertIntWithIncompatibleDtype(self):
     converter = self.makePythonTensorConverter()
     with self.assertRaisesRegex(
-        TypeError, "Expected string, got 3 of type 'int' instead."
+        TypeError, "Expected string, but got 3 of type 'int'"
         "|Cannot convert 3 to EagerTensor of dtype string"):
       converter.Convert(3, types_pb2.DT_STRING)
 
@@ -122,7 +122,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertListWithIncompatibleDtype(self):
     converter = self.makePythonTensorConverter()
     with self.assertRaisesRegex(
-        TypeError, "Expected string, got .* of type 'int' instead."
+        TypeError, "Expected string, but got .* of type 'int'"
         "|Cannot convert .* to EagerTensor of dtype string"):
       converter.Convert([[1, 2, 3], [4, 5, 6]], types_pb2.DT_STRING)
 
