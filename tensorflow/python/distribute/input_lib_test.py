@@ -284,49 +284,6 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
   @combinations.generate(
       combinations.combine(
           mode=["eager"],
-          input_type=["input_fn", "dataset"],
-          distribution=[
-              strategy_combinations.one_device_strategy,
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.multi_worker_mirrored_2x1_cpu
-          ]))
-  def testDisablingOwnedIteratorsInTF2(self, distribution, input_type):
-    if not tf2.enabled():
-      self.skipTest("unsupported test combination")
-
-    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
-    input_workers = input_lib.InputWorkers(worker_device_pairs)
-    dataset_fn = lambda _: dataset_ops.DatasetV2.range(10)
-    dataset_or_input_fn = self._create_dataset_or_input_fn(
-        input_type, dataset_fn)
-
-    input_workers = input_lib.InputWorkers(worker_device_pairs)
-    if input_type == "dataset":
-      dist_dataset = input_lib.get_distributed_dataset(dataset_or_input_fn,
-                                                       input_workers,
-                                                       distribution)
-    else:
-      dist_dataset = input_lib.get_distributed_datasets_from_function(
-          dataset_or_input_fn, input_workers, [distribute_lib.InputContext()],
-          distribution)
-
-    # Default Iterator types in TF2.
-    iterator = iter(dist_dataset)
-    self.assertIsInstance(iterator, input_lib.DistributedIterator)
-    self.assertIsInstance(iterator._iterators[0],
-                          input_lib._SingleWorkerOwnedDatasetIterator)
-
-    # Disable creating owned iterators by setting a property on the strategy.
-    distribution._enable_legacy_iterators = True
-    iterator = iter(dist_dataset)
-    self.assertIsInstance(iterator, input_lib.DistributedIteratorV1)
-    self.assertIsInstance(iterator._iterators[0],
-                          input_lib._SingleWorkerDatasetIterator)
-
-  @combinations.generate(
-      combinations.combine(
-          mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ]))

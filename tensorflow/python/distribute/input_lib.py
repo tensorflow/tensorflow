@@ -1359,35 +1359,22 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       raise ValueError("To use this dataset, you need to pass this dataset to "
                        "ClusterCoordinator.create_per_worker_dataset.")
 
-    # This is an optional flag that can be used to turn off using
-    # OwnedMultiDeviceIterators and instead use the legacy MultiDeviceIterators
-    # as a stop gap solution that will allow us to roll out this change.
-    enable_legacy_iterators = getattr(self._strategy,
-                                      "_enable_legacy_iterators", False)
-
     canonicalize_devices = getattr(self._strategy, "_canonicalize_devices",
                                    True)
 
-    worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
-                                                    self._input_workers,
-                                                    enable_legacy_iterators,
-                                                    self._options,
-                                                    canonicalize_devices)
-    if enable_legacy_iterators:
-      iterator = DistributedIteratorV1(
-          self._input_workers,
-          worker_iterators,
-          self._strategy,
-          cardinality=self._cardinality,
-          enable_get_next_as_optional=self._enable_get_next_as_optional)
-    else:
-      iterator = DistributedIterator(
-          self._input_workers,
-          worker_iterators,
-          self._strategy,
-          cardinality=self._cardinality,
-          enable_get_next_as_optional=self._enable_get_next_as_optional,
-          options=self._options)
+    worker_iterators = _create_iterators_per_worker(
+        self._cloned_datasets,
+        self._input_workers,
+        enable_legacy_iterators=False,
+        options=self._options,
+        canonicalize_devices=canonicalize_devices)
+    iterator = DistributedIterator(
+        self._input_workers,
+        worker_iterators,
+        self._strategy,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional,
+        options=self._options)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
     # When async eager is enabled, sometimes the iterator may not finish
@@ -1674,34 +1661,22 @@ class DistributedDatasetsFromFunction(_IterableInput,
       raise ValueError("You need to use this dataset in "
                        "ClusterCoordinator.create_per_worker_dataset.")
 
-    # This is an optional flag that can be used to turn off using
-    # OwnedMultiDeviceIterators and instead use the legacy MultiDeviceIterators
-    # as a stop gap solution that will allow us to roll out this change.
-    enable_legacy_iterators = getattr(self._strategy,
-                                      "_enable_legacy_iterators", False)
     canonicalize_devices = getattr(self._strategy, "_canonicalize_devices",
                                    True)
 
-    iterators = _create_iterators_per_worker(self._datasets,
-                                             self._input_workers,
-                                             enable_legacy_iterators,
-                                             self._options,
-                                             canonicalize_devices)
-    if enable_legacy_iterators:
-      iterator = DistributedIteratorV1(
-          self._input_workers,
-          iterators,
-          self._strategy,
-          cardinality=self._cardinality,
-          enable_get_next_as_optional=self._enable_get_next_as_optional)
-    else:
-      iterator = DistributedIterator(
-          input_workers=self._input_workers,
-          iterators=iterators,
-          strategy=self._strategy,
-          cardinality=self._cardinality,
-          enable_get_next_as_optional=self._enable_get_next_as_optional,
-          options=self._options)
+    iterators = _create_iterators_per_worker(
+        self._datasets,
+        self._input_workers,
+        enable_legacy_iterators=False,
+        options=self._options,
+        canonicalize_devices=canonicalize_devices)
+    iterator = DistributedIterator(
+        input_workers=self._input_workers,
+        iterators=iterators,
+        strategy=self._strategy,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional,
+        options=self._options)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
     # When async eager is enabled, sometimes the iterator may not finish
