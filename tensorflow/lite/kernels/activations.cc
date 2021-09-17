@@ -390,7 +390,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -495,7 +495,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
