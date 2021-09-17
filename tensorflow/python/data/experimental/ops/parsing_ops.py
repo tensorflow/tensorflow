@@ -38,7 +38,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
         input_dataset.element_spec,
         tensor_spec.TensorSpec([None], dtypes.string)):
       raise TypeError("Input dataset should be a dataset of vectors of "
-                      "strings.")
+                      f"strings. Instead it is `{input_dataset.element_spec}`.")
     self._num_parallel_calls = num_parallel_calls
     if deterministic is None:
       self._deterministic = "default"
