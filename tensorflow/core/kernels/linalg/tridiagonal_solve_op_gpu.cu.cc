@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -173,7 +173,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
       // Gtsv expects rhs in column-major form, so we have to transpose.
       // rhs is transposed into temp, gtsv replaces temp with solution, then
       // temp is transposed into x.
-      std::unique_ptr<CudaSolver> cublas_solver(new CudaSolver(context));
+      std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
       Tensor temp;
       TensorShape temp_shape({k, m});
       OP_REQUIRES_OK(context,
@@ -190,7 +190,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
 
  private:
   void TransposeWithGeam(OpKernelContext* context,
-                         const std::unique_ptr<CudaSolver>& cublas_solver,
+                         const std::unique_ptr<GpuSolver>& cublas_solver,
                          const Scalar* src, Scalar* dst, const int src_rows,
                          const int src_cols) const {
     const Scalar zero(0), one(1);
@@ -346,7 +346,7 @@ class TridiagonalSolveOpGpu : public OpKernel {
     TensorShape lhs_transposed_shape(
         gtl::ArraySlice<int64>(dims.data(), ndims));
 
-    std::unique_ptr<CudaSolver> cublas_solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
     OP_REQUIRES_OK(context, cublas_solver->allocate_scoped_tensor(
                                 DataTypeToEnum<Scalar>::value,
                                 lhs_transposed_shape, &lhs_transposed));

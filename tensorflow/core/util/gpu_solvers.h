@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================
 */
 
-#ifndef TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SOLVERS_H_
-#define TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SOLVERS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
+#define TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
 
-// This header declares the class CudaSolver, which contains wrappers of linear
-// algebra solvers in the cuBlas and cuSolverDN libraries for use in TensorFlow
-// kernels.
+// This header declares the class GpuSolver, which contains wrappers of linear
+// algebra solvers in the cuBlas/cuSolverDN or rocmSolver libraries for use in
+// TensorFlow kernels.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -30,6 +30,11 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+#else
+#include "rocm/include/hip/hip_complex.h"
+#include "rocm/include/rocblas.h"
+#include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -69,10 +74,35 @@ template <typename T>
 cublasOperation_t CublasAdjointOp() {
   return Eigen::NumTraits<T>::IsComplex ? CUBLAS_OP_C : CUBLAS_OP_T;
 }
+#else  // TENSORFLOW_USE_ROCM
+// Type traits to get ROCm complex types from std::complex<T>.
+template <typename T>
+struct ROCmComplexT {
+  typedef T type;
+};
+template <>
+struct ROCmComplexT<std::complex<float>> {
+  typedef rocblas_float_complex type;
+};
+template <>
+struct ROCmComplexT<std::complex<double>> {
+  typedef rocblas_double_complex type;
+};
+// Converts pointers of std::complex<> to pointers of
+// ROCmComplex/ROCmDoubleComplex. No type conversion for non-complex types.
+template <typename T>
+inline const typename ROCmComplexT<T>::type* ROCmComplex(const T* p) {
+  return reinterpret_cast<const typename ROCmComplexT<T>::type*>(p);
+}
+template <typename T>
+inline typename ROCmComplexT<T>::type* ROCmComplex(T* p) {
+  return reinterpret_cast<typename ROCmComplexT<T>::type*>(p);
+}
+#endif
 
 // Container of LAPACK info data (an array of int) generated on-device by
-// a CudaSolver call. One or more such objects can be passed to
-// CudaSolver::CopyLapackInfoToHostAsync() along with a callback to
+// a GpuSolver call. One or more such objects can be passed to
+// GpuSolver::CopyLapackInfoToHostAsync() along with a callback to
 // check the LAPACK info data after the corresponding kernels
 // finish and LAPACK info has been copied from the device to the host.
 class DeviceLapackInfo;
@@ -80,7 +110,7 @@ class DeviceLapackInfo;
 // Host-side copy of LAPACK info.
 class HostLapackInfo;
 
-// The CudaSolver class provides a simplified templated API for the dense linear
+// The GpuSolver class provides a simplified templated API for the dense linear
 // solvers implemented in cuSolverDN (http://docs.nvidia.com/cuda/cusolver) and
 // cuBlas (http://docs.nvidia.com/cuda/cublas/#blas-like-extension/).
 // An object of this class wraps static cuSolver and cuBlas instances,
@@ -88,13 +118,13 @@ class HostLapackInfo;
 // in the OpKernelContext provided to the constructor.
 //
 // Notice: All the computational member functions are asynchronous and simply
-// launch one or more Cuda kernels on the Cuda stream wrapped by the CudaSolver
+// launch one or more Cuda kernels on the Cuda stream wrapped by the GpuSolver
 // object. To check the final status of the kernels run, call
-// CopyLapackInfoToHostAsync() on the CudaSolver object to set a callback that
+// CopyLapackInfoToHostAsync() on the GpuSolver object to set a callback that
 // will be invoked with the status of the kernels launched thus far as
 // arguments.
 //
-// Example of an asynchronous TensorFlow kernel using CudaSolver:
+// Example of an asynchronous TensorFlow kernel using GpuSolver:
 //
 // template <typename Scalar>
 // class SymmetricPositiveDefiniteSolveOpGpu : public AsyncOpKernel {
@@ -107,7 +137,7 @@ class HostLapackInfo;
 //     ...
 //
 //     // 2. Initialize the solver object.
-//     std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+//     std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 //
 //     // 3. Launch the two compute kernels back to back on the stream without
 //     // synchronizing.
@@ -136,11 +166,11 @@ class HostLapackInfo;
 template <typename Scalar>
 class ScratchSpace;
 
-class CudaSolver {
+class GpuSolver {
  public:
   // This object stores a pointer to context, which must outlive it.
-  explicit CudaSolver(OpKernelContext* context);
-  virtual ~CudaSolver();
+  explicit GpuSolver(OpKernelContext* context);
+  virtual ~GpuSolver();
 
   // Launches a memcpy of solver status data specified by dev_lapack_info from
   // device to the host, and asynchronously invokes the given callback when the
@@ -152,7 +182,7 @@ class CudaSolver {
   // `info_checker_callback` must call the DoneCallback of any asynchronous
   // OpKernel within which `solver` is used.
   static void CheckLapackInfoAndDeleteSolverAsync(
-      std::unique_ptr<CudaSolver> solver,
+      std::unique_ptr<GpuSolver> solver,
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
       std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
           info_checker_callback);
@@ -161,11 +191,11 @@ class CudaSolver {
   // apart from checking that the Status of all calls was Status::OK.
   // `done` may be nullptr.
   static void CheckLapackInfoAndDeleteSolverAsync(
-      std::unique_ptr<CudaSolver> solver,
+      std::unique_ptr<GpuSolver> solver,
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
       AsyncOpKernel::DoneCallback done);
 
-  // Returns a ScratchSpace. The CudaSolver object maintains a TensorReference
+  // Returns a ScratchSpace. The GpuSolver object maintains a TensorReference
   // to the underlying Tensor to prevent it from being deallocated prematurely.
   template <typename Scalar>
   ScratchSpace<Scalar> GetScratchSpace(const TensorShape& shape,
@@ -176,12 +206,12 @@ class CudaSolver {
                                        const std::string& debug_info,
                                        bool on_host);
   // Returns a DeviceLapackInfo that will live for the duration of the
-  // CudaSolver object.
+  // GpuSolver object.
   inline DeviceLapackInfo GetDeviceLapackInfo(int64_t size,
                                               const std::string& debug_info);
 
   // Allocates a temporary tensor that will live for the duration of the
-  // CudaSolver object.
+  // GpuSolver object.
   Status allocate_scoped_tensor(DataType type, const TensorShape& shape,
                                 Tensor* scoped_tensor);
   Status forward_input_or_allocate_scoped_tensor(
@@ -190,6 +220,41 @@ class CudaSolver {
 
   OpKernelContext* context() { return context_; }
 
+#if TENSORFLOW_USE_ROCM
+  // ====================================================================
+  // Wrappers for ROCSolver start here
+  //
+  // The method names below
+  // map to those in ROCSolver, which follow the naming
+  // convention in LAPACK see
+
+  // LU factorization.
+  // Computes LU factorization with partial pivoting P * A = L * U.
+
+  template <typename Scalar>
+  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+               int* info);
+
+  // Uses LU factorization to solve A * X = B.
+  template <typename Scalar>
+  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A,
+               int lda, const int* dev_pivots, Scalar* B, int ldb,
+               int* dev_lapack_info);
+
+  template <typename Scalar>
+  Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
+                      DeviceLapackInfo* info, const int batch_count);
+
+  template <typename Scalar>
+  Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
+                      Scalar** A, int lda, int* dev_pivots, Scalar** B,
+                      const int ldb, int* lapack_info, const int batch_count);
+
+  template <typename Scalar>
+  Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
+              rocblas_diagonal diag, int m, int n, const Scalar* alpha,
+              const Scalar* A, int lda, Scalar* B, int ldb);
+#else  // GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
   //
@@ -204,6 +269,7 @@ class CudaSolver {
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
   // NOTE(ebrevdo): Does not support in-place transpose of non-square
   // matrices.
+
   template <typename Scalar>
   Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
               const Scalar* alpha, /* host or device pointer */
@@ -230,7 +296,6 @@ class CudaSolver {
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
 #endif  // CUDA_VERSION >= 9020
-
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
@@ -359,17 +424,23 @@ class CudaSolver {
                      int n, const Scalar* alpha,
                      const Scalar* const dev_Aarray[], int lda,
                      Scalar* dev_Barray[], int ldb, int batch_size);
+#endif
 
  private:
   OpKernelContext* context_;  // not owned.
+#if GOOGLE_CUDA
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
+#else  // TENSORLFOW_USE_ROCM
+  hipStream_t hip_stream_;
+  rocblas_handle rocm_blas_handle_;
+#endif
+
   std::vector<TensorReference> scratch_tensor_refs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaSolver);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSolver);
 };
-#endif  // GOOGLE_CUDA
 
 // Helper class to allocate scratch memory and keep track of debug info.
 // Mostly a thin wrapper around Tensor & allocate_temp.
@@ -460,33 +531,31 @@ class DeviceLapackInfo : public ScratchSpace<int> {
   }
 };
 
-#if GOOGLE_CUDA
 template <typename Scalar>
-ScratchSpace<Scalar> CudaSolver::GetScratchSpace(const TensorShape& shape,
-                                                 const std::string& debug_info,
-                                                 bool on_host) {
+ScratchSpace<Scalar> GpuSolver::GetScratchSpace(const TensorShape& shape,
+                                                const std::string& debug_info,
+                                                bool on_host) {
   ScratchSpace<Scalar> new_scratch_space(context_, shape, debug_info, on_host);
   scratch_tensor_refs_.emplace_back(new_scratch_space.tensor());
   return std::move(new_scratch_space);
 }
 
 template <typename Scalar>
-ScratchSpace<Scalar> CudaSolver::GetScratchSpace(int64_t size,
-                                                 const std::string& debug_info,
-                                                 bool on_host) {
+ScratchSpace<Scalar> GpuSolver::GetScratchSpace(int64_t size,
+                                                const std::string& debug_info,
+                                                bool on_host) {
   return GetScratchSpace<Scalar>(TensorShape({size}), debug_info, on_host);
 }
 
-inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
+inline DeviceLapackInfo GpuSolver::GetDeviceLapackInfo(
     int64_t size, const std::string& debug_info) {
   DeviceLapackInfo new_dev_info(context_, size, debug_info);
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
   return new_dev_info;
 }
-#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SOLVERS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_

@@ -104,10 +104,10 @@ LINALG_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
+    "//tensorflow/core/kernels:transpose_functor",
 ] + if_cuda([
     ":eye_functor",
     "//tensorflow/core/util:cuda_solvers",
-    "//tensorflow/core/kernels:transpose_functor",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
 ])
