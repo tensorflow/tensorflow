@@ -1993,6 +1993,19 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "cost_util",
+    srcs = ["cost_util.cc"],
+    hdrs = ["cost_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement",
+        ":cost_measurement_registry",
+        ":request_cost_accessor",
+        ":request_cost_accessor_registry",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -3047,6 +3060,18 @@ tf_cc_test(
     srcs = ["null_request_cost_accessor_test.cc"],
     deps = [
         ":null_request_cost_accessor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_util_test",
+    srcs = ["cost_util_test.cc"],
+    deps = [
+        ":cost_measurement_registry",
+        ":cost_util",
+        ":request_cost_accessor_registry",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
