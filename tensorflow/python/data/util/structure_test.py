@@ -825,6 +825,18 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(actual_structure, expected_structure)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testConvertLegacyStructureFail(self):
+    with self.assertRaisesRegex(
+        TypeError, "Could not build a structure for output class "
+        "_EagerTensorArray. Make sure any component class in "
+        "`output_classes` inherits from one of the following classes: "
+        "`tf.TypeSpec`, `tf.sparse.SparseTensor`, `tf.Tensor`, "
+        "`tf.TensorArray`."):
+      structure.convert_legacy_structure(dtypes.int32,
+                                         tensor_shape.TensorShape([2, None]),
+                                         tensor_array_ops._EagerTensorArray)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedNestedStructure(self):
     s = (tensor_spec.TensorSpec([], dtypes.int64),
          (tensor_spec.TensorSpec([], dtypes.float32),
@@ -926,6 +938,22 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     proxied_spec = structure.type_spec_from_value(proxied)
     self.assertEqual(
         structure.type_spec_from_value(nt_type(1, 2)), proxied_spec)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeSpecNotBuild(self):
+    with self.assertRaisesRegex(
+        TypeError, "Could not build a `TypeSpec` for 100 with type int"):
+      structure.type_spec_from_value(100, use_fallback=False)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeSpecNotCompatible(self):
+    test_obj = structure.NoneTensorSpec()
+    with self.assertRaisesRegex(
+        ValueError, r"No `TypeSpec` is compatible with both NoneTensorSpec\(\) "
+        "and 100"):
+      test_obj.most_specific_compatible_shape(100)
+    self.assertEqual(test_obj,
+                     test_obj.most_specific_compatible_shape(test_obj))
 
 
 class CustomMap(collections_abc.Mapping):
