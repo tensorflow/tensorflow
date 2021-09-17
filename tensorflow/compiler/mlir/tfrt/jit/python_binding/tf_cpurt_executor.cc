@@ -67,14 +67,21 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
-    const std::string& mlir_module, const std::string& entrypoint,
-    Specialization specialization) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
+                                                 const std::string& entrypoint,
+                                                 Specialization specialization,
+                                                 bool codegen_reductions,
+                                                 bool codegen_cwise) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
+  opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
+    tensorflow::TfCpuRtPipelineOptions opts;
+    opts.codegen_reductions = codegen_reductions;
+    opts.codegen_cwise = codegen_cwise;
+    tensorflow::CreateTfCpuRtPipeline(pm, opts);
+  };
   opts.specialization = specialization;
   opts.type_converter = mlir::BufferizeTypeConverter();
 
@@ -320,6 +327,8 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
-               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled,
+           py::arg("codegen_reductions") = false,
+           py::arg("codegen_cwise") = false)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute);
 }
