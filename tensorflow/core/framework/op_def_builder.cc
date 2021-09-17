@@ -80,7 +80,7 @@ bool ConsumeAttrType(StringPiece* sp, StringPiece* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
+bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
   Scanner scan(*sp);
   StringPiece match;
   StringPiece remaining;
@@ -95,7 +95,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
            .GetResult(&remaining, &match)) {
     return false;
   }
-  int64 value = 0;
+  int64_t value = 0;
   if (!strings::safe_strto64(match, &value)) {
     return false;
   }
@@ -251,7 +251,7 @@ void FinalizeAttr(StringPiece spec, bool allow_attr_type_any, OpDef* op_def,
 
   // Read optional minimum constraint at the end.
   if ((is_list || type == "int") && absl::ConsumePrefix(&spec, ">=")) {
-    int64 min_limit = -999;
+    int64_t min_limit = -999;
     VERIFY(ConsumeAttrNumber(&spec, &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
            "' instead");
@@ -614,6 +614,11 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication() {
+  op_def()->set_is_distributed_communication(true);
+  return *this;
+}
+
 OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
@@ -628,6 +633,11 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
 
 OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
   op_reg_data_.type_ctor = c;
+  return *this;
+}
+
+OpDefBuilder& OpDefBuilder::SetForwardTypeFn(ForwardTypeInferenceFn f) {
+  op_reg_data_.fwd_type_fn = f;
   return *this;
 }
 

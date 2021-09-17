@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/env_var.h"
@@ -44,7 +45,7 @@ class RPCState : public GrpcClientCQTag {
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const protobuf::Message& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
-           thread::ThreadPool* threadpool, int32 max_retries = 0,
+           thread::ThreadPool* threadpool, int32_t max_retries = 0,
            bool fail_fast = true, const string* target = nullptr)
       : RPCState(
             stub, cq, method, request, response, std::move(done), call_opts,
@@ -85,8 +86,8 @@ class RPCState : public GrpcClientCQTag {
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const Request& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
-           thread::ThreadPool* threadpool, bool fail_fast, int64 timeout_in_ms,
-           int32 max_retries, const string* target)
+           thread::ThreadPool* threadpool, bool fail_fast,
+           int64_t timeout_in_ms, int32_t max_retries, const string* target)
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),
@@ -166,7 +167,7 @@ class RPCState : public GrpcClientCQTag {
               << " of " << max_retries_;
 
       ComputeRetryBackoffMs(/*min_backoff_ms=*/1, /*max_backoff_ms=*/10000);
-      int64 backoff_us = retry_backoff_ms_ * 1000;
+      int64_t backoff_us = retry_backoff_ms_ * 1000;
       Env::Default()->SchedClosureAfter(/*micros=*/backoff_us,
                                         [this]() { StartCall(); });
     } else {
@@ -177,7 +178,7 @@ class RPCState : public GrpcClientCQTag {
         strings::StrAppend(&error_msg, " from remote target ", *target_);
       }
       strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
-      s = Status(s.code(), error_msg);
+      s = errors::CreateWithUpdatedMessage(s, error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that
       // other error types are preferred during status aggregation. (gRPC
       // cancellation messages do not contain the original status message).
@@ -221,7 +222,7 @@ class RPCState : public GrpcClientCQTag {
   ::grpc::ByteBuffer response_buf_;
   ::grpc::Status status_;
   StatusCallback done_;
-  int64 timeout_in_ms_;
+  int64_t timeout_in_ms_;
 
   size_t num_retries_ = 0;
   size_t max_retries_;

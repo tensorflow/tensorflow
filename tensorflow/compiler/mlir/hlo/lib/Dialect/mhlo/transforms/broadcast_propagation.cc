@@ -14,11 +14,14 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -177,8 +180,8 @@ struct MoveElementwiseOpsIntoAssumingOpPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Apply to all elementwise and broadcasting elementwise operations.
-    if (!op->hasTrait<OpTrait::Elementwise>() &&
-        !op->hasTrait<chlo::OpTrait::BroadcastingElementwise>())
+    if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
+        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>())
       return failure();
 
     return MoveIntoAssumingOpMatchAndRewrite(op, rewriter);
@@ -328,6 +331,28 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
   }
 };
 
+struct EliminateDuplicateCstrBroadcastableOps
+    : public OpRewritePattern<shape::CstrBroadcastableOp> {
+  using OpRewritePattern<shape::CstrBroadcastableOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
+                                PatternRewriter &rewriter) const override {
+    // Search for previous occurence of the same constraint.
+    Operation *it = op->getPrevNode();
+    while (it != nullptr) {
+      if (auto candidate = llvm::dyn_cast<shape::CstrBroadcastableOp>(it)) {
+        if (candidate.shapes() == op.shapes()) {
+          rewriter.replaceOp(op, candidate.result());
+          return success();
+        }
+      }
+      it = it->getPrevNode();
+    }
+
+    return failure();
+  }
+};
+
 struct EarlyBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
   using OpRewritePattern<DynamicBroadcastInDimOp>::OpRewritePattern;
@@ -336,8 +361,8 @@ struct EarlyBroadcastInDimOpPattern
                                 PatternRewriter &rewriter) const override {
     Operation *producer_op = bcast_op.operand().getDefiningOp();
     if (!producer_op ||
-        !producer_op->hasTrait<OpTrait::SameOperandsAndResultShape>() ||
-        !producer_op->hasTrait<OpTrait::Elementwise>()) {
+        !producer_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
+        !producer_op->hasTrait<mlir::OpTrait::Elementwise>()) {
       return failure();
     }
 
@@ -376,7 +401,7 @@ struct EarlyBroadcastInDimOpPattern
 };
 
 struct BroadcastPropagationPass
-    : public PassWrapper<BroadcastPropagationPass, FunctionPass> {
+    : public BroadcastPropagationPassBase<BroadcastPropagationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -398,6 +423,7 @@ void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
+      EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveElementwiseOpsIntoAssumingOpPattern,

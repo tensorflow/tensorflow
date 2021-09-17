@@ -324,14 +324,13 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  if (prefer_tf2xla)
-    pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFEnsureStaticShapesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
@@ -705,20 +704,17 @@ xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
   return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
-Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
-                         llvm::ArrayRef<xla::XlaOp> xla_params,
-                         std::vector<xla::XlaOp>& returns,
-                         llvm::ArrayRef<XlaArgument> args,
-                         llvm::ArrayRef<std::string> control_rets,
-                         llvm::StringRef device_type,
-                         const FunctionLibraryDefinition& flib_def,
-                         const GraphDebugInfo& debug_info,
-                         llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                             custom_legalization_passes) {
-  mlir::MLIRContext context;
+Status BuildHloFromGraph(
+    const Graph& graph, xla::XlaBuilder& builder,
+    mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
+    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes) {
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
+      GraphToModule(graph, control_rets, flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
 }

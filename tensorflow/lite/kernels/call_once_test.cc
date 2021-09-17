@@ -32,13 +32,16 @@ namespace {
 class CallOnceTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(1);
+    interpreter_->AddSubgraphs(2);
     builder_->BuildCallOnceAndReadVariableSubgraph(
         &interpreter_->primary_subgraph());
     builder_->BuildAssignRandomValueToVariableSubgraph(
         interpreter_->subgraph(1));
+    builder_->BuildCallOnceAndReadVariablePlusOneSubgraph(
+        interpreter_->subgraph(2));
 
     ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+    ASSERT_EQ(interpreter_->subgraph(2)->AllocateTensors(), kTfLiteOk);
   }
 };
 
@@ -81,6 +84,32 @@ TEST_F(CallOnceTest, TestInvokeMultipleTimes) {
     ASSERT_EQ(NumElements(output), 1);
     ASSERT_EQ(output->data.i32[0], value);
   }
+}
+
+TEST_F(CallOnceTest, TestInvokeOnceAcrossMultipleEntryPoints) {
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  ASSERT_EQ(output->dims->size, 1);
+  ASSERT_EQ(output->dims->data[0], 1);
+  ASSERT_EQ(output->type, kTfLiteInt32);
+  ASSERT_EQ(NumElements(output), 1);
+
+  // The value of the variable must be non-zero, which will be assigned by the
+  // initialization subgraph.
+  int value = output->data.i32[0];
+  EXPECT_GT(value, 0);
+
+  // Make sure that no more random value assignment in the initialization
+  // subgraph while invoking the other subgraph, which has the CallOnce op.
+  ASSERT_EQ(interpreter_->subgraph(2)->Invoke(), kTfLiteOk);
+  output = interpreter_->subgraph(2)->tensor(
+      interpreter_->subgraph(2)->outputs()[0]);
+  ASSERT_EQ(output->dims->size, 1);
+  ASSERT_EQ(output->dims->data[0], 1);
+  ASSERT_EQ(output->type, kTfLiteInt32);
+  ASSERT_EQ(NumElements(output), 1);
+  ASSERT_EQ(output->data.i32[0], value + 1);
 }
 
 }  // namespace

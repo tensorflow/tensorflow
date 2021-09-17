@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -177,7 +178,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
 namespace {
 struct LegalizeToStandardPass
-    : public PassWrapper<LegalizeToStandardPass, FunctionPass> {
+    : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<StandardOpsDialect>();
   }

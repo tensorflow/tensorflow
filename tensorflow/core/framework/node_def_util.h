@@ -88,8 +88,8 @@ void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int64 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int32_t value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int64_t value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, float value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, double value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, bool value, NodeDef* node_def);
@@ -108,7 +108,7 @@ void AddNodeAttr(StringPiece name, gtl::ArraySlice<string> value,
                  NodeDef* node_def);
 void AddNodeAttr(StringPiece name, gtl::ArraySlice<int32> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64_t> value,
                  NodeDef* node_def);
 void AddNodeAttr(StringPiece name, gtl::ArraySlice<float> value,
                  NodeDef* node_def);
@@ -204,7 +204,7 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    tstring* value);  // type: "tstring"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   int64* value);  // type: "int"
+                   int64_t* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int32* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -226,7 +226,7 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<tstring>* value);  // type "list(tstring)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   std::vector<int64>* value);  // type "list(int)"
+                   std::vector<int64_t>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int32>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -273,9 +273,9 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::string* value);  // type: "string"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                    int64* value);  // type: "int"
+                    int64_t* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                    std::vector<int64>* value);  // type: "int"
+                    std::vector<int64_t>* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     int32* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -370,6 +370,10 @@ Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
 // Adds default values to *node_def for unspecified attrs from op_def.
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def);
+
+// Remove attributes from node_def when the value is the default from the
+// op_def.
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def);
 
 // Validates the syntax of a NodeDef provided externally.
 //

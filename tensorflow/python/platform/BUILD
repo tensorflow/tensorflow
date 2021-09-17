@@ -46,6 +46,10 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
+    data = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["//tensorflow/core/platform:_cpu_feature_guard.so"],
+    }),
     srcs_version = "PY3",
     deps = [
         ":build_info",

@@ -24,6 +24,7 @@ tpu_module = [
 ]
 
 keras_module = [
+    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
     "keras.",
 ]
 
@@ -74,6 +75,7 @@ tpu_py_test(
     srcs = ["tf_doctest.py"],
     args = ["--module=" + ",".join(tpu_module)],
     disable_experimental = True,
+    disable_tfrt = True,
     disable_v3 = True,
     main = "tf_doctest.py",
     python_version = "PY3",

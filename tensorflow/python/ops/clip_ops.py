@@ -34,6 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("clip_by_value")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
@@ -261,7 +262,8 @@ def global_norm(t_list, name=None):
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
       isinstance(t_list, six.string_types)):
-    raise TypeError("t_list should be a sequence")
+    raise TypeError("`t_list` should be a sequence of tensors. Received "
+                    f"{type(t_list)}.")
   t_list = list(t_list)
   with ops.name_scope(name, "global_norm", t_list) as name:
     values = [
@@ -339,7 +341,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
       isinstance(t_list, six.string_types)):
-    raise TypeError("t_list should be a sequence")
+    raise TypeError("`t_list` should be a sequence of tensors. Received "
+                    f"{type(t_list)}.")
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)

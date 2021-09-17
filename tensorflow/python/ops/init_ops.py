@@ -100,7 +100,72 @@ class Initializer(object):
 @tf_export(v1=["initializers.zeros", "zeros_initializer"])
 @deprecation.deprecated_endpoints("initializers.zeros")
 class Zeros(Initializer):
-  """Initializer that generates tensors initialized to 0."""
+  """Initializer that generates tensors initialized to 0.
+
+  @compatibility(TF2)
+  `tf.compat.v1.zeros_initializer` is compatible with eager execution
+  and `tf.function`.
+
+  To migrate to TF2, please use `tf.zeros_initializer` instead. The `dtype`
+  argument in `tf.compat.v1.zeros_initializer.__init__()` does not exist in
+  `tf.zeros_initializer.__init__()`. However, you can specify the `dtype` in
+  `__call__()` in both cases.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.zeros_initializer(dtype=tf.float32)
+  variable = tf.Variable(initializer(shape=[3, 3]))
+  ```
+
+  After:
+
+  ```python
+  initializer = tf.zeros_initializer()
+  variable = tf.Variable(initializer(shape=[3, 3], dtype=tf.float32))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name         | TF2 Arg Name     | Note                       |
+  | :------------------- | :--------------- | :------------------------- |
+  | `dtype`              | `dtype`          | In `__call__()` method     |
+  | `partition_info`     | - |  (`__call__` arg in TF1) Not supported    |
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> initializer = tf.compat.v1.zeros_initializer(dtype=tf.float32)
+  >>> tf.Variable(initializer(shape=[3])).numpy()
+  array([0., 0., 0.], dtype=float32)
+  >>> tf.Variable(initializer(shape=[3, 3])).numpy()
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)
+  >>> initializer = tf.compat.v1.zeros_initializer()
+  >>> tf.Variable(initializer(shape=[3], dtype=tf.float32)).numpy()
+  array([0., 0., 0.], dtype=float32)
+  >>> tf.Variable(initializer(shape=[3, 3], dtype=tf.float32)).numpy()
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)
+
+  After:
+
+  >>> initializer = tf.zeros_initializer()
+  >>> tf.Variable(initializer(shape=[3], dtype=tf.float32)).numpy()
+  array([0., 0., 0.], dtype=float32)
+  >>> tf.Variable(initializer(shape=[3, 3], dtype=tf.float32)).numpy()
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)
+
+  @end_compatibility
+  """
 
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
@@ -120,7 +185,24 @@ class Zeros(Initializer):
 @tf_export(v1=["initializers.ones", "ones_initializer"])
 @deprecation.deprecated_endpoints("initializers.ones", "ones_initializer")
 class Ones(Initializer):
-  """Initializer that generates tensors initialized to 1."""
+  """Initializer that generates tensors initialized to 1.
+
+  @compatibility(TF2)
+  This API is compatible with TF2 behavior and `tf.function`, and can be
+  migrated immediately with `tf.keras.initializers.ones`.
+
+  Before:
+  >>> initializer = tf.compat.v1.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  After:
+  >>> initializer = tf.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  @end_compatibility
+  """
 
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
@@ -204,6 +286,83 @@ class Constant(Initializer):
   Traceback (most recent call last):
   ...
   TypeError: Expected Tensor's shape: (3, 4), got (8,).
+
+  @compatibility(TF2)
+  Although it is a legacy API endpoint, `tf.compat.v1.constant_initializer`
+  is compatible with eager execution and `tf.function`.
+
+  To migrate to a non-legacy TF2 API, please use `tf.constant_initializer`
+  instead. The `dtype`
+  argument in `tf.compat.v1.constant_initializer.__init__()` does not exist in
+  `tf.constant_initializer.__init__()`. However, you can specify the `dtype` in
+  `__call__()` in both cases.
+
+  In the `compat.v1` symbol, if `verify_shape` is set to `True`, an exception
+  is raised when initializing a variable with a different shape from
+  `value`. If set to `False`, `value` is reshaped to initialize the variable
+  if necessary. An exception would only be raised when the number of
+  elements are different.
+
+  The `verify_shape` argument is not supported in TF2. Using
+  `tf.constant_initializer` is equivalent to setting `verify_shape` to `False`.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  value = [0, 1, 2, 3, 4, 5, 6, 7]
+  initializer = tf.compat.v1.constant_initializer(
+      value=value,
+      dtype=tf.float32,
+      verify_shape=False)
+  variable = tf.Variable(initializer(shape=[2, 4]))
+  ```
+
+  After:
+
+  ```python
+  value = [0, 1, 2, 3, 4, 5, 6, 7]
+  initializer = tf.constant_initializer(value=value)
+  tf.Variable(initializer(shape=[2, 4], dtype=tf.float32))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name     | Note                        |
+  | :-------------------- | :--------------- | :-------------------------- |
+  | `value`               | `value`          | In constructor              |
+  | `dtype`               | `dtype`          | In `__call__()` method      |
+  | `verify_shape`        | Not Supported    | Equivalent to set to `False`|
+  | `partition_info`      | - |  (`__call__` arg in TF1) Not supported     |
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> value = [1., 2., 3., 4.]
+  >>> initializer = tf.compat.v1.constant_initializer(
+  ...     value=value, dtype=tf.float32, verify_shape=True)
+  >>> tf.Variable(initializer(shape=[2, 2])).numpy()
+  Traceback (most recent call last):
+  ...
+  TypeError: Expected Tensor's shape: (2, 2), got (4,).
+  >>> initializer = tf.compat.v1.constant_initializer(
+  ...     value=value, dtype=tf.float32, verify_shape=False)
+  >>> tf.Variable(initializer(shape=[2, 2])).numpy()
+  array([[1., 2.],
+         [3., 4.]], dtype=float32)
+
+  After:
+
+  >>> value = [1., 2., 3., 4.]
+  >>> initializer = tf.constant_initializer(value=value)
+  >>> tf.Variable(initializer(shape=[2, 2], dtype=tf.float32)).numpy()
+  array([[1., 2.],
+         [3., 4.]], dtype=float32)
+
+  @end_compatibility
   """
 
   @deprecated_args(None,
@@ -214,8 +373,9 @@ class Constant(Initializer):
   def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
     if not (np.isscalar(value) or isinstance(value, (list, tuple, np.ndarray))):
       raise TypeError(
-          "Invalid type for initial value: %s (expected Python scalar, list or "
-          "tuple of values, or numpy.ndarray)." % type(value))
+          f"Invalid type for initial value={value} of type: "
+          f"{type(value).__name__}. Expected Python scalar, list or tuple of "
+          "values, or numpy.ndarray.")
 
     self.value = value
     self.dtype = dtypes.as_dtype(dtype)
@@ -251,12 +411,62 @@ class RandomUniform(Initializer):
       `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer.
+
+  @compatibility(TF2)
+  Although it is a legacy compat.v1 API, this symbol is compatible with eager
+  execution and `tf.function`.
+
+  To switch to native TF2, switch to using either
+  `tf.initializers.RandomUniform` or `tf.keras.initializers.RandomUniform`
+  (neither from `compat.v1`) and
+  pass the dtype when calling the initializer. Keep in mind that
+  the default minval, maxval and the behavior of fixed seeds have changed.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.random_uniform_initializer(
+    minval=minval,
+    maxval=maxval,
+    seed=seed,
+    dtype=dtype)
+
+  weight_one = tf.Variable(initializer(shape_one))
+  weight_two = tf.Variable(initializer(shape_two))
+  ```
+
+  After:
+
+  ```python
+  initializer = tf.initializers.RandomUniform(
+    minval=minval,
+    maxval=maxval,
+    seed=seed)
+
+  weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
+  weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `minval`               | `minval`    | Default changes from 0 to -0.05 |
+  | `maxval`         | `maxval`        | Default changes from 1.0 to 0.05 |
+  | `seed`             | `seed` |  |
+  | `dtype` | `dtype`   | The TF2 native api only takes it  |
+  :                     :      : as a `__call__` arg, not a constructor arg. :
+  | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
+
+  @end_compatibility
   """
 
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
                    "of passing it to the constructor", "dtype")
-  def __init__(self, minval=0, maxval=None, seed=None, dtype=dtypes.float32):
+  def __init__(self, minval=.0, maxval=None, seed=None, dtype=dtypes.float32):
     self.minval = minval
     self.maxval = maxval
     self.seed = seed
@@ -291,6 +501,56 @@ class RandomNormal(Initializer):
       `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
+
+  @compatibility(TF2)
+  Although it is a legacy `compat.v1` API, this symbol is compatible with eager
+  execution and `tf.function`.
+
+  To switch to native TF2, switch to using either
+  `tf.initializers.RandomNormal` or `tf.keras.initializers.RandomNormal`
+  (neither from `compat.v1`) and
+  pass the dtype when calling the initializer. Keep in mind that
+  the default stddev and the behavior of fixed seeds have changed.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.random_normal_initializer(
+    mean=mean,
+    stddev=stddev,
+    seed=seed,
+    dtype=dtype)
+
+  weight_one = tf.Variable(initializer(shape_one))
+  weight_two = tf.Variable(initializer(shape_two))
+  ```
+
+  After:
+
+  ```python
+  initializer = tf.initializers.RandomNormal(
+    mean=mean,
+    seed=seed,
+    stddev=stddev)
+
+  weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
+  weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name       | TF2 Arg Name    | Note                       |
+  | :----------------- | :-------------- | :------------------------- |
+  | `mean`             | `mean`          | No change to defaults |
+  | `stddev`           | `stddev`        | Default changes from 1.0 to 0.05 |
+  | `seed`             | `seed`          |                                  |
+  | `dtype`            | `dtype`  | The TF2 native api only takes it as a |
+  :                    :          : `__call__` arg, not a constructor arg. :
+  | `partition_info`   | -     |  (`__call__` arg in TF1) Not supported.  |
+
+  @end_compatibility
   """
 
   @deprecated_args(None,
@@ -337,6 +597,56 @@ class TruncatedNormal(Initializer):
       `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
+
+  @compatibility(TF2)
+  Although it is a legacy compat.v1 API, this symbol is compatible with eager
+  execution and `tf.function`.
+
+  To switch to native TF2, switch to using either
+  `tf.initializers.truncated_normal` or `tf.keras.initializers.TruncatedNormal`
+  (neither from `compat.v1`) and
+  pass the dtype when calling the initializer. Keep in mind that
+  the default stddev and the behavior of fixed seeds have changed.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.truncated_normal_initializer(
+    mean=mean,
+    stddev=stddev,
+    seed=seed,
+    dtype=dtype)
+
+  weight_one = tf.Variable(initializer(shape_one))
+  weight_two = tf.Variable(initializer(shape_two))
+  ```
+
+  After:
+
+  ```python
+  initializer = tf.initializers.truncated_normal(
+    mean=mean,
+    seed=seed,
+    stddev=stddev)
+
+  weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
+  weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `mean`               | `mean`        | No change to defaults |
+  | `stddev`         | `stddev`        | Default changes from 1.0 to 0.05 |
+  | `seed`             | `seed` | |
+  | `dtype` | `dtype`   | The TF2 native api only takes it  |
+  :                     :      : as a `__call__` arg, not a constructor arg. :
+  | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
+
+  @end_compatibility
   """
 
   @deprecated_args(None,
@@ -477,14 +787,18 @@ class VarianceScaling(Initializer):
                seed=None,
                dtype=dtypes.float32):
     if scale <= 0.:
-      raise ValueError("`scale` must be positive float.")
+      raise ValueError("Argument `scale` must be a positive float. Received: "
+                       f"{scale}")
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
-      raise ValueError("Invalid `mode` argument:", mode)
+      raise ValueError("Argument `mode` should be one of ('fan_in', 'fan_out', "
+                       f"'fan_avg'). Received: {mode}")
     distribution = distribution.lower()
     if distribution not in {
         "normal", "uniform", "truncated_normal", "untruncated_normal"
     }:
-      raise ValueError("Invalid `distribution` argument:", distribution)
+      raise ValueError("Argument `distribution` should be one of ('normal', "
+                       "uniform', 'truncated_normal', 'untruncated_normal'). "
+                       f"Received: {distribution}")
     self.scale = scale
     self.mode = mode
     self.distribution = distribution
@@ -569,8 +883,9 @@ class Orthogonal(Initializer):
       dtype = self.dtype
     # Check the shape
     if len(shape) < 2:
-      raise ValueError("The tensor to initialize must be "
-                       "at least two-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     # Flatten the input shape with the last dimension remaining
     # its original shape so it works for conv2d
     num_rows = 1
@@ -632,11 +947,14 @@ class ConvolutionDeltaOrthogonal(Initializer):
       dtype = self.dtype
     # Check the shape
     if len(shape) < 3 or len(shape) > 5:
-      raise ValueError("The tensor to initialize must be at least "
-                       "three-dimensional and at most five-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least three-dimensional and at most "
+                       f"five-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     # Generate a random matrix
     a = random_ops.random_normal([shape[-1], shape[-1]],
@@ -758,13 +1076,17 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 4:
-      raise ValueError("The tensor to initialize must be four-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be four-dimensional. Received: {shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     if shape[0] != shape[1]:
-      raise ValueError("Kernel sizes must be equal.")
+      raise ValueError(f"Kernel sizes, specified by shape[0]={shape[0]} and "
+                       f"shape[1]={shape[1]} must be equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[2], shape[3])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -801,7 +1123,8 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       ValueError: If the dimensions of p1 and p2 are different.
     """
     if p1.shape.as_list() != p2.shape.as_list():
-      raise ValueError("The dimension of the matrices must be the same.")
+      raise ValueError("The dimension of the matrices must be the same. "
+                       f"Received p1.shape={p1.shape} and p2.shape={p2.shape}.")
     n = p1.shape.as_list()[0]
     kernel2x2 = {}
     eye = linalg_ops_impl.eye(n, dtype=self.dtype)
@@ -827,8 +1150,9 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
 
     n = (m1[0, 0]).shape.as_list()[0]
     if n != (m2[0, 0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       f"dimensions. Received m1[0, 0].shape={m1[0, 0].shape} "
+                       f"and m2[0, 0].shape={m2[0, 0].shape}.")
     k = int(np.sqrt(len(m1)))
     l = int(np.sqrt(len(m2)))
     result = {}
@@ -858,8 +1182,8 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(array_ops.expand_dims(orth, 0), 0)
@@ -903,10 +1227,13 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 3:
-      raise ValueError("The tensor to initialize must be three-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be three-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -958,8 +1285,9 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
 
     n = (m1[0]).shape.as_list()[0]
     if n != (m2[0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       f"dimensions. Received m1[0].shape={m1[0].shape} "
+                       f"and m2[0].shape={m2[0].shape}.")
     k = len(m1)
     l = len(m2)
     result = {}
@@ -986,8 +1314,8 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(orth, 0)
@@ -1028,13 +1356,18 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 5:
-      raise ValueError("The tensor to initialize must be five-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be five-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     if shape[0] != shape[1] or shape[0] != shape[2]:
-      raise ValueError("Kernel sizes must be equal.")
+      raise ValueError(f"Kernel sizes, specified by shape[0]={shape[0]},  "
+                       f"shape[1]={shape[1]} and shape[2]={shape[2]} must be "
+                       "equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -1074,7 +1407,9 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     """
     p1_shape = p1.shape.as_list()
     if p1_shape != p2.shape.as_list() or p1_shape != p3.shape.as_list():
-      raise ValueError("The dimension of the matrices must be the same.")
+      raise ValueError("The dimension of the matrices must be the same. "
+                       f"Received p1.shape={p1.shape}, p2.shape={p2.shape} and"
+                       f" p3.shape={p3.shape}.")
     n = p1_shape[0]
     eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2x2 = {}
@@ -1108,8 +1443,10 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
 
     n = (m1[0, 0, 0]).shape.as_list()[0]
     if n != (m2[0, 0, 0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       "dimensions. Received m1[0, 0, 0].shape="
+                       f"{m1[0, 0, 0].shape} and m2[0, 0, 0].shape="
+                       f"{m2[0, 0, 0].shape}.")
     k = int(np.cbrt(len(m1)))
     l = int(np.cbrt(len(m2)))
     result = {}
@@ -1142,8 +1479,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(
@@ -1188,8 +1525,9 @@ class Identity(Initializer):
   def __call__(self, shape, dtype=None, partition_info=None):
     full_shape = shape if partition_info is None else partition_info.full_shape
     if len(full_shape) != 2:
-      raise ValueError(
-          "Identity matrix initializer can only be used for 2D matrices.")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     if dtype is None:
       dtype = self.dtype
     if isinstance(full_shape, tensor_shape.TensorShape):
@@ -1440,5 +1778,6 @@ def _assert_float_dtype(dtype):
     ValueError: if `dtype` is not a floating point type.
   """
   if not dtype.is_floating:
-    raise ValueError("Expected floating point type, got %s." % dtype)
+    raise ValueError("Argument `dtype` is expected to be floating point. "
+                     f"Received: {dtype}.")
   return dtype

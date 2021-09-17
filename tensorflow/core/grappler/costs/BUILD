@@ -258,6 +258,7 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
     ] + tf_protos_grappler(),
 )
@@ -290,6 +291,7 @@ tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
+        ":graph_properties",
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",

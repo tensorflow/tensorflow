@@ -31,8 +31,11 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
+
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -49,6 +52,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
@@ -504,8 +508,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported.f(input2)
 
     self.assertEqual(31, imported.f(input1).numpy())
@@ -633,8 +637,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call.*"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call.*"):
       imported.f(x, learning_rate=0.5, epochs=4)
 
     self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
@@ -1013,8 +1017,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([2, 4, 6, 8],
                         concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported.f.get_concrete_function(
           tensor_spec.TensorSpec([None], dtypes.int32))
     imported.f.get_concrete_function(
@@ -1507,7 +1511,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
     self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
 
-    with self.assertRaisesRegex(ValueError, "Could not find matching function"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching concrete function"):
       root.f(["hello", 1.0])
 
   def test_prefer_specific_trace(self, cycles):
@@ -1728,8 +1733,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(4.0, imported({"a": 3.0}).numpy())
 
-    with self.assertRaisesRegex(ValueError,
-                                "Could not find matching function to call"):
+    with self.assertRaisesRegex(
+        ValueError, "Could not find matching concrete function to call"):
       imported({"a": 2.0, "b": 3.0})
 
   def test_shapes_available(self, cycles):
@@ -1789,6 +1794,49 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      root.v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
+
+  def test_captured_dataset_with_asset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self, temp_dir, file_name):
+        super(HasDataset, self).__init__()
+        file = os.path.join(temp_dir, file_name)
+        with tf_record.TFRecordWriter(file, "GZIP") as f:
+          for v in ["a", "aa", "aaa"]:
+            f.write(str(v))
+        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int32)
+        for element in self.dataset:
+          current_sum += x * string_ops.string_length(element)
+        return current_sum
+
+    temp_dir = self.get_temp_dir()
+    file_name = "tf_record_asset.tfrecord.gz"
+    root = HasDataset(temp_dir, file_name)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(os.path.join(temp_dir, file_name))
+    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
+    if compat.forward_compatible(2021, 9, 20):
+      self.assertTrue(file_io.file_exists(asset_path))
+      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+      file_io.rename(save_dir, load_dir)
+
+      # TODO(b/188455028): Remove assertRaises block and check that invoking
+      # loaded SavedModel behaves as expected.
+      with self.assertRaises(ValueError) as error:
+        _ = load.load(load_dir)
+      self.assertEqual("Signature specifies 1 arguments, got: 0.",
+                       str(error.exception))
 
   def test_captured_dataset(self, cycles):
 
@@ -2045,6 +2093,41 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(grads, expected_grads)
     self.assertAllClose(grad_grads, expected_grad_grads)
 
+  def test_custom_gradients_with_none_grad(self, cycles):
+    # https://github.com/google/jax/issues/7123
+
+    @custom_gradient.custom_gradient
+    def f(params, state):
+      def grad_fn(*args):
+        return args
+      return (params, state), grad_fn
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.int32)])
+    def predict(params, state):
+      return f(params, state)
+
+    params = variables.Variable(1.0)
+    # None grads only appear when state is an int.
+    state = constant_op.constant(3, dtype=dtypes.int32)
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = predict(params, state)
+      expected_grads = tape.gradient(y, params)
+
+    root = tracking.AutoTrackable()
+    root.fn = predict
+    loaded = cycle(
+        root, cycles, options=save_options.SaveOptions(
+            experimental_custom_gradients=True))
+
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = loaded.fn(params, state)
+      grads = tape.gradient(y, params)
+
+    self.assertAllClose(grads, expected_grads)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2112,7 +2195,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     root.a = variables.Variable(3.)
     with self.assertRaisesRegex(
-        ValueError, "object has an attribute named a, which is reserved."):
+        ValueError, "object has an attribute named 'a', which is reserved."):
       save.save(root, path)
 
   def test_save_cached_variable(self):
@@ -2416,6 +2499,48 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     weight_size = 1024
     export_dir = create_and_save_module(weight_size)
     load_and_run_module(export_dir, weight_size)
+
+  def _make_asset(self, contents):
+    filename = tempfile.mktemp(prefix=self.get_temp_dir())
+    with open(filename, "w") as f:
+      f.write(contents)
+    return filename
+
+  def test_assets(self):
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save_and_return_nodes(
+        root, save_dir, experimental_skip_checkpoint=True)
+    file_io.delete_file(vocab_file)
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    imported = load.load(
+        load_dir,
+        options=load_options.LoadOptions(experimental_skip_checkpoint=True))
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
 
 if __name__ == "__main__":

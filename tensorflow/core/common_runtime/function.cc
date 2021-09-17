@@ -1009,7 +1009,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(fbody->fdef, g.get());
-  optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
+  optimizer_.Optimize(this, env(), device(), &g, GraphOptimizer::Options());
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
 
@@ -1084,6 +1084,8 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->collective_executor = run_opts.collective_executor;
   exec_args->call_frame = frame;
   exec_args->run_all_kernels_inline = run_opts.run_all_kernels_inline;
+  exec_args->user_intra_op_threadpool = run_opts.user_intra_op_threadpool;
+  exec_args->coordination_service_agent = run_opts.coordination_service_agent;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
@@ -1099,7 +1101,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     done(s);
     return;
   }
-  int64 src_incarnation, target_incarnation;
+  int64_t src_incarnation, target_incarnation;
   s = parent_->GetDeviceIncarnation(source_device, &src_incarnation);
   s.Update(parent_->GetDeviceIncarnation(target_device, &target_incarnation));
   if (!s.ok()) {
@@ -1237,7 +1239,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);
@@ -1309,7 +1312,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);

@@ -315,8 +315,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell(
-        "TextVectorization").set(True)
 
     self._index_lookup_layer = string_lookup.StringLookup(
         max_tokens=max_tokens,

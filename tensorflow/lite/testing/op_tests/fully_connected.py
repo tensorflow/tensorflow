@@ -110,6 +110,20 @@ def make_fully_connected_tests(options):
       "quant_16x8": [True]
   }]
 
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Zero in input shape.
+        {
+            "shape1": [[0, 3]],
+            "shape2": [[3, 3]],
+            "transpose_a": [False],
+            "transpose_b": [False],
+            "constant_filter": [True, False],
+            "fully_quantize": [False],
+            "quant_16x8": [False]
+        }
+    ]
+
   def build_graph(parameters):
     """Build a matmul graph given `parameters`."""
     input_tensor1 = tf.compat.v1.placeholder(

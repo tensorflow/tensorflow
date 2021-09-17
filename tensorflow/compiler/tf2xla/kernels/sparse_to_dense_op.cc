@@ -34,14 +34,16 @@ class SparseToDenseOp : public XlaOpKernel {
                     "sparse_indices should be a scalar, vector, or matrix, "
                     "got shape ",
                     indices_shape.DebugString()));
-    const int64 num_elems =
+    const int64_t num_elems =
         indices_shape.dims() > 0 ? indices_shape.dim_size(0) : 1;
-    const int64 num_dims =
+    const int64_t num_dims =
         indices_shape.dims() > 1 ? indices_shape.dim_size(1) : 1;
 
     // output_shape
     TensorShape output_shape;
-    OP_REQUIRES_OK(context, context->ConstantInputAsShape(1, &output_shape));
+    OP_REQUIRES_OK(context,
+                   context->ConstantInputAsShape(
+                       1, &output_shape, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES(context, output_shape.dims() == num_dims,
                 errors::InvalidArgument(
                     "output_shape has incorrect number of elements: ",
@@ -49,7 +51,7 @@ class SparseToDenseOp : public XlaOpKernel {
 
     // sparse_values
     const TensorShape sparse_values_shape = context->InputShape(2);
-    const int64 num_values = sparse_values_shape.num_elements();
+    const int64_t num_values = sparse_values_shape.num_elements();
     OP_REQUIRES(
         context,
         sparse_values_shape.dims() == 0 ||
@@ -72,7 +74,20 @@ class SparseToDenseOp : public XlaOpKernel {
     }
     xla::XlaBuilder* builder = context->builder();
     auto buffer = Broadcast(default_value, output_shape.dim_sizes());
+    std::vector<bool> dynamic_dims;
+    OP_REQUIRES_OK(
+        context, context->ResolveInputDynamismIntoPredVector(1, &dynamic_dims));
 
+    for (int64_t i = 0; i < dynamic_dims.size(); ++i) {
+      // If a dimension is dynamic, call set-dimension-size on the output.
+      if (dynamic_dims[i]) {
+        auto dynamic_dim_size =
+            xla::Slice(context->Input(1), {i}, {i + 1}, {1});
+        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+        buffer = xla::SetDimensionSize(buffer, dynamic_dim_size, i);
+      }
+    }
     auto result = XlaScatter(buffer, sparse_values, indices,
                              /*indices_are_vectors=*/indices_shape.dims() > 1,
                              /*combiner=*/{}, builder);

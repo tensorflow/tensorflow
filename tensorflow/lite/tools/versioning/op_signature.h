@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
+#include <string>
+
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -33,6 +35,8 @@ typedef struct {
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
   void* builtin_data;
+  const void* custom_initial_data;
+  std::string custom_name;
   union {
     struct {
       bool is_per_channel_quantized;
@@ -56,6 +60,9 @@ typedef struct {
     struct {
       bool input_quantized;
     } abs;
+    struct {
+      bool is_per_channel_quantized;
+    } dequantize;
   } ext_options;
 } OpSignature;
 
@@ -68,14 +75,13 @@ typedef struct {
 // WARNING: The caller is responsible to free the allocated
 // OpSignature.builtin_data memory.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
-                           const SubGraph* subgraph);
+                           const SubGraph* subgraph, const Model* model);
 
 // Generate OpSignature with the given TfLiteContext, TfLiteNode and
 // TfLiteRegistration.
 // The function can be used by a compatibility checker of a delegate such as
 // TFLiteOperationParser::IsSupported() in the GPU delegate.
-OpSignature GetOpSignature(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
+OpSignature GetOpSignature(const TfLiteContext* context, const TfLiteNode* node,
                            const TfLiteRegistration* registration);
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_

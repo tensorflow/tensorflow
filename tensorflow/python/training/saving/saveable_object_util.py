@@ -37,6 +37,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -126,7 +127,8 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if restored_shapes is not None:
       restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
     # Copy the restored tensor to the variable's device.
-    with ops.device(self._var_device):
+    device = "" if save_context.in_save_context() else self._var_device
+    with ops.device(device):
       restored_tensor = array_ops.identity(restored_tensor)
       return resource_variable_ops.shape_safe_assign_variable_handle(
           self.handle_op, self._var_shape, restored_tensor)
@@ -136,13 +138,65 @@ def _tensor_comes_from_variable(v):
   return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
 
 
-def saveable_objects_for_op(op, name):
-  """Create `SaveableObject`s from an operation.
+def create_saveables_from_factory(saveable_factory, checkpoint_key,
+                                  use_graph_element_for_variables=True):
+  """Runs the saveable factory to produce a tuple of SaveableObjects.
+
+  `obj` and `attribute_name` are only used in the error produced in the
+  validation of the produced saveables.
+
+  Args:
+    saveable_factory: A callable that accepts a name argument and produces
+      a SaveableObject.
+    checkpoint_key: A string that is uniquely generated to be used in the
+      `saveable_factory`. The names of the produced SaveableObjects must contain
+      this key.
+    use_graph_element_for_variables: Boolean, whether to return the graph
+      element of resource variables created under graph mode. This argument
+      defaults to True for compatibility reasons.
+
+  Returns:
+    a tuple of SaveableObjects
+  """
+  if callable(saveable_factory):
+    maybe_saveable = saveable_factory(name=checkpoint_key)
+  else:
+    maybe_saveable = saveable_factory
+  if isinstance(maybe_saveable, saveable_object.SaveableObject):
+    saveables = (maybe_saveable,)
+  else:
+    saveables = tuple(saveable_objects_for_op(
+        op=maybe_saveable, name=checkpoint_key,
+        use_graph_element_for_variables=use_graph_element_for_variables))
+    if isinstance(checkpoint_key, str):
+      # Figure out the name-based Saver's name for this variable. If it's
+      # already a SaveableObject we'd just get the checkpoint key back, so
+      # we leave full_name blank.
+      saver_dict = op_list_to_dict(
+          [maybe_saveable], convert_variable_to_tensor=False)
+      full_name, = saver_dict.keys()
+      for saveable in saveables:
+        saveable.full_name = full_name
+  return saveables
+
+
+def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
+  """Create `SaveableObject`s from an object or operation.
+
+  This function converts all of the objects returned from
+  `_gather_saveables_for_checkpoint` and factory methods to SaveableObjects. The
+  different types of objects that may be received include variables objects,
+  variable handles, other Trackables, and data structures containing
+  SaveableObjects.
 
   Args:
     op: A variable, operation, or SaveableObject to coerce into a
       SaveableObject.
     name: A string name for the SaveableObject.
+    use_graph_element_for_variables: Boolean, whether to replace resource
+      variables with their graph element (i.e. a pre-created tensor in the Graph
+      that reads the resource variable). This argument defaults to True for
+      compatibility reasons.
 
   Yields:
     `SaveableObject`s which together save/restore `op`.
@@ -151,7 +205,8 @@ def saveable_objects_for_op(op, name):
     TypeError: If `name` is not a string.
     ValueError: For operations with no known conversion to SaveableObject.
   """
-  if not isinstance(name, six.string_types):
+  if not (isinstance(name, six.string_types) or
+          (tensor_util.is_tf_type(name) and name.dtype == dtypes.string)):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
         "trackable operations. Name is not a string: %s" % name)
@@ -201,7 +256,7 @@ def saveable_objects_for_op(op, name):
   else:
     # A variable or tensor.
     if isinstance(op, resource_variable_ops.BaseResourceVariable):
-      if op._in_graph_mode:  # pylint: disable=protected-access
+      if op._in_graph_mode and use_graph_element_for_variables:  # pylint: disable=protected-access
         variable = op._graph_element  # pylint: disable=protected-access
       else:
         variable = op
@@ -364,43 +419,25 @@ def validate_and_slice_inputs(names_to_saveables):
   return saveables
 
 
-def trace_save_restore_functions(object_to_save):
-  """Gathers all SaveableObjects and traces the save and restore ops."""
-  saveable_map = {}  # Maps name -> (save function, restore function)
-  for name, saveable_factory in (
-      object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
-    if not callable(saveable_factory):
-      if isinstance(saveable_factory, saveable_object.SaveableObject):
-        logging.debug(
-            "Trackable {} should return callable factories, not SaveableObjects"
-            " in `_gather_saveables_for_checkpoint`. This could lead to "
-            "problems loading the SavedModel back into Python."
-            .format(object_to_save))
-      continue
+def build_traceable_saveable(saveable_factory, checkpoint_key, obj):
+  """Creates a Saveable with traced save and restore functions."""
+  if is_factory_for_restored_saveable_object(saveable_factory):
+    restored_saveable = saveable_factory(name=checkpoint_key)
+    return (restored_saveable.save_function, restored_saveable.restore_function,
+            restored_saveable)
 
-    if is_factory_for_restored_saveable_object(saveable_factory):
-      saveable_map[name] = (saveable_factory.keywords["save_function"],
-                            saveable_factory.keywords["restore_function"])
-    else:
-      concrete_save_fn, concrete_restore_fn = _trace_save_and_restore_function(
-          saveable_factory, object_to_save)
-      if concrete_save_fn is not None:
-        saveable_map[name] = (concrete_save_fn, concrete_restore_fn)
-  return saveable_map
-
-
-def _trace_save_and_restore_function(saveable_factory, object_to_save):
-  """Traces the save and restore concrete functions."""
-  saveables = []
+  saveables = []  # Store the saveables in a data structure accessible to both
+                  # the save and restore functions.
 
   @def_function.function(
       input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
   def save_fn(checkpoint_key):
-    maybe_saveable = saveable_factory(name=checkpoint_key)
-    if isinstance(maybe_saveable, saveable_object.SaveableObject):
-      maybe_saveable = [maybe_saveable]
-    saveables[:] = maybe_saveable
-
+    # Saveables must be created inside this function to ensure that the ops
+    # in the factory methods are created inside the right Graph/FuncGraph.
+    saveables[:] = create_saveables_from_factory(
+        saveable_factory, checkpoint_key,
+        # Force variables created in Graph mode to recreate their read tensors.
+        use_graph_element_for_variables=False)
     # Return list of all SaveSpecs created by the factory.
     ret = []
     for saveable in saveables:
@@ -409,18 +446,14 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
                     "slice_spec": spec.slice_spec})
     return ret
 
-  concrete_save_fn = save_fn.get_concrete_function()
-  if any(isinstance(saveable, trackable.PythonStateSaveable)
-         for saveable in saveables):
-    logging.warn(
-        "Note that object {} stores python values into the checkpoint. "
-        "These values will not be restored when loading the SavedModel "
-        "into python.".format(object_to_save))
-    return None, None
-  if any(isinstance(saveable, trackable.NoRestoreSaveable)
-         for saveable in saveables):
-    return None, None
+  concrete_save = save_fn.get_concrete_function()
 
+  # The SaveableObjects are produced when `save_fn` is traced.
+  saveables = validate_saveables_for_saved_model(saveables, obj)
+  if not saveables:
+    return None, None, None
+
+  # Use the SaveSpecs to define the input signature of the restore function.
   restored_type_specs = []
   tensor_structure = []
   for saveable in saveables:
@@ -437,10 +470,26 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
     for saveable, restored_tensors in zip(saveables,
                                           structured_restored_tensors):
       saveable.restore(restored_tensors, restored_shapes=None)
-    return 1
+    return 1  # Return dummy tensor
 
-  concrete_restore_fn = restore_fn.get_concrete_function()
-  return concrete_save_fn, concrete_restore_fn
+  concrete_restore = restore_fn.get_concrete_function()
+  return concrete_save, concrete_restore, RestoredSaveableObject(
+      concrete_save, concrete_restore, checkpoint_key)
+
+
+def validate_saveables_for_saved_model(saveables, obj):
+  """Makes sure SaveableObjects are compatible with SavedModel."""
+  if any(isinstance(saveable, trackable.PythonStateSaveable)
+         for saveable in saveables):
+    logging.warn(
+        f"Note that object {obj} stores python values into the checkpoint. "
+        "These values will not be restored when loading the SavedModel "
+        "into python.")
+    return []
+  if any(isinstance(saveable, trackable.NoRestoreSaveable)
+         for saveable in saveables):
+    return []
+  return saveables
 
 
 class RestoredSaveableObject(saveable_object.SaveableObject):
@@ -470,37 +519,6 @@ def restored_saved_object_factory(save_function, restore_function):
   return functools.partial(RestoredSaveableObject,
                            save_function=save_function,
                            restore_function=restore_function)
-
-
-def create_saveable_object(factory, name, call_with_mapped_captures):
-  """Creates a SaveableObject while potentially in a different graph.
-
-  When creating the frozen saver for SavedModel, the save and restore ops are
-  placed in a separate graph. Since RestoredSaveableObject uses tf.functions to
-  save and restore, the function captures must be mapped to the new graph.
-
-  Args:
-    factory: Factory method for creating the SaveableObject.
-    name: Checkpoint key of this SaveableObject.
-    call_with_mapped_captures: Helper that calls a tf.function while remapping
-      the captures.
-
-  Returns:
-    a SaveableObject.
-  """
-  if (call_with_mapped_captures is None or
-      not is_factory_for_restored_saveable_object(factory)):
-    return factory(name=name)
-
-  concrete_save_fn = factory.keywords["save_function"]
-  def save_fn(name):
-    return call_with_mapped_captures(concrete_save_fn, [name])
-
-  concrete_restore_fn = factory.keywords["restore_function"]
-  def restore_fn(*restored_tensors):
-    return call_with_mapped_captures(concrete_restore_fn, restored_tensors)
-
-  return factory(save_function=save_fn, restore_function=restore_fn, name=name)
 
 
 def is_factory_for_restored_saveable_object(factory):

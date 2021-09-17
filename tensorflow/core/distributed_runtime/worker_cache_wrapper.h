@@ -89,7 +89,7 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.
-  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+  bool RetrieveLogs(int64_t step_id, StepStats* ss) override {
     return wrapped_->RetrieveLogs(step_id, ss);
   }
 

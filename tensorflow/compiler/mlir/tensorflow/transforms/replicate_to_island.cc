@@ -52,6 +52,12 @@ constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
     : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-replicate-to-island"; }
+
+  StringRef getDescription() const final {
+    return "Lowers device replicate to executor islands";
+  }
+
   void runOnFunction() override;
 };
 
@@ -330,8 +336,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 
-static PassRegistration<ReplicateToIslandPass> pass(
-    "tf-replicate-to-island", "Lowers device replicate to executor islands");
+static PassRegistration<ReplicateToIslandPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

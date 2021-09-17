@@ -129,6 +129,7 @@ cc_library(
         "py_exception_registry.h",
         "pybind11_status.h",
         "//tensorflow/c:headers",
+        "//tensorflow/c:tf_status_internal_headers",
         "//tensorflow/c/eager:headers",
     ],
     features = [
@@ -136,7 +137,6 @@ cc_library(
     ],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
-        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//third_party/python_runtime:headers",
@@ -149,7 +149,6 @@ cc_library(
     hdrs = [
         "py_exception_registry.h",
         "pybind11_status.h",
-        "//tensorflow/c:headers",
     ],
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),

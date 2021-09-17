@@ -1,11 +1,37 @@
 # This package is a shim layer over TF and TFLite op kernels.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 
 package(
     # The public targets are marked public individually
-    default_visibility = ["//tensorflow/lite:__subpackages__"],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "tf_headers",
+    srcs = [
+        "op_kernel.h",
+        "shape.h",
+        "status_macros.h",
+        "tensor_view.h",
+        "tf_op_shim.h",
+        "tf_tensor_view.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
+    name = "tf_kernel_shim",
+    deps = [
+        ":op_kernel",
+        ":shape",
+        ":status_macros",
+        ":tensor_view",
+        ":tf_op_shim",
+        ":tf_tensor_view",
+    ],
 )
 
 cc_library(
@@ -27,7 +53,10 @@ cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status:statusor"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_test(
@@ -46,12 +75,15 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":tensor_view",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ]),
 )
 
 tf_cc_test(
@@ -59,12 +91,15 @@ tf_cc_test(
     srcs = ["tf_tensor_view_test.cc"],
     deps = [
         ":tf_tensor_view",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
+    ]),
 )
 
 cc_library(
@@ -91,6 +126,7 @@ cc_test(
         ":test_util",
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -121,13 +157,16 @@ cc_library(
         ":status_macros",
         ":tensor_view",
         ":tf_tensor_view",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+    ]),
 )
 
 cc_library(
@@ -153,6 +192,7 @@ cc_library(
 cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
+    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/status"],
 )
 

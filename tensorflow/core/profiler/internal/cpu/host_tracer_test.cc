@@ -44,7 +44,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   std::string thread_name = "MyThreadName";
   XSpace space;
 
-  // We start a thread with a known and controled name. As of the time of
+  // We start a thread with a known and controlled name. As of the time of
   // writing, not all platforms (example: Windows) allow reading through the
   // system to the current thread name/description. By starting a thread with a
   // name, we control this behavior entirely within the TensorFlow subsystems.

@@ -133,14 +133,15 @@ func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 
 // CHECK-LABEL: func @shift_right_unsigned
 func @shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<4xui8>) -> tensor<4xui8> {
-  // CHECK:  tf.RightShift
+  // CHECK:  mhlo.shift_right_logical %arg0, %arg1 : tensor<4xui8>
   %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<4xui8>) -> tensor<4xui8>
   return %0 : tensor<4xui8>
 }
 
 // CHECK-LABEL: func @broadcast_shift_right_unsigned
 func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8>) -> tensor<2x4xui8> {
-  // CHECK:  tf.RightShift
+  // CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xui8>) -> tensor<2x4xui8>
+  // CHECK:  mhlo.shift_right_logical %[[BROADCAST]], %arg1 : tensor<2x4xui8>
   %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<2x4xui8>) -> tensor<2x4xui8>
   return %0 : tensor<2x4xui8>
 }
@@ -173,6 +174,13 @@ func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0: tensor<4xi32>
 }
 
+// CHECK-LABEL: func @bitwise_or_unsigned
+func @bitwise_or_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) -> tensor<4xui32> {
+  // CHECK-NEXT: mhlo.or
+  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  return %0: tensor<4xui32>
+}
+
 // CHECK-LABEL: func @bitwise_xor
 func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-NEXT: mhlo.xor
@@ -180,11 +188,25 @@ func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0: tensor<4xi32>
 }
 
+// CHECK-LABEL: func @bitwise_xor_unsigned
+func @bitwise_xor_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) -> tensor<4xui32> {
+  // CHECK-NEXT: mhlo.xor
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  return %0: tensor<4xui32>
+}
+
 // CHECK-LABEL: func @bitwise_and
 func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-NEXT: mhlo.and
   %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0: tensor<4xi32>
+}
+
+// CHECK-LABEL: func @bitwise_and_unsigned
+func @bitwise_and_unsigned(%arg0: tensor<4xui32>, %arg1: tensor<4xui32>) -> tensor<4xui32> {
+  // CHECK-NEXT: mhlo.and
+  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  return %0: tensor<4xui32>
 }
 
 // CHECK-LABEL: func @pow
@@ -270,9 +292,9 @@ func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1>
 }
 
 // CHECK-LABEL: func @equal_unsupported_type
-func @equal_unsupported_type(%arg0: tensor<*x!tf.string>, %arg1: tensor<*x!tf.string>) -> tensor<*xi1> {
+func @equal_unsupported_type(%arg0: tensor<*x!tf_type.string>, %arg1: tensor<*x!tf_type.string>) -> tensor<*xi1> {
   // CHECK: "tf.Equal"
-  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*x!tf.string>, tensor<*x!tf.string>) -> tensor<*xi1>
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*x!tf_type.string>, tensor<*x!tf_type.string>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }
 

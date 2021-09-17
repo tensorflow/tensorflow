@@ -32,7 +32,7 @@ namespace graph_transforms {
 Status RoundWeights(const GraphDef& input_graph_def,
                     const TransformFuncContext& context,
                     GraphDef* output_graph_def) {
-  int32 num_steps;
+  int32_t num_steps;
   TF_RETURN_IF_ERROR(
       context.GetOneInt32Parameter("num_steps", 256, &num_steps));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
@@ -91,7 +91,8 @@ Status RoundWeights(const GraphDef& input_graph_def,
         float* rounded_values = rounded_tensor.flat<float>().data();
         const float bucket_width = (max - min) / num_steps;
         for (int i = 0; i < num_elements; ++i) {
-          const int32 bucket = std::floor((old_values[i] - min) / bucket_width);
+          const int32_t bucket =
+              std::floor((old_values[i] - min) / bucket_width);
           rounded_values[i] = min + (bucket_width * (bucket + 0.5f));
         }
 

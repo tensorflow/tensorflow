@@ -82,6 +82,14 @@ func @testGatherUnsupportedRank(%arg0 : tensor<f32>, %arg1 : tensor<1xi32>) -> t
 
 // -----
 
+func @testGatherUnsupported2DStringInput(%arg0 : tensor<?x?x!tf_type.string>, %arg1 : tensor<?xi32>) -> tensor<*x!tf_type.string> {
+  // expected-error @+1 {{'tfl.gather' op expect 1d input when the given type is string, got 'tensor<?x?x!tf_type.string>'}}
+  %0 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?x?x!tf_type.string>,tensor<?xi32>) -> tensor<*x!tf_type.string>
+  return %0 : tensor<*x!tf_type.string>
+}
+
+// -----
+
 // CHECK-LABEL: testGatherWithBatchDims
 func @testGatherWithBatchDims(%arg0 : tensor<2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
   %0 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 2 : i32}: (tensor<2xf32>,tensor<2xi32>) -> tensor<2xf32>
@@ -310,8 +318,8 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testAddWithI64Broadcasting
 func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
 ^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
-  // CHECK: "tfl.add"(%arg0, %arg1)
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  // CHECK: tfl.add(%arg0, %arg1)
+  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
   return %0#0 : tensor<2x3xi64>
 }
 
@@ -365,7 +373,7 @@ func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
-  // CHECK: "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>>
   return %0#0 : tensor<? x !quant.any<i16:f32>>
 }
@@ -401,7 +409,7 @@ func @testDiv(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testLess
 func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // CHECK: "tfl.less"(%arg0, %arg1)
+  // CHECK: tfl.less(%arg0, %arg1)
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
   return %0#0 : tensor<? x i1>
 }
@@ -1568,15 +1576,15 @@ func @testStridedSliceWithQUI8(%arg0: tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1
 }
 
 // CHECK-LABEL: testStridedSliceTFType
-func @testStridedSliceTFType(%arg0: tensor<12x2x2x5xui8>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf.quint8> {
-  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xui8>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf.quint8>
-  return %0 : tensor<1x2x2x5x!tf.quint8>
+func @testStridedSliceTFType(%arg0: tensor<12x2x2x5xui8>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.quint8> {
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xui8>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.quint8>
+  return %0 : tensor<1x2x2x5x!tf_type.quint8>
 }
 
 // CHECK-LABEL: testStridedSliceWithString
-func @testStridedSliceWithString(%arg0: tensor<12x2x2x5x!tf.string>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf.string> {
-  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf.string>
-  return %0 : tensor<1x2x2x5x!tf.string>
+func @testStridedSliceWithString(%arg0: tensor<12x2x2x5x!tf_type.string>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string> {
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
+  return %0 : tensor<1x2x2x5x!tf_type.string>
 }
 
 // -----
@@ -1758,6 +1766,34 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
   // expected-error @+1 {{op failed to verify that operand 1 is 1-D}}
   %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  // CHECK: "tfl.transpose"
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  return %1 : tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // CHECK: "tfl.transpose"
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype_mismatch_axis(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // expected-error @+1 {{op has mismatched quantized axes of input and output}}
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
 }
 
 // -----
@@ -2515,6 +2551,66 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   return %0#0 : tensor<i32>
 }
 
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
+  return %0, %1 : tensor<*xi32>, tensor<*xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
+  // expected-error @+1 {{number of arguments in condition function does not match number of arguments in body function}}
+  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<*xi32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+    %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+    "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
+  }) : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<2xf32>, %arg2: tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
+  return %0, %1, %arg2 : tensor<*xi32>, tensor<2xf32>, tensor<1xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i32> {
+  // expected-error @+1 {{condition function's argument type does not match body function's argument type}}
+  %0:3 = "tfl.while"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):  // no predecessors
+    %1:3 = call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
+    "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> ()
+  }) : (tensor<i32>, tensor<1xf32>, tensor<2xf32>) -> (tensor<i32>, tensor<2xf32>, tensor<1xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
 func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tfl.if"(%arg0) ( {
     "tfl.yield"(%arg1) : (tensor<1xf32>) -> ()
@@ -2526,6 +2622,7 @@ func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 }
 
 func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error @+1 {{'tfl.if' op expected 2 regions}}
   %0 = "tfl.if"(%arg0) ( {
     %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     "tfl.yield"(%1) : (tensor<1xf32>) -> ()
@@ -2732,4 +2829,76 @@ func @conv3d_transpose_bias_size_not_match(%arg0: tensor<5xi32>, %arg1: tensor<1
   // expected-error @+1 {{bias must has num of elements equals to 4th dim of filter}}
   %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<1x2x2x3x2xf32>, tensor<2x5x6x8x2xf32>, tensor<3xf32>) -> tensor<?x?x?x?x?xf32>
   return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @broadcast_args(%arg0: tensor<5xi32>, %arg1: tensor<2xi32>) -> tensor<5xi32> {
+  // CHECK: "tfl.broadcast_args"(%arg0, %arg1)
+  %0 = "tfl.broadcast_args"(%arg0, %arg1) {} : (tensor<5xi32>, tensor<2xi32>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+}
+
+// -----
+
+func @broadcast_args_unmatch_types(%arg0: tensor<5xi32>, %arg1: tensor<2xi64>) -> tensor<5xi32> {
+  // expected-error @+1 {{failed to verify that BroadcastArgs op operands have same element type}}
+  %0 = "tfl.broadcast_args"(%arg0, %arg1) {} : (tensor<5xi32>, tensor<2xi64>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+}
+
+// -----
+
+func @mul_with_dynamic_shape_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tfl.shape"(%arg0) : (tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8xi64>
+  %1 = "tfl.shape"(%arg1) : (tensor<?x3x2x1xf32>) -> tensor<4xi64>
+  %2 = "tfl.broadcast_args"(%0, %1) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
+  %3 = "tfl.broadcast_to"(%arg0, %2) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  %4 = "tfl.broadcast_to"(%arg1, %2) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  %5 = "tfl.mul"(%3, %4) {fused_activation_function = "NONE"} : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %5 : tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: tfl.mul
+}
+
+// -----
+
+func @mul_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  // expected-error @+1 {{'tfl.mul' op failed to verify that Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %0 : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+// -----
+
+func @select_v2_with_dynamic_shape_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xi1>, %arg1: tensor<8x7x6x5x?x3x2x1xf32>, %arg2: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tfl.shape"(%arg1) : (tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8xi64>
+  %1 = "tfl.shape"(%arg2) : (tensor<?x3x2x1xf32>) -> tensor<4xi64>
+  %2 = "tfl.broadcast_args"(%0, %1) : (tensor<8xi64>, tensor<4xi64>) -> tensor<8xi64>
+  %3 = "tfl.shape"(%arg0) : (tensor<8x7x6x5x?x3x2x1xi1>) -> tensor<8xi64>
+  %4 = "tfl.broadcast_args"(%2, %3) : (tensor<8xi64>, tensor<8xi64>) -> tensor<8xi64>
+  %5 = "tfl.broadcast_to"(%arg0, %4) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xi1>
+  %6 = "tfl.broadcast_to"(%arg1, %4) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  %7 = "tfl.broadcast_to"(%arg2, %4) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  %8 = "tfl.select_v2"(%5, %6, %7) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %8 : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+// -----
+
+func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xi1>, %arg1: tensor<8x7x6x5x?x3x2x1xf32>, %arg2: tensor<?x3x2x1xf32>, %arg3: tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tfl.broadcast_to"(%arg1, %arg3) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  %1 = "tfl.broadcast_to"(%arg2, %arg3) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // expected-error @+1 {{'tfl.select_v2' op failed to verify that operands do not have the same shape or broadcastable shapes within the rank 4}}
+  %2 = "tfl.select_v2"(%arg0, %0, %1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %2 : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+// -----
+
+func @depthwise_conv_2D_invalid_bias(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
+  %w = constant dense<127.0> : tensor<32x3x3x3xf32>
+  %b = constant dense<0.0> : tensor<32x1xf32>
+  // expected-error @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<32x1xf32>'}}
+  %dc = "tfl.depthwise_conv_2d"(%arg0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32x1xf32>) -> tensor<1x112x112x32xf32>
+  return %dc : tensor<1x112x112x32xf32>
 }

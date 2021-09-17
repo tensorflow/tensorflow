@@ -20,7 +20,7 @@ namespace tensorflow {
 #if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER8(UnaryOp, CPU, "Abs", functor::abs, Eigen::half, bfloat16, float,
-          double, int8, int16, int32, int64);
+          double, int8, int16, int32, int64_t);
 #else
 REGISTER(UnaryOp, CPU, "Abs", functor::abs, bfloat16);
 #endif
@@ -43,5 +43,11 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::abs<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Abs")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::abs<int32>>);
 
 }  // namespace tensorflow

@@ -30,9 +30,9 @@ namespace hlo {
 LogicalResult VerifyCollectivePermuteSourceTargetPairs(
     Operation* op, DenseIntElementsAttr attr);
 
-LogicalResult VerifyAllReduceScatter(Operation* op, TypeRange operand_types,
-                                     TypeRange result_types,
-                                     uint64_t scatter_dimension);
+LogicalResult VerifyReduceScatter(Operation* op, TypeRange operand_types,
+                                  TypeRange result_types,
+                                  uint64_t scatter_dimension);
 
 // Custom formatting for convolution window attributes.
 void printWindowAttributes(OpAsmPrinter& p, Operation* op,

@@ -80,6 +80,12 @@ class SparseSliceOpTest(test.TestCase):
     return sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_3x4x2())
 
+  def _SparseTensor_4x6_empty(self, val_dtype=np.int64):
+    ind = np.empty(shape=(0, 2), dtype=np.int64)
+    val = np.array([]).astype(val_dtype)
+    shape = np.array([4, 6]).astype(np.int64)
+    return sparse_tensor.SparseTensor(ind, val, shape)
+
   @test_util.run_deprecated_v1
   def testSliceMatrixRows(self):
     with self.session(use_gpu=False):
@@ -243,6 +249,25 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensor5.indices, [[0, 0], [2, 0], [3, 0]])
       self.assertAllEqual(sparse_tensor5.values, [5, 25, 35])
       self.assertAllEqual(sparse_tensor5.dense_shape, [4, 1])
+
+  def testSliceEmpty(self):
+    # SparseSlice does not currently have a GPU kernel.
+    with test_util.force_cpu():
+      sp_empty = self._SparseTensor_4x6_empty()
+      sp_input = self._SparseTensor_4x6()
+      sparse_tensor0 = sparse_ops.sparse_slice(sp_empty, [0, 0], [4, 1])
+      sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [1, 1], [0, 0])
+      sparse_tensor2 = sparse_ops.sparse_slice(sp_input, [2, 1], [2, 1])
+      empty_inds = np.empty(shape=(0, 2), dtype=np.int64)
+      self.assertAllEqual(sparse_tensor0.indices, empty_inds)
+      self.assertAllEqual(sparse_tensor0.values, [])
+      self.assertAllEqual(sparse_tensor0.dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensor1.indices, empty_inds)
+      self.assertAllEqual(sparse_tensor1.values, [])
+      self.assertAllEqual(sparse_tensor1.dense_shape, [0, 0])
+      self.assertAllEqual(sparse_tensor2.indices, empty_inds)
+      self.assertAllEqual(sparse_tensor2.values, [])
+      self.assertAllEqual(sparse_tensor2.dense_shape, [2, 1])
 
   @test_util.run_deprecated_v1
   def testGradients(self):

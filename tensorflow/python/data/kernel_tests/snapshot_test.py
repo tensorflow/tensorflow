@@ -420,6 +420,11 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
     for _ in range(30):
       self.evaluate(next_element())
 
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    dataset = dataset.snapshot(path=self._snapshot_dir, name="snapshot")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
                          parameterized.TestCase):
@@ -1013,7 +1018,6 @@ class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
     self.assertDatasetProduces(dataset3, expected_after)
 
 
-# TODO(b/191050821): Enable eager mode tests.
 class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                              parameterized.TestCase):
 
@@ -1032,7 +1036,7 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return ds_fn
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCheckpointBeforeEpochEndNoRepeat(self):
     ds_fn = self._build_snapshot_dataset(repeat=False)
     outputs = self.gen_outputs(ds_fn, [], 50, verify_exhausted=False)
@@ -1041,7 +1045,7 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         self.gen_outputs(ds_fn, [], 50, ckpt_saved=True, verify_exhausted=True))
     self.assertSequenceEqual(outputs, range(100))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCheckpointBeforeOneEpochWithReading(self):
     ds_fn = self._build_snapshot_dataset(repeat=True)
 
@@ -1057,7 +1061,7 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         outputs,
         list(range(50)) + list(range(50, 100)) + list(range(100)))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCheckpointBeforeOneEpochThenRunAFewSteps(self):
     ds_fn = self._build_snapshot_dataset(repeat=False)
     outputs = self.gen_outputs(
@@ -1069,7 +1073,7 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         self.gen_outputs(ds_fn, [], 90, ckpt_saved=True, verify_exhausted=True))
     self.assertSequenceEqual(outputs, range(100))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCheckpointAfterOneEpoch(self):
     ds_fn = self._build_snapshot_dataset(repeat=True)
 
@@ -1085,7 +1089,7 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         outputs,
         list(range(100)) + list(range(10)) + list(range(10, 100)))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCheckpointAfterOneEpochRunFewSteps(self):
     ds_fn = self._build_snapshot_dataset(repeat=True)
 
@@ -1104,7 +1108,6 @@ class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         list(range(100)) + list(range(10)) + list(range(10, 100)))
 
 
-# TODO(b/191050821): Enable eager mode tests.
 class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                    parameterized.TestCase):
 
@@ -1136,7 +1139,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testSnapshotBeforeEpochEnd(self, pending_snapshot_expiry_seconds):
     ds_fn = self._build_snapshot_dataset(
@@ -1195,7 +1198,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testCheckpointBeforeOneEpochThenRunFewSteps(
       self, pending_snapshot_expiry_seconds):
@@ -1216,7 +1219,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testCheckpointBeforeOneEpochThenRunFewStepsMultipleThreads(
       self, pending_snapshot_expiry_seconds):
@@ -1238,7 +1241,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testCheckpointAfterOneEpoch(self, pending_snapshot_expiry_seconds):
     ds_fn = self._build_snapshot_dataset(
@@ -1260,7 +1263,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.graph_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testCheckpointAfterOneEpochThenRunFewSteps(
       self, pending_snapshot_expiry_seconds):

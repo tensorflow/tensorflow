@@ -68,6 +68,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
 
@@ -180,7 +181,10 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
       if var_kwargs or any(is_distributed_var(a) for a in args):
         raise ValueError(
             "Mixing Variables and positional-only parameters not supported by "
-            "TPUStrategy.")
+            f"TPUStrategy. Received {len(var_kwargs)} DistributedVariables in "
+            f"**kwargs and {sum(is_distributed_var(a) for a in args)} in *args,"
+            " expected zero for both."
+        )
       return fn, args, kwargs
 
   star_args = []
@@ -522,9 +526,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
     tensor_rank = len(input_shape)
 
     if tensor_rank != len(partition_dimensions):
-      raise ValueError("Length of `partition_dimensions` ({}) must be  "
-                       "equal to the rank of `x` ({}).".format(
-                           len(partition_dimensions), tensor_rank))
+      raise ValueError("Length of `partition_dimensions` must equal to the "
+                       "rank of `tensor.shape` ({}). Received "
+                       "len(partition_dimensions)={}.".format(
+                           tensor_rank, len(partition_dimensions)))
 
     for dim_index, dim_size in enumerate(input_shape):
       if dim_size is None:
@@ -532,16 +537,18 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension {} ({}) must be "
+        raise ValueError("Tensor shape at `partition_dimensions[{}]` must be "
                          "divisible by corresponding value specified "
-                         "by `partition_dimensions` ({}).".format(
-                             dim_index, dim_size, split_size))
+                         "by `partition_dimensions` ({}). Received: {}.".format(
+                             dim_index, split_size, dim_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
-      raise ValueError("Number of logical devices ({}) does not match the "
-                       "number of partition splits specified ({}).".format(
-                           num_logical_devices_per_replica,
-                           num_partition_splits))
+      raise ValueError(
+          "The product of `partition_dimensions` should be the same as the "
+          "number of logical devices (={}). Received `partition_dimensions`={},"
+          "and their product is {}.".format(num_logical_devices_per_replica,
+                                            partition_dimensions,
+                                            num_partition_splits))
 
     tile_assignment = np.arange(num_partition_splits).reshape(
         partition_dimensions)
@@ -860,10 +867,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if context.executing_eagerly():
       # In async remote eager, we want to sync the executors before exiting the
       # program.
-      def async_wait():
-        if context.context()._context_handle is not None:  # pylint: disable=protected-access
-          context.async_wait()
-      atexit.register(async_wait)
+      atexit.register(context.async_wait)
 
     # Flag to turn on VariablePolicy.
     self._use_var_policy = True
@@ -1168,6 +1172,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
+  def _resource_creator_scope(self):
+
+    def lookup_creator(next_creator, *args, **kwargs):
+      host_to_table = collections.OrderedDict()
+      for host_device in self._device_input_worker_devices.keys():
+        with ops.device(host_device):
+          host_to_table[host_device] = next_creator(*args, **kwargs)
+
+      return values.PerWorkerResource(self._container_strategy(), host_to_table)
+
+    # TODO(b/194362531): Define creator(s) for other resources.
+    return ops.resource_creator_scope("StaticHashTable", lookup_creator)
+
   def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       return value
@@ -1221,10 +1238,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
        ) and tpu_util.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self._num_replicas_in_sync)
+        # scalar_mul maintains the type of value: tensor or IndexedSlices.
+        value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "Currently only support sum & mean in TPUStrategy.")
+            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
     if not isinstance(value, values.DistributedValues):
@@ -1465,6 +1484,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
+          if rank is None:
+            raise ValueError(
+                "input tensor {} to TPUStrategy.run() has unknown rank, "
+                "which is not allowed".format(input_tensor))
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],

@@ -18,17 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -276,7 +282,8 @@ class DepthwiseConv2DTest(test.TestCase):
                     use_gpu,
                     grouped_conv=False,
                     data_format="NHWC",
-                    dilations=None):
+                    dilations=None,
+                    tolerance=None):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -291,6 +298,7 @@ class DepthwiseConv2DTest(test.TestCase):
       grouped_conv: Whether to use cuDNN 7's grouped convolution.
       data_format: The data_format of the input. "NHWC" or "NCHW".
       dilations: A list of 2 elements, representing the dilations.
+      tolerance: The absolute and relative tolarance when verifying the output.
     """
     input_size = 1
     filter_size = 1
@@ -313,7 +321,7 @@ class DepthwiseConv2DTest(test.TestCase):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.session(graph=graph, use_gpu=use_gpu) as sess:
-      tolerance = {
+      tolerance = tolerance or {
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
           dtypes.float64: 1e-12,
@@ -370,8 +378,10 @@ class DepthwiseConv2DTest(test.TestCase):
       interface_result = self.evaluate(conv_interface)
 
     if dilations is None:
-      self.assertAllClose(native_result, np_result, atol=tolerance, rtol=0.)
-    self.assertAllClose(interface_result, np_result, atol=tolerance, rtol=0.)
+      self.assertAllClose(native_result, np_result, atol=tolerance,
+                          rtol=tolerance)
+    self.assertAllClose(interface_result, np_result, atol=tolerance,
+                        rtol=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   @test_util.run_cuda_only
@@ -406,9 +416,10 @@ class DepthwiseConv2DTest(test.TestCase):
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
       for data_type in ([dtypes.float32] + optional_float64):
         tf_logging.info("Testing without grouped_conv")
+        tolerance = 1e-4 if data_type == dtypes.float32 else 1e-12
         self._VerifyValues(
             input_size, filter_size, stride, padding, data_type, use_gpu=True,
-            dilations=dilations)
+            dilations=dilations, tolerance=tolerance)
         tf_logging.info("Testing with grouped_conv")
         self._VerifyValues(
             input_size,
@@ -418,7 +429,8 @@ class DepthwiseConv2DTest(test.TestCase):
             data_type,
             use_gpu=True,
             grouped_conv=True,
-            dilations=dilations)
+            dilations=dilations,
+            tolerance=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DWithUnknownShape(self):
@@ -448,6 +460,7 @@ class DepthwiseConv2DTest(test.TestCase):
       # on the ROCm platform
       optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
       for data_type in ([dtypes.float32] + optional_float64):
+        tolerance = 1e-4 if data_type == dtypes.float32 else 1e-12
         self._VerifyValues(
             input_size,
             filter_size,
@@ -456,7 +469,8 @@ class DepthwiseConv2DTest(test.TestCase):
             data_type,
             use_gpu=True,
             data_format="NCHW",
-            dilations=dilations)
+            dilations=dilations,
+            tolerance=tolerance)
 
   @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DExplicit(self):
@@ -1012,6 +1026,138 @@ class DepthwiseConv2DTest(test.TestCase):
         continue
       self._CompareBackpropFilter(input_size, filter_size, output_size, stride,
                                   padding, "float64")
+
+
+# Please refer to the following gist for more info:
+# https://gist.github.com/duncanriach/4c18cb07a73510c5fcb2deb52adbffaa
+class DepthwiseConv2DDeterministicTest(test.TestCase):
+  """Test determinism-related functionality of tf.nn.depthwise_conv2d."""
+
+  def _genParams(self,
+                 use_cudnn=False,
+                 data_format="NHWC",
+                 dtype=dtypes.float32,
+                 seed=123):
+    random_seed.set_seed(seed)
+    batch_size = 2  # no interaction over batch, so make small
+    if use_cudnn:
+      # One input channel, plus a cuDNN-supported filter size and number of
+      # output channels will result in cuDNN being used for both
+      # backprop-to-input and backprop-to-filter on cuDNN 7 and higher.
+      input_channels = 1
+    else:
+      input_channels = 2  # no interaction over channels, so make small
+    input_height = 500
+    input_width = 1000
+    if data_format == "NHWC":
+      input_shape = (batch_size, input_height, input_width, input_channels)
+    else:  # "NCHW"
+      input_shape = (batch_size, input_channels, input_height, input_width)
+    input_data = random_ops.random_normal(input_shape, dtype=dtype)
+    # The following filter size results in nondeterminism being exercised in
+    # cuDNN backprop (when determinism is not enabled) to both input and filter
+    # as well as in the specialized depthwise backprop to filter.
+    filter_height = 7
+    filter_width = 7
+    channel_multiplier = 10
+    filter_shape = (filter_height, filter_width, input_channels,
+                    channel_multiplier)
+    filter_data = random_ops.random_normal(filter_shape, dtype=dtype)
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    output_height = input_height  # because same padding
+    output_width = input_width  # because same padding
+    output_channels = input_channels * channel_multiplier
+    if data_format == "NHWC":
+      output_shape = (batch_size, output_height, output_width, output_channels)
+    else:  # "NCHW"
+      output_shape = (batch_size, output_channels, output_height, output_width)
+    return input_data, filter_data, strides, padding, output_shape
+
+  def _testForwardCase(self,
+                       use_cudnn=False,
+                       data_format="NHWC",
+                       dtype=dtypes.float32):
+    for seed in range(5):
+      p = self._genParams(use_cudnn, data_format, dtype, seed=seed)
+      input_data, filter_data, strides, padding, _ = p
+
+      with test_util.deterministic_ops():
+        result_a = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
+                                               padding, data_format)
+        result_b = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
+                                               padding, data_format)
+
+      self.assertAllEqual(result_a, result_b)
+
+  @test_util.run_gpu_only
+  def testForwardGPU(self):
+    for use_cudnn in [False, True]:
+      for data_format in ["NHWC", "NCHW"]:
+        for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+          self._testForwardCase(use_cudnn, data_format, dtype=dtype)
+
+  def testForwardCPU(self):
+    if tf_config.list_physical_devices("GPU"):
+      self.skipTest("Test only runs when there is no GPU")
+    data_format = "NHWC"  # CPU does not implement NCHW version of op
+    for dtype in [dtypes.float32, dtypes.float64]:
+      self._testForwardCase(data_format=data_format, dtype=dtype)
+
+  def _testBackwardCase(self,
+                        using_gpu=False,
+                        use_cudnn=False,
+                        data_format="NHWC",
+                        dtype=dtypes.float32):
+    p = self._genParams(use_cudnn, data_format, dtype, seed=123)
+    input_data, filter_data, strides, padding, output_shape = p
+
+    with test_util.deterministic_ops():
+
+      def Gradients(upstream_gradients):
+        with backprop.GradientTape() as tape:
+          tape.watch(input_data)
+          tape.watch(filter_data)
+          op_output = nn_impl.depthwise_conv2d_v2(input_data, filter_data,
+                                                  strides, padding, data_format)
+          gradient_injector_output = op_output * upstream_gradients
+        return tape.gradient(gradient_injector_output,
+                             [input_data, filter_data])
+
+      if using_gpu and not use_cudnn:
+        # This tests depends on other tests, tests which do not enable
+        # op-determinism, to ensure that determinism-unimplemented exceptions
+        # are not erroneously thrown when op-determinism is not enabled.
+        ctx_mgr = self.assertRaisesRegex(
+            errors.UnimplementedError, "A deterministic GPU implementation of" +
+            " DepthwiseConvBackpropFilter is not currently available.")
+      else:
+        ctx_mgr = contextlib.suppress()
+
+      with ctx_mgr:
+        # Test only two seeds, since testing takes a long time
+        for seed in (987, 988):
+          upstream_gradients = random_ops.random_normal(output_shape,
+                                                        dtype=dtype, seed=seed)
+          input_gradients_a, filter_gradients_a = Gradients(upstream_gradients)
+          input_gradients_b, filter_gradients_b = Gradients(upstream_gradients)
+          self.assertAllEqual(input_gradients_a, input_gradients_b)
+          self.assertAllEqual(filter_gradients_a, filter_gradients_b)
+
+  @test_util.run_gpu_only
+  def testBackwardGPU(self):
+    using_gpu = True
+    for use_cudnn in [False, True]:
+      for data_format in ["NHWC", "NCHW"]:
+        for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+          self._testBackwardCase(using_gpu, use_cudnn, data_format, dtype)
+
+  def testBackwardCPU(self):
+    if tf_config.list_physical_devices("GPU"):
+      self.skipTest("Test only runs when there is no GPU")
+    data_format = "NHWC"  # CPU does not implement NCHW version of op
+    for dtype in [dtypes.float32, dtypes.float64]:
+      self._testBackwardCase(data_format=data_format, dtype=dtype)
 
 
 if __name__ == "__main__":

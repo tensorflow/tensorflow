@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -111,6 +112,64 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(DebugString(result.nodes), e2);
+}
+
+TEST(TFunc, CopyDebugInfo) {
+  auto fdef = FDH::Create(
+      // Name
+      "Square",
+      // Inputs
+      {"x: T"},
+      // Outputs
+      {"y: T"},
+      // Attrs
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {// a = Sqaure<T>(x)
+       {{"a"},
+        {"Square"},
+        {"x"},
+        {{"T", "$T"}},
+        {},
+        "",
+        "",
+        {"node_name"},
+        {"func_name"}}},
+      // Returns
+      {{"y", "a:y:0"}});
+  const char* e = R"P(
+Square[T:{float, double, int32, int64}](x:T) -> (y:T) {
+  a = Square[T=$T](x)
+  return y = a:y:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  const char* e2 = R"P(
+(x:float) -> (a:float) {
+  a = Square[T=float](x)
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.nodes), e2);
+  EXPECT_EQ(result.nodes.size(), 3);
+  NodeDef node;
+  for (auto n : result.nodes) {
+    if (n.name() == "a") {
+      node = n;
+      break;
+    }
+  }
+  EXPECT_TRUE(node.has_experimental_debug_info());
+  EXPECT_EQ(node.experimental_debug_info().original_node_names().size(), 1);
+  EXPECT_EQ(node.experimental_debug_info().original_func_names().size(), 1);
+  EXPECT_EQ(node.experimental_debug_info().original_node_names()[0],
+            "node_name");
+  EXPECT_EQ(node.experimental_debug_info().original_func_names()[0],
+            "func_name");
 }
 
 TEST(TFunc, ControlDep) {
@@ -911,12 +970,12 @@ TEST(FunctionCallFrame, Void_Void) {
   FunctionCallFrame frame({}, {});
   TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
-  HasError(frame.SetArgs({a}), "Invalid argument");
+  EXPECT_EQ(frame.SetArgs({a}).code(), error::INVALID_ARGUMENT);
   const Tensor* v = nullptr;
-  HasError(frame.GetArg(0, &v), "Invalid argument");
+  EXPECT_EQ(frame.GetArg(0, &v).code(), error::INVALID_ARGUMENT);
   if (v != nullptr) {
     // v is null in certain environments.
-    HasError(frame.SetRetval(0, *v), "Invalid argument");
+    EXPECT_EQ(frame.SetRetval(0, *v).code(), error::INVALID_ARGUMENT);
   }
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
@@ -925,27 +984,27 @@ TEST(FunctionCallFrame, Void_Void) {
 
 TEST(FunctionCallFrame, Float_Float_Float) {
   FunctionCallFrame frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
-  HasError(frame.SetArgs({}), "Invalid argument: Expects 2 arguments");
+  EXPECT_EQ(frame.SetArgs({}).code(), error::INVALID_ARGUMENT);
   auto a = test::AsTensor<float>({100});
   auto b = test::AsTensor<float>({200});
-  auto c = test::AsTensor<int64>({300});
-  HasError(frame.SetArgs({a, c}),
-           "Invalid argument: Expects arg[1] to be float");
+  auto c = test::AsTensor<int64_t>({300});
+  EXPECT_EQ(frame.SetArgs({a, c}).code(), error::INVALID_ARGUMENT);
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
   const Tensor* v;
-  HasError(frame.GetArg(-1, &v), "Invalid argument");
-  HasError(frame.GetArg(2, &v), "Invalid argument");
+
+  EXPECT_EQ(frame.GetArg(-1, &v).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.GetArg(2, &v).code(), error::INVALID_ARGUMENT);
   TF_EXPECT_OK(frame.GetArg(0, &v));
   test::ExpectTensorEqual<float>(a, *v);
   TF_EXPECT_OK(frame.GetArg(1, &v));
   test::ExpectTensorEqual<float>(b, *v);
 
   Tensor w = test::AsTensor<float>({-100});
-  HasError(frame.SetRetval(-1, w), "Invalid argument");
-  HasError(frame.SetRetval(1, w), "Invalid argument");
-  HasError(frame.SetRetval(0, test::AsTensor<int64>({-100})),
-           "Invalid argument: Expects ret[0] to be float");
+  EXPECT_EQ(frame.SetRetval(-1, w).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.SetRetval(1, w).code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(frame.SetRetval(0, test::AsTensor<int64_t>({-100})).code(),
+            error::INVALID_ARGUMENT);
 
   std::vector<Tensor> rets;
   HasError(frame.GetRetvals(&rets), "does not have value");
@@ -970,6 +1029,11 @@ TEST(Canonicalize, Basic) {
                                           {"transpose_b", true},
                                           {"transpose_a", false}})),
             "MatMul[T=double,transpose_a=false,transpose_b=true]");
+  EXPECT_EQ(Canonicalize("CheckNumericsV2",
+                         Attrs({{"T", DT_HALF},
+                                {"message", "Message should get hashed"}}),
+                         FunctionLibraryRuntime::InstantiateOptions()),
+            "CheckNumericsV2[T=half,message=811750450553548470]");
 }
 
 TEST(FunctionLibraryDefinitionTest, Contains) {

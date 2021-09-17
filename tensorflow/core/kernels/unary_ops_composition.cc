@@ -114,9 +114,9 @@ class UnaryOpsComposition : public OpKernel {
     OutputBuffer out_flat = out->flat<T>();
 
     const std::size_t num_fns = fns_.size();
-    auto compute_fn = [this, &in_flat, &out_flat, &num_fns](int64 begin,
-                                                            int64 end) {
-      int64 len = end - begin;
+    auto compute_fn = [this, &in_flat, &out_flat, &num_fns](int64_t begin,
+                                                            int64_t end) {
+      int64_t len = end - begin;
       const InputBuffer in_slice(in_flat.data() + begin, len);
       const InputBuffer scratch_slice(out_flat.data() + begin, len);
       OutputBuffer out_slice(out_flat.data() + begin, len);
@@ -140,7 +140,7 @@ class UnaryOpsComposition : public OpKernel {
   static constexpr int kPacketSize =
       Eigen::internal::unpacket_traits<Packet>::size;
 
-  static inline int64 AlignBlockSize(int64 block_size) {
+  static inline int64_t AlignBlockSize(int64_t block_size) {
     // Align block size to packet size and account for unrolling in run above.
     if (block_size >= 16 * kPacketSize) {
       return (block_size + 4 * kPacketSize - 1) & ~(4 * kPacketSize - 1);

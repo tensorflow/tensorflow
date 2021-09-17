@@ -194,9 +194,9 @@ class WeightedQuantilesSummary {
   // by no more than that error delta.
   // This algorithm is linear in the original size of the summary and is
   // designed to be cache-friendly.
-  void Compress(int64 size_hint, double min_eps = 0) {
+  void Compress(int64_t size_hint, double min_eps = 0) {
     // No-op if we're already within the size requirement.
-    size_hint = std::max(size_hint, int64{2});
+    size_hint = std::max(size_hint, int64_t{2});
     if (entries_.size() <= size_hint) {
       return;
     }
@@ -206,7 +206,7 @@ class WeightedQuantilesSummary {
 
     // Compress elements ensuring approximation bounds and elements diversity
     // are both maintained.
-    int64 add_accumulator = 0, add_step = entries_.size();
+    int64_t add_accumulator = 0, add_step = entries_.size();
     auto write_it = entries_.begin() + 1, last_it = write_it;
     for (auto read_it = entries_.begin(); read_it + 1 != entries_.end();) {
       auto next_it = read_it + 1;
@@ -235,7 +235,7 @@ class WeightedQuantilesSummary {
   // of the summary and retrieve the values.
   // The resulting boundaries are guaranteed to both contain at least
   // num_boundaries unique elements and maintain approximation bounds.
-  std::vector<ValueType> GenerateBoundaries(int64 num_boundaries) const {
+  std::vector<ValueType> GenerateBoundaries(int64_t num_boundaries) const {
     std::vector<ValueType> output;
     if (entries_.empty()) {
       return output;
@@ -253,12 +253,12 @@ class WeightedQuantilesSummary {
 
     // Remove the least important boundaries by the gap removing them would
     // create.
-    std::list<int64> boundaries_to_keep;
-    for (int64 i = 0; i != compressed_summary.entries_.size(); ++i) {
+    std::list<int64_t> boundaries_to_keep;
+    for (int64_t i = 0; i != compressed_summary.entries_.size(); ++i) {
       boundaries_to_keep.push_back(i);
     }
     while (boundaries_to_keep.size() > num_boundaries) {
-      std::list<int64>::iterator min_element = boundaries_to_keep.end();
+      std::list<int64_t>::iterator min_element = boundaries_to_keep.end();
       auto prev = boundaries_to_keep.begin();
       auto curr = prev;
       ++curr;
@@ -290,12 +290,12 @@ class WeightedQuantilesSummary {
   // original summary. The following algorithm is an efficient cache-friendly
   // O(n) implementation of that idea which avoids the cost of the repetitive
   // full rank queries O(nlogn).
-  std::vector<ValueType> GenerateQuantiles(int64 num_quantiles) const {
+  std::vector<ValueType> GenerateQuantiles(int64_t num_quantiles) const {
     std::vector<ValueType> output;
     if (entries_.empty()) {
       return output;
     }
-    num_quantiles = std::max(num_quantiles, int64{2});
+    num_quantiles = std::max(num_quantiles, int64_t{2});
     output.reserve(num_quantiles + 1);
 
     // Make successive rank queries to get boundaries.
@@ -349,7 +349,7 @@ class WeightedQuantilesSummary {
   WeightType TotalWeight() const {
     return !entries_.empty() ? entries_.back().max_rank : 0;
   }
-  int64 Size() const { return entries_.size(); }
+  int64_t Size() const { return entries_.size(); }
   void Clear() { entries_.clear(); }
   const std::vector<SummaryEntry>& GetEntryList() const { return entries_; }
 

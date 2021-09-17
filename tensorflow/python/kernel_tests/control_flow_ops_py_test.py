@@ -1406,6 +1406,16 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
+  def testCondTensorDeps(self):
+    t = array_ops.identity(1.)
+
+    @def_function.function
+    def f():
+      with ops.control_dependencies([t]):
+        return array_ops.identity(2.)
+
+    f.get_concrete_function()
+
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
     if test_util.is_gpu_available():
@@ -2094,10 +2104,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       b = lambda i, j: [i + 1, array_ops.concat([j, j], 0)]
       with self.assertRaisesRegex(
           ValueError,
-          r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
-          r"shape \(4, 2\) after one iteration. To allow the shape to vary "
-          r"across iterations, use the `shape_invariants` argument of "
-          r"tf.while_loop to specify a less-specific shape."):
+          r".*\(2, 2\).*\(4, 2\) after one iteration\. To allow the shape to "
+          r"vary across iterations, use the `shape_invariants` argument of "
+          r"tf.while_loop to specify a less-specific shape\."):
         control_flow_ops.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):

@@ -288,7 +288,7 @@ func @same_predicate_dependency() {
 // Checks that results from first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_results_moved
-func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -311,7 +311,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+    "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
     %5 = "tf.IfRegion"(%0) ( {
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
@@ -330,7 +330,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
 // Checks that side effect successor of op in first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_side_effect_moved
-func @same_predicate_side_effect_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:         "tf.A"
@@ -345,13 +345,13 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf.resource<tensor<f32>>>)
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.IfRegion"(%0) ( {
       %3 = "tf.A"() : () -> (tensor<f32>)
-      "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> (tensor<f32>)
+    %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<f32>)
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
     %5 = "tf.IfRegion"(%0) ( {
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)

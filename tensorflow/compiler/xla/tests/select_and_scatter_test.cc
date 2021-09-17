@@ -15,6 +15,9 @@ limitations under the License.
 
 // Tests the select-and-scatter XLA operation.
 
+// b/194424657: On macs, the compiler hangs when trying to compile this file
+#if !defined(__APPLE__)
+
 #include <memory>
 #include <vector>
 
@@ -39,11 +42,11 @@ namespace xla {
 namespace {
 
 struct SelectAndScatterTestParam {
-  std::vector<int64> operand_shape;
-  std::vector<int64> source_shape;
+  std::vector<int64_t> operand_shape;
+  std::vector<int64_t> source_shape;
   Padding padding_type;
-  std::vector<int64> window_dimensions;
-  std::vector<int64> window_strides;
+  std::vector<int64_t> window_dimensions;
+  std::vector<int64_t> window_strides;
 };
 
 class SelectAndScatterTest
@@ -470,3 +473,5 @@ XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMinScatter) {
 
 }  // namespace
 }  // namespace xla
+
+#endif  // !defined(__APPLE__)

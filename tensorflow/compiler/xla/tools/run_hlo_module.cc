@@ -27,16 +27,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/compiler/xla/tools/prepare_reference_module.h"
+#include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -88,45 +90,36 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-Literal ExecuteOnPlatform(std::unique_ptr<HloModule> module,
+Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
                           absl::Span<const Literal> args,
-                          se::Platform* platform, bool run_hlo_passes) {
-  HloRunner runner(platform);
-
+                          HloRunnerInterface* runner, bool run_hlo_passes) {
   TF_QCHECK_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/false,
                                /*allow_mixed_precision=*/true))
-      << " (on " << platform->Name() << ")";
+      << " (on " << runner->Name() << ")";
 
-  std::cerr << "Running HLO module on platform " << platform->Name() << "...\n";
+  std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status = runner.Execute(std::move(module), args, run_hlo_passes);
+  auto result_status = runner->Execute(std::move(module), args, run_hlo_passes);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
 
   TF_QCHECK_OK(result_status.status())
-      << "Failed to execute on " << platform->Name() << "\n";
+      << "Failed to execute on " << runner->Name() << "\n";
 
   return result_status.ConsumeValueOrDie();
 }
 }  // namespace
 
 Status RunAndCompare(
-    const std::string& hlo_filename, const std::string& test_platform_name,
-    const std::string& reference_platform_name, std::minstd_rand0* engine,
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
-    std::function<Status(const HloModule&,
-                         const ::stream_executor::Platform::Id&, HloModule*)>
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
-  se::Platform* test_platform =
-      xla::PlatformUtil::GetPlatform(test_platform_name).ValueOrDie();
-  se::Platform* reference_platform =
-      reference_platform_name.empty()
-          ? nullptr
-          : xla::PlatformUtil::GetPlatform(reference_platform_name)
-                .ValueOrDie();
   if (!config_modifier_hook) {
     config_modifier_hook = [](HloModuleConfig* config) {
       config->set_seed(42);
@@ -149,45 +142,83 @@ Status RunAndCompare(
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
                                                 options.use_large_float_range)
                                   .ConsumeValueOrDie();
-
+  // Use provided input literals as arguments, if any.
+  if (iteration_literals_proto != nullptr &&
+      iteration_literals_proto->arguments_size() != 0) {
+    if (iteration_literals_proto->arguments_size() != args.size()) {
+      return xla::InvalidArgument(
+          "Failed to use input literals as arguments; mismatched "
+          "number of expected arguments.");
+    } else {
+      for (int i = 0; i < args.size(); ++i) {
+        if (!literal_comparison::EqualShapes(
+                 xla::Shape(args[i].shape()),
+                 xla::Shape(iteration_literals_proto->arguments(i).shape()))
+                 .ok()) {
+          return xla::InvalidArgument(
+              "Failed to use input literals for argument %d "
+              "because of a shape mismatch.",
+              i);
+        }
+        TF_ASSIGN_OR_RETURN(args[i],
+                            xla::Literal::CreateFromProto(
+                                iteration_literals_proto->arguments(i)));
+      }
+    }
+  }
   if (options.print_literals) {
     for (int i = 0; i < args.size(); ++i) {
       std::cout << "\n** Argument " << i << " **\n"
                 << args[i].ToString() << "\n";
     }
   }
-
-  std::unique_ptr<HloModule> reference_module;
-  if (reference_platform != nullptr) {
-    // PrepareReferenceModule needs to know the *test* platform, in order to
-    // properly match the test platform's numerics.
-    reference_module = PrepareReferenceModule(*test_module, test_platform->id(),
-                                              config_modifier_hook,
-                                              reference_module_modifier_hook)
-                           .ConsumeValueOrDie();
+  if (iteration_literals_proto != nullptr &&
+      iteration_literals_proto->arguments_size() == 0) {
+    for (int i = 0; i < args.size(); ++i) {
+      *iteration_literals_proto->add_arguments() = args[i].ToProto();
+    }
   }
 
-  Literal test_result = ExecuteOnPlatform(
-      std::move(test_module), args, test_platform, options.run_test_hlo_passes);
+  std::unique_ptr<HloModule> reference_module;
+  if (reference_runner != nullptr) {
+    // PrepareReferenceModule needs to know the *test* runner, in order to
+    // properly match the test runner's numerics.
+    reference_module =
+        PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
+                               reference_module_modifier_hook)
+            .ConsumeValueOrDie();
+  }
+
+  Literal test_result = ExecuteWithRunner(
+      std::move(test_module), args, test_runner, options.run_test_hlo_passes);
   if (options.print_literals) {
-    std::cout << "\n** Result on test platform " << test_platform->Name()
+    std::cout << "\n** Result with test runner " << test_runner->Name()
               << " **\n"
               << test_result.ToString() << "\n";
   }
+  if (iteration_literals_proto != nullptr) {
+    LiteralProto test_result_proto = test_result.ToProto();
+    iteration_literals_proto->mutable_result()->Swap(&test_result_proto);
+  }
 
   if (reference_module == nullptr) {
-    std::cerr << "Skipping reference platform\n";
+    std::cerr << "Skipping reference runner\n";
     return Status::OK();
   }
 
   Literal reference_result =
-      ExecuteOnPlatform(std::move(reference_module), args, reference_platform,
+      ExecuteWithRunner(std::move(reference_module), args, reference_runner,
                         options.run_reference_hlo_passes);
 
   if (options.print_literals) {
-    std::cout << "\n** Result on reference platform "
-              << reference_platform->Name() << " **\n"
+    std::cout << "\n** Result with reference runner "
+              << reference_runner->Name() << " **\n"
               << reference_result.ToString() << "\n";
+  }
+  if (iteration_literals_proto != nullptr) {
+    LiteralProto reference_result_proto = reference_result.ToProto();
+    iteration_literals_proto->mutable_reference_result()->Swap(
+        &reference_result_proto);
   }
   ErrorSpec error_spec(static_cast<float>(options.abs_error_bound),
                        static_cast<float>(options.rel_error_bound));

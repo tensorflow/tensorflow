@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/MLIRContext.h"
@@ -28,7 +29,7 @@ namespace mhlo {
 namespace {
 
 struct TestMaterializeBroadcastsPass
-    : public PassWrapper<TestMaterializeBroadcastsPass, FunctionPass> {
+    : public TestMaterializeBroadcastsPassBase<TestMaterializeBroadcastsPass> {
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns(&getContext());

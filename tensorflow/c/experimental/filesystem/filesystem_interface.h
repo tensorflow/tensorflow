@@ -83,18 +83,31 @@ typedef struct TF_TransactionToken {
   TF_Filesystem* owner;
 } TF_TransactionToken;
 
+// The named union is needed here (as opposed to
+// inside the `TF_Filesystem_Option_Value` struct)
+// as MSVC does not recognize `typeof`.
+typedef union TF_Filesystem_Option_Value_Union {
+  int64_t int_val;
+  double real_val;
+  struct {
+    char* buf;
+    int buf_length;
+  } buffer_val;
+} TF_Filesystem_Option_Value_Union;
+
 typedef struct TF_Filesystem_Option_Value {
-  int type_tag;
-  int num_values;
-  union {
-    int64_t inv_val;
-    double real_val;
-    struct {
-      char* buf;
-      int buf_length;
-    } buffer_val;
-  } * values;  // owned
+  int type_tag;    // type of values in the values union
+  int num_values;  // number of values
+  TF_Filesystem_Option_Value_Union*
+      values;  // owned (plugins must make a copy if storing this)
 } TF_Filesystem_Option_Value;
+
+typedef enum TF_Filesystem_Option_Type {
+  TF_Filesystem_Option_Type_Int = 0,
+  TF_Filesystem_Option_Type_Real,
+  TF_Filesystem_Option_Type_Buffer,
+  TF_Filesystem_Num_Option_Types,  // must always be the last item
+} TF_Filesystem_Option_Type;
 
 typedef struct TF_Filesystem_Option {
   char* name;                         // null terminated, owned
@@ -860,7 +873,7 @@ typedef struct TF_FilesystemOps {
   ///
   /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
   void (*set_filesystem_configuration)(const TF_Filesystem* filesystem,
-                                       const TF_Filesystem_Option** options,
+                                       const TF_Filesystem_Option* options,
                                        int num_options, TF_Status* status);
 
   /// Returns the value of the filesystem option given in `key` in `option`.
@@ -909,7 +922,6 @@ typedef struct TF_FilesystemOps {
   void (*get_filesystem_configuration_keys)(const TF_Filesystem* filesystem,
                                             char** keys, int* num_keys,
                                             TF_Status* status);
-
 } TF_FilesystemOps;
 // LINT.ThenChange(:filesystem_ops_version)
 

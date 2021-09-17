@@ -196,8 +196,8 @@ TEST_P(CppGradients, TestMatMulGrad) {
               AbstractContext* ctx,
               absl::Span<AbstractTensorHandle* const> inputs,
               absl::Span<AbstractTensorHandle*> outputs) -> Status {
-        return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], "MatMul",
-                           transpose_a, transpose_b);
+        return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
+                           transpose_b, "MatMul");
       };
       ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
           MatMulModel, BuildGradModel(MatMulModel, registry_),
@@ -251,8 +251,8 @@ TEST_P(CppGradients, TestMatMulGradManual) {
             AbstractContext* ctx,
             absl::Span<AbstractTensorHandle* const> inputs,
             absl::Span<AbstractTensorHandle*> outputs) -> Status {
-      return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], "MatMul",
-                         transpose_a, transpose_b);
+      return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], transpose_a,
+                         transpose_b, "MatMul");
     };
     Model MatMulGradModel = BuildGradModel(MatMulModel, registry_);
     std::vector<AbstractTensorHandle*> outputs(2);

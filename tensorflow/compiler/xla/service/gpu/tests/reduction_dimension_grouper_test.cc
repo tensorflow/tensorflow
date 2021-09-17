@@ -65,6 +65,45 @@ ENTRY main {
       )");
 }
 
+TEST_F(ReductionDimensionGrouperTest, ReductionWithGroupingVariadic) {
+  const char* hlo_text = R"(
+HloModule ReductionWithGrouping
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  input = f32[100,10,32,3]{3,2,1,0} parameter(0)
+  idxs = u32[100,10,32,3]{3,2,1,0} parameter(1)
+  zero = f32[] constant(0)
+  zero_idx = u32[] constant(0)
+
+  ROOT out = (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(input, idxs, zero, zero_idx), dimensions={2,3}, to_apply=argmax
+}
+
+
+)";
+
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: (f32[100,10]{1,0}, u32[100,10]{1,0}) reduce(f32[100,10,96]{2,1,0} %bitcast, u32[100,10,96]{2,1,0} %bitcast.1, f32[] %zero, u32[] %zero_idx), dimensions={2}
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

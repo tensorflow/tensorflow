@@ -66,6 +66,7 @@ from __future__ import print_function
 
 import functools
 import threading
+import types as types_lib
 import weakref
 import six
 
@@ -77,6 +78,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -94,6 +96,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
@@ -281,11 +284,13 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
           constraint=constraint)
       return
     if initial_value is None:
-      raise ValueError("initial_value must be specified.")
+      raise ValueError("`initial_value` must be a Tensor or a Python "
+                       "object convertible to a Tensor. Got None.")
     init_from_fn = callable(initial_value)
 
     if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
+      raise ValueError(f"`constraint` with type {type(constraint)} must be a "
+                       "callable.")
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
@@ -492,12 +497,11 @@ def _evaluate_var_is_initialized(variables):
             any_initialized = math_ops.reduce_any(components).numpy()
           if all_initialized != any_initialized:
             raise NotImplementedError(
-                ("Some but not all components of a parallel variable {} were "
-                 "initialized between their creation in a tf.function and "
-                 "the function's trace having completed. This is not yet "
-                 "supported; consider initializing either all or none of the "
-                 "components, or moving initialization out of the function."
-                ).format(repr(v)))
+                f"Some but not all components of a parallel variable {v!r} "
+                "were initialized between their creation in a tf.function and "
+                "the function's trace having completed. This is not "
+                "supported; consider initializing either all or none of the "
+                "components, or moving initialization out of the function.")
           numpy_value = all_initialized
         var_is_initialized[index] = numpy_value
   return var_is_initialized
@@ -738,6 +742,23 @@ class Function(core.GenericFunction):
       add_initializers_to: Where to collect variable initializers, if not None.
     """
 
+    if self._input_signature is not None:
+      arglen = len(self._input_signature)
+      arg_names_len = len(self.function_spec.arg_names)
+      default_arg_len = len(self.function_spec.fullargspec.defaults or ())
+      required_arg_len = arg_names_len - default_arg_len
+      # The input signature must cover all required function arguments.
+      if arglen < required_arg_len:
+        missing_tensor_specs = self.function_spec.arg_names[
+            arglen:required_arg_len]
+        raise TypeError(
+            f"The decorated function {self._name} has {required_arg_len} "
+            f"required argument(s), but tf.function was only passed an "
+            f"input_signature of length {arglen}. This covers {arglen} "
+            f"required argument(s): {self.function_spec.arg_names[:arglen]}, "
+            f"but TensorSpecs are still required for the remaining "
+            f"{len(missing_tensor_specs)} argument(s): {missing_tensor_specs}.")
+
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
@@ -762,8 +783,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
@@ -855,13 +879,14 @@ class Function(core.GenericFunction):
   def _run_functions_eagerly(self):
     return RUN_FUNCTIONS_EAGERLY
 
+  @traceback_utils.filter_traceback
   def __call__(self, *args, **kwds):
     # Implements GenericFunction.__call__.
     if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
-    # Only count the statistics the fitst time, before initialization took
+    # Only count the statistics the first time, before initialization took
     # place.
     if self._created_variables is None:
       compiled = bool(self._jit_compile and
@@ -1018,67 +1043,7 @@ class Function(core.GenericFunction):
                                             filtered_flat_args)
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
-    """Returns compiler IR for the compiled function.
-
-    This API is intended *only* for debugging as there are no guarantees on
-    backwards compatibility of returned IR or the allowed values of `stage`.
-
-    Args:
-      *args: Arguments used for compilation; same arguments as used for calling
-        the function. Need to be eager tensors.
-      **kwargs: Keyword arguments used for compilation.
-
-    Returns:
-      Function callable with the following kwargs:
-        - `stage` at which the compiler IR should be serialized. Allowed values
-          are:
-           - `hlo`: HLO output after conversion from TF
-            (https://www.tensorflow.org/xla/operation_semantics).
-           - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized
-             HLO module proto (a bytes object).
-           - `optimized_hlo`: HLO after compiler optimizations.
-           - `optimized_hlo_serialized`: Like stage=`optimized_hlo`, but the
-             output is a serialized HLO module proto (a bytes object).
-           - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
-             Graphviz.
-        - `device_name` can be either None, in which case the preferred device
-          is used for compilation, or a device name. It can be a full device
-          name, or a partial one, e.g., `/device:CPU:0`.
-
-      For example, for
-
-      ```python
-      @tf.function(jit_compile=True)
-      def f(x):
-        return x + 1
-
-      f.experimental_get_compiler_ir(tf.random.normal([10, 10])(stage='hlo')
-      ```
-
-      the output is:
-
-      ```
-      HloModule a_inference_f_13__.9
-
-      ENTRY %a_inference_f_13__.9 (arg0.1: f32[10,10]) -> f32[10,10] {
-        %arg0.1 = f32[10,10]{1,0} parameter(0), parameter_replication={false}
-        %reshape.2 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %arg0.1)
-        %constant.3 = f32[] constant(1)
-        %broadcast.4 = f32[10,10]{1,0} broadcast(f32[] %constant.3)
-        %add.5 = f32[10,10]{1,0} add(f32[10,10]{1,0} %reshape.2,
-                                     f32[10,10]{1,0} %broadcast.4)
-        %reshape.6 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %add.5)
-        %tuple.7 = (f32[10,10]{1,0}) tuple(f32[10,10]{1,0} %reshape.6)
-        ROOT %get-tuple-element.8 = f32[10,10]{1,0}
-          get-tuple-element((f32[10,10]{1,0}) %tuple.7), index=0
-      }
-      ```
-
-    Raises:
-      ValueError: If an invalid `stage` is selected or if applied to a function
-        which is not compiled (`jit_compile=True` is not set).
-      TypeError: When called with input in graph mode.
-    """
+    # Implements GenericFunction.experimental_get_compiler_ir
     context.ensure_initialized()
     if not self._jit_compile:
       raise ValueError("Compiler IR can only be returned for functions marked "
@@ -1102,7 +1067,8 @@ class Function(core.GenericFunction):
           stage=stage,
           function_name=fn_name,
           args=list(filtered_flat_args) + concrete_fn.captured_inputs)
-      if stage in ("hlo_serialized", "optimized_hlo_serialized"):
+      if stage in ("hlo_serialized", "optimized_hlo_serialized",
+                   "optimized_hlo_proto_serialized"):
         return res_bytes
       else:
         return res_bytes.decode("utf-8")
@@ -1309,14 +1275,28 @@ class Function(core.GenericFunction):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `Function` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `Function` here to allow different instances each
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  For composite
+    # tensors, we can just treat `instance` as a normal parameter.  But for
+    # other types, we create a new instance of `Function` here to allow
+    # different instances each to create variables once, thereby allowing
+    # methods to be decorated with tf.function. Keeps a cache to avoid retracing
+    # the function every time the descriptor is accessed.
+    # TODO(mdan): Identify types which can just be parameters more generically.
+    #
+    # The check for instance._type_spec=None is used because certain classes
+    # (including subclasses of tf.linalg.LinearOperator) are subclasses of
+    # CompositeTensor but do not actually implement the required APIs.
+    # TODO(b/199278478): Fix those classes, then remove the check for
+    # `instance._type_spec is not None`.
+    if (isinstance(instance, composite_tensor.CompositeTensor) and
+        instance._type_spec is not None):  # pylint: disable=protected-access
+      return types_lib.MethodType(self, instance)
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
+      # TODO(mdan): If the CompositeTensor path works, do the same here.
+      # It's unclear whether we need the tf-decorator, or could just call
+      # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
           function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
@@ -1339,7 +1319,13 @@ def function(func=None,
 
   `tf.function` constructs a `tf.types.experimental.GenericFunction` that
   executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
-  TensorFlow operations in `func`.
+  TensorFlow operations in `func`. More information on the topic can be found
+  in [Introduction to Graphs and tf.function]
+  (https://www.tensorflow.org/guide/intro_to_graphs).
+
+  See [Better Performance with tf.function]
+  (https://www.tensorflow.org/guide/function) for tips on performance and
+  known limitations.
 
   Example usage:
 
@@ -1426,7 +1412,7 @@ def function(func=None,
   thought of as compile-time constants), and builds a separate `tf.Graph` for
   each set of Python arguments that it encounters.
   For more information, see the
-  [tf.function guide](https://www.tensorflow.org/guide/function?hl=en#rules_of_tracing)
+  [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
   Executing a `GenericFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.
@@ -1610,7 +1596,7 @@ def function(func=None,
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
-      https://www.tensorflow.org/guide/function).
+      https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
       such as fusion, and attempts to emit more efficient code. This may
@@ -1664,6 +1650,8 @@ def function(func=None,
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
      not available.
   """
+  if func is not None:
+    function_lib.validate_python_function(func)
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:

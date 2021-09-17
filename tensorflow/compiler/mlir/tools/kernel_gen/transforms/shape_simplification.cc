@@ -17,7 +17,6 @@ limitations under the License.
 // suitable for shape op canonicalization in MLIR Core.
 
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -147,7 +146,7 @@ struct ExtractFromExtentTensorCanonicalizationPattern
     auto shape_of_op = op.tensor().getDefiningOp<ShapeOfOp>();
     if (!shape_of_op) return failure();
     Value index = op.indices().front();
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, shape_of_op.arg(), index);
+    rewriter.replaceOpWithNewOp<tensor::DimOp>(op, shape_of_op.arg(), index);
     return success();
   }
 };
@@ -163,7 +162,7 @@ struct ExtractFromExtentTensorCanonicalizationPattern
 // to
 //
 // ```
-//  %result = memref.dim %arg0[%c2] : tensor<?x?x2048xf64>
+//  %result = tensor.dim %arg0[%c2] : tensor<?x?x2048xf64>
 // ```
 struct ExtractFromBroadcastedTensorCanonicalizationPattern
     : public OpRewritePattern<tensor::ExtractOp> {
@@ -221,7 +220,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 
     // Replace with the single dynamic dimension or 1.
     if (dynamic_shape) {
-      rewriter.replaceOpWithNewOp<memref::DimOp>(op, dynamic_shape.arg(),
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, dynamic_shape.arg(),
                                                  index);
     } else {
       rewriter.replaceOpWithNewOp<ConstantIndexOp>(op, 1);
@@ -239,6 +238,7 @@ struct ShapeSimplification
     registry.insert<mhlo::MhloDialect>();
     registry.insert<mlir::StandardOpsDialect>();
     registry.insert<shape::ShapeDialect>();
+    registry.insert<tensor::TensorDialect>();
   }
 
   void runOnFunction() override {

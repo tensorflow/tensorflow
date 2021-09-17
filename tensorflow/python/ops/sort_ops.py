@@ -171,13 +171,15 @@ def _sort_or_argsort(values, axis, direction, return_argsort):
     ValueError: If axis is not a constant scalar, or the direction is invalid.
   """
   if direction not in _SORT_IMPL:
-    raise ValueError('%s should be one of %s' % (direction, ', '.join(
-        sorted(_SORT_IMPL.keys()))))
+    valid_directions = ', '.join(sorted(_SORT_IMPL.keys()))
+    raise ValueError(f'Argument `direction` should be one of {valid_directions}'
+                     f'. Received: direction={direction}')
   # Axis must be an integer, not a Tensor.
   axis = framework_ops.convert_to_tensor(axis, name='axis')
   axis_static = tensor_util.constant_value(axis)
   if axis.shape.ndims not in (None, 0) or axis_static is None:
-    raise ValueError('axis must be a constant scalar')
+    raise ValueError(
+        f'Argument `axis` must be a constant scalar. Received: axis={axis}.')
   axis_static = int(axis_static)  # Avoids NumPy casting error
 
   values = framework_ops.convert_to_tensor(values, name='values')

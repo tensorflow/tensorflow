@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/logging.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -91,7 +93,7 @@ Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,
     const ThreadPoolOptionProto& thread_pool_options, int pool_number,
     thread::ThreadPool** pool, bool* owned) {
-  int32 num_threads = thread_pool_options.num_threads();
+  int32_t num_threads = thread_pool_options.num_threads();
   if (num_threads == 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
@@ -285,8 +287,12 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
     }
   }
 
-  static RunHandlerPool* pool =
-      new RunHandlerPool(num_inter_threads, num_intra_threads);
+  static RunHandlerPool* pool = [&]() {
+    LOG(INFO) << "Creating run-handler pool with "
+                 "[num_inter_threads, num_intra_threads] as ["
+              << num_inter_threads << "," << num_intra_threads << "]";
+    return new RunHandlerPool(num_inter_threads, num_intra_threads);
+  }();
   return pool;
 }
 
@@ -463,8 +469,8 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 }
 
 Status DirectSession::CreateDebuggerState(
-    const CallableOptions& callable_options, int64 global_step,
-    int64 session_run_index, int64 executor_step_index,
+    const CallableOptions& callable_options, int64_t global_step,
+    int64_t session_run_index, int64_t executor_step_index,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(DebuggerStateRegistry::CreateState(
       callable_options.run_options().debug_options(), debugger_state));
@@ -493,12 +499,13 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
 }
 
 Status DirectSession::RunInternal(
-    int64 step_id, const RunOptions& run_options,
+    int64_t step_id, const RunOptions& run_options,
     CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
   const uint64 start_time_usecs = options_.env->NowMicros();
-  const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
+  const int64_t executor_step_count =
+      executors_and_keys->step_count.fetch_add(1);
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
@@ -548,15 +555,9 @@ Status DirectSession::RunInternal(
       }
     }
     if (!collective_executor_mgr_) {
-      std::unique_ptr<DeviceResolverInterface> drl(
-          new DeviceResolverLocal(device_mgr_.get()));
-      std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
-                                           drl.get(),
-                                           "/job:localhost/replica:0/task:0"));
-      collective_executor_mgr_.reset(new CollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl),
-          MaybeCreateNcclCommunicator()));
+      collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
+          options_.config, device_mgr_.get(),
+          MaybeCreateNcclCommunicator(options_.config));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
@@ -594,9 +595,13 @@ Status DirectSession::RunInternal(
     pool = thread_pools_[run_options.inter_op_thread_pool()].first;
   }
 
-  const int64 call_timeout = run_options.timeout_in_ms() > 0
-                                 ? run_options.timeout_in_ms()
-                                 : operation_timeout_in_ms_;
+  const int64_t call_timeout = run_options.timeout_in_ms() > 0
+                                   ? run_options.timeout_in_ms()
+                                   : operation_timeout_in_ms_;
+  absl::optional<absl::Time> deadline;
+  if (call_timeout > 0) {
+    deadline = absl::Now() + absl::Milliseconds(call_timeout);
+  }
 
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
@@ -652,16 +657,17 @@ Status DirectSession::RunInternal(
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
+  args.deadline = deadline;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
   bool update_cost_model = false;
   if (options_.config.graph_options().build_cost_model() > 0) {
-    const int64 build_cost_model_every =
+    const int64_t build_cost_model_every =
         options_.config.graph_options().build_cost_model();
-    const int64 build_cost_model_after =
+    const int64_t build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    int64 measure_step_count = executor_step_count - build_cost_model_after;
+    int64_t measure_step_count = executor_step_count - build_cost_model_after;
     if (measure_step_count >= 0) {
       update_cost_model =
           ((measure_step_count + 1) % build_cost_model_every == 0);
@@ -884,7 +890,7 @@ Status DirectSession::Run(const RunOptions& run_options,
     return s;
   }
 
-  const int64 step_id = step_id_counter_.fetch_add(1);
+  const int64_t step_id = step_id_counter_.fetch_add(1);
 
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(step_id, run_state_args.handle);
@@ -1347,7 +1353,7 @@ Status DirectSession::CreateExecutors(
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       /*parent=*/nullptr, session_metadata,
       Rendezvous::Factory{
-          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
             return Status::OK();
           }}));
@@ -1398,7 +1404,7 @@ Status DirectSession::CreateExecutors(
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =
@@ -1465,7 +1471,7 @@ Status DirectSession::GetOrCreateExecutors(
     gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
     gtl::ArraySlice<string> target_nodes, ExecutorsAndKeys** executors_and_keys,
     RunStateArgs* run_state_args) {
-  int64 handle_name_counter_value = -1;
+  int64_t handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);
   }
@@ -1580,7 +1586,7 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
-    DataTypeVector* output_types, int64* collective_graph_key) {
+    DataTypeVector* output_types, int64_t* collective_graph_key) {
   mutex_lock l(graph_state_lock_);
   if (finalized_) {
     return errors::FailedPrecondition("Session has been finalized.");
@@ -1763,7 +1769,7 @@ Status DirectSession::CreateGraphs(
   return ::tensorflow::Status::OK();
 }
 
-DirectSession::RunState::RunState(int64 step_id,
+DirectSession::RunState::RunState(int64_t step_id,
                                   const std::vector<Device*>* devices)
     : step_container(step_id, [devices, step_id](const string& name) {
         for (auto d : *devices) {
@@ -1777,7 +1783,7 @@ DirectSession::RunState::RunState(int64 step_id,
 
 DirectSession::PartialRunState::PartialRunState(
     const std::vector<string>& pending_input_names,
-    const std::vector<string>& pending_output_names, int64 step_id,
+    const std::vector<string>& pending_output_names, int64_t step_id,
     const std::vector<Device*>* devices)
     : RunState(step_id, devices) {
   // Initially all the feeds and fetches are pending.
@@ -1808,7 +1814,7 @@ bool DirectSession::PartialRunState::PendingDone() const {
 
 void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
                                         CancellationManager* cm,
-                                        int64 timeout_in_ms) {
+                                        int64_t timeout_in_ms) {
   const Status status = WaitForNotification(n, timeout_in_ms);
   if (!status.ok()) {
     {
@@ -1824,9 +1830,9 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
 }
 
 ::tensorflow::Status DirectSession::WaitForNotification(
-    Notification* notification, int64 timeout_in_ms) {
+    Notification* notification, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    const int64 timeout_in_us = timeout_in_ms * 1000;
+    const int64_t timeout_in_us = timeout_in_ms * 1000;
     const bool notified =
         WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
@@ -1916,7 +1922,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
 
   // Check if we already have an executor for these arguments.
   std::shared_ptr<ExecutorsAndKeys> executors_and_keys;
-  const int64 step_id = step_id_counter_.fetch_add(1);
+  const int64_t step_id = step_id_counter_.fetch_add(1);
 
   {
     tf_shared_lock l(callables_lock_);

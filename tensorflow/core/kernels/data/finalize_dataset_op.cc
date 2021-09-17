@@ -31,6 +31,7 @@ namespace data {
 /* static */ constexpr const char* const FinalizeDatasetOp::kInputDataset;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const FinalizeDatasetOp::kHasCapturedRef;
 
 namespace {
 
@@ -38,11 +39,8 @@ void GetModelDatasetParams(const Options& options,
                            model::AutotuneAlgorithm* algorithm,
                            bool* cpu_budget, bool* ram_budget) {
   *algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
-  if (options.optimization_options().autotune_buffers()) {
-    *algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
-  }
-  *cpu_budget = options.optimization_options().autotune_cpu_budget();
-  *ram_budget = options.optimization_options().autotune_ram_budget();
+  *cpu_budget = options.autotune_options().cpu_budget();
+  *ram_budget = options.autotune_options().ram_budget();
 }
 
 void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,

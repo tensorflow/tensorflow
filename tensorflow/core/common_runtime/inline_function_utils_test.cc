@@ -54,8 +54,8 @@ TEST(InlineFunctionBody, ColocationConstraintPropagation) {
 
   auto g = absl::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
-  const Tensor kZero = test::AsScalar<int64>(0);
-  const Tensor kOne = test::AsScalar<int64>(1);
+  const Tensor kZero = test::AsScalar<int64_t>(0);
+  const Tensor kOne = test::AsScalar<int64_t>(1);
   GraphDef gdef = GDef(
       {
           NDef("inp0", "Const", {}, {{"dtype", DT_FLOAT}, {"value", kZero}}),

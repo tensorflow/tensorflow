@@ -93,7 +93,7 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
 // Returns true iff `instruction` is a reshape/transpose instruction for which
 // a shape change is nontrivial.
 bool IsNontrivialReshape(const HloInstruction* instruction) {
-  return !ShapeUtil::IsScalar(instruction->shape()) &&
+  return !ShapeUtil::IsEffectiveScalar(instruction->shape()) &&
          IsReshapeOrTranspose(instruction) &&
          !CanTriviallyChangeShape(instruction->operand(0));
 }
@@ -152,7 +152,7 @@ HloInstruction* UpdateOperand(const HloInstruction* first_reshape_operand,
       } else {
         CHECK(first_reshape_operand->opcode() == HloOpcode::kTranspose);
         VLOG(5) << "Adding transpose to kConstant operand";
-        std::vector<int64> inverse_permutation =
+        std::vector<int64_t> inverse_permutation =
             InversePermutation(first_reshape_operand->dimensions());
         return computation->AddInstruction(HloInstruction::CreateTranspose(
             new_shape, operand, inverse_permutation));
@@ -216,7 +216,7 @@ StatusOr<bool> PerformSinkReshapeOrTranspose(
     for (const auto& fused_instruction : instruction->fused_instructions()) {
       Shape* shape = fused_instruction->mutable_shape();
       shape->clear_dimensions();
-      for (int64 i : new_operand_shape.dimensions()) {
+      for (int64_t i : new_operand_shape.dimensions()) {
         shape->add_dimensions(i);
       }
       *shape->mutable_layout() = new_operand_shape.layout();
@@ -392,8 +392,6 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
   bool changed = false;
-  VLOG(2) << "Pre ReshapeMover HLO:";
-  XLA_VLOG_LINES(2, module->ToString());
   for (auto* comp : module->MakeNonfusionComputations()) {
     HloInstructionSet reshape_candidates;
     for (HloInstruction* instruction : comp->instructions()) {
@@ -405,8 +403,6 @@ StatusOr<bool> ReshapeMover::Run(HloModule* module) {
                         TryReshapeMoveOnCandidates(&reshape_candidates));
     changed |= did_change;
   }
-  VLOG(2) << "Post ReshapeMover HLO:";
-  XLA_VLOG_LINES(2, module->ToString());
   return changed;
 }
 

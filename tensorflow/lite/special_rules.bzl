@@ -30,6 +30,12 @@ def internal_visibility_allowlist():
         "//visibility:public",
     ]
 
+def nonportable_visibility_allowlist():
+    """Grant public visibility to nonportable targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
 def op_resolver_internal_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
 
@@ -44,6 +50,12 @@ def nnapi_plugin_impl_visibility_allowlist():
 
 def nnapi_sl_headers_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/nnapi/sl:nnapi_support_library_headers.
+
+    This is a no-op outside of Google."""
+    return []
+
+def verifier_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/tools:verifier_internal.
 
     This is a no-op outside of Google."""
     return []
@@ -117,4 +129,8 @@ def flex_portable_tensorflow_deps():
 
 def tflite_copts_extra():
     """Defines extra compile time flags for tflite_copts(). Currently empty."""
+    return []
+
+def tflite_extra_arm_config_settings():
+    """Defines extra ARM CPU config_setting targets. Currently empty."""
     return []

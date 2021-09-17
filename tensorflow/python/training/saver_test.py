@@ -29,6 +29,7 @@ import six
 
 from google.protobuf.any_pb2 import Any
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
@@ -63,6 +64,7 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
@@ -847,6 +849,69 @@ class SaverTest(test.TestCase):
 
     for orig, restored in zip(orig_vals, restored_vals):
       self.assertAllEqual(orig, restored)
+
+  def test_metrics_save_restore(self):
+    api_label = saver_module._SAVER_LABEL
+
+    def _get_write_histogram_proto():
+      proto_bytes = metrics.GetCheckpointWriteDurations(api_label=api_label)
+      histogram_proto = summary_pb2.HistogramProto()
+      histogram_proto.ParseFromString(proto_bytes)
+      return histogram_proto
+
+    def _get_read_histogram_proto():
+      proto_bytes = metrics.GetCheckpointReadDurations(api_label=api_label)
+      histogram_proto = summary_pb2.HistogramProto()
+      histogram_proto.ParseFromString(proto_bytes)
+      return histogram_proto
+
+    save_path = os.path.join(self.get_temp_dir(), "metrics_save_restore")
+    # Values at beginning of unit test.
+    time_start = metrics.GetTrainingTimeSaved(api_label=api_label)
+    num_writes_start = _get_write_histogram_proto().num
+    num_reads_start = _get_read_histogram_proto().num
+
+    with self.session(graph=ops_lib.Graph()) as sess:
+      v0 = resource_variable_ops.ResourceVariable(10.0, name="v0")
+      v1 = resource_variable_ops.ResourceVariable(20.0, name="v1")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
+      # Initialize all variables
+      if not context.executing_eagerly():
+        self.evaluate([variables.global_variables_initializer()])
+
+      save = saver_module.Saver({
+          "v0": v0,
+          "v1": v1,
+          "v2": v2.saveable
+      },
+                                restore_sequentially=True)
+      save.save(sess, save_path)
+
+      self.assertEqual(_get_write_histogram_proto().num, num_writes_start + 1)
+      time_after_one_save = metrics.GetTrainingTimeSaved(api_label=api_label)
+      self.assertGreater(time_after_one_save, time_start)
+
+    with self.session(graph=ops_lib.Graph()) as sess:
+      v0 = resource_variable_ops.ResourceVariable(-1.0, name="v0")
+      v1 = resource_variable_ops.ResourceVariable(-1.0, name="v1")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
+      save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
+      save.restore(sess, save_path)
+
+      self.assertEqual(_get_write_histogram_proto().num, num_writes_start + 1)
+      self.assertEqual(_get_read_histogram_proto().num, num_reads_start + 1)
+      # Check that training time saved has not increased.
+      self.assertEqual(
+          metrics.GetTrainingTimeSaved(api_label=api_label),
+          time_after_one_save)
+      save.save(sess, save_path)
+
+      self.assertEqual(_get_write_histogram_proto().num, num_writes_start + 2)
+      self.assertEqual(_get_read_histogram_proto().num, num_reads_start + 1)
+      # Check that training time saved has increased.
+      self.assertGreater(
+          metrics.GetTrainingTimeSaved(api_label=api_label),
+          time_after_one_save)
 
 
 class SaveRestoreShardedTest(test.TestCase):

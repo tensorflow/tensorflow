@@ -25,6 +25,11 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#if !IS_TRT_VERSION_GE(7, 0, 0, 0)
+#error From version 2.6, we only support NVIDIA TensorRT version 7 or newer.
+#error Please update your environment and relaunch the compilation.
+#endif
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {

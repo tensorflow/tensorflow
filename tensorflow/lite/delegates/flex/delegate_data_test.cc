@@ -79,11 +79,13 @@ TEST(DelegateDataTest, CheckFunctionDef) {
       absl::make_unique<TestErrorReporter>();
   auto add_subgraph = absl::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
-      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr);
+      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
+      /*initialization_status_map=*/nullptr);
   add_subgraph->SetName("add_subgraph");
   auto mul_subgraph = absl::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
-      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr);
+      /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
+      /*initialization_status_map=*/nullptr);
   mul_subgraph->SetName("mul_subgraph");
   builder.BuildAddSubgraph(add_subgraph.get());
   builder.BuildMulSubgraph(mul_subgraph.get());
@@ -91,7 +93,8 @@ TEST(DelegateDataTest, CheckFunctionDef) {
   subgraphs.push_back(std::move(add_subgraph));
   subgraphs.push_back(std::move(mul_subgraph));
   Subgraph main_subgraph(error_reporter.get(), nullptr, &subgraphs,
-                         /*resources=*/nullptr, /*resource_ids=*/nullptr);
+                         /*resources=*/nullptr, /*resource_ids=*/nullptr,
+                         /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
@@ -220,7 +223,8 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
       absl::make_unique<TestErrorReporter>();
   Subgraph main_subgraph(error_reporter.get(), /*external_contexts=*/nullptr,
                          /*subgraphs=*/nullptr, /*resources=*/nullptr,
-                         /*resource_ids*/ nullptr);
+                         /*resource_ids=*/nullptr,
+                         /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,

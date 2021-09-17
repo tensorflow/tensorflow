@@ -19,9 +19,6 @@ namespace xla {
 namespace gpu {
 
 Status ReplicaOrPartitionIdThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
 
   TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,

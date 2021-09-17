@@ -74,7 +74,7 @@ bool IsDatasetNodeOfType(const NodeDef& node,
 
 const NodeDef* GetInputNode(const NodeDef& node,
                             const grappler::GraphView& graph,
-                            int64 input_index) {
+                            int64_t input_index) {
   if (node.input_size() == 0) return nullptr;
   grappler::GraphView::InputPort input_port =
       graph.GetInputPort(node.name(), input_index);
@@ -98,8 +98,8 @@ class ComputeBatchSizeOp : public OpKernel {
     std::vector<std::pair<string, Tensor>> input_list;
     GraphDef graph_def;
     string dataset_node_name;
-    OP_REQUIRES_OK(ctx, AsGraphDefMinimal(ctx, dataset, &input_list, &graph_def,
-                                          &dataset_node_name));
+    OP_REQUIRES_OK(ctx, AsGraphDefForRewrite(ctx, dataset, &input_list,
+                                             &graph_def, &dataset_node_name));
 
     // Create GraphView for easier traversal of graph.
     grappler::GraphView graph_view(&graph_def);
@@ -107,16 +107,16 @@ class ComputeBatchSizeOp : public OpKernel {
     const NodeDef* node = graph_view.GetNode(dataset_node_name);
     OP_REQUIRES(ctx, node != nullptr,
                 errors::InvalidArgument("Node does not exist in graph"));
-    int64 batch_size = GetBatchSize(*node, graph_view);
+    int64_t batch_size = GetBatchSize(*node, graph_view);
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-    result->scalar<int64>()() = batch_size;
+    result->scalar<int64_t>()() = batch_size;
   }
 
  private:
-  int64 GetBatchSizeFromBatchNode(const NodeDef& node,
-                                  const grappler::GraphView& graph) {
-    int64 arg_index;
+  int64_t GetBatchSizeFromBatchNode(const NodeDef& node,
+                                    const grappler::GraphView& graph) {
+    int64_t arg_index;
     if (node.op() == kMapAndBatchOp ||
         node.op() == kExperimentalMapAndBatchOp) {
       arg_index = node.input_size() - 3;
@@ -125,7 +125,7 @@ class ComputeBatchSizeOp : public OpKernel {
     }
 
     auto batch_size_node = GetInputNode(node, graph, arg_index);
-    int64 batch_size;
+    int64_t batch_size;
     auto s = GetScalarConstNodeValue(*batch_size_node, &batch_size);
     if (!s.ok()) {
       VLOG(1) << "Could not compute static batch size. Found batching dataset ("
@@ -152,13 +152,13 @@ class ComputeBatchSizeOp : public OpKernel {
   // 4. All other ops: Fail, returning -1 for unknown.
   // TODO(rachelim): For FlatMap type mapping dataset ops, recurse into the
   // function definition.
-  int64 GetBatchSize(const NodeDef& node, const grappler::GraphView& graph) {
+  int64_t GetBatchSize(const NodeDef& node, const grappler::GraphView& graph) {
     if (IsDatasetNodeOfType(node, kBatchDatasetOps)) {
       return GetBatchSizeFromBatchNode(node, graph);
     }
     if (IsDatasetNodeOfType(node, kMultipleInputDatasetOps)) {
       const NodeDef* input_0 = GetInputNode(node, graph, 0);
-      int64 batch_size_0 = GetBatchSize(*input_0, graph);
+      int64_t batch_size_0 = GetBatchSize(*input_0, graph);
       for (int i = 1; i < node.input_size(); ++i) {
         const NodeDef* input = GetInputNode(node, graph, i);
         auto batch_size_i = GetBatchSize(*input, graph);

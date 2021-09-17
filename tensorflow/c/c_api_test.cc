@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -231,14 +232,13 @@ TEST(CAPI, LibraryLoadFunctions) {
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
-  const tensorflow::int64 n = data.size();
+  const int64_t n = data.size();
   Status status;
-  for (const std::vector<tensorflow::int64>& dims :
-       std::vector<std::vector<tensorflow::int64>>{
-           {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
+  for (const std::vector<int64_t>& dims :
+       std::vector<std::vector<int64_t>>{{n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
-    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+    for (int64_t i = 0; i < src.NumElements(); ++i) {
       src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, &status);
@@ -248,7 +248,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     Tensor output;
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
-    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+    for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
@@ -1420,7 +1420,7 @@ TEST(CAPI, SavedModel) {
 
   // Write {0, 1, 2, 3} as tensorflow::Example inputs.
   Tensor input(tensorflow::DT_STRING, TensorShape({4}));
-  for (tensorflow::int64 i = 0; i < input.NumElements(); ++i) {
+  for (int64_t i = 0; i < input.NumElements(); ++i) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);
@@ -1541,6 +1541,34 @@ TEST(CAPI, TestBitcastFrom_Reshape) {
 
   TF_DeleteTensor(a);
   TF_DeleteTensor(b);
+}
+
+TEST(CAPI, TestFromProto) {
+  Tensor t_cc(DT_FLOAT, TensorShape({2, 3}));
+  t_cc.flat<float>().setConstant(1.0);
+  tensorflow::TensorProto t_proto;
+  t_cc.AsProtoField(&t_proto);
+
+  TF_Buffer* t_buffer = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(t_proto, t_buffer));
+
+  const int num_bytes = 6 * sizeof(float);
+  float* values =
+      reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+  int64_t dims[] = {2, 3};
+  bool deallocator_called = false;
+  TF_Tensor* t_c = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
+                                &Deallocator, &deallocator_called);
+
+  TF_Status* status = TF_NewStatus();
+  TF_TensorFromProto(t_buffer, t_c, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  EXPECT_EQ(1.0, *(static_cast<float*>(TF_TensorData(t_c))));
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(t_c);
+  TF_DeleteBuffer(t_buffer);
 }
 
 REGISTER_OP("TestOpWithNoGradient")
@@ -2232,7 +2260,7 @@ TEST_F(CApiAttributesTest, ShapeList) {
 }
 
 TEST_F(CApiAttributesTest, TensorShapeProto) {
-  const tensorflow::int64 pts[] = {2, 4, -1, 8};
+  const int64_t pts[] = {2, 4, -1, 8};
   tensorflow::TensorShapeProto proto;
   tensorflow::PartialTensorShape(pts).AsProto(&proto);
   string bytes;
@@ -2257,11 +2285,11 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   string bytes1, bytes2;
   tensorflow::TensorShapeProto proto;
 
-  const tensorflow::int64 pts1[] = {2, 4, -1, 8};
+  const int64_t pts1[] = {2, 4, -1, 8};
   tensorflow::PartialTensorShape(pts1).AsProto(&proto);
   proto.SerializeToString(&bytes1);
 
-  const tensorflow::int64 pts2[] = {1, 3, 5, 7};
+  const int64_t pts2[] = {1, 3, 5, 7};
   tensorflow::PartialTensorShape(pts2).AsProto(&proto);
   proto.SerializeToString(&bytes2);
 
@@ -2416,6 +2444,24 @@ TEST_F(CApiAttributesTest, EmptyList) {
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   EXPECT_TF_META("v", 0, TF_ATTR_INT, -1);
+}
+
+TEST_F(CApiAttributesTest, Names) {
+  auto desc = init("string");
+  TF_SetAttrString(desc, "v", "bunny", 5);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_STRING, 5);
+
+  ASSERT_EQ(1, TF_OperationGetNumAttrs(oper));
+  ASSERT_EQ(1, TF_OperationGetAttrNameLength(oper, 0));
+
+  std::unique_ptr<char[]> value(new char[1]);
+
+  TF_OperationGetAttrName(oper, 0, value.get(), s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ("v", string(static_cast<const char*>(value.get()), 1));
 }
 
 TEST_F(CApiAttributesTest, Errors) {
@@ -2590,6 +2636,33 @@ TEST(CAPI, MessageBufferConversion) {
 
   protobuf::util::MessageDifferencer differencer;
   EXPECT_TRUE(differencer.Compare(node_in, node_out));
+}
+
+TEST(CAPI, TestTensorNonScalarBytesAllocateDelete) {
+  const int batch_size = 4;
+  const int num_dims = 2;
+  int64_t* dims = new int64_t[num_dims];
+  int64_t num_elements = 1;
+  dims[0] = batch_size;
+  dims[1] = 1;
+  for (int64_t i = 0; i < num_dims; ++i) {
+    num_elements *= dims[i];
+  }
+  TF_Tensor* t = TF_AllocateTensor(TF_STRING, dims, num_dims,
+                                   sizeof(TF_TString) * num_elements);
+  delete[] dims;
+
+  TF_TString* data = static_cast<TF_TString*>(TF_TensorData(t));
+  for (int i = 0; i < batch_size; ++i) {
+    TF_TString_Init(&data[i]);
+    // The following input string length is large enough to make sure that
+    // copy to tstring in large mode.
+    std::string source =
+        "This is the " + std::to_string(i + 1) + "th. data element\n";
+    TF_TString_Copy(&data[i], source.c_str(), source.length());
+  }
+
+  TF_DeleteTensor(t);
 }
 
 }  // namespace

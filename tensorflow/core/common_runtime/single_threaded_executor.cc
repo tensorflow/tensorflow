@@ -18,10 +18,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -103,7 +106,7 @@ class SingleThreadedExecutorImpl : public Executor {
     for (Node* n : ordered_nodes) {
       TF_RETURN_IF_ERROR(ValidateOp(*n));
       if (n->IsArg()) {
-        int32 arg_index;
+        int32_t arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));
         if (arg_index < 0) {
           return errors::InvalidArgument("Invalid argument index ", arg_index,
@@ -286,10 +289,19 @@ class SingleThreadedExecutorImpl : public Executor {
     TensorValueVec node_inputs;
     AllocatorAttributeVec input_alloc_attrs;
 
+    // Override intra op thread pool if requested.
+    Device* device = params_.device;
+    std::unique_ptr<Device> user_device;
+    if (args.user_intra_op_threadpool != nullptr) {
+      user_device = RenamedDevice::NewRenamedDevice(
+          device->name(), device, /*owns_underlying=*/false,
+          /*isolate_session_state=*/false, args.user_intra_op_threadpool);
+      device = user_device.get();
+    }
+
     // Prepare the parameters that will be the same for all kernels.
     OpKernelContext::Params params;
     params.step_id = args.step_id;
-    Device* device = params_.device;
     params.device = device;
     params.log_memory = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
@@ -301,6 +313,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.function_library = params_.function_library;
     params.resource_manager = device->resource_manager();
     params.step_container = args.step_container;
+    params.collective_executor = args.collective_executor;
     params.slice_reader_cache = nullptr;  // TODO(mrry): Too severe?
     params.inputs = &node_inputs;
     params.input_alloc_attrs = &input_alloc_attrs;
@@ -327,7 +340,7 @@ class SingleThreadedExecutorImpl : public Executor {
 
     const size_t received_args =
         args.call_frame ? args.call_frame->num_args() : 0;
-    if (arg_output_locations_.size() > received_args) {
+    if (TF_PREDICT_FALSE(arg_output_locations_.size() > received_args)) {
       return errors::InvalidArgument("Expected ", arg_output_locations_.size(),
                                      " arguments, but only received ",
                                      received_args, ".");
@@ -359,7 +372,7 @@ class SingleThreadedExecutorImpl : public Executor {
           }
         } else {
           const Tensor* arg;
-          TF_CHECK_OK(args.call_frame->GetArg(i, &arg));
+          TF_RETURN_IF_ERROR(args.call_frame->GetArg(i, &arg));
           for (size_t j = 0; j < num_destinations; ++j) {
             Entry& input = inputs[arg_output_locations_[i][j]];
             // NOTE: We must make at least one shallow copy of the argument

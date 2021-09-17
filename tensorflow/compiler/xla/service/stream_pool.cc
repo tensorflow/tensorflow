@@ -24,7 +24,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
   std::unique_ptr<se::Stream> stream;
   {
     tensorflow::mutex_lock lock(mu_);
-    if (!streams_.empty()) {
+    while (!streams_.empty() && !stream) {
       // Re-use an existing stream from the pool.
       stream = std::move(streams_.back());
       streams_.pop_back();

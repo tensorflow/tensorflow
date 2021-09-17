@@ -18,7 +18,6 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.util import compat
@@ -78,12 +77,19 @@ class StringLookup(index_lookup.IndexLookup):
       map indices to vocabulary items instead of mapping vocabulary items to
       indices. Default to False.
     output_mode: Specification for the output of the layer. Defaults to `"int"`.
-      Values can be `"int"`, `"multi_hot"`, `"count"`, or `"tf_idf"` configuring
-      the layer as follows:
+      Values can be `"int"`, `"one_hot"`, `"multi_hot"`, `"count"`, or
+      `"tf_idf"` configuring the layer as follows:
         - `"int"`: Return the raw integer indices of the input tokens.
-        - `"multi_hot"`: Outputs a single int array per sample, of either
-          vocab_size or max_tokens size, containing 1s in all elements where the
-          token mapped to that index exists at least once in the sample.
+        - `"one_hot"`: Encodes each individual element in the input into an
+          array the same size as the vocabulary, containing a 1 at the element
+          index. If the last dimension is size 1, will encode on that dimension.
+          If the last dimension is not size 1, will append a new dimension for
+          the encoded output.
+        - `"multi_hot"`: Encodes each sample in the input into a single array
+          the same size as the vocabulary, containing a 1 for each vocabulary
+          term present in the sample. Treats the last dimension as the sample
+          dimension, if input shape is (..., sample_length), output shape will
+          be (..., num_tokens).
         - `"count"`: As `"multi_hot"`, but the int array contains a count of the
           number of times the token at that index appeared in the sample.
         - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
@@ -153,6 +159,22 @@ class StringLookup(index_lookup.IndexLookup):
   'z' is 1. The in-vocab terms have their output index increased by 1 from
   earlier examples (a maps to 2, etc) in order to make space for the extra OOV
   value.
+
+  **One-hot output**
+
+  Configure the layer with `output_mode='one_hot'`. Note that the first
+  `num_oov_indices` dimensions in the ont_hot encoding represent OOV values.
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant(["a", "b", "c", "d", "z"])
+  >>> layer = StringLookup(vocabulary=vocab, output_mode='one_hot')
+  >>> layer(data)
+  <tf.Tensor: shape=(5, 5), dtype=float32, numpy=
+    array([[0., 1., 0., 0., 0.],
+           [0., 0., 1., 0., 0.],
+           [0., 0., 0., 1., 0.],
+           [0., 0., 0., 0., 1.],
+           [1., 0., 0., 0., 0.]], dtype=float32)>
 
   **Multi-hot output**
 
@@ -293,7 +315,6 @@ class StringLookup(index_lookup.IndexLookup):
         sparse=sparse,
         pad_to_max_tokens=pad_to_max_tokens,
         **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("StringLookup").set(True)
 
   def get_config(self):
     config = {"encoding": self.encoding}

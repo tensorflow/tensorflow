@@ -160,11 +160,12 @@ Status GenericTransferManager::ResetDevices(
       "Device reset is not yet supported on this platform (b/30481585)");
 }
 
-int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) const {
+int64_t GenericTransferManager::GetByteSizeRequirement(
+    const Shape& shape) const {
   if (shape.is_static() || shape.IsTuple()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size_);
   }
-  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 

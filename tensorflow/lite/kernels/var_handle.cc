@@ -16,9 +16,10 @@ limitations under the License.
 #include <stdint.h>
 #include <string.h>
 
+#include <string>
 #include <utility>
 
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
@@ -27,7 +28,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace var_handle {
 // Util struct with params that identifies the resource.
 struct VarParams {
@@ -35,14 +36,16 @@ struct VarParams {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
-  const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
+  const auto* var_params =
+      reinterpret_cast<const TfLiteVarHandleParams*>(buffer);
   VarParams* params = new VarParams;
   auto* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   // Create a new entry if doesn't exist, return the existing one otherwise.
   auto it = subgraph->resource_ids().insert(std::make_pair(
-      std::make_pair(m["container"].ToString(), m["shared_name"].ToString()),
-      subgraph->resource_ids().size()));
+      std::make_pair(
+          std::string(var_params->container ? var_params->container : ""),
+          std::string(var_params->shared_name ? var_params->shared_name : "")),
+      static_cast<int>(subgraph->resource_ids().size())));
   params->resource_id = it.first->second;
   return params;
 }
@@ -82,6 +85,6 @@ TfLiteRegistration* Register_VAR_HANDLE() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

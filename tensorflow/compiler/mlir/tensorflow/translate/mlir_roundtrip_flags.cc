@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
+#include <ostream>
+#include <sstream>
 #include <type_traits>
 
 #include "absl/algorithm/container.h"
@@ -33,6 +35,32 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+std::string GraphImportConfig::str() const {
+  std::ostringstream ss;
+
+  ss << "graph_func_name: " << graph_func_name;
+  InputArrays inputs;
+  ss << "\ninputs: ";
+  for (auto& it : inputs) {
+    ss << "\n\t" << it.first << " -> "
+       << DataTypeString(it.second.imported_dtype) << " "
+       << it.second.shape.DebugString();
+  }
+  ss << "\noutputs:";
+  for (auto& output : outputs) ss << " " << output;
+  ss << "\ncontrol_outputs:";
+  for (auto& output : control_outputs) ss << " " << output;
+  ss << "\nprune_unused_nodes: " << prune_unused_nodes;
+  ss << "\nconvert_legacy_fed_inputs: " << convert_legacy_fed_inputs;
+  ss << "\ngraph_as_function: " << graph_as_function;
+  ss << "\nupgrade_legacy: " << upgrade_legacy;
+  ss << "\nrestrict_functionalization_to_tpu_nodes: "
+     << restrict_functionalization_to_tpu_nodes;
+  ss << "\nenable_shape_inference: " << enable_shape_inference;
+
+  return ss.str();
+}
 
 Status ParseOutputArrayInfo(absl::string_view array_names,
                             std::vector<string>* outputs) {

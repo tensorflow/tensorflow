@@ -76,9 +76,19 @@ def model_input_signature(model, keep_original_batch_size=False):
     A list containing either a single TensorSpec or an object with nested
     TensorSpecs. This list does not contain the `training` argument.
   """
-  input_specs = model._get_save_spec(dynamic_batch=not keep_original_batch_size)  # pylint: disable=protected-access
-  if input_specs is None:
-    return None
+  if hasattr(model, 'save_spec'):
+    input_specs = model.save_spec(dynamic_batch=not keep_original_batch_size)
+    if input_specs is None:
+      return None
+    # The model's save spec returns (args, kwargs). Extract the first input arg
+    # to use as the input spec.
+    # TODO(b/188105669): Add support for multiple tensor arguments.
+    input_specs = input_specs[0][0]
+  else:
+    input_specs = model._get_save_spec(  # pylint: disable=protected-access
+        dynamic_batch=not keep_original_batch_size)
+    if input_specs is None:
+      return None
   input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs,

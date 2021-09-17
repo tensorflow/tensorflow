@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -96,7 +97,7 @@ bool MaybeReplaceShapeOrShapeNOp(
     DataType op_type = n->output_type(0);
     Tensor t(op_type, TensorShape({rank}));
     if (op_type == DT_INT64) {
-      auto vec = t.vec<int64>();
+      auto vec = t.vec<int64_t>();
       for (int i = 0; i < rank; ++i) {
         vec(i) = shape.dim_size(i);
       }
@@ -150,9 +151,9 @@ bool MaybeReplaceSizeOp(const Node* n,
   }
   DataType op_type = n->output_type(0);
   Tensor t(op_type, TensorShape({}));
-  int64 size = input_shapes[0].num_elements();
+  int64_t size = input_shapes[0].num_elements();
   if (op_type == DT_INT64) {
-    t.scalar<int64>()() = size;
+    t.scalar<int64_t>()() = size;
   } else {
     CHECK(op_type == DT_INT32);
     if (size > INT_MAX) {
@@ -219,11 +220,12 @@ bool IsConstantFoldable(
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
-    int64 max_constant_size_in_bytes,
+    int64_t max_constant_size_in_bytes,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
   if (n->IsConstant()) {
-    return true;
+    // Skip constant folding resources as they cannot be deep copied.
+    return n->output_type(0) != DT_RESOURCE;
   }
   if (MaybeReplaceShapeOp(n, shape_map, shape_replacement_map)) {
     return true;
@@ -238,7 +240,7 @@ bool IsConstantFoldable(
     // We can skip the node if an output is known to be oversized.
     auto shape_it = shape_map->find(n->name());
     if (shape_it != shape_map->end()) {
-      for (int64 i = 0; i < shape_it->second.size(); ++i) {
+      for (int64_t i = 0; i < shape_it->second.size(); ++i) {
         const auto& out_shape = shape_it->second[i];
         if (out_shape.IsFullyDefined() &&
             out_shape.num_elements() * DataTypeSize(n->output_type(i)) >
@@ -372,7 +374,7 @@ void FindConstantFoldableNodes(
 
 typedef std::pair<Node*, int> NodeAndOutput;
 
-int64 UniqueConstantId() {
+int64_t UniqueConstantId() {
   static std::atomic_int_fast64_t unique_constant_id;
   return unique_constant_id.fetch_add(1);
 }
@@ -494,7 +496,7 @@ Graph* GetConstantGraph(
 bool ReplaceTensorWithConstant(
     Graph* graph, const Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
-    int64 max_constant_size_in_bytes,
+    int64_t max_constant_size_in_bytes,
     const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
@@ -670,7 +672,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.
-  int32 num_nodes_replaced = 0;
+  int32_t num_nodes_replaced = 0;
   for (size_t c = 0; c < outputs.size(); ++c) {
     const gtl::FlatSet<Node*>& control_deps =
         constant_control_deps[tensors_to_replace[c].first];

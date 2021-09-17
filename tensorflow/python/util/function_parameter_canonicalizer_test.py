@@ -66,7 +66,8 @@ class FunctionParameterCanonicalizerTest(test.TestCase):
           transpose_a=True, transpose_b=True, adjoint_a=True)
 
   def testTooManyArgs(self):
-    with self.assertRaisesRegex(TypeError, 'Too many arguments were given'):
+    with self.assertRaisesRegex(TypeError, 'Too many arguments were given.'
+                                ' Expected 9 but got 10.'):
       self._matmul_func.canonicalize(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
   def testInvalidKwd(self):
@@ -83,6 +84,13 @@ class FunctionParameterCanonicalizerTest(test.TestCase):
     with self.assertRaisesRegex(
         TypeError, "Got multiple values for argument 'transpose_a'"):
       self._matmul_func.canonicalize(2, 3, False, transpose_a=True)
+
+  def testKwargNotInterned(self):
+    func = (
+        _function_parameter_canonicalizer_binding_for_test
+        .FunctionParameterCanonicalizer(['long_parameter_name'], ()))
+    kwargs = dict([('_'.join(['long', 'parameter', 'name']), 5)])
+    func.canonicalize(**kwargs)
 
 
 if __name__ == '__main__':

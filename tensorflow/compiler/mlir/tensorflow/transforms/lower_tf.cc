@@ -81,6 +81,19 @@ static Value CreateTFCastOpF32(OpBuilder *builder, Location loc, Value x,
   return builder->create<CastOp>(loc, type, x, truncate);
 }
 
+// Returns a TF_CastOp to I32. This function is used for CastOps that are
+// intermediate nodes in a TableGen pattern result. In such a case, the
+// destination type is not inferred and must be given explicitly.
+//
+// Preconditions: The given value must have a ShapedType.
+static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
+                               BoolAttr truncate) {
+  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  if (!x_type) llvm_unreachable("unsupported type");
+  Type type = x_type.clone(builder->getI32Type());
+  return builder->create<CastOp>(loc, type, x, truncate);
+}
+
 static APFloat ConvertToAPFloat(double val, Type type) {
   if (type.getIntOrFloatBitWidth() == 32) {
     return APFloat(static_cast<float>(val));
@@ -1644,17 +1657,77 @@ struct LowerRollOp : public RewritePattern {
   }
 };
 
+// Decomposes Softmax and LogSoftmax to primitive TF ops, using the following
+// formulas:
+//
+//     softmax = div(exp(logits), sum(exp(logits)))
+//     log_softmax = sub(logits, log(sum(exp(logits))))
+//
+// TODO(jpienaar): Evaluate benefit of templating here.
+template <typename OpTy, bool use_log = true>
+class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
+ public:
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    Value logits = op.logits();
+    auto loc = op.getLoc();
+
+    // Note that the TensorFlow Softmax op verifies that the input rank is
+    // greater than or equal to one so the following sequence is valid.
+    auto reduce_dim =
+        rewriter.create<TF::ConstOp>(loc, GetI64ElementsAttr({-1}, &rewriter));
+
+    // Exponential of input values and then their sum can be very large here.
+    // Division with large denominator is numerically unstable. To improve
+    // numerical stability, subtract each batch with their max element so that
+    // the maximum input value is zero. It can be shown that softmax computed
+    // after adding or subtracting all inputs in a batch using a common value
+    // gives mathematically equivalent result.
+    auto max_logits =
+        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+    auto shifted_logits = rewriter.create<TF::SubOp>(loc, logits, max_logits);
+
+    // Exponentiate the inputs.
+    Value exp = rewriter.create<TF::ExpOp>(loc, shifted_logits);
+
+    // Compute summation of the exponentials.
+    Value sum =
+        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+
+    if (use_log) {
+      Value log = rewriter.create<TF::LogOp>(loc, sum);
+      rewriter.replaceOpWithNewOp<TF::SubOp>(op, shifted_logits, log);
+    } else {
+      rewriter.replaceOpWithNewOp<TF::DivOp>(op, exp, sum);
+    }
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition, LowerRollOp>(context);
+  // clang-format off
+  patterns->insert<
+      LowerAddNOp,
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerLgammaOp,
+      LowerPackOp,
+      LowerBatchToSpaceND,
+      LowerSpaceToBatchNDOp,
+      LowerResizeNearestNeighbor,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
+  // clang-format on
   populateWithGenerated(*patterns);
 }
 
@@ -1670,6 +1743,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerInvertPermutationOp,
       LowerPackOp,
       LowerResizeNearestNeighbor,
+      LowerSoftmaxOp<TF::LogSoftmaxOp, /*use_log=*/true>,
+      LowerSoftmaxOp<TF::SoftmaxOp, /*use_log=*/false>,
       LowerSpaceToBatchNDOp,
       LowerSparseMatMulOp,
       Lower_UnaryOpsComposition,
@@ -1684,10 +1759,10 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerEmptyOp,
       LowerFakeQuantWithMinMaxArgs,
       LowerFillOp,
+      LowerInv,
       LowerIsNanOp,
       LowerL2LossOp,
       LowerMulNoNanOp,
-      LowerOnesLikeOp,
       LowerPadOp,
       LowerReciprocal,
       LowerRintOp,
@@ -1695,6 +1770,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerRoundOpOnIntTensor,
       LowerRsqrtGradOp,
       LowerScatterNdOp,
+      LowerSeluOp,
+      LowerSeluGradOp,
       LowerSizeOp,
       LowerSoftmaxCrossEntropyWithLogitsOp,
       LowerSparseSoftmaxCrossEntropyWithLogitsOp,
@@ -1705,8 +1782,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerTanhGradOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
-      LowerXlogyOp,
-      LowerZerosLikeOp>(context);
+      LowerXlogyOp>(context);
   // clang-format on
 }
 

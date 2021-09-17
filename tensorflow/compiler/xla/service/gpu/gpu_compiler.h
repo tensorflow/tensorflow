@@ -46,52 +46,16 @@ class GpuCompiler : public LLVMCompiler {
               const char* data_layout);
   ~GpuCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> hlo_module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) override;
-
-  Status OptimizeHloModule(HloModule* hlo_module,
-                           se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* device_allocator);
-
-  virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) = 0;
-
-  virtual Status OptimizeHloPostLayoutAssignment(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator);
-
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
-    return
-        [](const HloInstruction*, const HloInstruction*,
-           const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
-  }
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* hlo_module) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
-
-  // TODO(timshen): Replace `debug_module` with some portable debug information
-  // that accommodates both HLO and MLIR.
-  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
-  CompileTargetBinary(const HloModuleConfig& module_config,
-                      llvm::Module* llvm_module, GpuVersion gpu_version,
-                      se::StreamExecutor* stream_exec, bool relocatable,
-                      const HloModule* debug_module) = 0;
-
-  Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -109,28 +73,46 @@ class GpuCompiler : public LLVMCompiler {
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // Capture just the pointer size, not the entire GpuCompiler object.
-    return [pointer_size = pointer_size_](const Shape& shape) {
-      return GetSizeOfShape(shape, pointer_size);
-    };
-  }
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
-  static int64 GetSizeOfShape(const Shape& shape, int pointer_size) {
-    if (shape.is_static() || shape.IsTuple()) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
-    }
-    // Each dynamic dimension size is represented as a S32.
-    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
-    return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
-  }
+ protected:
+  virtual Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator);
 
  private:
+  Status OptimizeHloModule(HloModule* hlo_module,
+                           se::StreamExecutor* stream_exec,
+                           se::DeviceMemoryAllocator* device_allocator);
+
+  virtual Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
+    return
+        [](const HloInstruction*, const HloInstruction*,
+           const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
+  }
+
+  // TODO(timshen): Replace `debug_module` with some portable debug information
+  // that accommodates both HLO and MLIR.
+  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
+  CompileTargetBinary(const HloModuleConfig& module_config,
+                      llvm::Module* llvm_module, GpuVersion gpu_version,
+                      se::StreamExecutor* stream_exec, bool relocatable,
+                      const HloModule* debug_module) = 0;
+
+  Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+
   virtual StatusOr<std::vector<uint8>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8>> modules) {
     return Unimplemented("LinkModules is not implemented.");
   }
+
+  // Optional HloProto, stashed for dumping snapshots.
+  std::unique_ptr<HloProto> hlo_proto_;
 
   se::Platform::Id platform_id_;
 
@@ -141,7 +123,7 @@ class GpuCompiler : public LLVMCompiler {
   const char* data_layout_;
 
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
-  const int64 pointer_size_;
+  const int64_t pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };
@@ -154,8 +136,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
-    absl::optional<CudaComputeCapability> cuda_compute_capability,
-    int pointer_size);
+    se::CudaComputeCapability cuda_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment

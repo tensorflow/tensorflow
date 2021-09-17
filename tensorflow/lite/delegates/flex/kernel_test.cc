@@ -366,8 +366,7 @@ tensorflow::OpDef MakeOpDef(int num_inputs, int num_outputs) {
   return op_reg_data.op_def;
 }
 
-tensorflow::PartialTensorShape S(
-    std::initializer_list<tensorflow::int64> dims) {
+tensorflow::PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return tensorflow::PartialTensorShape(dims);
 }
 

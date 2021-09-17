@@ -19,6 +19,15 @@ cc_library(
 )
 
 cc_library(
+    name = "nnapi_implementation_headers",
+    hdrs = ["nnapi_implementation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":nnapi_lib",
+    ],
+)
+
+cc_library(
     name = "nnapi_implementation",
     srcs = if_nnapi(
         not_supported = ["nnapi_implementation_disabled.cc"],
@@ -51,7 +60,7 @@ cc_library(
     hdrs = ["nnapi_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":nnapi_implementation",
+        ":nnapi_implementation_headers",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
     ],

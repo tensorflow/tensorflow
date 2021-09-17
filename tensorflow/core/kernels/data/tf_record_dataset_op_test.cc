@@ -22,7 +22,7 @@ constexpr char kNodeName[] = "tf_record_dataset";
 class TFRecordDatasetParams : public DatasetParams {
  public:
   TFRecordDatasetParams(std::vector<tstring> filenames,
-                        CompressionType compression_type, int64 buffer_size,
+                        CompressionType compression_type, int64_t buffer_size,
                         string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
@@ -35,7 +35,7 @@ class TFRecordDatasetParams : public DatasetParams {
     return {
         CreateTensor<tstring>(TensorShape({num_files}), filenames_),
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)}),
-        CreateTensor<int64>(TensorShape({}), {buffer_size_})};
+        CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -49,7 +49,8 @@ class TFRecordDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {};
+    attr_vector->clear();
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 
@@ -60,7 +61,7 @@ class TFRecordDatasetParams : public DatasetParams {
  private:
   std::vector<tstring> filenames_;
   CompressionType compression_type_;
-  int64 buffer_size_;
+  int64_t buffer_size_;
 };
 
 class TFRecordDatasetOpTest : public DatasetOpsTestBase {};

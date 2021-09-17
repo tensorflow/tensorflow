@@ -23,7 +23,11 @@ TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
 TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
-TENSORFLOW_TARGET=$1
+TENSORFLOW_TARGET=${TENSORFLOW_TARGET:-$1}
+if [ "${TENSORFLOW_TARGET}" = "rpi" ]; then
+  export TENSORFLOW_TARGET="armhf"
+fi
+export CROSSTOOL_PYTHON_INCLUDE_PATH=$(${PYTHON} -c "from sysconfig import get_paths as gp; print(gp()['include'])")
 
 # Fix container image for cross build.
 if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
@@ -43,10 +47,10 @@ fi
 # Build source tree.
 rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
 cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
-      "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" \
       "${TENSORFLOW_LITE_DIR}/tools/pip_package/MANIFEST.in" \
       "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
       "${BUILD_DIR}"
+cp  "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" "${BUILD_DIR}/setup.py"
 cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
    "${TENSORFLOW_LITE_DIR}/python/metrics_interface.py" \
    "${TENSORFLOW_LITE_DIR}/python/metrics_portable.py" \
@@ -103,19 +107,19 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-armv7l \
+    ${PYTHON} setup.py bdist --plat-name=linux-armv7l \
                        bdist_wheel --plat-name=linux-armv7l
     ;;
   aarch64)
-    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-aarch64 \
+    ${PYTHON} setup.py bdist --plat-name=linux-aarch64 \
                        bdist_wheel --plat-name=linux-aarch64
     ;;
   *)
     if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup_with_binary.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
+      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
                          bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
     else
-      ${PYTHON} setup_with_binary.py bdist bdist_wheel
+      ${PYTHON} setup.py bdist bdist_wheel
     fi
     ;;
 esac

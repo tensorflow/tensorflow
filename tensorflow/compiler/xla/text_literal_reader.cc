@@ -79,7 +79,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;
   std::vector<absl::string_view> coordinates;
-  std::vector<int64> coordinate_values;
+  std::vector<int64_t> coordinate_values;
   string line;
   while (buf.ReadLine(&line).ok()) {
     pieces = absl::StrSplit(line, ':');
@@ -102,7 +102,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
     coordinates = absl::StrSplit(coordinates_string, ',');
     coordinate_values.clear();
     for (absl::string_view piece : coordinates) {
-      int64 coordinate_value;
+      int64_t coordinate_value;
       if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
             "could not parse coordinate member as int64: \"%s\"",

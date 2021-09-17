@@ -290,11 +290,25 @@ TFE_TensorHandle* CopyTensorFromParallelDevice(TFE_Context* context,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info) {
-  TF_SetStatus(status, TF_UNIMPLEMENTED,
-               "Trying to copy a tensor out of a parallel device. Since there "
-               "are multiple components to parallel tensors, they must be "
-               "unpacked explicitly.");
-  return nullptr;
+  ParallelTensor* parallel_tensor = reinterpret_cast<ParallelTensor*>(
+      TFE_TensorHandleDevicePointer(tensor, status));
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  if (parallel_tensor->num_tensors() == 1) {
+    // Copy-off for single-device tensors is allowed to make debugging dynamic
+    // control flow easier.
+    return TFE_TensorHandleCopySharingTensor(parallel_tensor->tensor(0),
+                                             status);
+  } else {
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        absl::StrCat(
+            "Trying to copy a tensor out of a parallel device. Since there "
+            "are multiple components to parallel tensors, they must be "
+            "unpacked explicitly.\n",
+            tensorflow::unwrap(tensor)->DebugString())
+            .c_str());
+    return nullptr;
+  }
 }
 
 // For TFE_CustomDevice::execute in the parallel device registration.

@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace read_variable {
 
 constexpr int kInputVariableId = 0;
@@ -44,7 +44,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputValue, &output));
-  SetTensorToDynamic(output);
+
+  if (output->dims->size == 0) {
+    // Currently there is no good way to differentiate between scalar and
+    // unranked tensor, so we set the tensor's allocation type to dynamic in
+    // both cases.
+    SetTensorToDynamic(output);
+  }
 
   return kTfLiteOk;
 }
@@ -66,9 +72,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputValue, &output));
 
   TF_LITE_ENSURE_TYPES_EQ(context, variable_tensor->type, output->type);
-  TF_LITE_ENSURE_OK(
-      context, context->ResizeTensor(
-                   context, output, TfLiteIntArrayCopy(variable_tensor->dims)));
+  // Only resize the output if the op produces dynamic output.
+  if (IsDynamicTensor(output)) {
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(
+                                   context, output,
+                                   TfLiteIntArrayCopy(variable_tensor->dims)));
+  }
   memcpy(output->data.raw, variable_tensor->data.raw, output->bytes);
 
   return kTfLiteOk;
@@ -82,6 +91,6 @@ TfLiteRegistration* Register_READ_VARIABLE() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

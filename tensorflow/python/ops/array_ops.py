@@ -23,6 +23,7 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -2979,6 +2980,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 
 
 @tf_export(v1=["zeros_like"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
@@ -3018,6 +3020,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("zeros_like", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def zeros_like_v2(
     input,  # pylint: disable=redefined-builtin
@@ -3094,6 +3097,7 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 
 
 @tf_export(v1=["ones_like"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
@@ -3127,6 +3131,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
 
 
 @tf_export("ones_like", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
@@ -3251,10 +3256,6 @@ def placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: rand_array}))  # Will succeed.
   ```
 
-  @compatibility(eager)
-  Placeholders are not compatible with eager execution.
-  @end_compatibility
-
   Args:
     dtype: The type of elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not
@@ -3267,6 +3268,20 @@ def placeholder(dtype, shape=None, name=None):
 
   Raises:
     RuntimeError: if eager execution is enabled
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In TF2, you can just pass tensors directly
+  into ops and layers. If you want to explicitly set up your inputs, also see
+  [Keras functional API](https://www.tensorflow.org/guide/keras/functional) on
+  how to use `tf.keras.Input` to replace `tf.compat.v1.placeholder`.
+  `tf.function` arguments also do the job of `tf.compat.v1.placeholder`.
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError("tf.placeholder() is not compatible with "
@@ -3278,6 +3293,42 @@ def placeholder(dtype, shape=None, name=None):
 @tf_export(v1=["placeholder_with_default"])
 def placeholder_with_default(input, shape, name=None):  # pylint: disable=redefined-builtin
   """A placeholder op that passes through `input` when its output is not fed.
+
+  @compatibility(TF2)
+  This API is strongly discouraged for use with eager execution and
+  `tf.function`. The primary use of this API is for testing computation wrapped
+  within a `tf.function` where the input tensors might not have statically known
+  fully-defined shapes. The same can be achieved by creating a
+  [concrete function](
+  https://www.tensorflow.org/guide/function#obtaining_concrete_functions)
+  from the `tf.function` with a `tf.TensorSpec` input which has partially
+  defined shapes. For example, the code
+
+  >>> @tf.function
+  ... def f():
+  ...   x = tf.compat.v1.placeholder_with_default(
+  ...       tf.constant([[1., 2., 3.], [4., 5., 6.]]), [None, 3])
+  ...   y = tf.constant([[1.],[2.], [3.]])
+  ...   z = tf.matmul(x, y)
+  ...   assert z.shape[0] == None
+  ...   assert z.shape[1] == 1
+
+  >>> f()
+
+  can easily be replaced by
+
+  >>> @tf.function
+  ... def f(x):
+  ...   y = tf.constant([[1.],[2.], [3.]])
+  ...   z = tf.matmul(x, y)
+  ...   assert z.shape[0] == None
+  ...   assert z.shape[1] == 1
+
+  >>> g = f.get_concrete_function(tf.TensorSpec([None, 3]))
+
+  You can learn more about `tf.function` at [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
 
   Args:
     input: A `Tensor`. The default value to produce when output is not fed.
@@ -4569,6 +4620,33 @@ def where(condition, x=None, y=None, name=None):
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
+
+  @compatibility(TF2)
+
+  This API is compatible with eager execution and `tf.function`. However, this
+  is still a legacy API endpoint originally designed for TF1. To migrate to
+  fully-native TF2, please replace its usage with `tf.where` instead, which is
+  directly backwards compatible with `tf.compat.v1.where`.
+
+  However,`tf.compat.v1.where` is more restrictive than `tf.where`, requiring
+  `x` and `y` to have the same shape, and returning a `Tensor` with the same
+  type and shape as `x`, `y` (if they are both non-None).
+
+  `tf.where` will accept `x`, `y` that are not the same shape as long as they
+  are broadcastable with one another and with `condition`, and will return a
+  `Tensor` with shape broadcast from `condition`, `x`, and `y`.
+
+  For example, the following works with `tf.where` but not `tf.compat.v1.where`:
+
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+
+  >>> tf.where(True, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4],
+  dtype=int32)>
+
+  @end_compatibility
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
@@ -4833,12 +4911,12 @@ def reverse_sequence_v2(input,
 
 
 @tf_export(v1=["gather"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              ("The `validate_indices` argument has no effect. "
                               "Indices are always validated on CPU and never "
                               "validated on GPU."),
-                             "validate_indices")
-@dispatch.add_dispatch_support
+                             ("validate_indices", None))
 def gather(params,
            indices,
            validate_indices=None,
@@ -6606,3 +6684,38 @@ def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
     A `Tensor`. Has the same dtype as `input`.
   """
   return gen_array_ops.guarantee_const(input=input, name=name)
+
+
+@tf_export("stop_gradient")
+@dispatch.add_dispatch_support
+def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
+  """Stops gradient computation.
+
+  NOTE: This docstring is patched out below. See
+  tensorflow/core/api_def/base_api/api_def_StopGradient.pbtxt for the full
+  docstring. That file determines the public documentation page.
+
+  Args:
+    input: A `Tensor`.
+    name: A name for this operation.
+
+  Returns:
+    A `Tensor`. Has the same dtype as `input`.
+  """
+  # The StopGradient op has a gradient function registered which returns None
+  # (meaning statically known to be zero). For correctness, that's all we
+  # need. However, tf.GradientTape often makes decisions about what to keep in
+  # memory based on which forward-pass tensors are currently being watched, and
+  # returning None in a gradient is not sufficient to stop watching a tensor
+  # since the backward function doesn't run in the forward pass. Pausing the
+  # tape around this op instructs any tf.GradientTapes to ignore the
+  # forward-pass output of StopGradient, which may be much more efficient.
+  with tape.stop_recording():
+    return gen_array_ops.stop_gradient(input, name=name)
+
+
+stop_gradient.__doc__ = gen_array_ops.stop_gradient.__doc__
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_array_ops.check_numerics)

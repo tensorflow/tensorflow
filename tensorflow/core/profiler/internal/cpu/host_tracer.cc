@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -46,8 +45,6 @@ class HostTracer : public ProfilerInterface {
   Status Start() override;
 
   Status Stop() override;
-
-  Status CollectData(RunMetadata* run_metadata) override;
 
   Status CollectData(XSpace* space) override;
 
@@ -93,11 +90,6 @@ Status HostTracer::Stop() {
   events_ = TraceMeRecorder::Stop();
   recording_ = false;
   return Status::OK();
-}
-
-Status HostTracer::CollectData(RunMetadata* run_metadata) {
-  return errors::Unimplemented(
-      "CollectData to RunMetadata not supported in HostTracer");
 }
 
 Status HostTracer::CollectData(XSpace* space) {

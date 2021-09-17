@@ -29,3 +29,14 @@ func @no_pushdown_multiple_outputs(%arg0: tensor<1000x2x!quant.uniform<i8:f32, 7
 // CHECK-NEXT: tfl.dequantize
 // CHECK-NEXT: tfl.unpack
 }
+
+// CHECK-LABEL: no_pushdown_dynamic_shape
+func @no_pushdown_dynamic_shape(%arg0: tensor<?x1000x1000x!quant.uniform<i8:f32, 7.812500e-03>>, %arg1: tensor<1x1xi32>) -> tensor<?x1x1000xf32> {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<?x1000x1000x!quant.uniform<i8:f32, 7.812500e-03>>) -> tensor<?x1000x1000xf32>
+  %1 = "tfl.gather"(%0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32}: (tensor<?x1000x1000xf32>, tensor<1x1xi32>) -> tensor<?x1x1000xf32>
+  return %1 : tensor<?x1x1000xf32>
+
+// CHECK-NEXT: tfl.dequantize
+// CHECK-NEXT: tfl.gather
+}
+

@@ -1,8 +1,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -53,7 +52,10 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = ["types.h"],
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
@@ -242,7 +244,7 @@ selects.config_setting_group(
         ":ios_arm64e",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
-    ],
+    ] + tflite_extra_arm_config_settings(),
 )
 
 cc_library(
@@ -349,7 +351,6 @@ cc_library(
     name = "optimized_eigen",
     hdrs = [
         "optimized/eigen_spatial_convolutions.h",
-        "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -390,7 +391,7 @@ cc_library(
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
@@ -460,6 +461,7 @@ cc_library(
         "reference/batch_matmul.h",
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_args.h",
         "reference/broadcast_to.h",
         "reference/cast.h",
         "reference/ceil.h",
@@ -513,6 +515,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -556,7 +559,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -613,6 +616,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -638,13 +642,14 @@ cc_library(
         ":cppmath",
         ":legacy_types",
         ":quantization_util",
+        ":reference_base",
         ":strided_slice_logic",
         ":tensor",
+        ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -762,7 +767,7 @@ cc_library(
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:common",
@@ -798,6 +803,7 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "portable_tensor_utils.h",
         "tensor_utils.h",
         "tensor_utils_common.h",
     ],
@@ -1111,8 +1117,6 @@ cc_test(
     ],
 )
 
-exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
 filegroup(
     name = "optimized_op_headers",
     srcs = glob([
@@ -1187,4 +1191,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})

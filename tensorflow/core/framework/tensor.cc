@@ -29,15 +29,19 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include <utility>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -97,14 +102,14 @@ class BufferBase : public TensorBuffer {
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
     void* data_ptr = data();
-    int64 rb = size();
+    int64_t rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(alloc_->Name());
     proto->set_ptr(reinterpret_cast<uintptr_t>(data_ptr));
     if (alloc_->TracksAllocationSizes()) {
-      int64 ab = alloc_->AllocatedSize(data_ptr);
+      int64_t ab = alloc_->AllocatedSize(data_ptr);
       proto->set_allocated_bytes(ab);
-      int64 id = alloc_->AllocationId(data_ptr);
+      int64_t id = alloc_->AllocationId(data_ptr);
       if (id > 0) {
         proto->set_allocation_id(id);
       }
@@ -127,20 +132,20 @@ class BufferBase : public TensorBuffer {
 template <typename T>
 class Buffer : public BufferBase {
  public:
-  Buffer(Allocator* a, int64 n);
-  Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
+  Buffer(Allocator* a, int64_t n);
+  Buffer(Allocator* a, int64_t n, const AllocationAttributes& allocation_attr);
 
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  int64 elem_;
+  int64_t elem_;
 
   ~Buffer() override;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Buffer);
 };
 
-void LogUnexpectedSize(int64 actual, int64 expected) {
+void LogUnexpectedSize(int64_t actual, int64_t expected) {
   LOG(ERROR) << "Input size was " << actual << " and expected " << expected;
 }
 
@@ -158,7 +163,7 @@ struct Helper {
 
   // Encoder of simple type T to a string.  We do a copy.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
     port::AssignRefCounted(StringPiece(in->base<const char>(), in->size()), in,
                            out);
@@ -167,7 +172,7 @@ struct Helper {
   // Decoder of simple type T. Copy the bytes from "in" into the
   // tensor buffer.
   template <typename Source>
-  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64_t n) {
     if (in.size() != sizeof(T) * n) {
       LogUnexpectedSize(in.size(), sizeof(T) * n);
       return nullptr;
@@ -183,7 +188,7 @@ struct Helper {
   }
 
   // Memory usage.
-  static int64 TotalBytes(TensorBuffer* in, int64 n) {
+  static int64_t TotalBytes(TensorBuffer* in, int64_t n) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
     return in->size();
   }
@@ -199,7 +204,7 @@ struct Helper<tstring> {
   // Encodes "n" elements of type string stored in "in" into Cord
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     port::EncodeStringList(in->base<const tstring>(), n, out);
   }
 
@@ -207,7 +212,7 @@ struct Helper<tstring> {
   // buffer out of it. Returns nullptr if the decoding fails. "in" is
   // usually the TensorProto::tensor_content.
   template <typename Source>
-  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64_t n) {
     Buffer<tstring>* buf = new Buffer<tstring>(a, n);
     tstring* strings = buf->template base<tstring>();
     if (strings == nullptr || !port::DecodeStringList(in, strings, n)) {
@@ -219,8 +224,8 @@ struct Helper<tstring> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
-    int64 tot = in->size();
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
+    int64_t tot = in->size();
     DCHECK_EQ(tot, sizeof(tstring) * n);
     const tstring* p = in->base<const tstring>();
     for (int i = 0; i < n; ++i, ++p) tot += p->size();
@@ -236,7 +241,7 @@ struct Helper<ResourceHandle> {
   // Encodes "n" elements of type ResourceHandle stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     EncodeResourceHandleList(in->base<const ResourceHandle>(), n,
                              port::NewStringListEncoder(out));
   }
@@ -245,7 +250,7 @@ struct Helper<ResourceHandle> {
   // buffer out of it. Returns nullptr if the decoding fails. "in" is
   // usually the TensorProto::tensor_content.
   template <typename Source>
-  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64_t n) {
     auto* buf = new Buffer<ResourceHandle>(a, n);
     ResourceHandle* ps = buf->template base<ResourceHandle>();
     if (ps == nullptr ||
@@ -258,7 +263,7 @@ struct Helper<ResourceHandle> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
     return n * sizeof(ResourceHandle);
   }
 };
@@ -268,7 +273,7 @@ struct Helper<Variant> {
   // Encodes "n" elements of type Variant stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
     EncodeVariantList(in->base<const Variant>(), n,
                       port::NewStringListEncoder(out));
   }
@@ -277,7 +282,7 @@ struct Helper<Variant> {
   // buffer out of it. Returns nullptr if the decoding fails. "in" is
   // usually the TensorProto::tensor_content.
   template <typename Source>
-  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64_t n) {
     auto* buf = new Buffer<Variant>(a, n);
     Variant* ps = buf->template base<Variant>();
     if (ps == nullptr ||
@@ -290,7 +295,7 @@ struct Helper<Variant> {
 
   // Returns the estimated memory usage of "n" elements of type T
   // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
+  static int64_t TotalBytes(TensorBuffer* in, int n) {
     return n * sizeof(Variant);
   }
 };
@@ -334,14 +339,14 @@ PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
 template <>
-struct ProtoHelper<int64> {
-  static const int64* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const int64*>(proto.int64_val().begin());
+struct ProtoHelper<int64_t> {
+  static const int64_t* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const int64_t*>(proto.int64_val().begin());
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.int64_val().size();
   }
-  static void Fill(const int64* data, size_t n, TensorProto* proto) {
+  static void Fill(const int64_t* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
   }
@@ -470,12 +475,12 @@ struct ProtoHelper<Eigen::half> {
 };
 
 template <typename T>
-Buffer<T>::Buffer(Allocator* a, int64 n)
+Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
       elem_(n) {}
 
 template <typename T>
-Buffer<T>::Buffer(Allocator* a, int64 n,
+Buffer<T>::Buffer(Allocator* a, int64_t n,
                   const AllocationAttributes& allocation_attr)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, allocation_attr)),
       elem_(n) {}
@@ -501,7 +506,7 @@ Buffer<T>::~Buffer() {
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
 template <typename T>
-TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
+TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
@@ -510,7 +515,7 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
     return nullptr;
   }
 
-  const int64 in_n = ProtoHelper<T>::NumElements(in);
+  const int64_t in_n = ProtoHelper<T>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, T());
   } else {
@@ -534,7 +539,7 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
 
 template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
-                                      int64 n) {
+                                      int64_t n) {
   CHECK_GT(n, 0);
   Buffer<Variant>* buf = new Buffer<Variant>(a, n);
   Variant* data = buf->template base<Variant>();
@@ -542,7 +547,7 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
     buf->Unref();
     return nullptr;
   }
-  const int64 in_n = ProtoHelper<Variant>::NumElements(in);
+  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
@@ -550,8 +555,8 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
     // then make sure to only decode the first n out of the in_n elements in the
     // in tensors. In all other cases, we decode all in_n elements of in and set
     // the remaining elements up to n to be the default Variant() value.
-    const int64 real_n = n < in_n ? n : in_n;
-    for (int64 i = 0; i < real_n; ++i) {
+    const int64_t real_n = n < in_n ? n : in_n;
+    for (int64_t i = 0; i < real_n; ++i) {
       data[i] = in.variant_val(i);
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""
@@ -562,7 +567,7 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
         return nullptr;
       }
     }
-    for (int64 i = in_n; i < n; ++i) {
+    for (int64_t i = in_n; i < n; ++i) {
       data[i] = Variant();
     }
   }
@@ -574,7 +579,7 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
 // we don't use ProtoHelper<uint16>).
 template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
-                                          int64 n) {
+                                          int64_t n) {
   CHECK_GT(n, 0);
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16* data = buf->template base<uint16>();
@@ -582,7 +587,7 @@ TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
     buf->Unref();
     return nullptr;
   }
-  const int64 in_n = in.half_val().size();
+  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -598,7 +603,7 @@ TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
 
 template <>
 TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
-                                       int64 n) {
+                                       int64_t n) {
   CHECK_GT(n, 0);
   Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16* data = buf->template base<uint16>();
@@ -606,7 +611,7 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
     buf->Unref();
     return nullptr;
   }
-  const int64 in_n = in.half_val().size();
+  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -623,7 +628,7 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
 // Copies T[n] stored in the buffer "in" into the repeated field in
 // "out" corresponding to type T.
 template <typename T>
-void ToProtoField(const TensorBuffer& in, int64 n, TensorProto* out) {
+void ToProtoField(const TensorBuffer& in, int64_t n, TensorProto* out) {
   const T* data = in.base<const T>();
   // NOTE: T may not the same as
   // ProtoHelper<T>::FieldType::value_type.  E.g., T==int16,
@@ -652,9 +657,9 @@ Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
   RefIfNonNull(buf);
 }
 
-Tensor::Tensor(DataType type, const TensorShape& shape,
+Tensor::Tensor(DataType type, TensorShape shape,
                core::RefCountPtr<TensorBuffer> buf)
-    : shape_(shape), buf_(buf.release()) {
+    : shape_(std::move(shape)), buf_(buf.release()) {
   set_dtype(type);
 }
 
@@ -719,11 +724,11 @@ bool Tensor::RefCountIsOne() const {
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__
-#define CASE(TYPE, STMTS)             \
-  case DataTypeToEnum<TYPE>::value: { \
-    typedef TYPE T;                   \
-    STMTS;                            \
-    break;                            \
+#define CASE(TYPE, STMTS)               \
+  case DataTypeToEnum<TYPE>::value: {   \
+    typedef TF_ATTRIBUTE_UNUSED TYPE T; \
+    STMTS;                              \
+    break;                              \
   }
 #define CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, INVALID, DEFAULT) \
   switch (TYPE_ENUM) {                                         \
@@ -739,7 +744,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(tstring, SINGLE_ARG(STMTS))                           \
     CASE(complex64, SINGLE_ARG(STMTS))                         \
     CASE(complex128, SINGLE_ARG(STMTS))                        \
-    CASE(int64, SINGLE_ARG(STMTS))                             \
+    CASE(int64_t, SINGLE_ARG(STMTS))                           \
     CASE(bool, SINGLE_ARG(STMTS))                              \
     CASE(qint32, SINGLE_ARG(STMTS))                            \
     CASE(quint8, SINGLE_ARG(STMTS))                            \
@@ -759,9 +764,8 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS,                               \
-                     LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
-                     , LOG(FATAL) << "Type not set";)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
+                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -789,6 +793,16 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
     LogMemory::RecordTensorAllocation("Unknown (with attributes)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
+}
+
+Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
+                           Tensor* out_tensor) {
+  // Avoid crashes due to invalid or unsupported types.
+  CASES_WITH_DEFAULT(
+      type, {}, return errors::InvalidArgument("Type not set"),
+      return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
+  *out_tensor = Tensor(type, shape);
+  return Status::OK();
 }
 
 // NOTE(mrry): The default allocator for a Tensor (when none is specified) is
@@ -826,7 +840,7 @@ template <typename T>
 class SubBuffer : public TensorBuffer {
  public:
   // This buffer is an alias to buf[delta, delta + n).
-  SubBuffer(TensorBuffer* buf, int64 delta, int64 n)
+  SubBuffer(TensorBuffer* buf, int64_t delta, int64_t n)
       : TensorBuffer(buf->base<T>() + delta),
         root_(buf->root_buffer()),
         elem_(n) {
@@ -851,18 +865,18 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  int64 elem_;
+  int64_t elem_;
 
   ~SubBuffer() override { root_->Unref(); }
 
   TF_DISALLOW_COPY_AND_ASSIGN(SubBuffer);
 };
 
-Tensor Tensor::Slice(int64 start, int64 limit) const {
+Tensor Tensor::Slice(int64_t start, int64_t limit) const {
   CHECK_GE(dims(), 1);
   CHECK_LE(0, start);
   CHECK_LE(start, limit);
-  int64 dim0_size = shape_.dim_size(0);
+  int64_t dim0_size = shape_.dim_size(0);
   CHECK_LE(limit, dim0_size);
   if ((start == 0) && (limit == dim0_size)) {
     return *this;
@@ -872,11 +886,11 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
   ret.set_dtype(dtype());
   ret.buf_ = nullptr;
   if (dim0_size > 0) {
-    const int64 elems_per_dim0 = NumElements() / dim0_size;
-    const int64 delta = start * elems_per_dim0;
+    const int64_t elems_per_dim0 = NumElements() / dim0_size;
+    const int64_t delta = start * elems_per_dim0;
     dim0_size = limit - start;
     ret.shape_.set_dim(0, dim0_size);
-    const int64 num_elems = dim0_size * elems_per_dim0;
+    const int64_t num_elems = dim0_size * elems_per_dim0;
     if (buf_) {
       DataType dt = dtype();
       CASES(dt, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
@@ -885,10 +899,10 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
   return ret;
 }
 
-Tensor Tensor::SubSlice(int64 index) const {
+Tensor Tensor::SubSlice(int64_t index) const {
   CHECK_GE(dims(), 1);  // Crash ok.
   CHECK_LE(0, index);   // Crash ok.
-  int64 dim0_size = shape_.dim_size(0);
+  int64_t dim0_size = shape_.dim_size(0);
   CHECK_LE(index, dim0_size);  // Crash ok.
   Tensor ret;
   ret.shape_ = shape_;
@@ -896,9 +910,9 @@ Tensor Tensor::SubSlice(int64 index) const {
   ret.set_dtype(dtype());
   ret.buf_ = nullptr;
   if (dim0_size > 0) {
-    const int64 elems_per_dim0 = NumElements() / dim0_size;
-    const int64 delta = index * elems_per_dim0;
-    const int64 num_elems = elems_per_dim0;
+    const int64_t elems_per_dim0 = NumElements() / dim0_size;
+    const int64_t delta = index * elems_per_dim0;
+    const int64_t num_elems = elems_per_dim0;
     if (buf_) {
       DataType dt = dtype();
       CASES(dt, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
@@ -917,7 +931,7 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   if (!TensorShape::IsValid(proto.tensor_shape())) return false;
   if (proto.dtype() == DT_INVALID) return false;
   TensorShape shape(proto.tensor_shape());
-  const int64 N = shape.num_elements();
+  const int64_t N = shape.num_elements();
   if (N > 0 && proto.dtype()) {
     bool dtype_error = false;
     if (!proto.tensor_content().empty()) {
@@ -1017,13 +1031,13 @@ inline float PrintOneElement(bfloat16 f, bool print_v2) {
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
-                 int64 limit, int shape_size, const T* data, int64* data_index,
-                 string* result) {
+                 int64_t limit, int shape_size, const T* data,
+                 int64_t* data_index, string* result) {
   if (*data_index >= limit) return;
-  int64 element_count = shape[dim_index];
+  int64_t element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
-    for (int64 i = 0; i < element_count; i++) {
+    for (int64_t i = 0; i < element_count; i++) {
       if (*data_index >= limit) {
         // If not enough elements has been printed, append "...".
         if (dim_index != 0) {
@@ -1037,7 +1051,7 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
     return;
   }
   // Loop every element of one dim.
-  for (int64 i = 0; i < element_count; i++) {
+  for (int64_t i = 0; i < element_count; i++) {
     bool flag = false;
     if (*data_index < limit) {
       strings::StrAppend(result, "[");
@@ -1070,8 +1084,8 @@ void PrintDimSpacing(int dim_index, int num_dims, string* result) {
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
-                   int64 num_elts_at_ends, int num_dims, const T* data,
-                   int64 data_index, string* result) {
+                   int64_t num_elts_at_ends, int num_dims, const T* data,
+                   int64_t data_index, string* result) {
   // We have recursed beyond all the dimensions into a single element
   // of the tensor.
   if (dim_index == num_dims) {
@@ -1080,16 +1094,16 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   }
 
   strings::StrAppend(result, "[");
-  int64 element_count = shape[dim_index];
-  int64 start_of_end =
+  int64_t element_count = shape[dim_index];
+  int64_t start_of_end =
       std::max(num_elts_at_ends, element_count - num_elts_at_ends);
 
   // Loop every element of one dim.
-  int64 elements_per_iter = 1;
+  int64_t elements_per_iter = 1;
   for (int i = dim_index + 1; i < num_dims; i++) {
     elements_per_iter *= shape[i];
   }
-  for (int64 i = 0; (i < num_elts_at_ends) && (i < element_count); i++) {
+  for (int64_t i = 0; (i < num_elts_at_ends) && (i < element_count); i++) {
     if (i > 0) {
       PrintDimSpacing(dim_index, num_dims, result);
     }
@@ -1102,7 +1116,7 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
     PrintDimSpacing(dim_index, num_dims, result);
     strings::StrAppend(result, "...");
   }
-  for (int64 i = start_of_end; i < element_count; i++) {
+  for (int64_t i = start_of_end; i < element_count; i++) {
     // As for each element, print the sub-dim.
     PrintDimSpacing(dim_index, num_dims, result);
     PrintOneDimV2(dim_index + 1, shape, num_elts_at_ends, num_dims, data,
@@ -1113,15 +1127,15 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
 }
 
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts,
+string SummarizeArray(int64_t limit, int64_t num_elts,
                       const TensorShape& tensor_shape, const char* data,
                       const bool print_v2) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
-  const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  const gtl::InlinedVector<int64_t, 4> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
-    for (int64 i = 0; i < limit; ++i) {
+    for (int64_t i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
       strings::StrAppend(&ret, PrintOneElement(array[i], print_v2));
     }
@@ -1132,7 +1146,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
     const int num_dims = tensor_shape.dims();
     PrintOneDimV2(0, shape, limit, num_dims, array, 0, &ret);
   } else {
-    int64 data_index = 0;
+    int64_t data_index = 0;
     const int shape_size = tensor_shape.dims();
     PrintOneDim(0, shape, limit, shape_size, array, &data_index, &ret);
 
@@ -1143,8 +1157,8 @@ string SummarizeArray(int64 limit, int64 num_elts,
 }
 }  // namespace
 
-string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
-  const int64 num_elts = NumElements();
+string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
+  const int64_t num_elts = NumElements();
   if (max_entries < 0) {
     max_entries = num_elts;
   }
@@ -1194,7 +1208,7 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       return SummarizeArray<uint64>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, shape_, data, print_v2);
+      return SummarizeArray<int64_t>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
@@ -1207,7 +1221,7 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
     default: {
       // All irregular cases
       string ret;
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "[");
       }
       // TODO(irving): Don't call flat every time around this
@@ -1217,7 +1231,11 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
         switch (dtype()) {
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
-            strings::StrAppend(&ret, v.DebugString());
+            strings::StrAppend(&ret, "<", v.SummarizeValue(), ">");
+          } break;
+          case DT_RESOURCE: {
+            const ResourceHandle& r = flat<ResourceHandle>()(i);
+            strings::StrAppend(&ret, "<", r.SummarizeValue(), ">");
           } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
@@ -1226,7 +1244,7 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
         }
       }
       if (max_entries < num_elts) strings::StrAppend(&ret, "...");
-      if (print_v2) {
+      if (print_v2 && (dims() > 0)) {
         strings::StrAppend(&ret, "]");
       }
       return ret;
@@ -1269,27 +1287,27 @@ void Tensor::FillDescription(TensorDescription* description) const {
   }
 }
 
-gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
-    gtl::ArraySlice<int64> orig, int64 num_out_dims) {
-  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
-  int64 offset = orig.size() - num_out_dims;
-  for (int64 out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
-    const int64 in_dim = out_dim + offset;
+gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
+    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
+  int64_t offset = orig.size() - num_out_dims;
+  for (int64_t out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
+    const int64_t in_dim = out_dim + offset;
     out_dims[out_dim] = in_dim < 0 ? 1 : orig[in_dim];
   }
-  for (int64 in_dim = 0; in_dim < offset; ++in_dim) {
+  for (int64_t in_dim = 0; in_dim < offset; ++in_dim) {
     out_dims[0] *= orig[in_dim];
   }
   return out_dims;
 }
 
-gtl::InlinedVector<int64, 4> Tensor::ComputeFlatOuterDims(
-    gtl::ArraySlice<int64> orig, int64 num_out_dims) {
-  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
-  for (int64 out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
+gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatOuterDims(
+    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
+  for (int64_t out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
     out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
   }
-  for (int64 in_dim = num_out_dims; in_dim < orig.size(); ++in_dim) {
+  for (int64_t in_dim = num_out_dims; in_dim < orig.size(); ++in_dim) {
     out_dims[num_out_dims - 1] *= orig[in_dim];
   }
   return out_dims;

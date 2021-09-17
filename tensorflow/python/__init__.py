@@ -37,8 +37,8 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-from tensorflow.python.eager import context
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
@@ -157,6 +157,11 @@ nn.raw_rnn = rnn.raw_rnn
 nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
+
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

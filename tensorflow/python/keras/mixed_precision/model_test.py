@@ -18,6 +18,7 @@ import os
 
 from absl import flags
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -52,12 +53,27 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 
+# The Tensorflow-internal Optimizer's SavedModel identifier has been changed,
+# while the Keras package Optimizer retains the old name. Since this test cannot
+# import the Keras package, create a new registration for "optimizer".
+revived_types.register_revived_type(
+    'optimizer',
+    lambda obj: isinstance(obj, optimizer_v2.OptimizerV2),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda proto: optimizer_v2.RestoredOptimizer(),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=optimizer_v2.RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+    )])
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.

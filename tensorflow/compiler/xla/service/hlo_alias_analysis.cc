@@ -57,7 +57,7 @@ class BufferValueMap {
   // contiguous, while BufferNumbers may not be. BufferNumbers may not be
   // dense because buffers may be created and destroyed during the analysis
   // construction process.
-  using BufferNumber = int64;
+  using BufferNumber = int64_t;
 
   explicit BufferValueMap(const HloModule* module,
                           const HloDataflowAnalysis& dataflow)
@@ -97,7 +97,7 @@ class BufferValueMap {
         // If multiple buffers are aliased merge these buffers together into a
         // single buffer (arbitrarily chosen as the first buffer in the vector).
         if (aliased_buffers.size() > 1) {
-          for (int64 i = 1; i < aliased_buffers.size(); ++i) {
+          for (int64_t i = 1; i < aliased_buffers.size(); ++i) {
             MergeBuffers(/*from=*/aliased_buffers[i],
                          /*to=*/aliased_buffers[0]);
           }
@@ -602,7 +602,7 @@ void HloAliasAnalysis::MergeBuffers(const HloBuffer& to,
     live_out_buffers_.insert(&buffers_[to.id()]);
   }
 
-  int64 from_id = from.id();
+  int64_t from_id = from.id();
   if (from_id != buffers_.size() - 1) {
     // Now `from` is invalid, move the last element of buffers to replace `from`
     // and update references to the last element.

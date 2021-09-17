@@ -176,7 +176,7 @@ class UniformDistribution<Generator, int32> {
   typedef int32 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int32 lo, int32 hi)
+  UniformDistribution(int32_t lo, int32_t hi)
       : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
 
   PHILOX_DEVICE_INLINE
@@ -198,7 +198,7 @@ class UniformDistribution<Generator, int32> {
 };
 
 template <class Generator>
-class UniformDistribution<Generator, int64> {
+class UniformDistribution<Generator, int64_t> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
@@ -207,11 +207,11 @@ class UniformDistribution<Generator, int64> {
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static constexpr bool kVariableSamplesPerOutput = false;
-  typedef Array<int64, kResultElementCount> ResultType;
-  typedef int64 ResultElementType;
+  typedef Array<int64_t, kResultElementCount> ResultType;
+  typedef int64_t ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int64 lo, int64 hi)
+  UniformDistribution(int64_t lo, int64_t hi)
       : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
 
   PHILOX_DEVICE_INLINE
@@ -229,7 +229,7 @@ class UniformDistribution<Generator, int64> {
   // Note that lo_ is intentionally signed while range_ is intentionally
   // unsigned.  This is because hi - lo can overflow signed integers if
   // lo < 0 < hi, but always fits in unsigned.
-  int64 lo_;
+  int64_t lo_;
   uint64 range_;
 };
 
@@ -294,8 +294,8 @@ template <typename Generator>
 class UniformFullIntDistribution<Generator, uint32>
     : public UniformFullIntDistribution32<Generator, uint32> {};
 template <typename Generator>
-class UniformFullIntDistribution<Generator, int64>
-    : public UniformFullIntDistribution64<Generator, int64> {};
+class UniformFullIntDistribution<Generator, int64_t>
+    : public UniformFullIntDistribution64<Generator, int64_t> {};
 template <typename Generator>
 class UniformFullIntDistribution<Generator, uint64>
     : public UniformFullIntDistribution64<Generator, uint64> {};

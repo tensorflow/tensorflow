@@ -208,6 +208,9 @@ message GPUOptions {
     // size exceeds the requested memory by 5% of the total virtual device/gpu
     // memory size.
     double internal_fragmentation_fraction = 10;
+
+    // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
+    bool use_cuda_malloc_async = 11;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -267,6 +270,11 @@ message OptimizerOptions {
     ON_2 = 2;
   }
   GlobalJitLevel global_jit_level = 5;
+
+  // CPU code will be autoclustered only if global_jit_level >= ON_1 and either:
+  //  - this flag is true, or
+  //  - TF_XLA_FLAGS contains --tf_xla_cpu_global_jit=true.
+  bool cpu_global_jit = 7;
 }
 
 message GraphOptions {
@@ -664,13 +672,16 @@ message ConfigProto {
     // Currently only effective in multi-client setup.
     string coordination_service = 19;
 
-    // Whether the remote devices in the cluster should be fetched during setup
-    // of multi-client cluster. If enabled, the workers will run an extra device
-    // information exchange step during startup and the workers' EagerContexts
-    // will become aware of remote devices in the cluster as well.
-    bool fetch_remote_devices_in_multi_client = 20;
+    // We removed the flag fetch_remote_devices_in_multi_client. Marking the tag
+    // number as reserved.
+    reserved 20;
 
-    // Next: 21
+    // Whether functional control flow op lowering should be disabled. This is
+    // useful when executing within a portable runtime where control flow op
+    // kernels may not be loaded due to selective registration.
+    bool disable_functional_ops_lowering = 21;
+
+    // Next: 22
   }
 
   Experimental experimental = 16;

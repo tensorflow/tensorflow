@@ -28,12 +28,12 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/variable_ops.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
@@ -58,9 +58,9 @@ namespace {
 
 // Backward compat with previous approach to enabling op profiling.
 #if defined(TFLITE_PROFILING_ENABLED)
-constexpr int kOpProfilingEnabledDefault = true;
+constexpr bool kOpProfilingEnabledDefault = true;
 #else
-constexpr int kOpProfilingEnabledDefault = false;
+constexpr bool kOpProfilingEnabledDefault = false;
 #endif
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -114,11 +114,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::vector<std::string> results;
-  if (!util::SplitAndParse(str, delim, &results)) {
-    results.clear();
+  if (str.empty()) {
+    return {};
   }
-  return results;
+  return absl::StrSplit(str, delim);
 }
 
 int GetNumElements(const TfLiteIntArray* dim_array) {
@@ -404,6 +403,8 @@ void BenchmarkTfLiteModel::LogParams() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
+  TF_LITE_ENSURE_STATUS(BenchmarkModel::ValidateParams());
+
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
@@ -583,7 +584,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
   // (i.e. the specified input layer info) has been checked in
   // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
-  // use the corresponding input layer info to initializethe input data value
+  // use the corresponding input layer info to initialize the input data value
   // properly.
   auto interpreter_inputs = interpreter_->inputs();
   for (int i = 0; i < interpreter_inputs.size(); ++i) {
@@ -676,12 +677,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     params_.Set<int32_t>("max_profiling_buffer_entries",
                          total_nodes + kProfilingBufferHeadrooms);
   }
-  profiling_listener_ = MayCreateProfilingListener();
-  if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
-      new InterpreterStatePrinter(interpreter_.get()));
-  AddListener(interpreter_state_printer_.get());
+  AddOwnedListener(MayCreateProfilingListener());
+  AddOwnedListener(std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
@@ -692,8 +691,9 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   std::unordered_set<int> checked_node_ids;
   tools::ProvidedDelegateList delegate_providers(&params_);
   auto created_delegates = delegate_providers.CreateAllRankedDelegates();
-  TFLITE_LOG(INFO) << "Going to apply " << created_delegates.size()
-                   << " delegates one after another.";
+  TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
+      << "Going to apply " << created_delegates.size()
+      << " delegates one after another.";
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
@@ -793,8 +793,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-  ruy_profiling_listener_.reset(new RuyProfileListener());
-  AddListener(ruy_profiling_listener_.get());
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
   return kTfLiteOk;
 }
@@ -824,7 +824,6 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   } else {
     resolver = new tflite::ops::builtin::BuiltinOpResolver();
   }
-  tflite::ops::custom::AddVariableOps(resolver);
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }

@@ -28,7 +28,7 @@ namespace xla {
 
 // Returns true if permutation is a permutation of the integers
 // [0, permutation.size()).
-bool IsPermutation(absl::Span<const int64> permutation);
+bool IsPermutation(absl::Span<const int64_t> permutation);
 
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[i] = input[permutation[i]].
@@ -38,7 +38,7 @@ bool IsPermutation(absl::Span<const int64> permutation);
 // 2. permutation.size() == input.size().
 template <typename Container>
 std::vector<typename Container::value_type> Permute(
-    const Container& input, absl::Span<const int64> permutation) {
+    const Container& input, absl::Span<const int64_t> permutation) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
   CHECK_EQ(permutation.size(), data.size());
@@ -57,7 +57,7 @@ std::vector<typename Container::value_type> Permute(
 // 2. permutation.size() == input.size().
 template <typename Container>
 std::vector<typename Container::value_type> PermuteInverse(
-    const Container& input, absl::Span<const int64> permutation) {
+    const Container& input, absl::Span<const int64_t> permutation) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
   CHECK_EQ(permutation.size(), data.size());
@@ -70,15 +70,15 @@ std::vector<typename Container::value_type> PermuteInverse(
 }
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation);
+std::vector<int64_t> InversePermutation(
+    absl::Span<const int64_t> input_permutation);
 
 // Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2);
+std::vector<int64_t> ComposePermutations(absl::Span<const int64_t> p1,
+                                         absl::Span<const int64_t> p2);
 
 // Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64> permutation);
+bool IsIdentityPermutation(absl::Span<const int64_t> permutation);
 
 }  // namespace xla
 

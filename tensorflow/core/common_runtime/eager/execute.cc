@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -80,6 +81,10 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif
+
 namespace tensorflow {
 
 namespace {
@@ -91,7 +96,7 @@ const string& DeviceNameOrUnspecified(Device* device) {
 
 // Returns whether a kernel should be cached.
 bool KernelCacheEnabled(const OpDef& op_def) {
-  if (data::DatasetOpKernel::IsDatasetOp(&op_def)) {
+  if (data::DatasetOpKernel::IsDatasetOp(op_def)) {
     return false;
   }
   // TODO(b/162540360): Revisit a way to mark kernels as uncachable once we have
@@ -272,7 +277,7 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
+                                               const int64_t b) {
   auto x = tensorflow::FingerprintCat64(a.low64, b);
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
@@ -327,7 +332,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
     *fingerprint = FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
-      int64 dim = shape.dim_size(i);
+      int64_t dim = shape.dim_size(i);
       *fingerprint = FingerprintCat128(*fingerprint, dim);
     }
   }
@@ -337,8 +342,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
                    const char* attr_name, bool* value) {
   Status status = op->Attrs().Get(attr_name, value);
   if (status.ok()) {
-    DVLOG(2) << "Caller explicitly specifies "
-             << (attr_name ? "=true " : "=false, ") << op->DebugString();
+    VLOG(2) << "Caller explicitly specifies "
+            << (attr_name ? "=true " : "=false, ") << op->DebugString();
     return Status::OK();
   }
 
@@ -350,8 +355,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
   if (status.ok()) {
-    DVLOG(2) << "Function definition explicitly specifies "
-             << (attr_name ? "=true" : "=false");
+    VLOG(2) << "Function definition explicitly specifies "
+            << (attr_name ? "=true" : "=false");
     return Status::OK();
   }
   return status;
@@ -381,9 +386,9 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   if (op->GetDeviceParsedName().type == "TPU" ||
       op->GetDeviceParsedName().type == "XLA_GPU" ||
       op->GetDeviceParsedName().type == "XLA_CPU") {
-    DVLOG(2) << "Compiling " << op->Name()
-             << " with XLA because it is running on an XLA device "
-             << op->GetDeviceParsedName().type;
+    VLOG(2) << "Compiling " << op->Name()
+            << " with XLA because it is running on an XLA device "
+            << op->GetDeviceParsedName().type;
     *compile_with_xla = true;
   } else {
     *compile_with_xla = false;
@@ -627,7 +632,8 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
         *arg_def = arg;
         arg_def->set_name(EscapeOrigName(arg.name()));
         if (!arg.type_attr().empty()) {
-          arg_def->set_type_attr(EscapeOrigName(arg.type_attr()));
+          // Don't escape: type attrs are still referenced by the original name.
+          arg_def->set_type_attr(arg.type_attr());
         }
       }
     }
@@ -754,6 +760,18 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     for (const auto& attr : opdef.attr()) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
+
+#ifdef INTEL_MKL
+    if (IsMklEnabled() &&
+        absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+      // All MKL eager ops have `_kernel` private attribute that needs to be set
+      // to a fixed label.
+      AttrValue attr_kernel;
+      attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
+      (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+    }
+#endif  // INTEL_MKL
+
     // Set `ret` map.
     TF_RETURN_IF_ERROR(
         PopulateRetMap(&fdef, op_attrs, op, opdef, signature, ndef->name()));
@@ -767,7 +785,6 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   for (auto t : op->Inputs()) {
     TF_RETURN_IF_ERROR(call_op->AddInput(t));
   }
-  TF_RETURN_IF_ERROR(call_op->SetDeviceName(op->DeviceName().c_str()));
   *wrapped_op = down_cast<EagerOperation*>(call_op.release());
   // Attributes on the elementary eager operation are applied to the call op and
   // to the NodeDef inside the FunctionDef. This allows us to have a single
@@ -824,6 +841,7 @@ Status GetOrCreateKernelAndDevice(
       // Get device for this input, and add it to 'cache_key'.
       Device* input_device;
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
+      VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
       input_dev_ptrs.push_back(input_device);
       CompositeDevice* composite_device = nullptr;
       if (ctx.FindCompositeDeviceFromName(input_device->name(),
@@ -864,6 +882,7 @@ Status GetOrCreateKernelAndDevice(
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
   if (kernel == nullptr) {
+    EagerOperation* original_op = op;
     if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
       EagerOperation* wrapped_op = nullptr;
       TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
@@ -872,8 +891,8 @@ Status GetOrCreateKernelAndDevice(
       wrapped_op_releaser.reset(wrapped_op);
       op = wrapped_op;
     }
-    DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
-             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
+    VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
+            << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
     bool run_function_with_flr = false;
     bool function_outputs_on_op_device = false;
     if (op->is_function()) {
@@ -891,6 +910,8 @@ Status GetOrCreateKernelAndDevice(
           .IgnoreError();
     }
 
+    VLOG(2) << op->Name() << " function_outputs_on_op_device: "
+            << function_outputs_on_op_device;
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       // Here in local execute, set preferred device to be on the local task to
@@ -899,12 +920,19 @@ Status GetOrCreateKernelAndDevice(
           DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
               ? op->GetDeviceParsedName()
               : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
+      // Note: We use the unwrapped op for inferring the device.
+      // Without this, when wrapping CPU-only ops like RangeDataset we would
+      // place the wrapped op on a GPU (if one is available) which leads to
+      // errors because placer pins the function output nodes to GPU thereby
+      // forcing a H2D copy of the dataset variant which is not supported.
+      const NodeDef& ndef = original_op->MutableAttrs()->BuildNodeDef();
       TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
-      DVLOG(1) << "Placer place op [" << op->Name()
-               << "] on device: " << device->name();
-      DVLOG(4) << "Available kernels for " << op->Name() << " are"
-               << KernelsRegisteredForOp(op->Name());
+      VLOG(1) << "PreferredDevice " << op->Name() << ": " << preferred_device;
+      VLOG(1) << "Placer place op [" << op->Name()
+              << "] on device: " << device->name();
+      VLOG(4) << "Available kernels for " << original_op->Name() << " are"
+              << KernelsRegisteredForOp(original_op->Name());
       op->SetDevice(device);
     }
 
@@ -930,9 +958,9 @@ Status GetOrCreateKernelAndDevice(
       // function will likely result in collisions. However, this also means
       // that we don't support legitimate sending/receiving across function
       // boundary.
-      DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
-               << "Full node_def=" << ndef.DebugString();
-      std::function<int64()> get_op_id = nullptr;
+      VLOG(2) << "Running " << ndef.op() << " using multi-device function. "
+              << "Full node_def=" << ndef.DebugString();
+      std::function<int64_t()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
       get_op_id = [&ctx]() { return ctx.RemoteMgr()->NextOpId(); };
 #endif  // IS_MOBILE_PLATFORM
@@ -943,8 +971,8 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           function_outputs_on_op_device, ctx.RendezvousCreator(), get_op_id));
     } else {
-      DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
-               << ". Full node_def=" << ndef.DebugString();
+      VLOG(2) << "Running " << ndef.op() << " using op kernel. "
+              << ". Full node_def=" << ndef.DebugString();
       kernel.reset(new KernelAndDeviceOp(
           ctx.GetRendezvous(), ctx.LogMemory(), flr, runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
@@ -992,7 +1020,7 @@ Status CreateUnshapedOutput(
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-  int64 op_id;
+  int64_t op_id;
   if (remote_func_params.has_value()) {
     op_id = remote_func_params.value().op_id;
   } else {
@@ -1035,7 +1063,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-    const int64 op_id = ctx.RemoteMgr()->NextOpId();
+    const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     remote_func_params =
         EagerRemoteFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
@@ -1105,7 +1133,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->remote_func_params().has_value()
                          ? op->remote_func_params().value().step_id.value_or(0)
                          : 0);
@@ -1153,6 +1181,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     for (int i = 0, end = num_outputs; i < end; ++i) {
       if (retvals[i] != nullptr) {
         retvals[i]->Unref();
+        retvals[i] = nullptr;
       }
     }
   }
@@ -1360,8 +1389,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       StoreResourceDtypesAndShapes(*remote_op, output_dtypes, retvals));
 
   auto& executor = op->Executor();
-  DVLOG(4) << "Execute remote eager op: " << op->Name()
-           << " (is async?: " << executor.Async() << ").";
+  VLOG(4) << "Execute remote eager op: " << op->Name()
+          << " (is async?: " << executor.Async() << ").";
 
   const absl::InlinedVector<TensorHandle*, 4>* inputs;
   TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
@@ -1387,6 +1416,9 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (!s.ok()) {
     for (size_t i = 0; i < num_outputs; ++i) {
       retvals[i]->Unref();
+      // Ensure that any smart pointers created to wrap results become noops
+      // rather than operating on invalid memory.
+      retvals[i] = nullptr;
     }
   }
 
@@ -1534,9 +1566,14 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                  cancellation_manager, remote_func_params,
-                                 stack_trace));
+                                 stack_trace, coord_agent));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
   }
@@ -1615,6 +1652,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   // allocated.
   if (!s.ok()) {
     (*result)->Unref();
+    *result = nullptr;
   }
 
   return s;
@@ -1708,6 +1746,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {
       result[0]->Unref();
+      result[0] = nullptr;
     }
     return s;
 #endif  // !IS_MOBILE_PLATFORM
@@ -1735,11 +1774,16 @@ void EagerKernelExecuteAsync(
     done(s);
     return;
   }
+  CoordinationServiceAgent* coord_agent = nullptr;
+#if !defined(IS_MOBILE_PLATFORM)
+  if (ctx->GetDistributedManager() != nullptr)
+    coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
+#endif  // !IS_MOBILE_PLATFORM
 
   kernel->Ref();  // Ownership of reference is transferred to the callback
   kernel->RunAsync(
       ctx->StepContainer(), *inputs, outputs.get(), cancellation_manager,
-      remote_func_params,
+      remote_func_params, coord_agent,
       [retvals, inputs, outputs, num_outputs, ctx, graph_collector,
        remote_func_params, kernel_raw = kernel.get(),
        done = std::move(done)](const Status& s) {
@@ -1774,7 +1818,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation(
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->remote_func_params().has_value()
                          ? op->remote_func_params().value().step_id.value_or(0)
                          : 0);
@@ -1836,6 +1880,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
           for (int i = 0, end = num_outputs; i < end; ++i) {
             if (retvals[i] != nullptr) {
               retvals[i]->Unref();
+              retvals[i] = nullptr;
             }
           }
         }

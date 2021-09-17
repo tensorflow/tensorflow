@@ -26,7 +26,7 @@ def tpu_py_test(
         disable_v3 = False,
         disable_experimental = False,
         disable_mlir_bridge = True,
-        disable_tfrt = True,
+        disable_tfrt = None,
         args = [],
         **kwargs):
     """Generates identical unit test variants for various Cloud TPU versions.

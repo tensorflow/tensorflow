@@ -1,24 +1,76 @@
-# Release 2.6.0
+# Release 2.7.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 ## Breaking Changes
 
-* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
-  the API only works in graph mode and is not customizable. The function is
-  still accessible under
-  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
-  recommended to use the
-  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
-  instead.
+* `tf.keras`:
+  * The methods `Model.fit()`, `Model.predict()`, and `Model.evaluate()` will
+    no longer uprank input data of shape `(batch_size,)`
+    to become `(batch_size, 1)`. This enables `Model` subclasses to process
+    scalar data in their `train_step()`/`test_step()`/`predict_step()` methods.
+    Note that this change may break certain subclassed models.
+    You can revert back to the previous behavior by adding upranking yourself
+    in the `train_step()`/`test_step()`/`predict_step()` methods, e.g.
+    `if x.shape.rank == 1: x = tf.expand_dims(x, axis=-1)`.
+    Functional models as well as Sequential models built with an explicit
+    input shape are not affected.
+  * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been
+    replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
+    code execution. It is recommended to use JSON serialization instead of YAML,
+    or, a better alternative, serialize to H5.
+  * `LinearModel` and `WideDeepModel` are moved to the
+    `tf.compat.v1.keras.models.`
+    namespace (`tf.compat.v1.keras.models.LinearModel`
+    and `tf.compat.v1.keras.models.WideDeepModel`),
+    and their `experimental` endpoints
+    (`tf.keras.experimental.models.LinearModel` and
+    `tf.keras.experimental.models.WideDeepModel`) are being deprecated.
+  * RNG behavior change for all `tf.keras.initializers` classes. For any class
+    constructed with a fixed seed, it will no longer generate same value
+    when invoked multiple times. Instead, it will return different value, but a
+    determinisitic sequence. This change will make the initialize behavior align
+    between v1 and v2.
 
 * `tf.lite`:
-  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
-  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
-  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+  * Rename fields `SignatureDef` table in schema to maximize the parity with
+    TF SavedModel's Signature concept.
+  * Deprecate Makefile builds. Makefile users need to migrate their builds to
+    CMake or Bazel. Please refer to the
+    [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
+    and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
+    for the migration.
+  * Deprecate tflite::OpResolver::GetDelegates and the list returned by TfLite's
+    BuiltinOpResolver::GetDelegates is now always empty. Instead, recommend
+    using new method tflite::OpResolver::GetDelegateCreators in order to achieve
+    lazy initialization on TfLite delegate instances.
 
-*<DOCUMENT BREAKING CHANGES HERE>
-*<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* TF Core:
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
+        Previously, when called within `name_scope("")` or `name_scope(None)`
+        contexts, it returned None; now it returns the empty string.
+    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+        isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
+        Grappler) optimizations.
+    *   Deprecated and removed attrs() function in shape inference. All
+        attributes should be queried by name now (rather than range returned)
+        to enable changing the underlying storage there.
+    *   The following Python symbols were accidentally added in earlier versions
+        of TensorFlow and now are removed. Each symbol has a replacement that
+        should be used instead, but note the replacement's argument names are
+        different.
+        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow
+        2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
+        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use
+        `tf.linalg.matmul` instead.
+        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow
+        2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
+        this op is typically not necessary, as it is automatically used when
+        computing the gradient of `tf.sparse.segment_sum`.
+    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former
+        is an alias for the latter) which could result in needing to regenerate
+        selective op registration headers else execution would fail with
+        unregistered kernels error.
 
 ## Known Caveats
 
@@ -26,50 +78,123 @@
 *<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 *<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-* TF Core:
-    * A longstanding bug in `tf.while_loop`, which caused it to execute
-      sequentially, even when `parallel_iterations>1`, has now been fixed.
-      However, the increased parallelism may result in increased memory use.
-      Users who experience unwanted regressions should reset their
-      `while_loop`'s `parallel_iterations` value to 1, which is consistent with
-      prior behavior.
-
 ## Major Features and Improvements
 
-*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* Improvements to the TensorFlow debugging experience:
+  * Previously, TensorFlow error stack traces involved many internal frames,
+    which could be challenging to read through,
+    while not being actionable for end users.
+    As of TF 2.7, TensorFlow filters internal frames in most errors that it
+    raises, to keep stack traces short, readable, and focused on what's
+    actionable for end users (their own code).
 
-* `tf.keras`:
-    *   Keras has been split into a separate PIP package (`keras`),
-        and its code has been moved to the GitHub repository
-        [keras-team/keras](http://github.com/keras-team/keras).
-        The API endpoints for `tf.keras` stay unchanged,
-        but are now backed by the `keras` PIP package. All Keras-related
-        PRs and issues should now be directed to the GitHub repository
-        [keras-team/keras](http://github.com/keras-team/keras).
-    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
-        `tf.distribute.InputOptions` for specific options when used with
-        distribution.
-    *   Updates to Preprocessing layers API for consistency and clarity:
-        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
-            to `None`. This matches the default masking behavior of `Hashing`
-            and `Embedding` layers. To keep existing behavior, pass
-            `mask_token=""` during layer creation.
+    This behavior can be disabled by calling
+    `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
+    `tf.debugging.enable_traceback_filtering()`. If you are debugging a
+    TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
+    to disable traceback filtering. You can check whether this feature is
+    currently enabled by calling
+    `tf.debugging.is_traceback_filtering_enabled()`.
 
+    Note that this feature is only available with Python 3.7 or higher.
+
+  * Improve the informativeness of error messages raised by Keras
+    `Layer.__call__()`, by adding the full list of argument values passed to the
+    layer in every exception.
+
+*   TF1 -> TF2 Migration
+    * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
+      decorator, which enables using large classes of tf1-style variable_scope,
+      `get_variable`, and `compat.v1.layer`-based components from within TF2
+      models running with TF2 behavior enabled.
+
+*  `tf.data`:
+    *   tf.data service now supports auto-sharding. Users specify the sharding
+        policy with `tf.data.experimental.service.ShardingPolicy` enum. It can
+        be one of OFF (equivalent to today's `"parallel_epochs"` mode), DYNAMIC
+        (equivalent to today's `"distributed_epoch"` mode), or one of the static
+        sharding policies: FILE, DATA, FILE_OR_DATA, or HINT (corresponding to
+        values of `tf.data.experimental.AutoShardPolicy`).
+
+        Static sharding (auto-sharding) requires the number of tf.data service
+        workers be fixed. Users need to specify the worker addresses in
+        `tensorflow.data.experimental.DispatcherConfig`.
+    *   `tf.data.experimental.service.register_dataset` now accepts optional
+        `compression` argument.
+
+*  Keras:
+  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
+      This method can be used to simplify the implementation of Conv subclasses.
+      There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+      ```
+        class StandardizedConv2D(tf.keras.layers.Conv2D):
+          def call(self, inputs):
+            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+      Alternatively, you can override `convolution_op`:
+      ```
+        class StandardizedConv2D(tf.keras.Layer):
+          def convolution_op(self, inputs, kernel):
+            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+            # Author code uses std + 1e-5
+            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+  * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in
+    distributed computations.
+  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
+    to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+*  distribute.experimental.rpc package:
+   * distribute.experimental.rpc package introduces APIs to create a GRPC based
+    server to register tf.function methods and a GRPC client to invoke remote
+    registered methods. RPC APIs are intended for multi-client setups i.e. server
+  and clients are started in separate binaries independently.
+
+   * Example usage to create server:
+     ```
+        server = tf.distribute.experimental.rpc.Server.create("grpc", 
+                "127.0.0.1:1234")
+        @tf.function(input_signature=[
+          tf.TensorSpec([], tf.int32),
+          tf.TensorSpec([], dtypes.int32)
+        ])
+        def _remote_multiply(a, b):
+          return tf.math.multiply(a, b)
+
+        server.register("multiply", _remote_multiply)
+     ```
+    * Example usage to create client:
+      ```
+      client = tf.distribute.experimental.rpc.Client.create("grpc", address)
+      a = tf.constant(2, dtype=tf.int32)
+      b = tf.constant(3, dtype=tf.int32)
+      result = client.multiply(a, b)
+      ```
 * `tf.lite`:
-    *   The recommended Android NDK version for building TensorFlow Lite has
-        been changed from r18b to r19c.
-* `tf.saved_model`:
-    *   SavedModels can now save custom gradients. Use the option
-        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature. The documentation in [Advanced autodiff]
-        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
-        has been updated.
-    *   Object metadata has now been deprecated and no longer saved to the
-        SavedModel.
-*   TF Core:
-    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
-        peak memory returned by `tf.config.experimental.get_memory_info`.
+  * Add experimental API `experimental_from_jax` to support conversion from Jax
+    models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
+  * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
+
+* Extension Types
+  * Add experimental API to define new Python classes that can be handled by
+    TensorFlow APIs.  To create an extension type, simply define a Python class
+    with `tf.experimental.ExtensionType` as its base, and use type annotations
+    to specify the type for each field.  E.g.:
+    ```
+    class MaskedTensor(tf.experimental.ExtensionType):
+      values: tf.Tensor
+      mask: tf.Tensor
+    ```
+    The `tf.ExtensionType` base class works similarly to
+    [`typing.NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple)
+    and [`@dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass)
+    from the standard Python library.
+  * Extension types are supported by Keras, tf.data, TF-hub, SavedModel,
+    tf.function, control flow ops, py_function, and distribution strategy.
+  * Add "dispatch decorators" that can be used to override the default behavior
+    of TensorFlow ops (such as `tf.add` or `tf.concat`) when they are applied to
+    ExtensionType values.
 
 ## Bug Fixes and Other Changes
 
@@ -77,15 +202,218 @@
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
+    * Random number generation (RNG) system
+        *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
+        *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
+        *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.ParameterServerStrategy` and `tf.distribute.experimental.CentralStorageStrategy`.
+    * Added an experimental session config
+      `tf.experimental.disable_functional_ops_lowering` which disables
+      functional control flow op lowering optimization. This is useful when
+      executing within a portable runtime where control flow op kernels may not 
+      be loaded due to selective registration.
+    * Added a new experimental argument `experimental_is_anonymous` to
+      `tf.lookup.StaticHashTable.__init__` to create the table in anonymous
+      mode. In this mode, the table resource can only be accessed via resource
+      handles (not resource names) and will be deleted automatically when all
+      resource handles pointing to it are gone.
+*   `tf.data`:
+    *   Promoting `tf.data.Options.experimental_deterministic` API to
+        `tf.data.Options.deterministic` and deprecating the experimental
+        endpoint.
+    *   Moving autotuning options from
+        `tf.data.Options.experimental_optimization.autotune*` to a newly created
+        `tf.data.Options.autotune.*` and removing support for
+        `tf.data.Options.experimental_optimization.autotune_buffers`.
+    *   Added support for user-defined names of tf.data core Python API, which
+        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
+    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
+        that are files. This will enable creating hermetic SavedModels when
+        using datasets created from files.
+    *   Promoting
+        `tf.data.experimental.sample_from_datasets` API to
+        `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
+        endpoint.
+    *   Promoting
+        `tf.data.experimental.choose_from_datasets` API to
+        `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
+        endpoint.
+*   TF SavedModel:
+    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+*   XLA:
+    * Added a new API that allows custom call functions to signal errors. The
+      old API will be deprecated in a future release. See
+      https://www.tensorflow.org/xla/custom_call for details.
+    * XLA:GPU reductions are deterministic by default (reductions within
+      `jit_compile=True` are now deterministic).
+    * XLA:GPU works with Horovod (OSS contribution by Trent Lo from NVidia)
+*   `tf.saved_model.save`:
+    *   When saving a model, not specifying a namespace whitelist for custom
+        ops with a namespace will now default to allowing rather than rejecting
+        them all.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.6.0
+
+## Breaking Changes
+
+*   `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
+    the API only works in graph mode and is not customizable. The function is
+    still accessible under
+    `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it
+    is recommended to use the
+    [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
+    instead.
+
+*   `tf.lite`:
+
+    *   Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell`
+        and `experimental.nn.TfLiteLSTMCell` since they're no longer supported.
+        It's recommended to just use
+        [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM)
+        instead.
+
+*   `tf.keras`:
+
+    *   Keras been split into a separate PIP package (`keras`), and its code has
+        been moved to the GitHub
+        repository[keras-team/keras](http://github.com/keras-team/keras). The
+        API endpoints for `tf.keras` stay unchanged, but are now backed by the
+        `keras` PIP package. The existing code in tensorflow/python/keras is a
+        staled copy and will be removed in future release (2.7). Please remove
+        any imports to `tensorflow.python.keras` and replace them with public
+        tf.keras API instead.
+    *   The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have
+        been replaced to raise a `RuntimeError` as they can be abused to cause
+        arbitrary code execution. It is recommended to use JSON serialization
+        instead of YAML, or, a better alternative, serialize to H5.
+
+## Known Caveats
+
+*   TF Core:
+    *   A longstanding bug in `tf.while_loop`, which caused it to execute
+        sequentially, even when `parallel_iterations>1`, has now been fixed.
+        However, the increased parallelism may result in increased memory use.
+        Users who experience unwanted regressions should reset their
+        `while_loop`'s `parallel_iterations` value to 1, which is consistent
+        with prior behavior.
+
+## Major Features and Improvements
+
+*   `tf.keras`:
+
+    *   Keras has been split into a separate PIP package (`keras`), and its code
+        has been moved to the GitHub repository
+        [keras-team/keras](http://github.com/keras-team/keras). The API
+        endpoints for `tf.keras` stay unchanged, but are now backed by the
+        `keras` PIP package. All Keras-related PRs and issues should now be
+        directed to the GitHub repository.
+        [keras-team/keras](http://github.com/keras-team/keras).
+    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
+        `tf.distribute.InputOptions` for specific options when used with
+        distribution.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program
+        intended to be run on an evaluator task, which is commonly used to
+        supplement a training cluster running with
+        `tf.distribute.experimental.ParameterServerStrategy` (see
+        `https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
+        It can also be used with single-worker training or other strategies. See
+        docstring for more info.
+    *   Preprocessing layers moved from experimental to core.
+        *   Import paths moved from `tf.keras.layers.preprocessing.experimental`
+            to `tf.keras.layers`.
+    *   Updates to Preprocessing layers API for consistency and clarity:
+        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
+            to `None`. This matches the default masking behavior of `Hashing`
+            and `Embedding` layers. To keep existing behavior, pass
+            `mask_token=""` during layer creation.
+        *   Renamed `"binary"` output mode to `"multi_hot"` for
+            `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and
+            `TextVectorization`. Multi-hot encoding will no longer automatically
+            uprank rank 1 inputs, so these layers can now multi-hot encode
+            unbatched multi-dimensional samples.
+        *   Added a new output mode `"one_hot"` for `CategoryEncoding`,
+            `StringLookup`, `IntegerLookup`, which will encode each element in
+            an input batch individually, and automatically append a new output
+            dimension if necessary. Use this mode on rank 1 inputs for the old
+            `"binary"` behavior of one-hot encoding a batch of scalars.
+        *   `Normalization` will no longer automatically uprank rank 1 inputs,
+            allowing normalization of unbatched multi-dimensional samples.
+
+*   `tf.lite`:
+
+    *   The recommended Android NDK version for building TensorFlow Lite has
+        been changed from r18b to r19c.
+    *   Supports int64 for mul.
+    *   Supports native variable builtin ops - ReadVariable, AssignVariable.
+    *   Converter:
+        *   Experimental support for variables in TFLite. To enable through
+            conversion, users need to set
+            `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
+            to True. Note: mutable variables is only available using
+            `from_saved_model` in this release, support for other methods is
+            coming soon.
+        *   Old Converter (TOCO) is getting removed from next release. It's been
+            deprecated for few releases already.
+    *   lite.experimental.authoring.compatible API:
+        *   A Python decorator to provide a way to check TFLite compatibility
+            issue of `tf.function`. This returns a callable object which
+            validates TFLite compatibility. If an incompatible operation is
+            encountered during execution, an exception will be raised with
+            information about the incompatible ops.
+    *   lite.experimental.Analyzer API:
+        *   An experimental tool to analyze TFLite flatbuffer models. This API
+            can be used to investigate TFLite model structure and check
+            compatibility with GPU delegate.
+
+*   `tf.saved_model`:
+
+    *   SavedModels can now save custom gradients. Use the option
+        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
+        enable this feature. The documentation in
+        [Advanced autodiff](https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
+        has been updated.
+    *   Object metadata has now been deprecated and no longer saved to the
+        SavedModel.
+
+*   TF Core:
+
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
+        peak memory returned by `tf.config.experimental.get_memory_info`.
+
+*   `tf.data`:
+
+    *   Added `target_workers` param to `data_service_ops.from_dataset_id` and
+        `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or
+        `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime
+        decides which workers to read from. If `"ANY"`, TF workers read from any
+        tf.data service workers. If `"LOCAL"`, TF workers will only read from
+        local in-processs tf.data service workers. `"AUTO"` works well for most
+        cases, while users can specify other targets. For example, `"LOCAL"`
+        would help avoid RPCs and data copy if every TF worker colocates with a
+        tf.data service worker. Currently, `"AUTO"` reads from any tf.data
+        service workers to preserve existing behavior. The default value is
+        `"AUTO"`.
+
+## Bug Fixes and Other Changes
+
+*   TF Core:
     *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
         generic mutable hash table implementation.
         *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
-        lower overall memory usage, and a cleaner API. It does not require
-        specifying a `delete_key` and `empty_key` that cannot be inserted into
-        the table.
+            lower overall memory usage, and a cleaner API. It does not require
+            specifying a `delete_key` and `empty_key` that cannot be inserted
+            into the table.
     *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+    *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
+        allows solving linear systems with a numerically singular tridiagonal
+        matrix, e.g. for use in inverse iteration.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.
     *   `tf.constant` now places its output on the current default device.
@@ -93,8 +421,8 @@
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.
         *   Added a SavedModel load option to allow restoring partial
-            checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
-  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
+            checkpoints into the SavedModel. See
+            [`tf.saved_model.LoadOptions`](https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
             for details.
     *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
         gradient ops and avoid an extra gather operation that was in the
@@ -116,16 +444,16 @@
         endpoint.
     *   Promoting `tf.data.experimental.RandomDataset` API to
         `tf.data.Dataset.random` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
-        and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan` and
+        deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.snapshot` API to
         `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
         `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.ThreadingOptions` API to
         `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.unique` API to
-        `tf.data.Dataset.unique` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.unique` API to `tf.data.Dataset.unique`
+        and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
@@ -139,15 +467,25 @@
         *   `tf.data.experimental.StatsOptions.*`
         *   `tf.data.experimental.bytes_produced_stats`
         *   `tf.data.experimental.latency_stats`
-    *   Removed experimental tf.data API for map vectorization:
-        *   `tf.data.experimental.OptimizationOptions.map_vectorization`
+    *   Removed the following experimental tf.data optimization APIs:
         *   `tf.data.experimental.MapVectorizationOptions.*`
+        *   `tf.data.experimental.OptimizationOptions.filter_with_random_uniform_fusion`
+        *   `tf.data.experimental.OptimizationOptions.hoist_random_uniform`
+        *   `tf.data.experimental.OptimizationOptions.map_vectorization` *
+            `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
     *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
         control the inclusion of `Rescaling` layer in the model.
+    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion`
+        methods to skip the cached function and generate a new one. This is
+        useful to regenerate in a single call the compiled training function
+        when any `.trainable` attribute of any model's layer has changed.
+    *   Models now have a `save_spec` property which contains the `TensorSpec`
+        specs for calling the model. This spec is automatically saved when the
+        model is called for the first time.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
@@ -155,20 +493,1580 @@
     *   Added `framework_stable` BUILD target, which links in only the
         non-experimental TF Lite APIs.
     *   Remove deprecated Java `Interpreter` methods:
-        *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
-        *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
+        *   `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
+        *   `setNumThreads` - Use `Interpreter.Options.setNumThreads`
     *   Add Conv3DTranspose as a builtin op.
-*   `Grappler`:
+*   `tf.summary`:
+    *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when
+        summaries will be written, even when `tf.summary.record_if()` is not n
+        effect, by returning True tensor if default writer is present.
+*   Grappler:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,
         because time spent in graph optimizations is now unbounded (was 20
         minutes).
+*   Deterministic Op Functionality (enabled by setting `TF_DETERMINISTIC_OPS` to
+    `"true"` or `"1"`):
+    *   Add a deterministic GPU implementation of
+        `tf.nn.softmax_cross_entropy_with_logits`. See PR
+        [49178](https://github.com/tensorflow/tensorflow/pull/49178).
+    *   Add a deterministic CPU implementation of `tf.image.crop_and_resize`.
+        See PR [48905](https://github.com/tensorflow/tensorflow/pull/48905).
+    *   Add determinism-unimplemented exception-throwing to the following ops.
+        When op-determinism is expected, an attempt to use the specified paths
+        through the following ops on a GPU will cause
+        `tf.errors.UnimplementedError` (with an understandable message) to be
+        thrown.
+        *   `tf.nn.sparse_softmax_cross_entropy_with_logits` forwards and/or
+            backwards. See PR
+            [47925](https://github.com/tensorflow/tensorflow/pull/47925).
+        *   `tf.image.crop_and_resize` gradient w.r.t. either `image` or
+            `boxes`. See PR
+            [48905](https://github.com/tensorflow/tensorflow/pull/48905).
+        *   `tf.sparse.sparse_dense_matmul` forwards. See PR
+            [50355](https://github.com/tensorflow/tensorflow/pull/50355).
+
+## Security
+
+*   Fixes a heap out of bounds access in sparse reduction operations
+    ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635))
+*   Fixes a floating point exception in `SparseDenseCwiseDiv`
+    ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636))
+*   Fixes a null pointer dereference in `CompressElement`
+    ([CVE-2021-37637](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37637))
+*   Fixes a null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638))
+*   Fixes a null pointer dereference and a heap OOB read arising from operations
+    restoring tensors
+    ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639))
+*   Fixes an integer division by 0 in sparse reshaping
+    ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640))
+*   Fixes a division by 0 in `ResourceScatterDiv`
+    ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642))
+*   Fixes a heap OOB in `RaggedGather`
+    ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641))
+*   Fixes a `std::abort` raised from `TensorListReserve`
+    ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644))
+*   Fixes a null pointer dereference in `MatrixDiagPartOp`
+    ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643))
+*   Fixes an integer overflow due to conversion to unsigned
+    ([CVE-2021-37645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37645))
+*   Fixes a bad allocation error in `StringNGrams` caused by integer conversion
+    ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646))
+*   Fixes a null pointer dereference in `SparseTensorSliceDataset`
+    ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647))
+*   Fixes an incorrect validation of `SaveV2` inputs
+    ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648))
+*   Fixes a null pointer dereference in `UncompressElement`
+    ([CVE-2021-37649](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37649))
+*   Fixes a segfault and a heap buffer overflow in
+    `{Experimental,}DatasetToTFRecord`
+    ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651))
+*   Fixes a use after free in boosted trees creation
+    ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652))
+*   Fixes a division by 0 in `ResourceGather`
+    ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653))
+*   Fixes a heap OOB and a `CHECK` fail in `ResourceGather`
+    ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654))
+*   Fixes a heap OOB in `ResourceScatterUpdate`
+    ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToSparse`
+    ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixDiagV*` ops
+    ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixSetDiagV*` ops
+    ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658))
+*   Fixes an undefined behavior arising from reference binding to nullptr and
+    heap OOB in binary cwise ops
+    ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659))
+*   Fixes a division by 0 in inplace operations
+    ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660))
+*   Fixes a crash caused by integer conversion to unsigned
+    ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    boosted trees
+    ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662))
+*   Fixes a heap OOB in boosted trees
+    ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664))
+*   Fixes vulnerabilities arising from incomplete validation in `QuantizeV2`
+    ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663))
+*   Fixes vulnerabilities arising from incomplete validation in MKL
+    requantization
+    ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToVariant`
+    ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    unicode encoding
+    ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667))
+*   Fixes an FPE in `tf.raw_ops.UnravelIndex`
+    ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668))
+*   Fixes a crash in NMS ops caused by integer conversion to unsigned
+    ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669))
+*   Fixes a heap OOB in `UpperBound` and `LowerBound`
+    ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670))
+*   Fixes an undefined behavior arising from reference binding to nullptr in map
+    operations
+    ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671))
+*   Fixes a heap OOB in `SdcaOptimizerV2`
+    ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672))
+*   Fixes a `CHECK`-fail in `MapStage`
+    ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673))
+*   Fixes a vulnerability arising from incomplete validation in `MaxPoolGrad`
+    ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    shape inference
+    ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676))
+*   Fixes a division by 0 in most convolution operators
+    ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675))
+*   Fixes vulnerabilities arising from missing validation in shape inference for
+    `Dequantize`
+    ([CVE-2021-37677](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37677))
+*   Fixes an arbitrary code execution due to YAML deserialization
+    ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+*   Fixes a heap OOB in nested `tf.map_fn` with `RaggedTensor`s
+    ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679))
+*   Fixes a division by zero in TFLite
+    ([CVE-2021-37680](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37680))
+*   Fixes an NPE in TFLite
+    ([CVE-2021-37681](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37681))
+*   Fixes a vulnerability arising from use of unitialized value in TFLite
+    ([CVE-2021-37682](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37682))
+*   Fixes an FPE in TFLite division operations
+    ([CVE-2021-37683](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37683))
+*   Fixes an FPE in TFLite pooling operations
+    ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684))
+*   Fixes an infinite loop in TFLite
+    ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686))
+*   Fixes a heap OOB in TFLite
+    ([CVE-2021-37685](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37685))
+*   Fixes a heap OOB in TFLite's `Gather*` implementations
+    ([CVE-2021-37687](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37687))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    ([CVE-2021-37688](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37688))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    MLIR optimizations
+    ([CVE-2021-37689](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37689))
+*   Fixes a FPE in LSH in TFLite
+    ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691))
+*   Fixes a segfault on strings tensors with mismatched dimensions, arising in
+    Go code
+    ([CVE-2021-37692](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37692))
+*   Fixes a use after free and a potential segfault in shape inference functions
+    ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690))
+*   Updates `curl` to `7.77.0` to handle
+    [CVE-2021-22876](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22876),
+    [CVE-2021-22897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22897),
+    [CVE-2021-22898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22898),
+    and
+    [CVE-2021-22901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22901).
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Aadhitya A, Abhilash Mahendrakar, Abhishek Varma, Abin Shahab, Adam Hillier,
+Aditya Kane, AdityaKane2001, ag.ramesh, Amogh Joshi, Armen Poghosov,
+armkevincheng, Avrosh K, Ayan Moitra, azazhu, Banikumar Maiti, Bas Aarts, bhack,
+Bhanu Prakash Bandaru Venkata, Billy Cao, Bohumir Zamecnik, Bradley Reece,
+CyanXu, Daniel Situnayake, David Pal, Ddavis-2015, DEKHTIARJonathan, Deven
+Desai, Duncan Riach, Edward, Eli Osherovich, Eugene Kuznetsov, europeanplaice,
+evelynmitchell, Evgeniy Polyakov, Felix Vollmer, Florentin Hennecker, François
+Chollet, Frederic Bastien, Fredrik Knutsson, Gabriele Macchi, Gaurav Shukla,
+Gauri1 Deshpande, geetachavan1, Georgiy Manuilov, H, Hengwen Tong, Henri
+Woodcock, Hiran Sarkar, Ilya Arzhannikov, Janghoo Lee, jdematos, Jens Meder,
+Jerry Shih, jgehw, Jim Fisher, Jingbei Li, Jiri Podivin, Joachim Gehweiler,
+Johannes Lade, Jonas I. Liechti, Jonas Liechti, Jonas Ohlsson, Jonathan
+Dekhtiar, Julian Gross, Kaixi Hou, Kevin Cheng, Koan-Sin Tan, Kulin Seth,
+linzewen, Liubov Batanina, luisleee, Lukas Geiger, Mahmoud Abuzaina, mathgaming,
+Matt Conley, Max H. Gerlach, mdfaijul, Mh Kwon, Michael Martis, Michal
+Szutenberg, Måns Nilsson, nammbash, Neil Girdhar, Nicholas Vadivelu, Nick
+Kreeger, Nirjas Jakilim, okyanusoz, Patrice Vignola, Patrik Laurell, Pedro
+Marques, Philipp Hack, Phillip Cloud, Piergiacomo De Marchi, Prashant Kumar,
+puneeshkhanna, pvarouktsis, QQ喵, Rajeshwar Reddy T, Rama Ketineni, Reza Rahimi,
+Robert Kalmar, rsun, Ryan Kuester, Saduf2019, Sean Morgan, Sean Moriarity,
+Shaochen Shi, Sheng, Yang, Shu Wang, Shuai Zhang, Soojeong, Stanley-Nod, Steven
+I Reeves, stevenireeves, Suraj Sudhir, Sven Mayer, Tamas Bela Feher,
+tashuang.zk, tcervi, Teng Lu, Thales Elero Cervi, Thibaut Goetghebuer-Planchon,
+Thomas Walther, Till Brychcy, Trent Lo, Uday Bondhugula, vishakha.agrawal,
+Vishnuvardhan Janapati, wamuir, Wenwen Ouyang, wenwu, Williard Joshua Jose,
+xiaohong1031, Xiaoming (Jason) Cui, Xinan Jiang, Yasir Modak, Yi Li, Yong Tang,
+zilinzhu, 박상준, 이장
+
+# Release 2.5.1
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap out of bounds access in sparse reduction operations
+    ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635))
+*   Fixes a floating point exception in `SparseDenseCwiseDiv`
+    ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636))
+*   Fixes a null pointer dereference in `CompressElement`
+    ([CVE-2021-37637](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37637))
+*   Fixes a null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638))
+*   Fixes a null pointer dereference and a heap OOB read arising from operations
+    restoring tensors
+    ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639))
+*   Fixes an integer division by 0 in sparse reshaping
+    ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640))
+*   Fixes a division by 0 in `ResourceScatterDiv`
+    ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642))
+*   Fixes a heap OOB in `RaggedGather`
+    ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641))
+*   Fixes a `std::abort` raised from `TensorListReserve`
+    ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644))
+*   Fixes a null pointer dereference in `MatrixDiagPartOp`
+    ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643))
+*   Fixes an integer overflow due to conversion to unsigned
+    ([CVE-2021-37645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37645))
+*   Fixes a bad allocation error in `StringNGrams` caused by integer conversion
+    ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646))
+*   Fixes a null pointer dereference in `SparseTensorSliceDataset`
+    ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647))
+*   Fixes an incorrect validation of `SaveV2` inputs
+    ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648))
+*   Fixes a null pointer dereference in `UncompressElement`
+    ([CVE-2021-37649](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37649))
+*   Fixes a segfault and a heap buffer overflow in
+    `{Experimental,}DatasetToTFRecord`
+    ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651))
+*   Fixes a use after free in boosted trees creation
+    ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652))
+*   Fixes a division by 0 in `ResourceGather`
+    ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653))
+*   Fixes a heap OOB and a `CHECK` fail in `ResourceGather`
+    ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654))
+*   Fixes a heap OOB in `ResourceScatterUpdate`
+    ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToSparse`
+    ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixDiagV*` ops
+    ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixSetDiagV*` ops
+    ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658))
+*   Fixes an undefined behavior arising from reference binding to nullptr and
+    heap OOB in binary cwise ops
+    ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659))
+*   Fixes a division by 0 in inplace operations
+    ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660))
+*   Fixes a crash caused by integer conversion to unsigned
+    ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    boosted trees
+    ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662))
+*   Fixes a heap OOB in boosted trees
+    ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664))
+*   Fixes vulnerabilities arising from incomplete validation in `QuantizeV2`
+    ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663))
+*   Fixes vulnerabilities arising from incomplete validation in MKL
+    requantization
+    ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToVariant`
+    ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    unicode encoding
+    ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667))
+*   Fixes an FPE in `tf.raw_ops.UnravelIndex`
+    ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668))
+*   Fixes a crash in NMS ops caused by integer conversion to unsigned
+    ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669))
+*   Fixes a heap OOB in `UpperBound` and `LowerBound`
+    ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670))
+*   Fixes an undefined behavior arising from reference binding to nullptr in map
+    operations
+    ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671))
+*   Fixes a heap OOB in `SdcaOptimizerV2`
+    ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672))
+*   Fixes a `CHECK`-fail in `MapStage`
+    ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673))
+*   Fixes a vulnerability arising from incomplete validation in `MaxPoolGrad`
+    ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    shape inference
+    ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676))
+*   Fixes a division by 0 in most convolution operators
+    ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675))
+*   Fixes vulnerabilities arising from missing validation in shape inference for
+    `Dequantize`
+    ([CVE-2021-37677](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37677))
+*   Fixes an arbitrary code execution due to YAML deserialization
+    ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+*   Fixes a heap OOB in nested `tf.map_fn` with `RaggedTensor`s
+    ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679))
+*   Fixes a division by zero in TFLite
+    ([CVE-2021-37680](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37680))
+*   Fixes an NPE in TFLite
+    ([CVE-2021-37681](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37681))
+*   Fixes a vulnerability arising from use of unitialized value in TFLite
+    ([CVE-2021-37682](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37682))
+*   Fixes an FPE in TFLite division operations
+    ([CVE-2021-37683](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37683))
+*   Fixes an FPE in TFLite pooling operations
+    ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684))
+*   Fixes an infinite loop in TFLite
+    ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686))
+*   Fixes a heap OOB in TFLite
+    ([CVE-2021-37685](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37685))
+*   Fixes a heap OOB in TFLite's `Gather*` implementations
+    ([CVE-2021-37687](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37687))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    ([CVE-2021-37688](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37688))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    MLIR optimizations
+    ([CVE-2021-37689](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37689))
+*   Fixes a FPE in LSH in TFLite
+    ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691))
+*   Fixes a segfault on strings tensors with mismatched dimensions, arising in
+    Go code
+    ([CVE-2021-37692](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37692))
+*   Fixes a use after free and a potential segfault in shape inference functions
+    ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690))
+*   Updates `curl` to `7.77.0` to handle
+    [CVE-2021-22876](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22876),
+    [CVE-2021-22897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22897),
+    [CVE-2021-22898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22898),
+    and
+    [CVE-2021-22901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22901).
+
+# Release 2.4.3
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap out of bounds access in sparse reduction operations
+    ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635))
+*   Fixes a floating point exception in `SparseDenseCwiseDiv`
+    ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636))
+*   Fixes a null pointer dereference in `CompressElement`
+    ([CVE-2021-37637](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37637))
+*   Fixes a null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638))
+*   Fixes a null pointer dereference and a heap OOB read arising from operations
+    restoring tensors
+    ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639))
+*   Fixes an integer division by 0 in sparse reshaping
+    ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640))
+*   Fixes a division by 0 in `ResourceScatterDiv`
+    ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642))
+*   Fixes a heap OOB in `RaggedGather`
+    ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641))
+*   Fixes a `std::abort` raised from `TensorListReserve`
+    ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644))
+*   Fixes a null pointer dereference in `MatrixDiagPartOp`
+    ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643))
+*   Fixes an integer overflow due to conversion to unsigned
+    ([CVE-2021-37645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37645))
+*   Fixes a bad allocation error in `StringNGrams` caused by integer conversion
+    ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646))
+*   Fixes a null pointer dereference in `SparseTensorSliceDataset`
+    ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647))
+*   Fixes an incorrect validation of `SaveV2` inputs
+    ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648))
+*   Fixes a null pointer dereference in `UncompressElement`
+    ([CVE-2021-37649](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37649))
+*   Fixes a segfault and a heap buffer overflow in
+    `{Experimental,}DatasetToTFRecord`
+    ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651))
+*   Fixes a use after free in boosted trees creation
+    ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652))
+*   Fixes a division by 0 in `ResourceGather`
+    ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653))
+*   Fixes a heap OOB and a `CHECK` fail in `ResourceGather`
+    ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654))
+*   Fixes a heap OOB in `ResourceScatterUpdate`
+    ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToSparse`
+    ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixDiagV*` ops
+    ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixSetDiagV*` ops
+    ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658))
+*   Fixes an undefined behavior arising from reference binding to nullptr and
+    heap OOB in binary cwise ops
+    ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659))
+*   Fixes a division by 0 in inplace operations
+    ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660))
+*   Fixes a crash caused by integer conversion to unsigned
+    ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    boosted trees
+    ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662))
+*   Fixes a heap OOB in boosted trees
+    ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664))
+*   Fixes vulnerabilities arising from incomplete validation in `QuantizeV2`
+    ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663))
+*   Fixes vulnerabilities arising from incomplete validation in MKL
+    requantization
+    ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToVariant`
+    ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    unicode encoding
+    ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667))
+*   Fixes an FPE in `tf.raw_ops.UnravelIndex`
+    ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668))
+*   Fixes a crash in NMS ops caused by integer conversion to unsigned
+    ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669))
+*   Fixes a heap OOB in `UpperBound` and `LowerBound`
+    ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670))
+*   Fixes an undefined behavior arising from reference binding to nullptr in map
+    operations
+    ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671))
+*   Fixes a heap OOB in `SdcaOptimizerV2`
+    ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672))
+*   Fixes a `CHECK`-fail in `MapStage`
+    ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673))
+*   Fixes a vulnerability arising from incomplete validation in `MaxPoolGrad`
+    ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    shape inference
+    ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676))
+*   Fixes a division by 0 in most convolution operators
+    ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675))
+*   Fixes vulnerabilities arising from missing validation in shape inference for
+    `Dequantize`
+    ([CVE-2021-37677](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37677))
+*   Fixes an arbitrary code execution due to YAML deserialization
+    ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+*   Fixes a heap OOB in nested `tf.map_fn` with `RaggedTensor`s
+    ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679))
+*   Fixes a division by zero in TFLite
+    ([CVE-2021-37680](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37680))
+*   Fixes an NPE in TFLite
+    ([CVE-2021-37681](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37681))
+*   Fixes a vulnerability arising from use of unitialized value in TFLite
+    ([CVE-2021-37682](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37682))
+*   Fixes an FPE in TFLite division operations
+    ([CVE-2021-37683](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37683))
+*   Fixes an FPE in TFLite pooling operations
+    ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684))
+*   Fixes an infinite loop in TFLite
+    ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686))
+*   Fixes a heap OOB in TFLite
+    ([CVE-2021-37685](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37685))
+*   Fixes a heap OOB in TFLite's `Gather*` implementations
+    ([CVE-2021-37687](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37687))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    ([CVE-2021-37688](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37688))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    MLIR optimizations
+    ([CVE-2021-37689](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37689))
+*   Fixes a FPE in LSH in TFLite
+    ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691))
+*   Fixes a segfault on strings tensors with mismatched dimensions, arising in
+    Go code
+    ([CVE-2021-37692](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37692))
+*   Fixes a use after free and a potential segfault in shape inference functions
+    ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690))
+*   Updates `curl` to `7.77.0` to handle
+    [CVE-2021-22876](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22876),
+    [CVE-2021-22897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22897),
+    [CVE-2021-22898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22898),
+    and
+    [CVE-2021-22901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22901).
+
+# Release 2.3.4
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap out of bounds access in sparse reduction operations
+    ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635))
+*   Fixes a floating point exception in `SparseDenseCwiseDiv`
+    ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636))
+*   Fixes a null pointer dereference in `CompressElement`
+    ([CVE-2021-37637](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37637))
+*   Fixes a null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638))
+*   Fixes a null pointer dereference and a heap OOB read arising from operations
+    restoring tensors
+    ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639))
+*   Fixes an integer division by 0 in sparse reshaping
+    ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640))
+*   Fixes a division by 0 in `ResourceScatterDiv`
+    ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642))
+*   Fixes a heap OOB in `RaggedGather`
+    ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641))
+*   Fixes a `std::abort` raised from `TensorListReserve`
+    ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644))
+*   Fixes a null pointer dereference in `MatrixDiagPartOp`
+    ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643))
+*   Fixes an integer overflow due to conversion to unsigned
+    ([CVE-2021-37645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37645))
+*   Fixes a bad allocation error in `StringNGrams` caused by integer conversion
+    ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646))
+*   Fixes a null pointer dereference in `SparseTensorSliceDataset`
+    ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647))
+*   Fixes an incorrect validation of `SaveV2` inputs
+    ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648))
+*   Fixes a null pointer dereference in `UncompressElement`
+    ([CVE-2021-37649](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37649))
+*   Fixes a segfault and a heap buffer overflow in
+    `{Experimental,}DatasetToTFRecord`
+    ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651))
+*   Fixes a use after free in boosted trees creation
+    ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652))
+*   Fixes a division by 0 in `ResourceGather`
+    ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653))
+*   Fixes a heap OOB and a `CHECK` fail in `ResourceGather`
+    ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654))
+*   Fixes a heap OOB in `ResourceScatterUpdate`
+    ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToSparse`
+    ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixDiagV*` ops
+    ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `MatrixSetDiagV*` ops
+    ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658))
+*   Fixes an undefined behavior arising from reference binding to nullptr and
+    heap OOB in binary cwise ops
+    ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659))
+*   Fixes a division by 0 in inplace operations
+    ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660))
+*   Fixes a crash caused by integer conversion to unsigned
+    ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    boosted trees
+    ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662))
+*   Fixes a heap OOB in boosted trees
+    ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664))
+*   Fixes vulnerabilities arising from incomplete validation in `QuantizeV2`
+    ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663))
+*   Fixes vulnerabilities arising from incomplete validation in MKL
+    requantization
+    ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    `RaggedTensorToVariant`
+    ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    unicode encoding
+    ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667))
+*   Fixes an FPE in `tf.raw_ops.UnravelIndex`
+    ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668))
+*   Fixes a crash in NMS ops caused by integer conversion to unsigned
+    ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669))
+*   Fixes a heap OOB in `UpperBound` and `LowerBound`
+    ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670))
+*   Fixes an undefined behavior arising from reference binding to nullptr in map
+    operations
+    ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671))
+*   Fixes a heap OOB in `SdcaOptimizerV2`
+    ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672))
+*   Fixes a `CHECK`-fail in `MapStage`
+    ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673))
+*   Fixes a vulnerability arising from incomplete validation in `MaxPoolGrad`
+    ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674))
+*   Fixes an undefined behavior arising from reference binding to nullptr in
+    shape inference
+    ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676))
+*   Fixes a division by 0 in most convolution operators
+    ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675))
+*   Fixes vulnerabilities arising from missing validation in shape inference for
+    `Dequantize`
+    ([CVE-2021-37677](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37677))
+*   Fixes an arbitrary code execution due to YAML deserialization
+    ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+*   Fixes a heap OOB in nested `tf.map_fn` with `RaggedTensor`s
+    ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679))
+*   Fixes a division by zero in TFLite
+    ([CVE-2021-37680](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37680))
+*   Fixes an NPE in TFLite
+    ([CVE-2021-37681](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37681))
+*   Fixes a vulnerability arising from use of unitialized value in TFLite
+    ([CVE-2021-37682](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37682))
+*   Fixes an FPE in TFLite division operations
+    ([CVE-2021-37683](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37683))
+*   Fixes an FPE in TFLite pooling operations
+    ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684))
+*   Fixes an infinite loop in TFLite
+    ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686))
+*   Fixes a heap OOB in TFLite
+    ([CVE-2021-37685](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37685))
+*   Fixes a heap OOB in TFLite's `Gather*` implementations
+    ([CVE-2021-37687](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37687))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    ([CVE-2021-37688](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37688))
+*   Fixes an undefined behavior arising from null pointer dereference in TFLite
+    MLIR optimizations
+    ([CVE-2021-37689](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37689))
+*   Fixes a FPE in LSH in TFLite
+    ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691))
+*   Fixes a segfault on strings tensors with mismatched dimensions, arising in
+    Go code
+    ([CVE-2021-37692](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37692))
+*   Fixes a use after free and a potential segfault in shape inference functions
+    ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690))
+*   Updates `curl` to `7.77.0` to handle
+    [CVE-2021-22876](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22876),
+    [CVE-2021-22897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22897),
+    [CVE-2021-22898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22898),
+    and
+    [CVE-2021-22901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22901).
+
+# Release 2.4.2
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap buffer overflow in `RaggedBinCount`
+    ([CVE-2021-29512](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29512))
+*   Fixes a heap out of bounds write in `RaggedBinCount`
+    ([CVE-2021-29514](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29514))
+*   Fixes a type confusion during tensor casts which leads to dereferencing null
+    pointers
+    ([CVE-2021-29513](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29513))
+*   Fixes a reference binding to null pointer in `MatrixDiag*` ops
+    ([CVE-2021-29515](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29515))
+*   Fixes a null pointer dereference via invalid Ragged Tensors
+    ([CVE-2021-29516](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29516))
+*   Fixes a division by zero in `Conv3D`
+    ([CVE-2021-29517](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29517))
+*   Fixes vulnerabilities where session operations in eager mode lead to null
+    pointer dereferences
+    ([CVE-2021-29518](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29518))
+*   Fixes a `CHECK`-fail in `SparseCross` caused by type confusion
+    ([CVE-2021-29519](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29519))
+*   Fixes a segfault in `SparseCountSparseOutput`
+    ([CVE-2021-29521](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29521))
+*   Fixes a heap buffer overflow in `Conv3DBackprop*`
+    ([CVE-2021-29520](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29520))
+*   Fixes a division by 0 in `Conv3DBackprop*`
+    ([CVE-2021-29522](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29522))
+*   Fixes a `CHECK`-fail in `AddManySparseToTensorsMap`
+    ([CVE-2021-29523](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29523))
+*   Fixes a division by 0 in `Conv2DBackpropFilter`
+    ([CVE-2021-29524](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29524))
+*   Fixes a division by 0 in `Conv2DBackpropInput`
+    ([CVE-2021-29525](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29525))
+*   Fixes a division by 0 in `Conv2D`
+    ([CVE-2021-29526](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29526))
+*   Fixes a division by 0 in `QuantizedConv2D`
+    ([CVE-2021-29527](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29527))
+*   Fixes a division by 0 in `QuantizedMul`
+    ([CVE-2021-29528](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29528))
+*   Fixes vulnerabilities caused by invalid validation in
+    `SparseMatrixSparseCholesky`
+    ([CVE-2021-29530](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29530))
+*   Fixes a heap buffer overflow caused by rounding
+    ([CVE-2021-29529](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29529))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.EncodePng`
+    ([CVE-2021-29531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29531))
+*   Fixes a heap out of bounds read in `RaggedCross`
+    ([CVE-2021-29532](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29532))
+*   Fixes a `CHECK`-fail in `DrawBoundingBoxes`
+    ([CVE-2021-29533](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29533))
+*   Fixes a heap buffer overflow in `QuantizedMul`
+    ([CVE-2021-29535](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29535))
+*   Fixes a `CHECK`-fail in `SparseConcat`
+    ([CVE-2021-29534](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29534))
+*   Fixes a heap buffer overflow in `QuantizedResizeBilinear`
+    ([CVE-2021-29537](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29537))
+*   Fixes a heap buffer overflow in `QuantizedReshape`
+    ([CVE-2021-29536](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29536))
+*   Fixes a division by zero in `Conv2DBackpropFilter`
+    ([CVE-2021-29538](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29538))
+*   Fixes a heap buffer overflow in `Conv2DBackpropFilter`
+    ([CVE-2021-29540](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29540))
+*   Fixes a heap buffer overflow in `StringNGrams`
+    ([CVE-2021-29542](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29542))
+*   Fixes a null pointer dereference in `StringNGrams`
+    ([CVE-2021-29541](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29541))
+*   Fixes a `CHECK`-fail in `QuantizeAndDequantizeV4Grad`
+    ([CVE-2021-29544](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29544))
+*   Fixes a `CHECK`-fail in `CTCGreedyDecoder`
+    ([CVE-2021-29543](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29543))
+*   Fixes a heap buffer overflow in `SparseTensorToCSRSparseMatrix`
+    ([CVE-2021-29545](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29545))
+*   Fixes a division by 0 in `QuantizedBiasAdd`
+    ([CVE-2021-29546](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29546))
+*   Fixes a heap out of bounds in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29547](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29547))
+*   Fixes a division by 0 in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29548](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29548))
+*   Fixes a division by 0 in `QuantizedAdd`
+    ([CVE-2021-29549](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29549))
+*   Fixes a division by 0 in `FractionalAvgPool`
+    ([CVE-2021-29550](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29550))
+*   Fixes an OOB read in `MatrixTriangularSolve`
+    ([CVE-2021-29551](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29551))
+*   Fixes a heap OOB in `QuantizeAndDequantizeV3`
+    ([CVE-2021-29553](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29553))
+*   Fixes a `CHECK`-failure in `UnsortedSegmentJoin`
+    ([CVE-2021-29552](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29552))
+*   Fixes a division by 0 in `DenseCountSparseOutput`
+    ([CVE-2021-29554](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29554))
+*   Fixes a division by 0 in `FusedBatchNorm`
+    ([CVE-2021-29555](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29555))
+*   Fixes a division by 0 in `SparseMatMul`
+    ([CVE-2021-29557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29557))
+*   Fixes a division by 0 in `Reverse`
+    ([CVE-2021-29556](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29556))
+*   Fixes a heap buffer overflow in `SparseSplit`
+    ([CVE-2021-29558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29558))
+*   Fixes a heap OOB access in unicode ops
+    ([CVE-2021-29559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29559))
+*   Fixes a heap buffer overflow in `RaggedTensorToTensor`
+    ([CVE-2021-29560](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29560))
+*   Fixes a `CHECK`-fail in `LoadAndRemapMatrix`
+    ([CVE-2021-29561](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29561))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.IRFFT`
+    ([CVE-2021-29562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29562))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.RFFT`
+    ([CVE-2021-29563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29563))
+*   Fixes a null pointer dereference in `EditDistance`
+    ([CVE-2021-29564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29564))
+*   Fixes a null pointer dereference in `SparseFillEmptyRows`
+    ([CVE-2021-29565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29565))
+*   Fixes a heap OOB access in `Dilation2DBackpropInput`
+    ([CVE-2021-29566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29566))
+*   Fixes a reference binding to null in `ParameterizedTruncatedNormal`
+    ([CVE-2021-29568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29568))
+*   Fixes a set of vulnerabilities caused by lack of validation in
+    `SparseDenseCwiseMul`
+    ([CVE-2021-29567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29567))
+*   Fixes a heap out of bounds read in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29570](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29570))
+*   Fixes a heap out of bounds read in `RequantizationRange`
+    ([CVE-2021-29569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29569))
+*   Fixes a memory corruption in `DrawBoundingBoxesV2`
+    ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571))
+*   Fixes a reference binding to nullptr in `SdcaOptimizer`
+    ([CVE-2021-29572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29572))
+*   Fixes an overflow and a denial of service in `tf.raw_ops.ReverseSequence`
+    ([CVE-2021-29575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29575))
+*   Fixes a division by 0 in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29573))
+*   Fixes an undefined behavior in `MaxPool3DGradGrad`
+    ([CVE-2021-29574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29574))
+*   Fixes a heap buffer overflow in `MaxPool3DGradGrad`
+    ([CVE-2021-29576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29576))
+*   Fixes a heap buffer overflow in `AvgPool3DGrad`
+    ([CVE-2021-29577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29577))
+*   Fixes an undefined behavior and a `CHECK`-fail in `FractionalMaxPoolGrad`
+    ([CVE-2021-29580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29580))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-29578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29578))
+*   Fixes a heap buffer overflow in `MaxPoolGrad`
+    ([CVE-2021-29579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29579))
+*   Fixes a segfault in `CTCBeamSearchDecoder`
+    ([CVE-2021-29581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29581))
+*   Fixes a heap OOB read in `tf.raw_ops.Dequantize`
+    ([CVE-2021-29582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29582))
+*   Fixes a `CHECK`-fail due to integer overflow
+    ([CVE-2021-29584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29584))
+*   Fixes a heap buffer overflow and undefined behavior in `FusedBatchNorm`
+    ([CVE-2021-29583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29583))
+*   Fixes a division by zero in padding computation in TFLite
+    ([CVE-2021-29585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29585))
+*   Fixes a division by zero in optimized pooling implementations in TFLite
+    ([CVE-2021-29586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29586))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToDepth`
+    ([CVE-2021-29587](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29587))
+*   Fixes a division by zero in TFLite's implementation of `GatherNd`
+    ([CVE-2021-29589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29589))
+*   Fixes a division by zero in TFLite's implementation of `TransposeConv`
+    ([CVE-2021-29588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29588))
+*   Fixes a heap OOB read in TFLite's implementation of `Minimum` or `Maximum`
+    ([CVE-2021-29590](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29590))
+*   Fixes a null pointer dereference in TFLite's `Reshape` operator
+    ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592))
+*   Fixes a stack overflow due to looping TFLite subgraph
+    ([CVE-2021-29591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29591))
+*   Fixes a division by zero in TFLite's implementation of `DepthToSpace`
+    ([CVE-2021-29595](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29595))
+*   Fixes a division by zero in TFLite's convolution code
+    ([CVE-2021-29594](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29594))
+*   Fixes a division by zero in TFLite's implementation of `EmbeddingLookup`
+    ([CVE-2021-29596](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29596))
+*   Fixes a division by zero in TFLite's implementation of `BatchToSpaceNd`
+    ([CVE-2021-29593](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29593))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToBatchNd`
+    ([CVE-2021-29597](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29597))
+*   Fixes a division by zero in TFLite's implementation of `SVDF`
+    ([CVE-2021-29598](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29598))
+*   Fixes a division by zero in TFLite's implementation of `Split`
+    ([CVE-2021-29599](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29599))
+*   Fixes a division by zero in TFLite's implementation of `OneHot`
+    ([CVE-2021-29600](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29600))
+*   Fixes a division by zero in TFLite's implementation of `DepthwiseConv`
+    ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
+*   Fixes a division by zero in TFLite's implementation of hashtable lookup
+    ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
+*   Fixes a integer overflow in TFLite concatentation
+    ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
+*   Fixes a integer overflow in TFLite memory allocation
+    ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
+*   Fixes a heap OOB write in TFLite
+    ([CVE-2021-29603](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29603))
+*   Fixes a heap OOB read in TFLite
+    ([CVE-2021-29606](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29606))
+*   Fixes a heap OOB and null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseAdd`
+    ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `SparseSparseMinimum`
+    ([CVE-2021-29607](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29607))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseReshape`
+    ([CVE-2021-29611](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29611))
+*   Fixes vulnerabilities caused by invalid validation in
+    `QuantizeAndDequantizeV2`
+    ([CVE-2021-29610](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29610))
+*   Fixes a heap buffer overflow in `BandedTriangularSolve`
+    ([CVE-2021-29612](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29612))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `tf.raw_ops.CTCLoss`
+    ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613))
+*   Fixes an interpreter crash from vulnerabilities in `tf.io.decode_raw`
+    ([CVE-2021-29614](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29614))
+*   Fixes a stack overflow in `ParseAttrValue` with nested tensors
+    ([CVE-2021-29615](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29615))
+*   Fixes a null dereference in Grappler's `TrySimplify`
+    ([CVE-2021-29616](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29616))
+*   Fixes a crash in `tf.transpose` with complex inputs
+    ([CVE-2021-29618](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29618))
+*   Fixes a crash in `tf.strings.substr` due to `CHECK`-fail
+    ([CVE-2021-29617](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29617))
+*   Fixes a segfault in `tf.raw_ops.SparseCountSparseOutput`
+    ([CVE-2021-29619](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29619))
+*   Fixes a segfault in `tf.raw_ops.ImmutableConst`
+    ([CVE-2021-29539](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29539))
+*   Updates `curl` to `7.76.0` to handle
+    [CVE-2020-8169](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8169),
+    [CVE-2020-8177](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8177),
+    [CVE-2020-8231](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8231),
+    [CVE-2020-8284](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8284),
+    [CVE-2020-8285](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8285)
+    and
+    [CVE-2020-8286](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8286).
+
+# Release 2.3.3
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap buffer overflow in `RaggedBinCount`
+    ([CVE-2021-29512](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29512))
+*   Fixes a heap out of bounds write in `RaggedBinCount`
+    ([CVE-2021-29514](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29514))
+*   Fixes a type confusion during tensor casts which leads to dereferencing null
+    pointers
+    ([CVE-2021-29513](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29513))
+*   Fixes a reference binding to null pointer in `MatrixDiag*` ops
+    ([CVE-2021-29515](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29515))
+*   Fixes a null pointer dereference via invalid Ragged Tensors
+    ([CVE-2021-29516](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29516))
+*   Fixes a division by zero in `Conv3D`
+    ([CVE-2021-29517](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29517))
+*   Fixes vulnerabilities where session operations in eager mode lead to null
+    pointer dereferences
+    ([CVE-2021-29518](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29518))
+*   Fixes a `CHECK`-fail in `SparseCross` caused by type confusion
+    ([CVE-2021-29519](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29519))
+*   Fixes a segfault in `SparseCountSparseOutput`
+    ([CVE-2021-29521](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29521))
+*   Fixes a heap buffer overflow in `Conv3DBackprop*`
+    ([CVE-2021-29520](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29520))
+*   Fixes a division by 0 in `Conv3DBackprop*`
+    ([CVE-2021-29522](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29522))
+*   Fixes a `CHECK`-fail in `AddManySparseToTensorsMap`
+    ([CVE-2021-29523](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29523))
+*   Fixes a division by 0 in `Conv2DBackpropFilter`
+    ([CVE-2021-29524](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29524))
+*   Fixes a division by 0 in `Conv2DBackpropInput`
+    ([CVE-2021-29525](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29525))
+*   Fixes a division by 0 in `Conv2D`
+    ([CVE-2021-29526](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29526))
+*   Fixes a division by 0 in `QuantizedConv2D`
+    ([CVE-2021-29527](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29527))
+*   Fixes a division by 0 in `QuantizedMul`
+    ([CVE-2021-29528](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29528))
+*   Fixes vulnerabilities caused by invalid validation in
+    `SparseMatrixSparseCholesky`
+    ([CVE-2021-29530](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29530))
+*   Fixes a heap buffer overflow caused by rounding
+    ([CVE-2021-29529](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29529))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.EncodePng`
+    ([CVE-2021-29531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29531))
+*   Fixes a heap out of bounds read in `RaggedCross`
+    ([CVE-2021-29532](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29532))
+*   Fixes a `CHECK`-fail in `DrawBoundingBoxes`
+    ([CVE-2021-29533](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29533))
+*   Fixes a heap buffer overflow in `QuantizedMul`
+    ([CVE-2021-29535](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29535))
+*   Fixes a `CHECK`-fail in `SparseConcat`
+    ([CVE-2021-29534](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29534))
+*   Fixes a heap buffer overflow in `QuantizedResizeBilinear`
+    ([CVE-2021-29537](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29537))
+*   Fixes a heap buffer overflow in `QuantizedReshape`
+    ([CVE-2021-29536](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29536))
+*   Fixes a division by zero in `Conv2DBackpropFilter`
+    ([CVE-2021-29538](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29538))
+*   Fixes a heap buffer overflow in `Conv2DBackpropFilter`
+    ([CVE-2021-29540](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29540))
+*   Fixes a heap buffer overflow in `StringNGrams`
+    ([CVE-2021-29542](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29542))
+*   Fixes a null pointer dereference in `StringNGrams`
+    ([CVE-2021-29541](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29541))
+*   Fixes a `CHECK`-fail in `QuantizeAndDequantizeV4Grad`
+    ([CVE-2021-29544](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29544))
+*   Fixes a `CHECK`-fail in `CTCGreedyDecoder`
+    ([CVE-2021-29543](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29543))
+*   Fixes a heap buffer overflow in `SparseTensorToCSRSparseMatrix`
+    ([CVE-2021-29545](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29545))
+*   Fixes a division by 0 in `QuantizedBiasAdd`
+    ([CVE-2021-29546](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29546))
+*   Fixes a heap out of bounds in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29547](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29547))
+*   Fixes a division by 0 in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29548](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29548))
+*   Fixes a division by 0 in `QuantizedAdd`
+    ([CVE-2021-29549](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29549))
+*   Fixes a division by 0 in `FractionalAvgPool`
+    ([CVE-2021-29550](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29550))
+*   Fixes an OOB read in `MatrixTriangularSolve`
+    ([CVE-2021-29551](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29551))
+*   Fixes a heap OOB in `QuantizeAndDequantizeV3`
+    ([CVE-2021-29553](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29553))
+*   Fixes a `CHECK`-failure in `UnsortedSegmentJoin`
+    ([CVE-2021-29552](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29552))
+*   Fixes a division by 0 in `DenseCountSparseOutput`
+    ([CVE-2021-29554](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29554))
+*   Fixes a division by 0 in `FusedBatchNorm`
+    ([CVE-2021-29555](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29555))
+*   Fixes a division by 0 in `SparseMatMul`
+    ([CVE-2021-29557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29557))
+*   Fixes a division by 0 in `Reverse`
+    ([CVE-2021-29556](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29556))
+*   Fixes a heap buffer overflow in `SparseSplit`
+    ([CVE-2021-29558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29558))
+*   Fixes a heap OOB access in unicode ops
+    ([CVE-2021-29559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29559))
+*   Fixes a heap buffer overflow in `RaggedTensorToTensor`
+    ([CVE-2021-29560](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29560))
+*   Fixes a `CHECK`-fail in `LoadAndRemapMatrix`
+    ([CVE-2021-29561](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29561))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.IRFFT`
+    ([CVE-2021-29562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29562))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.RFFT`
+    ([CVE-2021-29563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29563))
+*   Fixes a null pointer dereference in `EditDistance`
+    ([CVE-2021-29564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29564))
+*   Fixes a null pointer dereference in `SparseFillEmptyRows`
+    ([CVE-2021-29565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29565))
+*   Fixes a heap OOB access in `Dilation2DBackpropInput`
+    ([CVE-2021-29566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29566))
+*   Fixes a reference binding to null in `ParameterizedTruncatedNormal`
+    ([CVE-2021-29568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29568))
+*   Fixes a set of vulnerabilities caused by lack of validation in
+    `SparseDenseCwiseMul`
+    ([CVE-2021-29567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29567))
+*   Fixes a heap out of bounds read in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29570](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29570))
+*   Fixes a heap out of bounds read in `RequantizationRange`
+    ([CVE-2021-29569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29569))
+*   Fixes a memory corruption in `DrawBoundingBoxesV2`
+    ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571))
+*   Fixes a reference binding to nullptr in `SdcaOptimizer`
+    ([CVE-2021-29572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29572))
+*   Fixes an overflow and a denial of service in `tf.raw_ops.ReverseSequence`
+    ([CVE-2021-29575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29575))
+*   Fixes a division by 0 in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29573))
+*   Fixes an undefined behavior in `MaxPool3DGradGrad`
+    ([CVE-2021-29574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29574))
+*   Fixes a heap buffer overflow in `MaxPool3DGradGrad`
+    ([CVE-2021-29576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29576))
+*   Fixes a heap buffer overflow in `AvgPool3DGrad`
+    ([CVE-2021-29577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29577))
+*   Fixes an undefined behavior and a `CHECK`-fail in `FractionalMaxPoolGrad`
+    ([CVE-2021-29580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29580))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-29578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29578))
+*   Fixes a heap buffer overflow in `MaxPoolGrad`
+    ([CVE-2021-29579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29579))
+*   Fixes a segfault in `CTCBeamSearchDecoder`
+    ([CVE-2021-29581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29581))
+*   Fixes a heap OOB read in `tf.raw_ops.Dequantize`
+    ([CVE-2021-29582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29582))
+*   Fixes a `CHECK`-fail due to integer overflow
+    ([CVE-2021-29584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29584))
+*   Fixes a heap buffer overflow and undefined behavior in `FusedBatchNorm`
+    ([CVE-2021-29583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29583))
+*   Fixes a division by zero in padding computation in TFLite
+    ([CVE-2021-29585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29585))
+*   Fixes a division by zero in optimized pooling implementations in TFLite
+    ([CVE-2021-29586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29586))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToDepth`
+    ([CVE-2021-29587](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29587))
+*   Fixes a division by zero in TFLite's implementation of `GatherNd`
+    ([CVE-2021-29589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29589))
+*   Fixes a division by zero in TFLite's implementation of `TransposeConv`
+    ([CVE-2021-29588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29588))
+*   Fixes a heap OOB read in TFLite's implementation of `Minimum` or `Maximum`
+    ([CVE-2021-29590](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29590))
+*   Fixes a null pointer dereference in TFLite's `Reshape` operator
+    ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592))
+*   Fixes a stack overflow due to looping TFLite subgraph
+    ([CVE-2021-29591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29591))
+*   Fixes a division by zero in TFLite's implementation of `DepthToSpace`
+    ([CVE-2021-29595](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29595))
+*   Fixes a division by zero in TFLite's convolution code
+    ([CVE-2021-29594](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29594))
+*   Fixes a division by zero in TFLite's implementation of `EmbeddingLookup`
+    ([CVE-2021-29596](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29596))
+*   Fixes a division by zero in TFLite's implementation of `BatchToSpaceNd`
+    ([CVE-2021-29593](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29593))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToBatchNd`
+    ([CVE-2021-29597](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29597))
+*   Fixes a division by zero in TFLite's implementation of `SVDF`
+    ([CVE-2021-29598](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29598))
+*   Fixes a division by zero in TFLite's implementation of `Split`
+    ([CVE-2021-29599](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29599))
+*   Fixes a division by zero in TFLite's implementation of `OneHot`
+    ([CVE-2021-29600](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29600))
+*   Fixes a division by zero in TFLite's implementation of `DepthwiseConv`
+    ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
+*   Fixes a division by zero in TFLite's implementation of hashtable lookup
+    ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
+*   Fixes a integer overflow in TFLite concatentation
+    ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
+*   Fixes a integer overflow in TFLite memory allocation
+    ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
+*   Fixes a heap OOB write in TFLite
+    ([CVE-2021-29603](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29603))
+*   Fixes a heap OOB read in TFLite
+    ([CVE-2021-29606](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29606))
+*   Fixes a heap OOB and null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseAdd`
+    ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `SparseSparseMinimum`
+    ([CVE-2021-29607](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29607))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseReshape`
+    ([CVE-2021-29611](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29611))
+*   Fixes vulnerabilities caused by invalid validation in
+    `QuantizeAndDequantizeV2`
+    ([CVE-2021-29610](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29610))
+*   Fixes a heap buffer overflow in `BandedTriangularSolve`
+    ([CVE-2021-29612](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29612))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `tf.raw_ops.CTCLoss`
+    ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613))
+*   Fixes an interpreter crash from vulnerabilities in `tf.io.decode_raw`
+    ([CVE-2021-29614](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29614))
+*   Fixes a stack overflow in `ParseAttrValue` with nested tensors
+    ([CVE-2021-29615](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29615))
+*   Fixes a null dereference in Grappler's `TrySimplify`
+    ([CVE-2021-29616](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29616))
+*   Fixes a crash in `tf.transpose` with complex inputs
+    ([CVE-2021-29618](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29618))
+*   Fixes a crash in `tf.strings.substr` due to `CHECK`-fail
+    ([CVE-2021-29617](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29617))
+*   Fixes a segfault in `tf.raw_ops.SparseCountSparseOutput`
+    ([CVE-2021-29619](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29619))
+*   Fixes a segfault in `tf.raw_ops.ImmutableConst`
+    ([CVE-2021-29539](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29539))
+*   Updates `curl` to `7.76.0` to handle
+    [CVE-2020-8169](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8169),
+    [CVE-2020-8177](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8177),
+    [CVE-2020-8231](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8231),
+    [CVE-2020-8284](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8284),
+    [CVE-2020-8285](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8285)
+    and
+    [CVE-2020-8286](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8286).
+
+# Release 2.2.3
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap buffer overflow in `RaggedBinCount`
+    ([CVE-2021-29512](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29512))
+*   Fixes a heap out of bounds write in `RaggedBinCount`
+    ([CVE-2021-29514](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29514))
+*   Fixes a type confusion during tensor casts which leads to dereferencing null
+    pointers
+    ([CVE-2021-29513](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29513))
+*   Fixes a reference binding to null pointer in `MatrixDiag*` ops
+    ([CVE-2021-29515](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29515))
+*   Fixes a null pointer dereference via invalid Ragged Tensors
+    ([CVE-2021-29516](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29516))
+*   Fixes a division by zero in `Conv3D`
+    ([CVE-2021-29517](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29517))
+*   Fixes vulnerabilities where session operations in eager mode lead to null
+    pointer dereferences
+    ([CVE-2021-29518](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29518))
+*   Fixes a `CHECK`-fail in `SparseCross` caused by type confusion
+    ([CVE-2021-29519](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29519))
+*   Fixes a segfault in `SparseCountSparseOutput`
+    ([CVE-2021-29521](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29521))
+*   Fixes a heap buffer overflow in `Conv3DBackprop*`
+    ([CVE-2021-29520](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29520))
+*   Fixes a division by 0 in `Conv3DBackprop*`
+    ([CVE-2021-29522](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29522))
+*   Fixes a `CHECK`-fail in `AddManySparseToTensorsMap`
+    ([CVE-2021-29523](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29523))
+*   Fixes a division by 0 in `Conv2DBackpropFilter`
+    ([CVE-2021-29524](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29524))
+*   Fixes a division by 0 in `Conv2DBackpropInput`
+    ([CVE-2021-29525](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29525))
+*   Fixes a division by 0 in `Conv2D`
+    ([CVE-2021-29526](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29526))
+*   Fixes a division by 0 in `QuantizedConv2D`
+    ([CVE-2021-29527](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29527))
+*   Fixes a division by 0 in `QuantizedMul`
+    ([CVE-2021-29528](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29528))
+*   Fixes vulnerabilities caused by invalid validation in
+    `SparseMatrixSparseCholesky`
+    ([CVE-2021-29530](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29530))
+*   Fixes a heap buffer overflow caused by rounding
+    ([CVE-2021-29529](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29529))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.EncodePng`
+    ([CVE-2021-29531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29531))
+*   Fixes a heap out of bounds read in `RaggedCross`
+    ([CVE-2021-29532](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29532))
+*   Fixes a `CHECK`-fail in `DrawBoundingBoxes`
+    ([CVE-2021-29533](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29533))
+*   Fixes a heap buffer overflow in `QuantizedMul`
+    ([CVE-2021-29535](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29535))
+*   Fixes a `CHECK`-fail in `SparseConcat`
+    ([CVE-2021-29534](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29534))
+*   Fixes a heap buffer overflow in `QuantizedResizeBilinear`
+    ([CVE-2021-29537](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29537))
+*   Fixes a heap buffer overflow in `QuantizedReshape`
+    ([CVE-2021-29536](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29536))
+*   Fixes a division by zero in `Conv2DBackpropFilter`
+    ([CVE-2021-29538](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29538))
+*   Fixes a heap buffer overflow in `Conv2DBackpropFilter`
+    ([CVE-2021-29540](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29540))
+*   Fixes a heap buffer overflow in `StringNGrams`
+    ([CVE-2021-29542](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29542))
+*   Fixes a null pointer dereference in `StringNGrams`
+    ([CVE-2021-29541](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29541))
+*   Fixes a `CHECK`-fail in `QuantizeAndDequantizeV4Grad`
+    ([CVE-2021-29544](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29544))
+*   Fixes a `CHECK`-fail in `CTCGreedyDecoder`
+    ([CVE-2021-29543](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29543))
+*   Fixes a heap buffer overflow in `SparseTensorToCSRSparseMatrix`
+    ([CVE-2021-29545](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29545))
+*   Fixes a division by 0 in `QuantizedBiasAdd`
+    ([CVE-2021-29546](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29546))
+*   Fixes a heap out of bounds in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29547](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29547))
+*   Fixes a division by 0 in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29548](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29548))
+*   Fixes a division by 0 in `QuantizedAdd`
+    ([CVE-2021-29549](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29549))
+*   Fixes a division by 0 in `FractionalAvgPool`
+    ([CVE-2021-29550](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29550))
+*   Fixes an OOB read in `MatrixTriangularSolve`
+    ([CVE-2021-29551](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29551))
+*   Fixes a heap OOB in `QuantizeAndDequantizeV3`
+    ([CVE-2021-29553](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29553))
+*   Fixes a `CHECK`-failure in `UnsortedSegmentJoin`
+    ([CVE-2021-29552](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29552))
+*   Fixes a division by 0 in `DenseCountSparseOutput`
+    ([CVE-2021-29554](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29554))
+*   Fixes a division by 0 in `FusedBatchNorm`
+    ([CVE-2021-29555](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29555))
+*   Fixes a division by 0 in `SparseMatMul`
+    ([CVE-2021-29557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29557))
+*   Fixes a division by 0 in `Reverse`
+    ([CVE-2021-29556](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29556))
+*   Fixes a heap buffer overflow in `SparseSplit`
+    ([CVE-2021-29558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29558))
+*   Fixes a heap OOB access in unicode ops
+    ([CVE-2021-29559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29559))
+*   Fixes a heap buffer overflow in `RaggedTensorToTensor`
+    ([CVE-2021-29560](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29560))
+*   Fixes a `CHECK`-fail in `LoadAndRemapMatrix`
+    ([CVE-2021-29561](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29561))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.IRFFT`
+    ([CVE-2021-29562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29562))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.RFFT`
+    ([CVE-2021-29563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29563))
+*   Fixes a null pointer dereference in `EditDistance`
+    ([CVE-2021-29564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29564))
+*   Fixes a null pointer dereference in `SparseFillEmptyRows`
+    ([CVE-2021-29565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29565))
+*   Fixes a heap OOB access in `Dilation2DBackpropInput`
+    ([CVE-2021-29566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29566))
+*   Fixes a reference binding to null in `ParameterizedTruncatedNormal`
+    ([CVE-2021-29568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29568))
+*   Fixes a set of vulnerabilities caused by lack of validation in
+    `SparseDenseCwiseMul`
+    ([CVE-2021-29567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29567))
+*   Fixes a heap out of bounds read in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29570](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29570))
+*   Fixes a heap out of bounds read in `RequantizationRange`
+    ([CVE-2021-29569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29569))
+*   Fixes a memory corruption in `DrawBoundingBoxesV2`
+    ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571))
+*   Fixes a reference binding to nullptr in `SdcaOptimizer`
+    ([CVE-2021-29572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29572))
+*   Fixes an overflow and a denial of service in `tf.raw_ops.ReverseSequence`
+    ([CVE-2021-29575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29575))
+*   Fixes a division by 0 in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29573))
+*   Fixes an undefined behavior in `MaxPool3DGradGrad`
+    ([CVE-2021-29574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29574))
+*   Fixes a heap buffer overflow in `MaxPool3DGradGrad`
+    ([CVE-2021-29576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29576))
+*   Fixes a heap buffer overflow in `AvgPool3DGrad`
+    ([CVE-2021-29577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29577))
+*   Fixes an undefined behavior and a `CHECK`-fail in `FractionalMaxPoolGrad`
+    ([CVE-2021-29580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29580))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-29578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29578))
+*   Fixes a heap buffer overflow in `MaxPoolGrad`
+    ([CVE-2021-29579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29579))
+*   Fixes a segfault in `CTCBeamSearchDecoder`
+    ([CVE-2021-29581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29581))
+*   Fixes a heap OOB read in `tf.raw_ops.Dequantize`
+    ([CVE-2021-29582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29582))
+*   Fixes a `CHECK`-fail due to integer overflow
+    ([CVE-2021-29584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29584))
+*   Fixes a heap buffer overflow and undefined behavior in `FusedBatchNorm`
+    ([CVE-2021-29583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29583))
+*   Fixes a division by zero in padding computation in TFLite
+    ([CVE-2021-29585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29585))
+*   Fixes a division by zero in optimized pooling implementations in TFLite
+    ([CVE-2021-29586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29586))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToDepth`
+    ([CVE-2021-29587](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29587))
+*   Fixes a division by zero in TFLite's implementation of `GatherNd`
+    ([CVE-2021-29589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29589))
+*   Fixes a division by zero in TFLite's implementation of `TransposeConv`
+    ([CVE-2021-29588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29588))
+*   Fixes a heap OOB read in TFLite's implementation of `Minimum` or `Maximum`
+    ([CVE-2021-29590](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29590))
+*   Fixes a null pointer dereference in TFLite's `Reshape` operator
+    ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592))
+*   Fixes a stack overflow due to looping TFLite subgraph
+    ([CVE-2021-29591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29591))
+*   Fixes a division by zero in TFLite's implementation of `DepthToSpace`
+    ([CVE-2021-29595](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29595))
+*   Fixes a division by zero in TFLite's convolution code
+    ([CVE-2021-29594](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29594))
+*   Fixes a division by zero in TFLite's implementation of `EmbeddingLookup`
+    ([CVE-2021-29596](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29596))
+*   Fixes a division by zero in TFLite's implementation of `BatchToSpaceNd`
+    ([CVE-2021-29593](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29593))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToBatchNd`
+    ([CVE-2021-29597](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29597))
+*   Fixes a division by zero in TFLite's implementation of `SVDF`
+    ([CVE-2021-29598](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29598))
+*   Fixes a division by zero in TFLite's implementation of `Split`
+    ([CVE-2021-29599](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29599))
+*   Fixes a division by zero in TFLite's implementation of `OneHot`
+    ([CVE-2021-29600](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29600))
+*   Fixes a division by zero in TFLite's implementation of `DepthwiseConv`
+    ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
+*   Fixes a division by zero in TFLite's implementation of hashtable lookup
+    ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
+*   Fixes a integer overflow in TFLite concatentation
+    ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
+*   Fixes a integer overflow in TFLite memory allocation
+    ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
+*   Fixes a heap OOB write in TFLite
+    ([CVE-2021-29603](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29603))
+*   Fixes a heap OOB read in TFLite
+    ([CVE-2021-29606](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29606))
+*   Fixes a heap OOB and null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseAdd`
+    ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `SparseSparseMinimum`
+    ([CVE-2021-29607](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29607))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseReshape`
+    ([CVE-2021-29611](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29611))
+*   Fixes vulnerabilities caused by invalid validation in
+    `QuantizeAndDequantizeV2`
+    ([CVE-2021-29610](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29610))
+*   Fixes a heap buffer overflow in `BandedTriangularSolve`
+    ([CVE-2021-29612](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29612))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `tf.raw_ops.CTCLoss`
+    ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613))
+*   Fixes an interpreter crash from vulnerabilities in `tf.io.decode_raw`
+    ([CVE-2021-29614](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29614))
+*   Fixes a stack overflow in `ParseAttrValue` with nested tensors
+    ([CVE-2021-29615](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29615))
+*   Fixes a null dereference in Grappler's `TrySimplify`
+    ([CVE-2021-29616](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29616))
+*   Fixes a crash in `tf.transpose` with complex inputs
+    ([CVE-2021-29618](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29618))
+*   Fixes a crash in `tf.strings.substr` due to `CHECK`-fail
+    ([CVE-2021-29617](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29617))
+*   Fixes a segfault in `tf.raw_ops.SparseCountSparseOutput`
+    ([CVE-2021-29619](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29619))
+*   Fixes a segfault in `tf.raw_ops.ImmutableConst`
+    ([CVE-2021-29539](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29539))
+*   Updates `curl` to `7.76.0` to handle
+    [CVE-2020-8169](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8169),
+    [CVE-2020-8177](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8177),
+    [CVE-2020-8231](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8231),
+    [CVE-2020-8284](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8284),
+    [CVE-2020-8285](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8285)
+    and
+    [CVE-2020-8286](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8286).
+
+# Release 2.1.4
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap buffer overflow in `RaggedBinCount`
+    ([CVE-2021-29512](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29512))
+*   Fixes a heap out of bounds write in `RaggedBinCount`
+    ([CVE-2021-29514](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29514))
+*   Fixes a type confusion during tensor casts which leads to dereferencing null
+    pointers
+    ([CVE-2021-29513](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29513))
+*   Fixes a reference binding to null pointer in `MatrixDiag*` ops
+    ([CVE-2021-29515](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29515))
+*   Fixes a null pointer dereference via invalid Ragged Tensors
+    ([CVE-2021-29516](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29516))
+*   Fixes a division by zero in `Conv3D`
+    ([CVE-2021-29517](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29517))
+*   Fixes vulnerabilities where session operations in eager mode lead to null
+    pointer dereferences
+    ([CVE-2021-29518](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29518))
+*   Fixes a `CHECK`-fail in `SparseCross` caused by type confusion
+    ([CVE-2021-29519](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29519))
+*   Fixes a segfault in `SparseCountSparseOutput`
+    ([CVE-2021-29521](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29521))
+*   Fixes a heap buffer overflow in `Conv3DBackprop*`
+    ([CVE-2021-29520](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29520))
+*   Fixes a division by 0 in `Conv3DBackprop*`
+    ([CVE-2021-29522](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29522))
+*   Fixes a `CHECK`-fail in `AddManySparseToTensorsMap`
+    ([CVE-2021-29523](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29523))
+*   Fixes a division by 0 in `Conv2DBackpropFilter`
+    ([CVE-2021-29524](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29524))
+*   Fixes a division by 0 in `Conv2DBackpropInput`
+    ([CVE-2021-29525](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29525))
+*   Fixes a division by 0 in `Conv2D`
+    ([CVE-2021-29526](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29526))
+*   Fixes a division by 0 in `QuantizedConv2D`
+    ([CVE-2021-29527](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29527))
+*   Fixes a division by 0 in `QuantizedMul`
+    ([CVE-2021-29528](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29528))
+*   Fixes vulnerabilities caused by invalid validation in
+    `SparseMatrixSparseCholesky`
+    ([CVE-2021-29530](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29530))
+*   Fixes a heap buffer overflow caused by rounding
+    ([CVE-2021-29529](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29529))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.EncodePng`
+    ([CVE-2021-29531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29531))
+*   Fixes a heap out of bounds read in `RaggedCross`
+    ([CVE-2021-29532](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29532))
+*   Fixes a `CHECK`-fail in `DrawBoundingBoxes`
+    ([CVE-2021-29533](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29533))
+*   Fixes a heap buffer overflow in `QuantizedMul`
+    ([CVE-2021-29535](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29535))
+*   Fixes a `CHECK`-fail in `SparseConcat`
+    ([CVE-2021-29534](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29534))
+*   Fixes a heap buffer overflow in `QuantizedResizeBilinear`
+    ([CVE-2021-29537](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29537))
+*   Fixes a heap buffer overflow in `QuantizedReshape`
+    ([CVE-2021-29536](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29536))
+*   Fixes a division by zero in `Conv2DBackpropFilter`
+    ([CVE-2021-29538](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29538))
+*   Fixes a heap buffer overflow in `Conv2DBackpropFilter`
+    ([CVE-2021-29540](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29540))
+*   Fixes a heap buffer overflow in `StringNGrams`
+    ([CVE-2021-29542](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29542))
+*   Fixes a null pointer dereference in `StringNGrams`
+    ([CVE-2021-29541](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29541))
+*   Fixes a `CHECK`-fail in `QuantizeAndDequantizeV4Grad`
+    ([CVE-2021-29544](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29544))
+*   Fixes a `CHECK`-fail in `CTCGreedyDecoder`
+    ([CVE-2021-29543](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29543))
+*   Fixes a heap buffer overflow in `SparseTensorToCSRSparseMatrix`
+    ([CVE-2021-29545](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29545))
+*   Fixes a division by 0 in `QuantizedBiasAdd`
+    ([CVE-2021-29546](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29546))
+*   Fixes a heap out of bounds in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29547](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29547))
+*   Fixes a division by 0 in `QuantizedBatchNormWithGlobalNormalization`
+    ([CVE-2021-29548](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29548))
+*   Fixes a division by 0 in `QuantizedAdd`
+    ([CVE-2021-29549](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29549))
+*   Fixes a division by 0 in `FractionalAvgPool`
+    ([CVE-2021-29550](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29550))
+*   Fixes an OOB read in `MatrixTriangularSolve`
+    ([CVE-2021-29551](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29551))
+*   Fixes a heap OOB in `QuantizeAndDequantizeV3`
+    ([CVE-2021-29553](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29553))
+*   Fixes a `CHECK`-failure in `UnsortedSegmentJoin`
+    ([CVE-2021-29552](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29552))
+*   Fixes a division by 0 in `DenseCountSparseOutput`
+    ([CVE-2021-29554](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29554))
+*   Fixes a division by 0 in `FusedBatchNorm`
+    ([CVE-2021-29555](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29555))
+*   Fixes a division by 0 in `SparseMatMul`
+    ([CVE-2021-29557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29557))
+*   Fixes a division by 0 in `Reverse`
+    ([CVE-2021-29556](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29556))
+*   Fixes a heap buffer overflow in `SparseSplit`
+    ([CVE-2021-29558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29558))
+*   Fixes a heap OOB access in unicode ops
+    ([CVE-2021-29559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29559))
+*   Fixes a heap buffer overflow in `RaggedTensorToTensor`
+    ([CVE-2021-29560](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29560))
+*   Fixes a `CHECK`-fail in `LoadAndRemapMatrix`
+    ([CVE-2021-29561](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29561))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.IRFFT`
+    ([CVE-2021-29562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29562))
+*   Fixes a `CHECK`-fail in `tf.raw_ops.RFFT`
+    ([CVE-2021-29563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29563))
+*   Fixes a null pointer dereference in `EditDistance`
+    ([CVE-2021-29564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29564))
+*   Fixes a null pointer dereference in `SparseFillEmptyRows`
+    ([CVE-2021-29565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29565))
+*   Fixes a heap OOB access in `Dilation2DBackpropInput`
+    ([CVE-2021-29566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29566))
+*   Fixes a reference binding to null in `ParameterizedTruncatedNormal`
+    ([CVE-2021-29568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29568))
+*   Fixes a set of vulnerabilities caused by lack of validation in
+    `SparseDenseCwiseMul`
+    ([CVE-2021-29567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29567))
+*   Fixes a heap out of bounds read in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29570](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29570))
+*   Fixes a heap out of bounds read in `RequantizationRange`
+    ([CVE-2021-29569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29569))
+*   Fixes a memory corruption in `DrawBoundingBoxesV2`
+    ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571))
+*   Fixes a reference binding to nullptr in `SdcaOptimizer`
+    ([CVE-2021-29572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29572))
+*   Fixes an overflow and a denial of service in `tf.raw_ops.ReverseSequence`
+    ([CVE-2021-29575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29575))
+*   Fixes a division by 0 in `MaxPoolGradWithArgmax`
+    ([CVE-2021-29573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29573))
+*   Fixes an undefined behavior in `MaxPool3DGradGrad`
+    ([CVE-2021-29574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29574))
+*   Fixes a heap buffer overflow in `MaxPool3DGradGrad`
+    ([CVE-2021-29576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29576))
+*   Fixes a heap buffer overflow in `AvgPool3DGrad`
+    ([CVE-2021-29577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29577))
+*   Fixes an undefined behavior and a `CHECK`-fail in `FractionalMaxPoolGrad`
+    ([CVE-2021-29580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29580))
+*   Fixes a heap buffer overflow in `FractionalAvgPoolGrad`
+    ([CVE-2021-29578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29578))
+*   Fixes a heap buffer overflow in `MaxPoolGrad`
+    ([CVE-2021-29579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29579))
+*   Fixes a segfault in `CTCBeamSearchDecoder`
+    ([CVE-2021-29581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29581))
+*   Fixes a heap OOB read in `tf.raw_ops.Dequantize`
+    ([CVE-2021-29582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29582))
+*   Fixes a `CHECK`-fail due to integer overflow
+    ([CVE-2021-29584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29584))
+*   Fixes a heap buffer overflow and undefined behavior in `FusedBatchNorm`
+    ([CVE-2021-29583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29583))
+*   Fixes a division by zero in padding computation in TFLite
+    ([CVE-2021-29585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29585))
+*   Fixes a division by zero in optimized pooling implementations in TFLite
+    ([CVE-2021-29586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29586))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToDepth`
+    ([CVE-2021-29587](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29587))
+*   Fixes a division by zero in TFLite's implementation of `GatherNd`
+    ([CVE-2021-29589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29589))
+*   Fixes a division by zero in TFLite's implementation of `TransposeConv`
+    ([CVE-2021-29588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29588))
+*   Fixes a heap OOB read in TFLite's implementation of `Minimum` or `Maximum`
+    ([CVE-2021-29590](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29590))
+*   Fixes a null pointer dereference in TFLite's `Reshape` operator
+    ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592))
+*   Fixes a stack overflow due to looping TFLite subgraph
+    ([CVE-2021-29591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29591))
+*   Fixes a division by zero in TFLite's implementation of `DepthToSpace`
+    ([CVE-2021-29595](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29595))
+*   Fixes a division by zero in TFLite's convolution code
+    ([CVE-2021-29594](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29594))
+*   Fixes a division by zero in TFLite's implementation of `EmbeddingLookup`
+    ([CVE-2021-29596](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29596))
+*   Fixes a division by zero in TFLite's implementation of `BatchToSpaceNd`
+    ([CVE-2021-29593](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29593))
+*   Fixes a division by zero in TFLite's implementation of `SpaceToBatchNd`
+    ([CVE-2021-29597](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29597))
+*   Fixes a division by zero in TFLite's implementation of `SVDF`
+    ([CVE-2021-29598](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29598))
+*   Fixes a division by zero in TFLite's implementation of `Split`
+    ([CVE-2021-29599](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29599))
+*   Fixes a division by zero in TFLite's implementation of `OneHot`
+    ([CVE-2021-29600](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29600))
+*   Fixes a division by zero in TFLite's implementation of `DepthwiseConv`
+    ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
+*   Fixes a division by zero in TFLite's implementation of hashtable lookup
+    ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
+*   Fixes a integer overflow in TFLite concatentation
+    ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
+*   Fixes a integer overflow in TFLite memory allocation
+    ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
+*   Fixes a heap OOB write in TFLite
+    ([CVE-2021-29603](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29603))
+*   Fixes a heap OOB read in TFLite
+    ([CVE-2021-29606](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29606))
+*   Fixes a heap OOB and null pointer dereference in `RaggedTensorToTensor`
+    ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseAdd`
+    ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `SparseSparseMinimum`
+    ([CVE-2021-29607](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29607))
+*   Fixes vulnerabilities caused by incomplete validation in `SparseReshape`
+    ([CVE-2021-29611](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29611))
+*   Fixes vulnerabilities caused by invalid validation in
+    `QuantizeAndDequantizeV2`
+    ([CVE-2021-29610](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29610))
+*   Fixes a heap buffer overflow in `BandedTriangularSolve`
+    ([CVE-2021-29612](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29612))
+*   Fixes vulnerabilities caused by incomplete validation in
+    `tf.raw_ops.CTCLoss`
+    ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613))
+*   Fixes an interpreter crash from vulnerabilities in `tf.io.decode_raw`
+    ([CVE-2021-29614](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29614))
+*   Fixes a stack overflow in `ParseAttrValue` with nested tensors
+    ([CVE-2021-29615](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29615))
+*   Fixes a null dereference in Grappler's `TrySimplify`
+    ([CVE-2021-29616](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29616))
+*   Fixes a crash in `tf.transpose` with complex inputs
+    ([CVE-2021-29618](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29618))
+*   Fixes a crash in `tf.strings.substr` due to `CHECK`-fail
+    ([CVE-2021-29617](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29617))
+*   Fixes a segfault in `tf.raw_ops.SparseCountSparseOutput`
+    ([CVE-2021-29619](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29619))
+*   Fixes a segfault in `tf.raw_ops.ImmutableConst`
+    ([CVE-2021-29539](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29539))
+*   Updates `curl` to `7.76.0` to handle
+    [CVE-2020-8169](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8169),
+    [CVE-2020-8177](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8177),
+    [CVE-2020-8231](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8231),
+    [CVE-2020-8284](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8284),
+    [CVE-2020-8285](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8285)
+    and
+    [CVE-2020-8286](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-8286).
 
 # Release 2.5.0
 
@@ -1864,7 +3762,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
   * Support added for global sync `BatchNormalization` by using the newly added `tf.keras.layers.experimental.SyncBatchNormalization` layer. This layer will sync `BatchNormalization` statistics every step across all replicas taking part in sync training.
   * Performance improvements for GPU multi-worker distributed training using `tf.distribute.experimental.MultiWorkerMirroredStrategy`
     * Update NVIDIA `NCCL` to `2.5.7-1` for better performance and performance tuning. Please see [nccl developer guide](https://docs.nvidia.com/deeplearning/sdk/nccl-developer-guide/docs/env.html) for more information on this.
-    * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/staging/training/grad_utils.py) usage.
+    * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/modeling/grad_utils.py) usage.
     * Experimental support of [all reduce gradient packing](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/CollectiveHints) to allow overlapping gradient aggregation with backward path computation.
     * Deprecated `experimental_run_v2` method for distribution strategies and renamed the method `run` as it is no longer experimental.
     * Add CompositeTensor support for DistributedIterators. This should help prevent unnecessary function retracing and memory leaks.

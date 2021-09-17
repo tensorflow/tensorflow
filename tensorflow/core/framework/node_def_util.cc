@@ -137,8 +137,9 @@ string FormatNodeDefForError(
   return !has_experimental_debug_info ||
                  experimental_debug_info.original_node_names().empty()
              ? errors::FormatNodeNameForError(string(node_name))
-             : errors::FormatNodeNamesForError(
-                   experimental_debug_info.original_node_names());
+             : errors::FormatOriginalNodeLocationForError(
+                   experimental_debug_info.original_node_names(),
+                   experimental_debug_info.original_func_names());
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
@@ -272,17 +273,17 @@ DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
-DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
-DEFINE_TRY_GET_ATTR(int64, i, "int", emplace_back, v, ;)
+DEFINE_GET_ATTR(int64_t, i, "int", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(int64_t, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
-    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+    if (static_cast<int64_t>(static_cast<int32>(v)) != v) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
                                      " out of range for an int32");
     })
 DEFINE_TRY_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
-    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+    if (static_cast<int64_t>(static_cast<int32>(v)) != v) {
       static int log_counter = 0;
       if (log_counter < 10) {
         log_counter++;
@@ -453,11 +454,11 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int64 repeats = -1;
+    int64_t repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     // We can't handle outputs that are larger than int32 sizes.
-    if (static_cast<int64>(static_cast<int32>(repeats)) != repeats) {
+    if (static_cast<int64_t>(static_cast<int32>(repeats)) != repeats) {
       return errors::InvalidArgument("Number of outputs is too big: ", repeats);
     }
     if (repeats < 0) {
@@ -731,6 +732,17 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
   }
 }
 
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def) {
+  AttrSlice attrs(*node_def);
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value()) {
+      const AttrValue* attr = attrs.Find(attr_def.name());
+      if (attr && AreAttrValuesEqual(*attr, attr_def.default_value()))
+        node_def->mutable_attr()->erase(attr_def.name());
+    }
+  }
+}
+
 namespace {
 
 using ::tensorflow::tstring;
@@ -879,8 +891,8 @@ void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
   }
 ADD_NODE_ATTR(StringPiece)
 ADD_NODE_ATTR(const char*)
-ADD_NODE_ATTR(int32)
-ADD_NODE_ATTR(int64)
+ADD_NODE_ATTR(int32_t)
+ADD_NODE_ATTR(int64_t)
 ADD_NODE_ATTR(float)
 ADD_NODE_ATTR(double)
 ADD_NODE_ATTR(bool)
@@ -893,7 +905,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<StringPiece>)
 ADD_NODE_ATTR(gtl::ArraySlice<const char*>)
 ADD_NODE_ATTR(gtl::ArraySlice<string>)
 ADD_NODE_ATTR(gtl::ArraySlice<int32>)
-ADD_NODE_ATTR(gtl::ArraySlice<int64>)
+ADD_NODE_ATTR(gtl::ArraySlice<int64_t>)
 ADD_NODE_ATTR(gtl::ArraySlice<float>)
 ADD_NODE_ATTR(gtl::ArraySlice<bool>)
 ADD_NODE_ATTR(const std::vector<bool>&)

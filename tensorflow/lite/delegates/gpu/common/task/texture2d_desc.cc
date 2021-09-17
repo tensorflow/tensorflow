@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
@@ -98,8 +100,8 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
     *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
                            ", " + args[1] + "))");
     return absl::OkStatus();
-  } else if (gpu_info.IsApiOpenGl()) {
-    if (gpu_info.opengl_info.major_version < 3) {
+  } else if (gpu_info.IsGlsl()) {
+    if (gpu_info.IsApiOpenGl() && gpu_info.opengl_info.major_version < 3) {
       *result = absl::StrCat("texture2D(tex2d, vec2(float(", args[0],
                              ") * inv_tex_width, float(", args[1],
                              ") * inv_tex_height))");

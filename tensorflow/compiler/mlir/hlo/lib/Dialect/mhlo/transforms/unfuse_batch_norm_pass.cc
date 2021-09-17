@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -30,7 +31,7 @@ namespace mhlo {
 namespace {
 
 struct TestUnfuseBatchNormPass
-    : public PassWrapper<TestUnfuseBatchNormPass, OperationPass<>> {
+    : public TestUnfuseBatchNormPassBase<TestUnfuseBatchNormPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<memref::MemRefDialect>();
   }

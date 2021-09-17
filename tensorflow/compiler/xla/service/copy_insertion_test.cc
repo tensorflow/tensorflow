@@ -39,8 +39,8 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-int64 CountCopies(const HloComputation& computation) {
-  int64 count = 0;
+int64_t CountCopies(const HloComputation& computation) {
+  int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     if (instruction->opcode() == HloOpcode::kCopy) {
       count++;
@@ -49,24 +49,24 @@ int64 CountCopies(const HloComputation& computation) {
   return count;
 }
 
-int64 CountCopies(const HloModule& module) {
-  int64 count = 0;
+int64_t CountCopies(const HloModule& module) {
+  int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountCopies(*computation);
   }
   return count;
 }
 
-int64 CountControlEdges(const HloComputation& computation) {
-  int64 count = 0;
+int64_t CountControlEdges(const HloComputation& computation) {
+  int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
   }
   return count;
 }
 
-int64 CountControlEdges(const HloModule& module) {
-  int64 count = 0;
+int64_t CountControlEdges(const HloModule& module) {
+  int64_t count = 0;
   for (const auto& computation : module.computations()) {
     count += CountControlEdges(*computation);
   }
@@ -2755,7 +2755,7 @@ ENTRY main {
   constant.3 = s32[] constant(0)
   dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
   dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+  ROOT tuple.85 = (s32[], f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2999,7 +2999,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3026,8 +3026,9 @@ ENTRY TestComputation {
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/true);
+                               /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
   // The copy.1 must be kept due to modification in the other branch.
   auto conditional18 = FindInstruction(module.get(), "conditional.18");
   CHECK_NE(conditional18, nullptr);
@@ -3044,7 +3045,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3055,7 +3056,7 @@ HloModule TestModule
   %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
   %constant.1 = s32[] constant(0)
   %broadcast.6 = s32[2] broadcast(constant.1), dimensions={}
-  dynamic-update-slice.5 = s32[2] dynamic-update-slice(%copy.1, %broadcast.6, %constant.1)
+  dynamic-update-slice.5 = s32[2]{0:T(128)} dynamic-update-slice(%copy.1, %broadcast.6, %constant.1)
   %add.1 = s32[2]{0:T(128)} add(dynamic-update-slice.5, %copy.1)
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%add.1)
  }
@@ -3066,19 +3067,15 @@ ENTRY TestComputation {
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
   %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}
   %gte.1 = s32[2]{0:T(128)} get-tuple-element(conditional.18), index=0
   ROOT tuple.4 = (s32[2]{0:T(128)},s32[2]{0:T(128)}) tuple(parameter.2, gte.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  // TODO(b/189898980): the region based live range analysis currently
-  // does not enforce a strict ordering of the merged live ranges. This wil
-  // cause the following invocation to fail when run under UNDEBUG mode.
-#if 0
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/true);
+                               /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   // The copy.1 must be kept due to modification in the other branch.
   auto conditional18 = FindInstruction(module.get(), "conditional.18");
@@ -3090,7 +3087,49 @@ ENTRY TestComputation {
   auto dus = add1->operand(0);
   auto copy1 = dus->operand(0);
   CHECK_EQ(copy1->opcode(), HloOpcode::kCopy);
-#endif
+}
+
+TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {
+  const string& hlo_string = R"(
+HloModule primitive_computation_cond.19
+%branch_0_comp.5.clone (parameter.0: (s32[2])) -> (s32[2]) {
+  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
+  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
+  %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
+  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
+  ROOT %tuple.5 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy)
+}
+
+%branch_1_comp.12.clone (parameter.4: (s32[2])) -> (s32[2]) {
+  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
+  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
+  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
+  ROOT %tuple.6 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy.1)
+}
+
+ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], parameter.3: s32[2]) -> (s32[2]) {
+  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
+  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
+  ROOT %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+  // The copy.1 must be kept b/c aliasing of parameter and root is not allowed.
+  auto conditional18 = FindInstruction(module.get(), "conditional.18");
+  CHECK_NE(conditional18, nullptr);
+  auto tuple6 = conditional18->branch_computation(1)->root_instruction();
+  CHECK_EQ(tuple6->opcode(), HloOpcode::kTuple);
+  auto copy1 = tuple6->operand(0);
+  CHECK_EQ(copy1->opcode(), HloOpcode::kCopy);
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchDoNotCopy1) {
@@ -3100,7 +3139,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3125,11 +3164,8 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  // TODO(b/189898980): the region based live range analysis currently
-  // does not enforce a strict ordering of the merged live ranges. This wil
-  // cause the following invocation to fail when run under UNDEBUG mode.
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/true);
+                               /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString() << "\n";
 
@@ -3138,6 +3174,115 @@ ENTRY TestComputation {
   CHECK_NE(conditional18, nullptr);
   auto tuple6 = conditional18->branch_computation(1)->root_instruction();
   CHECK_EQ(tuple6->opcode(), HloOpcode::kParameter);
+}
+
+TEST_F(CopyInsertionTest, RootInstructionNotLast) {
+  // This is a test for b/189219227. When the root instruction is scheduled not
+  // as the last instruction, it still lives out. So, we make sure that the copy
+  // after the root cannot be removed.
+  const string& hlo_string = R"(
+HloModule module, is_scheduled=true
+
+body2 {
+  p_body2 = (f32[2]{0}) parameter(0)
+  p_body2.1 = f32[2]{0} get-tuple-element(p_body2), index=0
+  add.3 = f32[2]{0} add(p_body2.1, p_body2.1)
+  ROOT root2 = (f32[2]{0}) tuple(add.3)
+}
+
+condition2 {
+  p_cond2 = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+body {
+  p_body = (f32[2]{0}) parameter(0)
+  p_body.1 = f32[2]{0} get-tuple-element(p_body), index=0
+  ROOT root = (f32[2]{0}) tuple(p_body.1)
+  copy = f32[2]{0} copy(p_body.1)
+  tuple = (f32[2]{0}) tuple(copy)
+  while.1 = (f32[2]{0}) while(tuple), condition=condition2, body=body2
+}
+
+condition {
+  p_cond = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const0 = f32[2]{0} constant({1, 2})
+  while_init = (f32[2]{0}) tuple(const0)
+  ROOT while.0 = (f32[2]{0}) while(while_init), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  SequentialHloOrdering ordering(module->schedule());
+  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(&ordering, module.get()));
+  auto while_1 = FindInstruction(module.get(), "while.1");
+  EXPECT_THAT(while_1, op::While(op::Tuple(op::Copy())));
+}
+
+TEST_F(CopyInsertionTest, InPlaceCollectivePermuteCopy) {
+  absl::string_view hlo_string = R"(
+HloModule hlo_runner_test_0.1
+ENTRY hlo_runner_test_0.1 {
+    replica_id = u32[] replica-id()
+    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    constant.1 = u32[] constant(1000)
+    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    constant.2 = s32[] constant(0)
+    constant.3 = s32[] constant(1)
+    tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, u32[2,8,128]{2,1,0:T(2,128)} broadcast.0)
+    tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.1, u32[4,8,128]{2,1,0:T(2,128)} broadcast.2)
+    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    constant.4 = s32[] constant(2)
+    tuple.5 = (s32[],s32[],s32[]) tuple(constant.4, constant.2, constant.2)
+    tuple.6 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.5)
+    tuple.7 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.2)
+    tuple.8 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.7)
+    tuple.9 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.6)
+    tuple.10 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.7)
+    collective-permute.0 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+    collective-permute.1 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.10), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+    ROOT tuple = ((u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}), (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})) tuple(collective-permute.0, collective-permute.1)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 4);
+}
+
+TEST_F(CopyInsertionTest, KeepCopyOfBroadcast) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+ENTRY main {
+  param = f32[128,1,128] parameter(0)
+  negate = f32[128,1,128] negate(param)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  broadcast.7 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  add1 = f32[128,1,128] add(dynamic-update-slice.5, dynamic-update-slice.5)
+  dynamic-update-slice.4 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  add2 = f32[128,1,128] add(dynamic-update-slice.4, dynamic-update-slice.4)
+  tuple = (f32[128,1,128], f32[128,1,128]) tuple(add1, add2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 2);
 }
 
 }  // namespace

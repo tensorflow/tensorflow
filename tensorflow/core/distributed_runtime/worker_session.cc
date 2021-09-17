@@ -89,7 +89,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   void ClearLogs() override { wrapped_->ClearLogs(); }
 
-  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+  bool RetrieveLogs(int64_t step_id, StepStats* ss) override {
     return wrapped_->RetrieveLogs(step_id, ss);
   }
 

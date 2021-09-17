@@ -23,9 +23,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -46,12 +48,14 @@ LoadFromGraphdefOrMlirSource(
     mlir::MLIRContext* context);
 
 // Load Saved model (either v1 or v2) into MLIR.
+// 'saved_model_bundle' will be initialized if V1 model was loaded.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
-    mlir::MLIRContext* context);
+    bool enable_variable_lifting, mlir::MLIRContext* context,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
@@ -62,9 +66,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 // If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
+    mlir::ModuleOp module, bool export_to_mlir,
+    const toco::TocoFlags& toco_flags,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager);

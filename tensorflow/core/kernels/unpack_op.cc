@@ -41,7 +41,7 @@ class UnpackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int32 num = num_outputs();
+    const int32_t num = num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
@@ -60,7 +60,7 @@ class UnpackOp : public OpKernel {
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(axis);
-    const int64 output_size = output_shape.num_elements();
+    const int64_t output_size = output_shape.num_elements();
     OP_REQUIRES(
         context,
         FastBoundsCheck(output_size,
@@ -156,7 +156,7 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_GPU)
                             .HostMemory("value")
                             .HostMemory("output")
-                            .TypeConstraint<int64>("T"),
+                            .TypeConstraint<int64_t>("T"),
                         UnpackOp<CPUDevice, int64>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -243,8 +243,7 @@ class _VariableInterfaceTestBase(test.TestCase, parameterized.TestCase):
 
   def testIteration(self):
     v = self.create_variable([1.])
-    with self.assertRaises(TypeError):
-      v.__iter__()
+    self.assertEqual([1.], list(iter(v)))
 
   def testProperties(self):
     v = self.create_variable()

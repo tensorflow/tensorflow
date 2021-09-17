@@ -18,9 +18,11 @@ limitations under the License.
 #include <stdio.h>
 
 #include <deque>
-#include <map>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
@@ -130,56 +132,56 @@ string error_name(error::Code code) {
       return "OK";
       break;
     case tensorflow::error::CANCELLED:
-      return "Cancelled";
+      return "CANCELLED";
       break;
     case tensorflow::error::UNKNOWN:
-      return "Unknown";
+      return "UNKNOWN";
       break;
     case tensorflow::error::INVALID_ARGUMENT:
-      return "Invalid argument";
+      return "INVALID_ARGUMENT";
       break;
     case tensorflow::error::DEADLINE_EXCEEDED:
-      return "Deadline exceeded";
+      return "DEADLINE_EXCEEDED";
       break;
     case tensorflow::error::NOT_FOUND:
-      return "Not found";
+      return "NOT_FOUND";
       break;
     case tensorflow::error::ALREADY_EXISTS:
-      return "Already exists";
+      return "ALREADY_EXISTS";
       break;
     case tensorflow::error::PERMISSION_DENIED:
-      return "Permission denied";
+      return "PERMISSION_DENIED";
       break;
     case tensorflow::error::UNAUTHENTICATED:
-      return "Unauthenticated";
+      return "UNAUTHENTICATED";
       break;
     case tensorflow::error::RESOURCE_EXHAUSTED:
-      return "Resource exhausted";
+      return "RESOURCE_EXHAUSTED";
       break;
     case tensorflow::error::FAILED_PRECONDITION:
-      return "Failed precondition";
+      return "FAILED_PRECONDITION";
       break;
     case tensorflow::error::ABORTED:
-      return "Aborted";
+      return "ABORTED";
       break;
     case tensorflow::error::OUT_OF_RANGE:
-      return "Out of range";
+      return "OUT_OF_RANGE";
       break;
     case tensorflow::error::UNIMPLEMENTED:
-      return "Unimplemented";
+      return "UNIMPLEMENTED";
       break;
     case tensorflow::error::INTERNAL:
-      return "Internal";
+      return "INTERNAL";
       break;
     case tensorflow::error::UNAVAILABLE:
-      return "Unavailable";
+      return "UNAVAILABLE";
       break;
     case tensorflow::error::DATA_LOSS:
-      return "Data loss";
+      return "DATA_LOSS";
       break;
     default:
       char tmp[30];
-      snprintf(tmp, sizeof(tmp), "Unknown code(%d)", static_cast<int>(code));
+      snprintf(tmp, sizeof(tmp), "UNKNOWN_CODE(%d)", static_cast<int>(code));
       return tmp;
       break;
   }
@@ -192,6 +194,13 @@ string Status::ToString() const {
     string result(error_name(code()));
     result += ": ";
     result += state_->msg;
+
+    for (const std::pair<const std::string, std::string>& element :
+         state_->payloads) {
+      absl::StrAppend(&result, " [", element.first, "='",
+                      absl::CHexEscape(element.second), "']");
+    }
+
     return result;
   }
 }
@@ -206,11 +215,11 @@ void Status::SetPayload(tensorflow::StringPiece type_url,
   state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-tensorflow::StringPiece Status::GetPayload(
+absl::optional<tensorflow::StringPiece> Status::GetPayload(
     tensorflow::StringPiece type_url) const {
-  if (ok()) return tensorflow::StringPiece();
+  if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
-  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
+  if (payload_iter == state_->payloads.end()) return absl::nullopt;
   return tensorflow::StringPiece(payload_iter->second);
 }
 
@@ -222,17 +231,13 @@ bool Status::ErasePayload(tensorflow::StringPiece type_url) {
   return true;
 }
 
-const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
-    const {
-  if (ok()) return {};
-  return state_->payloads;
-}
-
-void Status::ReplaceAllPayloads(
-    const std::unordered_map<std::string, std::string>& payloads) {
-  if (ok() || payloads.empty()) return;
-  if (state_ == nullptr) state_ = std::make_unique<State>();
-  state_->payloads = payloads;
+void Status::ForEachPayload(
+    const std::function<void(tensorflow::StringPiece, tensorflow::StringPiece)>&
+        visitor) const {
+  if (ok()) return;
+  for (const auto& payload : state_->payloads) {
+    visitor(payload.first, payload.second);
+  }
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& x) {
@@ -247,7 +252,15 @@ string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
   r += " status: ";
   r += v.ToString();
   // Leaks string but this is only to be used in a fatal error message
-  return new string(r);
+  return new std::string(r);
+}
+
+StatusGroup::StatusGroup() {}
+
+StatusGroup::StatusGroup(std::initializer_list<Status> statuses) {
+  for (const Status& s : statuses) {
+    Update(s);
+  }
 }
 
 // kDerivedMarker is appended to the Status message string to indicate whether a
@@ -264,7 +277,7 @@ Status StatusGroup::MakeDerived(const Status& s) {
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
-  return s.error_message().find(kDerivedMarker) != std::string::npos;
+  return absl::StrContains(s.error_message(), kDerivedMarker);
 }
 
 void StatusGroup::ConfigureLogHistory() {
@@ -276,23 +289,50 @@ void StatusGroup::Update(const Status& s) {
     ++num_ok_;
   } else {
     ok_ = false;
-    children_.push_back(s);
-  }
-}
-
-static std::vector<Status> GetNonDerivedStatuses(
-    const std::vector<Status>& status) {
-  std::vector<Status> nonderived_statuses;
-  for (auto& s : status) {
-    if (!StatusGroup::IsDerived(s)) {
-      nonderived_statuses.push_back(s);
+    if (IsDerived(s)) {
+      derived_.insert(s);
+    } else {
+      non_derived_.insert(s);
     }
   }
-  return nonderived_statuses;
 }
 
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
 static constexpr int kMaxAttachedLogMessageSize = 512;
+
+std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
+  std::unordered_map<std::string, std::string> payloads;
+  auto capture_payload = [&payloads](tensorflow::StringPiece key,
+                                     tensorflow::StringPiece value) {
+    payloads[std::string(key)] = std::string(value);
+  };
+
+  for (const auto& status : derived_) {
+    status.ForEachPayload(capture_payload);
+  }
+
+  // If a key appears in both derived_ and non_derived_ payloads, then the
+  // non_derived_ payload receives priority.
+  for (const auto& status : non_derived_) {
+    status.ForEachPayload(capture_payload);
+  }
+
+  return payloads;
+}
+
+Status MakeStatus(
+    tensorflow::error::Code code, const tensorflow::StringPiece& message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  Status status(code, message);
+  for (const auto& payload : payloads) {
+    status.SetPayload(payload.first, payload.second);
+  }
+  return status;
+}
+
+std::string MakeString(const Status& status) {
+  return absl::StrCat(error_name(status.code()), ": ", status.error_message());
+}
 
 // Summarize all the status objects in the StatusGroup. This is used when
 // individual Status objects in the StatusGroup are not already summarized.
@@ -316,46 +356,47 @@ Status StatusGroup::as_summary_status() const {
     }
   };
 
-  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
-
   // If only one root status is found, do not add summary header and footer.
-  if (nonderived_statuses.size() == 1) {
-    return Status(nonderived_statuses[0].code(),
-                  strings::StrCat(nonderived_statuses[0].error_message(),
-                                  get_recent_logs()));
+  if (non_derived_.size() == 1) {
+    return MakeStatus(non_derived_.begin()->code(),
+                      strings::StrCat(non_derived_.begin()->error_message(),
+                                      get_recent_logs()),
+                      GetPayloads());
   }
 
-  if (!nonderived_statuses.empty()) {
+  if (!non_derived_.empty()) {
     std::vector<std::string> fmt;
 
-    fmt.push_back(strings::Printf("%zu root error(s) found.",
-                                  nonderived_statuses.size()));
+    fmt.push_back(
+        strings::Printf("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
     auto code = tensorflow::error::CANCELLED;
-    for (auto& s : nonderived_statuses) {
+    for (const auto& s : non_derived_) {
       // NOTE: Avoid using CANCELLED as the code of summary status if the group
       // contains other error code.
       if (code == tensorflow::error::CANCELLED &&
           s.code() != tensorflow::error::CANCELLED) {
         code = s.code();
       }
-      fmt.emplace_back(strings::StrCat("  (", index, ") ", s.ToString()));
+      fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));
       ++index;
     }
 
     fmt.push_back(strings::Printf("%zu successful operations.", num_ok_));
     fmt.push_back(
-        strings::Printf("%zu derived errors ignored.",
-                        children_.size() - nonderived_statuses.size()));
+        strings::Printf("%zu derived errors ignored.", derived_.size()));
 
     std::string error_msg =
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
 
-    return Status(code, strings::StrCat(error_msg, get_recent_logs()));
+    return MakeStatus(code, strings::StrCat(error_msg, get_recent_logs()),
+                      GetPayloads());
   } else {
     // All statuses are derived. Pick the first available status to return.
-    return children_[0];
+    return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                  derived_.begin()->error_message(),
+                                  GetPayloads()));
   }
 }
 
@@ -366,27 +407,29 @@ Status StatusGroup::as_concatenated_status() const {
     return Status::OK();
   }
 
-  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
-
   // If only one root status is found, return it directly.
-  if (nonderived_statuses.size() == 1) {
-    return nonderived_statuses[0];
+  if (non_derived_.size() == 1) {
+    return MakeStatus(non_derived_.begin()->code(),
+                      non_derived_.begin()->error_message(), GetPayloads());
   }
 
-  if (!nonderived_statuses.empty()) {
+  if (!non_derived_.empty()) {
     std::vector<string> fmt;
     fmt.emplace_back("\n=====================");
-    for (auto& s : nonderived_statuses) {
-      fmt.emplace_back(s.ToString());
+    for (const auto& s : non_derived_) {
+      fmt.emplace_back(MakeString(s));
     }
     fmt.emplace_back("=====================\n");
-    return Status(
-        nonderived_statuses[0].code(),
-        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize));
+    return MakeStatus(
+        non_derived_.begin()->code(),
+        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize),
+        GetPayloads());
   } else {
     // All statuses are derived. Pick the first available status to return.
     // This should not happen in normal execution.
-    return children_[0];
+    return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                  derived_.begin()->error_message(),
+                                  GetPayloads()));
   }
 }
 

@@ -77,14 +77,13 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  int cc_major = 0, cc_minor = 0;
-  device_description.cuda_compute_capability(&cc_major, &cc_minor);
-
   string expected;
-  if (cc_major < 6) {
-    // We do not vectorize for GPU before Pascal.
+  if (!backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    // We do not vectorize for GPU before Volta.
     expected = "CHECK-NOT: ld.global.nc.v2.f32";
   } else {
     expected = R"(

@@ -21,7 +21,8 @@ def mlir_generated_test_denylisted_models():
 # Test cases which only work with MLIR-based conversion now.
 def mlir_only_generated_test_models():
     return [
-        "batchmatmul",
+        "avg_pool3d",
+        "broadcast_args",
         "broadcast_to",
         "broadcast_gradient_args",
         "cond",
@@ -31,9 +32,7 @@ def mlir_only_generated_test_models():
         "conv3d",
         "conv3d_transpose",
         "cumsum",
-        # TODO(b/186563810): Enable after resolving tensorflow_addons dep issue
-        # that causes test failures in the exported codebase.
-        # copybara:uncomment_begin
+        # copybara:uncomment_begin(Exclude tests that depend on tensorflow_addons APIs)
         # "dense_image_warp",
         # copybara:uncomment_end
         "dynamic_rnn",
@@ -43,6 +42,7 @@ def mlir_only_generated_test_models():
         "imag",
         "irfft2d",
         "is_finite",
+        "max_pool3d",
         "max_pool_with_argmax",
         "parse_example",
         "real",
@@ -51,6 +51,7 @@ def mlir_only_generated_test_models():
         "rfft",
         "rfft2d",
         "roll",
+        "roll_with_constant",
         "segment_sum",
         "shape_to_strided_slice",
         "softplus",
@@ -63,6 +64,7 @@ def mlir_only_generated_test_models():
         "tensor_list_resize",
         "tensor_list_set_item",
         "tensor_list_dynamic_shape",
+        "tensor_scatter_add",
         "tensor_scatter_update",
         "where_v2",
         "while",

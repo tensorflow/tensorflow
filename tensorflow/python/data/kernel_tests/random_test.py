@@ -50,6 +50,12 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
       # random number generation).
       self.assertNotEqual(output_1, output_2)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.random(
+        seed=42, name="random").take(1).map(lambda _: 42)
+    self.assertDatasetProduces(dataset, [42])
+
 
 if __name__ == "__main__":
   test.main()

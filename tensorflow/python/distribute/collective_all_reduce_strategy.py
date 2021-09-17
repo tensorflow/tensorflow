@@ -451,6 +451,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       config_proto = copy.deepcopy(context.context().config)
       config_proto = self._update_config_proto(config_proto)
 
+      # If coordination service is enabled, use its internal heartbeat to detect
+      # peer failures instead of the Python-level health check.
+      if config_proto.experimental.coordination_service:
+        self._enable_check_health = False
+
       if hasattr(cluster_resolver, "port"):
         port = cluster_resolver.port
       else:
@@ -601,7 +606,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise NotImplementedError(
           "InputReplicationMode.PER_REPLICA "
           "is only supported in "
-          "`experimental_distribute_datasets_from_function`."
+          "`distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy"
       )
     input_context = self._make_input_context()
     return input_lib.get_distributed_dataset(
@@ -618,7 +624,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise NotImplementedError(
           "InputReplicationMode.PER_REPLICA "
           "is only supported in "
-          " `experimental_distribute_datasets_from_function` "
+          "`distribute_datasets_from_function` "
           "of tf.distribute.MirroredStrategy")
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(

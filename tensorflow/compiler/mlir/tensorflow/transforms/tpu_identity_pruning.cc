@@ -43,6 +43,12 @@ namespace {
 struct TPUIdentityPruning
     : public PassWrapper<TPUIdentityPruning, OperationPass<ModuleOp>> {
   void runOnOperation() override;
+
+  StringRef getArgument() const final { return "tf-tpu-identity-pruning"; }
+
+  StringRef getDescription() const final {
+    return "Removes Identity/IdentityN ops from the TPU computation";
+  }
 };
 
 // Collects all reachable functions (via call ops) from a given region.
@@ -104,9 +110,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass() {
   return std::make_unique<TPUIdentityPruning>();
 }
 
-static PassRegistration<TPUIdentityPruning> pass(
-    "tf-tpu-identity-pruning",
-    "Removes Identity/IdentityN ops from the TPU computation");
+static PassRegistration<TPUIdentityPruning> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

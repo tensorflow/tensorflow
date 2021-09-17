@@ -236,6 +236,7 @@ py_library(
     name = "session",
     srcs = ["session.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:mixed_precision_global_state",
         "//tensorflow/python:platform",
@@ -283,6 +284,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
+        "no_oss",  # b/198485096
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],

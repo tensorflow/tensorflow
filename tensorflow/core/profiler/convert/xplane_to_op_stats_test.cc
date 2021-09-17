@@ -52,6 +52,9 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
 
   XPlaneBuilder device_plane(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kDevVendor)),
+                            kDeviceVendorNvidia);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
                             kClockRateKHz);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
@@ -80,8 +83,14 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
   XSpace space;
   XPlaneBuilder device_plane1(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+  device_plane1.AddStatValue(*device_plane1.GetOrCreateStatMetadata(
+                                 GetStatTypeStr(StatType::kDevVendor)),
+                             kDeviceVendorNvidia);
   XPlaneBuilder device_plane2(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
+  device_plane2.AddStatValue(*device_plane2.GetOrCreateStatMetadata(
+                                 GetStatTypeStr(StatType::kDevVendor)),
+                             kDeviceVendorNvidia);
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
@@ -94,8 +103,8 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 }
 
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -124,9 +133,9 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -192,8 +201,8 @@ TEST(ConvertXPlaneToOpStats, Hostnames) {
 }
 
 void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 456;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 456;
   // Create a host only XSpace for test.
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&xspace));
   host_plane_builder.ReserveLines(2);

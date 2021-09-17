@@ -92,6 +92,10 @@ class Batch {
   // empty.
   std::unique_ptr<TaskType> RemoveTask();
 
+  // Caller takes ownership of returned tasks.
+  // Must be called after a batch is closed.
+  std::vector<std::unique_ptr<TaskType>> RemoveAllTasks();
+
   // Returns the number of tasks in the batch.
   int num_tasks() const;
 
@@ -102,6 +106,8 @@ class Batch {
   const TaskType& task(int i) const;
 
   // Returns a pointer to the ith task (in terms of insertion order).
+  //
+  // Caller doesn't take ownership.
   TaskType* mutable_task(int i);
 
   // Returns the sum of the task sizes.
@@ -218,6 +224,21 @@ void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
     size_ += task->size();
     tasks_.push_back(std::move(task));
     empty_.store(false);
+  }
+}
+
+template <typename TaskType>
+std::vector<std::unique_ptr<TaskType>> Batch<TaskType>::RemoveAllTasks() {
+  DCHECK(IsClosed());
+  {
+    mutex_lock l(mu_);
+    size_ = 0;
+    empty_.store(true);
+    std::vector<std::unique_ptr<TaskType>> tasks_to_return;
+
+    // Swapping vector takes constant time.
+    tasks_to_return.swap(tasks_);
+    return std::move(tasks_to_return);
   }
 }
 

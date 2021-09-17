@@ -278,7 +278,7 @@ static void ConcatHelper(::testing::benchmark::State& state,
                   .Finalize(g, &node));
 
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
                           ((kDim1 * dim2) + (kDim1 * dim2)) * sizeof(T));
 }
 

@@ -292,52 +292,6 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
   return kTfLiteOk;
 }
 
-// Returns the index of the Dequantize op_code.
-// If a Dequantize op_code doesn't exist, adds it and returns its index.
-int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
-  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (GetBuiltinCode(model->operator_codes[i].get()) ==
-        BuiltinOperator_DEQUANTIZE) {
-      return i;
-    }
-  }
-  model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
-  int op_code_idx = model->operator_codes.size() - 1;
-  model->operator_codes[op_code_idx]->builtin_code = BuiltinOperator_DEQUANTIZE;
-  model->operator_codes[op_code_idx]->deprecated_builtin_code =
-      static_cast<int8_t>(BuiltinOperator_DEQUANTIZE);
-  // Version 2 and onwards supports INT8 inputs.
-  model->operator_codes[op_code_idx]->version = 2;
-
-  // Return the index of the newly placed OperatorCodeT.
-  return op_code_idx;
-}
-
-// Creates a Dequantize OperatorT object.
-void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
-                            int32_t input, int32_t output) {
-  OperatorT* op_raw = new OperatorT;
-  op_raw->opcode_index = GetOrInsertDequantizeOpCodeIndex(model);
-  op_raw->inputs = {input};
-  op_raw->outputs = {output};
-
-  op->reset(op_raw);
-}
-
-// Create a new TensorT object.
-void MakeTensor(const string& name, const std::vector<int32_t>& shape,
-                const std::vector<int32_t>& shape_signature,
-                std::unique_ptr<TensorT>* tensor) {
-  TensorT* tensor_raw = new TensorT;
-  tensor_raw->name = name;
-  tensor_raw->shape = shape;
-  if (!shape_signature.empty()) {
-    tensor_raw->shape_signature = shape_signature;
-  }
-
-  tensor->reset(tensor_raw);
-}
-
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
   for (int i = 0, end = model->operator_codes.size(); i < end; ++i) {
@@ -419,12 +373,16 @@ PassQuantizationAndGetConsumers(
       GetTensorConsumers(model, subgraph, output_tensor_idx));
 }
 
-TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
-                                 const Model* input_model,
-                                 bool use_hybrid_evaluation,
-                                 uint64_t weights_min_num_elements,
-                                 const CustomOpMap& custom_op_map,
-                                 bool use_updated_hybrid_scheme) {
+inline bool IsOpDenylisted(const flat_hash_set<BuiltinOperator>& op_denylist,
+                           const BuiltinOperator op_code) {
+  return op_denylist.find(op_code) != op_denylist.end();
+}
+
+TfLiteStatus QuantizeWeightsInt8(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    bool use_hybrid_evaluation, uint64_t weights_min_num_elements,
+    const CustomOpMap& custom_op_map, bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist = {}) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -478,6 +436,7 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
         // dequantization we need to add a Dequantize op.
         bool eval_hybrid =
             use_hybrid_evaluation &&
+            !IsOpDenylisted(op_denylist, GetBuiltinCode(consumer_op_code)) &&
             IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map,
                                  use_updated_hybrid_scheme) &&
             CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
@@ -648,7 +607,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
 }
 
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model, BufferType quant_type) {
+                             const Model* input_model, BufferType quant_type,
+                             bool use_updated_hybrid_scheme) {
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
       // By default we require that only weights with more than
@@ -656,7 +616,7 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
       CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
-                                 kUseUpdatedHybridSchemeDefault);
+                                 use_updated_hybrid_scheme);
     }
     case BufferType::QUANTIZED_FLOAT16:
       return QuantizeWeightsFloat16(builder, input_model);
@@ -672,15 +632,15 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              kUseUpdatedHybridSchemeDefault);
 }
 
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model,
-                             uint64_t weights_min_num_elements,
-                             const CustomOpMap& custom_op_map,
-                             bool use_updated_hybrid_scheme) {
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
+    bool use_updated_hybrid_scheme,
+    const flat_hash_set<BuiltinOperator>& op_denylist) {
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,
                              weights_min_num_elements, custom_op_map,
-                             use_updated_hybrid_scheme);
+                             use_updated_hybrid_scheme, op_denylist);
 }
 
 }  // namespace optimize

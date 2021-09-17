@@ -19,21 +19,33 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
 import weakref
 
+import numpy as np
+
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
+from tensorflow.python.distribute.coordinator import coordinator_context
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 
 
-# Variable used in PSStrategy TF 1 and CentralStorageStrategy.
-class AggregatingVariable(variables_lib.Variable, core.Tensor):
+# Variable used in PSStrategy TF 1, TF2 and CentralStorageStrategy.
+class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
+                          core.Tensor):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -161,6 +173,9 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
   def read_value(self):
     return self._v.read_value()
 
+  def sparse_read(self, indices, name=None):
+    return self._v.sparse_read(indices, name=name)
+
   def eval(self, session=None):
     return self._v.eval(session)
 
@@ -198,6 +213,8 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
 
   # TODO(josh11b): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
+    if isinstance(self._v, CachingVariable):
+      return self._v._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
   def _map_resources(self, save_options):
@@ -332,8 +349,170 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
     pass
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
-                                 as_ref=as_ref)
+    return self._v._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
+
+
+class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
+  """A wrapper around a variable that caches read value locally."""
+
+  def __init__(self, v):
+    self._v = v
+    self._cache = None
+    self._current_new_cache_scope_count = 0
+
+  def get(self):
+    return self._v
+
+  def __getattr__(self, name):
+    return getattr(self._v, name)
+
+  def read_value(self):
+    if distribute_utils.caching_scope_local.in_caching_scope():
+      return self.cached_read_value()
+    return self._v.read_value()
+
+  def sparse_read(self, indices, name=None):
+    return self._v.sparse_read(indices, name=name)
+
+  def cached_read_value(self):
+    if (distribute_utils.caching_scope_local.new_cache_scope_count >
+        self._current_new_cache_scope_count):
+      self._current_new_cache_scope_count += 1
+      self._cache = None
+
+    with ops.device("CPU:0"):
+      if self._cache is not None:
+        return self._cache
+      else:
+        self._cache = array_ops.identity(self._v)
+        return self._cache
+
+  def assign_sub(self, *args, **kwargs):
+    return self._v.assign_sub(*args, **kwargs)
+
+  def assign_add(self, *args, **kwargs):
+    return self._v.assign_add(*args, **kwargs)
+
+  def assign(self, *args, **kwargs):
+    return self._v.assign(*args, **kwargs)
+
+  @property
+  def initializer(self):
+    return self._v.initializer
+
+  def initialized_value(self):
+    return self._v.initialized_value()
+
+  @property
+  def initial_value(self):
+    return self._v.initial_value
+
+  @property
+  def op(self):
+    return self._v.op
+
+  def value(self):
+    if distribute_utils.caching_scope_local.in_caching_scope():
+      return self.cached_read_value()
+    return self._v.value()
+
+  def eval(self, session=None):
+    return self._v.eval(session)
+
+  @property
+  def graph(self):
+    return self._v.graph
+
+  @property
+  def device(self):
+    return self._v.device
+
+  @property
+  def shape(self):
+    return self._v.shape
+
+  @property
+  def synchronization(self):
+    return self._v.synchronization
+
+  @property
+  def name(self):
+    return self._v.name
+
+  @property
+  def trainable(self):
+    return self._v.trainable
+
+  @property
+  def dtype(self):
+    return self._v.dtype
+
+  @property
+  def constraint(self):
+    return self._v.constraint
+
+  def __array__(self, dtype=None):
+    return np.asarray(self.numpy(), dtype=dtype)
+
+  def __complex__(self):
+    return complex(self.value().numpy())
+
+  def __int__(self):
+    return int(self.value().numpy())
+
+  def __float__(self):
+    return float(self.value().numpy())
+
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+
+  def __str__(self):
+    return str(self._v)
+
+  def __repr__(self):
+    return repr(self._v)
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    pass
+
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    if distribute_utils.caching_scope_local.in_caching_scope():
+      return self.cached_read_value()
+    return self._v._dense_var_to_tensor(dtype=dtype, name=name, as_ref=False)  # pylint: disable=protected-access
+
+  @classmethod
+  def _overload_overloadable_operators(cls):
+    """Register overloads for all operators."""
+    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+      # Overloading __eq__ or __ne__ does not work as expected.
+      if operator == "__eq__" or operator == "__ne__":
+        continue
+      cls._tensor_overload_operator(operator)
+
+  @classmethod
+  def _tensor_overload_operator(cls, operator):
+    """Delegate an operator overload to `ops.Tensor`."""
+    tensor_operator = getattr(ops.Tensor, operator)
+
+    def _operator(v, *args, **kwargs):
+      return tensor_operator(v.value(), *args, **kwargs)  # pylint: disable=protected-access
+    setattr(cls, operator, _operator)
+
+  def _gather_saveables_for_checkpoint(self):
+    return {trackable.VARIABLE_VALUE_KEY: self._v}
+
+  def _map_resources(self, save_options):
+    """For implementing `Trackable`."""
+    # By delegating this method to the wrapped variable, SavedModel with
+    # AggregatingVariable are identical to SavedModel with normal variables.
+    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
+    obj_map[self] = obj_map[self._v]
+    return obj_map, resource_map
 
 
 # Register a conversion function which reads the value of the variable,
@@ -344,3 +523,122 @@ def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
 
 ops.register_tensor_conversion_function(AggregatingVariable,
                                         _tensor_conversion_aggregate)
+
+
+# Register a conversion function which reads the value of the variable,
+# allowing instances of the class to be used as tensors.
+def _tensor_conversion_caching(var, dtype=None, name=None, as_ref=False):
+  return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
+
+
+ops.register_tensor_conversion_function(CachingVariable,
+                                        _tensor_conversion_caching)
+
+CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
+
+
+class DistributedTable(lookup_ops.StaticHashTable):
+  """A distributed StaticHashTable for ParameterServerStrategy.
+
+  An instance of DistributedTable has copies of a StaticHashTable and its
+  resource handle on the coordinator of each worker, created at the
+  DistributedTable instance initialization time with initializers on each
+  worker. Users can call methods on a DistributedTable as if it were a
+  StaticHashTable, which leads to execution with the resource local to the
+  consumer worker (or the coordinator, if calling from the coordinator). This
+  implementation relies on the fact that the methods of StaticHashTable are
+  queried with the resource handle (instead of the python object).
+
+  Currently, at saving time, a DistributedTable is saved as a StaticHashTable on
+  the coordinator, and restoring a DistributedTable from SavedModel is not
+  supported.
+  """
+
+  def __init__(self, strategy, wrapped_creator):
+
+    self._coordinator_instance = wrapped_creator()
+    self._wrapped_creator = wrapped_creator
+    self._coordinator = strategy._cluster_coordinator
+    # self._distributed_table is a RemoteValue mapping worker_index to
+    # RemoteValue that wraps a resource handle on the worker
+    self._distributed_table = None
+    self._distributed_table_creation_lock = threading.Lock()
+
+    if not save_context.in_save_context():
+      self._maybe_build_distributed_table()
+
+  def __getattr__(self, attr):
+    # This allows copy.copy(DistributedTable), e.g. at saving time.
+    # (DistributedVariable uses the same fix.) When copying an object, copy.copy
+    # doesn't invoke its __init__ method, instead it makes a new empty object,
+    # then copies the attributes over. copy.copy looks for attributes like
+    # "__setstate__" in case the object implements its custom unpickling. Since
+    # DistributedTable doesn't have those attributes defined, __getattr__ will
+    # be invoked, which tries to access the `_coordinator_instance` attribute.
+    # But that doesn't exist either because this is an empty object, and again
+    # __getattr__ is invoked, leading to an infinite recursion.
+    if attr == "_coordinator_instance":
+      raise AttributeError()
+
+    if attr in self._coordinator_instance.__dict__:
+      attr_value = self._coordinator_instance.__dict__[attr]
+      if callable(attr_value):
+
+        def wrapper(*args, **kwargs):
+          return attr_value(self, *args, **kwargs)
+
+        return wrapper
+      elif isinstance(attr_value, property):
+        return attr_value
+      else:
+        return getattr(self._coordinator_instance, attr)
+    else:
+      return getattr(self._coordinator_instance, attr)
+
+  def resource_handle_call_time_value(self):
+    """Returns a closure to run for a resource handle at call time and its spec.
+
+    This function is called in self.resource_handle to create a placeholder
+    which returns a resource handle on some worker or on the coordinator.
+    """
+
+    def closure():
+      # function to be evaluated at function call time, returning a nest of
+      # tensors compatible with `spec`.
+      dispatch_context = coordinator_context.get_current_dispatch_context()
+      if dispatch_context:
+        remote_value = self._distributed_table._values[  # pylint: disable=protected-access
+            dispatch_context.worker_index]
+        dispatch_context.maybe_rebuild_remote_values(remote_value)
+        ret = dispatch_context.maybe_get_remote_value(remote_value)
+        return ret
+
+      else:
+        return self._coordinator_instance.resource_handle
+
+    return closure, tensor_spec.TensorSpec([], dtype=dtypes.resource)
+
+  def _maybe_build_distributed_table(self):
+    """Create table objects and resources on each worker if hasn't been created."""
+    with self._distributed_table_creation_lock:
+      if not self._distributed_table:
+
+        def create_copy():
+          new_table = self._wrapped_creator()
+          ret = new_table.resource_handle
+          return ret
+
+        self._distributed_table = (
+            self._coordinator._create_per_worker_resources(create_copy))  # pylint: disable=protected-access
+
+  @property
+  def resource_handle(self):
+    if context.executing_eagerly() or save_context.in_save_context():
+      return self._coordinator_instance.resource_handle
+    else:
+      self._maybe_build_distributed_table()
+      closure, spec = self.resource_handle_call_time_value()
+      return ops.get_default_graph().capture_call_time_value(
+          closure,
+          spec,
+          default_value=self._coordinator_instance.resource_handle)

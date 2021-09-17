@@ -33,6 +33,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "coordination_service_agent",
+    hdrs = ["coordination_service_agent.h"],
+    deps = [
+        ":coordination_client",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "coordination_service_agent_impl",
+    srcs = ["coordination_service_agent.cc"],
+    deps = [":coordination_service_agent"],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [

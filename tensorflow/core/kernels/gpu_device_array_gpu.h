@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-static constexpr int kMaxInlineGpuPointers = 8;
 // To decode on the device side, use GetGpuDeviceArrayOnDevice.
 // To encode on the host side, use GpuDeviceArrayOnHost.
 template <typename ValueType, int MaxInlineValues = 8>

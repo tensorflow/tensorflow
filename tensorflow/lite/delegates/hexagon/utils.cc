@@ -236,6 +236,12 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       // TODO(b/129276536): Add support for activation here.
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
+      // Disable max pool on delegate with activation SAME when filter is > 12.
+      if (pool_params->padding == kTfLitePaddingSame &&
+          (pool_params->filter_height >= 13 ||
+           pool_params->filter_width >= 13)) {
+        return false;
+      }
       return pool_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinAveragePool2d: {

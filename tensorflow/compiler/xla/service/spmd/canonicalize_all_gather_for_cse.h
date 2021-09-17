@@ -33,9 +33,9 @@ class CanonicalizeAllGatherForCSE : public HloModulePass {
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* comp);
-  int64 NextChannelId() { return next_channel_id_++; }
+  int64_t NextChannelId() { return next_channel_id_++; }
 
-  int64 next_channel_id_;
+  int64_t next_channel_id_;
 };
 
 }  // namespace xla

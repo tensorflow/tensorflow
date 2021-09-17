@@ -20,7 +20,7 @@ limitations under the License.
 namespace stream_executor {
 namespace rng {
 
-bool RngSupport::CheckSeed(const uint8 *seed, uint64 seed_bytes) {
+bool RngSupport::CheckSeed(const uint8 *seed, uint64_t seed_bytes) {
   CHECK(seed != nullptr);
 
   if (seed_bytes < kMinSeedBytes) {

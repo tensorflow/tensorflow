@@ -104,6 +104,7 @@ def lbeta(x, name=None):
 
 
 @tf_export('math.special.dawsn')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def dawsn(x, name=None):
   """Computes Dawson's integral of `x` element-wise.
@@ -134,6 +135,7 @@ def dawsn(x, name=None):
 
 
 @tf_export('math.special.expint')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def expint(x, name=None):
   """Computes the Exponential integral of `x` element-wise.
@@ -163,6 +165,7 @@ def expint(x, name=None):
 
 
 @tf_export('math.special.fresnel_cos')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_cos(x, name=None):
   """Computes Fresnel's cosine integral of `x` element-wise.
@@ -193,6 +196,7 @@ def fresnel_cos(x, name=None):
 
 
 @tf_export('math.special.fresnel_sin')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_sin(x, name=None):
   """Computes Fresnel's sine integral of `x` element-wise.
@@ -222,6 +226,7 @@ def fresnel_sin(x, name=None):
 
 
 @tf_export('math.special.spence')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def spence(x, name=None):
   """Computes Spence's integral of `x` element-wise.
@@ -251,6 +256,7 @@ def spence(x, name=None):
 
 
 @tf_export('math.bessel_i0', 'math.special.bessel_i0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
@@ -279,6 +285,7 @@ def bessel_i0(x, name=None):
 
 
 @tf_export('math.bessel_i0e', 'math.special.bessel_i0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0e(x, name=None):
   """Computes the Bessel i0e function of `x` element-wise.
@@ -305,6 +312,7 @@ def bessel_i0e(x, name=None):
 
 
 @tf_export('math.bessel_i1', 'math.special.bessel_i1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
@@ -333,6 +341,7 @@ def bessel_i1(x, name=None):
 
 
 @tf_export('math.bessel_i1e', 'math.special.bessel_i1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1e(x, name=None):
   """Computes the Bessel i1e function of `x` element-wise.
@@ -359,6 +368,7 @@ def bessel_i1e(x, name=None):
 
 
 @tf_export('math.special.bessel_k0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0(x, name=None):
   """Computes the Bessel k0 function of `x` element-wise.
@@ -387,6 +397,7 @@ def bessel_k0(x, name=None):
 
 
 @tf_export('math.special.bessel_k0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0e(x, name=None):
   """Computes the Bessel k0e function of `x` element-wise.
@@ -413,6 +424,7 @@ def bessel_k0e(x, name=None):
 
 
 @tf_export('math.special.bessel_k1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1(x, name=None):
   """Computes the Bessel k1 function of `x` element-wise.
@@ -441,6 +453,7 @@ def bessel_k1(x, name=None):
 
 
 @tf_export('math.special.bessel_k1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1e(x, name=None):
   """Computes the Bessel k1e function of `x` element-wise.
@@ -467,6 +480,7 @@ def bessel_k1e(x, name=None):
 
 
 @tf_export('math.special.bessel_j0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j0(x, name=None):
   """Computes the Bessel j0 function of `x` element-wise.
@@ -493,6 +507,7 @@ def bessel_j0(x, name=None):
 
 
 @tf_export('math.special.bessel_j1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j1(x, name=None):
   """Computes the Bessel j1 function of `x` element-wise.
@@ -519,6 +534,7 @@ def bessel_j1(x, name=None):
 
 
 @tf_export('math.special.bessel_y0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y0(x, name=None):
   """Computes the Bessel y0 function of `x` element-wise.
@@ -545,6 +561,7 @@ def bessel_y0(x, name=None):
 
 
 @tf_export('math.special.bessel_y1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y1(x, name=None):
   """Computes the Bessel y1 function of `x` element-wise.
@@ -755,8 +772,10 @@ def _einsum_v1(equation, *inputs, **kwargs):
   """Legacy implementation of einsum without using EinsumOp."""
   name = kwargs.pop('name', None)
   if kwargs:
-    raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
-        [format(key) for key in sorted(list(kwargs.keys()))]))
+    raise TypeError(
+        f'Invalid keyword arguments for this function: '
+        f'{", ".join([format(key) for key in sorted(list(kwargs.keys()))])}.'
+        f' Expected: name.')
   with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
     inputs = list(inputs)
     input_shapes = [x.shape for x in inputs]
@@ -772,14 +791,14 @@ def _einsum_v1(equation, *inputs, **kwargs):
           return math_ops.trace(inputs[0])
         if input_labels.count(a) > 1:
           raise ValueError(
-              'Subscript not supported: an axis appears more than once: %s' %
-              input_labels)
+              f'Subscript not supported: the axis {a} appears more than once'
+              f' in {input_labels}.')
     for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)
       if input_count > 2 and a not in output_axis_labels:
         logging.warn(
-            'Falling back to exponential-space implementation of einsum()'
-            ' because index "%s" is summed over more than two inputs.', a)
+            f'Falling back to exponential-space implementation of einsum()'
+            f' because index {a} is summed over more than two inputs.')
         return _exponential_space_einsum_v1(equation, *inputs)
 
     # Use xla_einsum if executing on TPU and if the operation is a 2 input
@@ -809,7 +828,9 @@ def _einsum_v1(equation, *inputs, **kwargs):
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
     if sorted(temp_axis_labels) != sorted(output_axis_labels):
-      raise ValueError('Invalid equation: %s' % equation)
+      raise ValueError(
+          f'Invalid equation: {equation}. The computed and specified output '
+          f'labels do not match: {temp_axis_labels} vs {output_axis_labels}.')
 
     perm = [temp_axis_labels.index(a) for a in output_axis_labels]
     return _transpose_if_necessary(temp, perm)
@@ -837,14 +858,15 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
   equation = equation.replace(' ', '')
   match = re.match('^([a-zA-Z,.]+)(->[a-zA-Z.]*)?$', equation)
   if not match:
-    raise ValueError('Indices have incorrect format: %s' % equation)
+    raise ValueError(f'Indices have incorrect format. Received: {equation}.')
 
   input_axis_labels = match.group(1).split(',')
   output_axis_labels = match.group(2)[2:] if match.group(2) else None
 
   if len(input_shapes) != len(input_axis_labels):
-    raise ValueError('Got %d arguments for equation "%s", expecting %d' %
-                     (len(input_shapes), equation, len(input_axis_labels)))
+    raise ValueError(
+        f'Got {len(input_shapes)} arguments for equation "{equation}", '
+        f'expecting {len(input_axis_labels)}.')
 
   # Resolve Ellipsis
   # Assign axes labels for unspecified dimensions in inputs. Labels taken
@@ -858,9 +880,11 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
       if '...' in ax:
         parts = ax.split('...')
         if len(parts) != 2:
-          raise ValueError('Unable to resolve ellipsis. Excess number found.')
+          raise ValueError(f'Unable to resolve ellipsis. '
+                           f'Excess number found: {len(parts)-1} vs 1.')
         if input_shapes[i].ndims is None:
-          raise ValueError('Unable to statically infer ellipsis axes.')
+          raise ValueError('Unable to statically infer ellipsis axes. The '
+                           'input shapes has a dynamic dimensionality.')
         n = input_shapes[i].ndims - len(''.join(parts))
         if n < 0:
           raise ValueError('Ellipses lengths do not match.')
@@ -874,12 +898,14 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
           ellipsis_axes = replace_axes
 
     if any('.' in ax for ax in input_axis_labels):
-      raise ValueError('period "." found outside of ellipsis')
+      raise ValueError(
+          f'Period "." found outside of ellipsis in input {input_axis_labels}.')
 
     if output_axis_labels is not None:
       output_axis_labels = output_axis_labels.replace('...', ellipsis_axes)
       if '.' in output_axis_labels:
-        raise ValueError('period "." found outside of ellipsis')
+        raise ValueError(f'Period "." found outside of ellipsis in output '
+                         f'{output_axis_labels}.')
 
   if output_axis_labels is None:
     # infer the output subscripts if not given, assume alphabetical order,
@@ -926,12 +952,12 @@ def _einsum_v1_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
   """
   if len(t0_axis_labels) != len(t0.shape):
     raise ValueError(
-        'Tensor t0 of rank %d does not match einsum reduction of length %d' %
-        (len(t0.shape), len(t0_axis_labels)))
+        f'Tensor `t0` of rank {len(t0.shape)} does not match einsum reduction '
+        f'of length {len(t0_axis_labels)}.')
   if len(t1_axis_labels) != len(t1.shape):
     raise ValueError(
-        'Tensor t1 of rank %d does not match einsum reduction of length %d' %
-        (len(t1.shape), len(t1_axis_labels)))
+        f'Tensor `t1` of rank {len(t1.shape)} does not match einsum reduction '
+        f'of length {len(t1_axis_labels)}')
 
   # This function computes the result of a two-argument einsum() using batch
   # matrix multiplication.  This involves
@@ -1085,7 +1111,7 @@ def _exponential_space_einsum_v1(equation, *inputs):
 
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:
-    raise ValueError('Unknown output axes: %s' % missing_idx)
+    raise ValueError(f'Unknown output axes: {missing_idx}.')
 
   axis_order = {}
   for ax in indices:
@@ -1098,17 +1124,14 @@ def _exponential_space_einsum_v1(equation, *inputs):
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
     if input_.shape.ndims != len(axes_):
       raise ValueError(
-          'Input %d with axes %s has incorrect' \
-          ' number of dimensions (expected %d, got %d)' % (
-              i, axes_, len(axes_), input_.shape.ndims
-          )
-      )
+          f'Input {i} with axes {axes_} has incorrect number of dimensions '
+          f'(expected {len(axes_)}, got {input_.shape.ndims}).')
 
     sorted_idx = sorted(axes_, key=axis_order.get)
 
     if len(set(axes_)) != len(axes_):
       raise ValueError(
-          'Subscript not supported: an axis appears more than once: %s' % axes_)
+          f'Subscript not supported: an axis appears more than once: {axes_}.')
 
     if list(axes_) != sorted_idx:
       permuted = [axes_.find(ax) for ax in sorted_idx]
@@ -1132,7 +1155,8 @@ def _exponential_space_einsum_v1(equation, *inputs):
           dims.append(dim)
 
     if len(set(dims)) > 1:
-      raise ValueError('Dimension mismatch on axis: %s' % ax)
+      raise ValueError(f'Dimension mismatch on axis: {ax}. '
+                       f'Found {len(set(dims))}, expected 1.')
 
     if ax not in idx_out:
       reduction_idx.append(j)
@@ -1154,8 +1178,9 @@ def _einsum_v2(equation, *inputs, **kwargs):
   name = kwargs.pop('name', None)
   optimize = kwargs.pop('optimize', 'greedy')
   if kwargs:
-    msg = 'Invalid keyword arguments for einsum: {}'
-    raise TypeError(msg.format(', '.join(kwargs)))
+    raise TypeError(
+        f'Invalid keyword arguments for einsum: {", ".join(kwargs)}. '
+        f'Valid arguments: name, optimize, greedy.')
 
   with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
     inputs = list(inputs)
@@ -1233,7 +1258,8 @@ def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):
     # support broadcasting.
     ellipsis_label = '0'
     if ellipsis_label in resolved_equation:
-      raise ValueError('Invalid character "0" in equation: {}'.format(equation))
+      raise ValueError(
+          f'Invalid character "{ellipsis_label}" in equation: {equation}.')
     resolved_equation = resolved_equation.replace('...', ellipsis_label)
 
   # Ensure there are no non-alphanumeric characters in the equation, including
@@ -1292,7 +1318,8 @@ def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):
     ellipsis_start = labels.find(ellipsis_label) if ellipsis_label else -1
     if ellipsis_start != -1:  # This input contains an ellipsis.
       if ellipsis_start != labels.rfind(ellipsis_label):
-        raise ValueError('Too many ellipsis')
+        raise ValueError(f'Too many ellipses in input label '
+                         f'{labels.replace(ellipsis_label, "...")}.')
       if len(labels) > len(shape) + 1:
         raise ValueError('Too many named labels in {}th subscript string of'
                          ' equation {} for input shape {} '.format(

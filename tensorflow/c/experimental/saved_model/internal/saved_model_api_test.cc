@@ -401,8 +401,7 @@ TEST_P(CSavedModelAPITest, LoadsStaticHashtableSavedModel) {
     EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
     EXPECT_EQ(TF_NumDims(result), 0);
-    tensorflow::int64* output_value =
-        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    int64_t* output_value = static_cast<int64_t*>(TF_TensorData(result));
     EXPECT_EQ(*output_value, 0);
 
     TF_DeleteTensor(result);
@@ -433,8 +432,7 @@ TEST_P(CSavedModelAPITest, LoadsStaticHashtableSavedModel) {
     EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
     EXPECT_EQ(TF_NumDims(result), 0);
-    tensorflow::int64* output_value =
-        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    int64_t* output_value = static_cast<int64_t*>(TF_TensorData(result));
     EXPECT_EQ(*output_value, 2);
 
     TF_DeleteTensor(result);
@@ -466,8 +464,7 @@ TEST_P(CSavedModelAPITest, LoadsStaticHashtableSavedModel) {
     EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
     EXPECT_EQ(TF_NumDims(result), 0);
-    tensorflow::int64* output_value =
-        static_cast<tensorflow::int64*>(TF_TensorData(result));
+    int64_t* output_value = static_cast<int64_t*>(TF_TensorData(result));
     EXPECT_EQ(*output_value, -1);
 
     TF_DeleteTensor(result);

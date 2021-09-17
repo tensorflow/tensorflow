@@ -66,7 +66,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testWhile(self):
-    self.skipTest("b/166625126")
 
     @def_function.function
     def f():
@@ -121,7 +120,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCond(self):
-    self.skipTest("b/166625126")
     # Ideally, placer should avoid cross-device copies even when the cond op
     # has no placement constraints.
     @def_function.function
@@ -141,7 +139,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testId(self):
-    self.skipTest("b/166625126")
     # Ideally, placer should know that Identity(dataset) should be on the same
     # device as the dataset.
     @def_function.function

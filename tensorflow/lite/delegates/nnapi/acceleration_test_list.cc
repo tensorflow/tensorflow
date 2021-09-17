@@ -331,14 +331,15 @@ QuantizeOpTest/INT8,30
 
 # reduce_test
 -Dynamic.+(Mean|Sum|Prod|Max|Min)OpTest/.+
--ConstUint8(Mean|Sum)OpTest/.+
--ConstInt8MeanOpTest.NonSpecialAxisNonSameScale
--ConstInt8MeanOpTest.QuantizedDifferentScale
+-ConstUint8SumOpTest/.+
 ConstUint8(Max|Min)OpTest/.+,29
-ConstUint8(Mean)OpTest/.+
+ConstUint8(Mean)OpTest/.+,29
 -ConstInt8(Max|Min)OpTest/.+,29
--ConstMeanOpTest.*/.+
--MeanOpTestQuantized.*/.+
+ConstInt8MeanOpTest/.+,29
+-ConstMeanOpTest.*/.+Int16
+ConstMeanOpTest.*/.+,29
+-MeanOpTestQuantized.*/.+Int16
+MeanOpTestQuantized.*/.+,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims

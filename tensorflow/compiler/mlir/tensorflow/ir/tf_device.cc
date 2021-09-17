@@ -374,8 +374,6 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
 }
 
 void Print(ReplicateOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-
   // Print comma separated operands of the following format:
   //   replicated_input
   //     [%a, ...] as %block_arg0: type

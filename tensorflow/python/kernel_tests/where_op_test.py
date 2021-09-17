@@ -128,7 +128,7 @@ class WhereOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testRandomBool(self):
-    self._testRandom(np.bool)
+    self._testRandom(np.bool_)
 
   @test_util.run_deprecated_v1
   def testRandomInt32(self):
@@ -186,7 +186,7 @@ class WhereOpTest(test.TestCase):
     self._testBasic3Tensor(array_ops.where_v2)
 
   def testV2RandomBool(self):
-    self._testRandom(np.bool, None, array_ops.where_v2)
+    self._testRandom(np.bool_, None, array_ops.where_v2)
 
   def testV2RandomInt32(self):
     self._testRandom(np.int32, None, array_ops.where_v2)

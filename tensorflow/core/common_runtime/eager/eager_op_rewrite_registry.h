@@ -50,14 +50,13 @@ class EagerOpRewrite {
 class EagerOpRewriteRegistry {
  public:
   // Phases at which the Eager op rewrite pass should run.
-  // For now we only added PRE_EXECUTION. Expand as needed.
   enum Phase {
     PRE_EXECUTION = 0,  // right before executing an eager op
     POST_PLACEMENT = 1  // after device placement
   };
 
   // Add a rewrite pass to the registry.
-  void Register(Phase phase, int32 ordinal,
+  void Register(Phase phase, int32_t ordinal,
                 std::unique_ptr<EagerOpRewrite> pass);
 
   // Run the rewrite pass registered for a given phase.
@@ -68,7 +67,7 @@ class EagerOpRewriteRegistry {
   static EagerOpRewriteRegistry* Global();
 
  private:
-  static constexpr int32 kNumPhases = 2;
+  static constexpr int32_t kNumPhases = 2;
   // Holds all the registered Eager op rewrites and their ordinal numbers.
   std::array<std::list<std::pair<std::unique_ptr<EagerOpRewrite>, int32>>,
              kNumPhases>
@@ -80,7 +79,7 @@ namespace eager_rewrite_registration {
 // This class is used to register a new Eager Op rewrite.
 class EagerRewriteRegistration {
  public:
-  EagerRewriteRegistration(EagerOpRewriteRegistry::Phase phase, int32 ordinal,
+  EagerRewriteRegistration(EagerOpRewriteRegistry::Phase phase, int32_t ordinal,
                            std::unique_ptr<EagerOpRewrite> pass) {
     EagerOpRewriteRegistry::Global()->Register(phase, ordinal, std::move(pass));
   }

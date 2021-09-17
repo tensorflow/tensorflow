@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
@@ -127,28 +127,28 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (!Input1Static()) {
-    float* default_input1_data = default_interpreter->typed_tensor<float>(
-        default_interpreter->inputs()[0]);
+    float* default_input1_data =
+        default_interpreter->typed_input_tensor<float>(0);
     std::generate(default_input1_data,
                   default_input1_data + ComputeSize(Input1Shape()),
                   std::ref(input1_rng));
 
-    float* xnnpack_input1_data = delegate_interpreter->typed_tensor<float>(
-        delegate_interpreter->inputs()[0]);
+    float* xnnpack_input1_data =
+        delegate_interpreter->typed_input_tensor<float>(0);
     std::copy(default_input1_data,
               default_input1_data + ComputeSize(Input1Shape()),
               xnnpack_input1_data);
   }
 
   if (!Input2Static()) {
-    float* default_input2_data = default_interpreter->typed_tensor<float>(
-        default_interpreter->inputs()[Input1Static() ? 0 : 1]);
+    float* default_input2_data =
+        default_interpreter->typed_input_tensor<float>(Input1Static() ? 0 : 1);
     std::generate(default_input2_data,
                   default_input2_data + ComputeSize(Input2Shape()),
                   std::ref(input2_rng));
 
-    float* xnnpack_input2_data = delegate_interpreter->typed_tensor<float>(
-        delegate_interpreter->inputs()[Input1Static() ? 0 : 1]);
+    float* xnnpack_input2_data =
+        delegate_interpreter->typed_input_tensor<float>(Input1Static() ? 0 : 1);
     std::copy(default_input2_data,
               default_input2_data + ComputeSize(Input2Shape()),
               xnnpack_input2_data);
@@ -157,10 +157,10 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
-  float* default_output_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->outputs()[0]);
-  float* xnnpack_output_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->outputs()[0]);
+  float* default_output_data =
+      default_interpreter->typed_output_tensor<float>(0);
+  float* xnnpack_output_data =
+      delegate_interpreter->typed_output_tensor<float>(0);
 
   for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
     ASSERT_NEAR(default_output_data[i], xnnpack_output_data[i],

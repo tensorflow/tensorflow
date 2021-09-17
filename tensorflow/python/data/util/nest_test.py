@@ -61,7 +61,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegex(ValueError, "Structure is a scalar"):
+    with self.assertRaisesRegex(ValueError, "Argument `structure` is a scalar"):
       nest.pack_sequence_as("scalar", [4, 5])
 
     with self.assertRaisesRegex(TypeError, "flat_sequence"):
@@ -308,8 +308,8 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     inp_ab2 = {"a": (1, 1), "b": (2, 2)}
     expected_message = (
         "The two structures don't have the same sequence type. Input structure "
-        "has type <(type|class) 'tuple'>, while shallow structure has type "
-        "<(type|class) 'dict'>.")
+        "has type 'tuple', while shallow structure has type "
+        "'dict'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
@@ -398,7 +398,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_tree = "input_tree"
     shallow_tree = ("shallow_tree",)
     expected_message = ("If shallow structure is a sequence, input must also "
-                        "be a sequence. Input has type: <(type|class) 'str'>.")
+                        "be a sequence. Input has type: 'str'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
@@ -415,7 +415,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_tree = 0
     shallow_tree = (9,)
     expected_message = ("If shallow structure is a sequence, input must also "
-                        "be a sequence. Input has type: <(type|class) 'int'>.")
+                        "be a sequence. Input has type: 'int'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)

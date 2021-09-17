@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -125,7 +125,7 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 Status GraphMgr::InitItem(
     const string& handle, const GraphDef& gdef, WorkerSession* session,
     const GraphOptions& graph_options, const DebugOptions& debug_options,
-    const ConfigProto& config_proto, int64 collective_graph_key,
+    const ConfigProto& config_proto, int64_t collective_graph_key,
     DistributedFunctionLibraryRuntime* cluster_flr, Item* item) {
   item->session = handle;
   item->collective_graph_key = collective_graph_key;
@@ -142,14 +142,14 @@ Status GraphMgr::InitItem(
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
-          [this, session](const int64 step_id, const DeviceMgr*,
+          [this, session](const int64_t step_id, const DeviceMgr*,
                           Rendezvous** r) -> Status {
             auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
             *r = remote_r;
             return Status::OK();
           },
-          [this](const int64 step_id) {
+          [this](const int64_t step_id) {
             this->worker_env_->rendezvous_mgr->Cleanup(step_id);
             return Status::OK();
           }}));
@@ -271,7 +271,7 @@ Status GraphMgr::InitItem(
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {
@@ -295,7 +295,7 @@ Status GraphMgr::InitItem(
 Status GraphMgr::Register(
     const string& handle, const GraphDef& gdef, WorkerSession* session,
     const GraphOptions& graph_options, const DebugOptions& debug_options,
-    const ConfigProto& config_proto, int64 collective_graph_key,
+    const ConfigProto& config_proto, int64_t collective_graph_key,
     DistributedFunctionLibraryRuntime* cluster_flr, string* graph_handle) {
   Item* item = new Item;
   Status s = InitItem(handle, gdef, session, graph_options, debug_options,
@@ -349,7 +349,7 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
+Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   std::vector<string> keys;
   std::vector<Tensor> tensors_to_send;
@@ -368,7 +368,7 @@ Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
   return s;
 }
 
-Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
+Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
@@ -376,7 +376,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
     s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.ToString(), ")");
+                         ". (Original error message: ", s.error_message(), ")");
   }
   size_t output_size = 0;
   for (auto& p : *out) {
@@ -386,7 +386,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   return s;
 }
 
-void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                                 StatusCallback done) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   std::vector<string> keys;
@@ -412,7 +412,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
       });
 }
 
-void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
+void GraphMgr::ExecuteAsync(const string& handle, const int64_t step_id,
                             WorkerSession* session, const ExecutorOpts& opts,
                             StepStatsCollector* collector,
                             MutableRunGraphResponseWrapper* response,
@@ -509,10 +509,10 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 }
 
 void GraphMgr::StartParallelExecutors(
-    const string& handle, int64 step_id, Item* item, Rendezvous* rendezvous,
+    const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
     CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
     CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-    WorkerSession* session, int64 start_time_usecs, StatusCallback done) {
+    WorkerSession* session, int64_t start_time_usecs, StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
   ScopedStepContainer* step_container = new ScopedStepContainer(

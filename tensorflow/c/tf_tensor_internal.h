@@ -54,7 +54,7 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(
       tensorflow::AllocationDescription* proto) const override {
-    tensorflow::int64 rb = size();
+    int64_t rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
@@ -109,6 +109,7 @@ class TensorInterface : public AbstractTensorInterface {
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
+  Status FromProto(const tensorflow::TensorProto& from);
 
   tensorflow::Tensor& Tensor() { return tensor_; }
 
@@ -123,6 +124,7 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

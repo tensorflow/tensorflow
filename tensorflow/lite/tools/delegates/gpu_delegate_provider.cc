@@ -148,6 +148,20 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     }
     gpu_opts.max_delegated_partitions =
         params.Get<int>("max_delegated_partitions");
+
+    // Serialization.
+    std::string serialize_dir =
+        params.Get<std::string>("delegate_serialize_dir");
+    std::string serialize_token =
+        params.Get<std::string>("delegate_serialize_token");
+    if (!serialize_dir.empty() && !serialize_token.empty()) {
+      gpu_opts.experimental_flags =
+          gpu_opts.experimental_flags |
+          TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+      gpu_opts.serialization_dir = serialize_dir.c_str();
+      gpu_opts.model_token = serialize_token.c_str();
+    }
+
     delegate = evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};

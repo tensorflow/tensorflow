@@ -24,11 +24,13 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class ReverseSequenceTest(test.TestCase):
 
   def _testReverseSequence(self,
@@ -112,7 +114,7 @@ class ReverseSequenceTest(test.TestCase):
     x = np.asarray(
         [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]],
          [[17, 18, 19, 20], [21, 22, 23, 24]]],
-        dtype=np.float)
+        dtype=np.float64)
     x = x.reshape(3, 2, 4, 1, 1)
     x = x.transpose([2, 1, 0, 3, 4])  # transpose axes 0 <=> 2
 

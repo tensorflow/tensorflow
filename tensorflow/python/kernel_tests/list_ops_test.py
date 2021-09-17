@@ -22,7 +22,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np  # pylint: disable=unused-import
 
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1627,16 +1627,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_from_tensor(t, element_shape=[])
       handle_data = resource_variable_ops.get_eager_safe_handle_data(l)
       self.assertTrue(handle_data.is_set)
-      self.assertEqual(types_pb2.ST_TENSOR_LIST,
-                       handle_data.shape_and_type[0].specialized_type)
+      self.assertEqual(handle_data.shape_and_type[0].type.type_id,
+                       full_type_pb2.TFT_ARRAY)
       return l
 
     tensor_list = func()
     handle_data = resource_variable_ops.get_eager_safe_handle_data(tensor_list)
     self.assertTrue(handle_data.is_set)
     self.assertEqual(dtypes.float32, handle_data.shape_and_type[0].dtype)
-    self.assertEqual(types_pb2.ST_TENSOR_LIST,
-                     handle_data.shape_and_type[0].specialized_type)
+    self.assertEqual(handle_data.shape_and_type[0].type.type_id,
+                     full_type_pb2.TFT_ARRAY)
     element = list_ops.tensor_list_get_item(
         tensor_list, 0, element_dtype=dtypes.float32)
     self.assertAllEqual(element.shape.as_list(), [])

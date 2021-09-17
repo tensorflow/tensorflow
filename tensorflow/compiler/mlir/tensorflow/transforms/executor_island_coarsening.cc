@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -476,12 +477,13 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
 // Pass Entry Point
 //===----------------------------------------------------------------------===//
 
-struct ExecutorIslandCoarsening
-    : public PassWrapper<ExecutorIslandCoarsening, FunctionPass> {
+struct ExecutorIslandCoarseningPass
+    : public TF::ExecutorIslandCoarseningPassBase<
+          ExecutorIslandCoarseningPass> {
   void runOnFunction() override;
 };
 
-void ExecutorIslandCoarsening::runOnFunction() {
+void ExecutorIslandCoarseningPass::runOnFunction() {
   // Temporary datastructure to keep operands and results for each island.
   // We define it here to grow and reuse the storage for the duration of the
   // pass.
@@ -501,12 +503,8 @@ void ExecutorIslandCoarsening::runOnFunction() {
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
-  return std::make_unique<ExecutorIslandCoarsening>();
+  return std::make_unique<ExecutorIslandCoarseningPass>();
 }
-
-static PassRegistration<ExecutorIslandCoarsening> pass(
-    "tf-executor-island-coarsening",
-    "Merges TensorFlow executor dialect IslandOps");
 
 }  // namespace tf_executor
 }  // namespace mlir

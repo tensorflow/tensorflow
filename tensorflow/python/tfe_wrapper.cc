@@ -382,6 +382,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::OPTIMIZED_HLO;
     } else if (s_stage == "optimized_hlo_serialized") {
       return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
+    } else if (s_stage == "optimized_hlo_proto_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -821,6 +823,52 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def(
+      "TFE_InsertConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, const char* config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_GetConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                              &config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_DeleteConfigKeyValue",
+      [](py::handle& ctx, const char* config_key) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_ReportErrorToCluster",
+      [](py::handle& ctx, int error_code, const char* error_message) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TFE_ReportErrorToCluster(tensorflow::InputTFE_Context(ctx), error_code,
+                                 error_message, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
   m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
@@ -1111,11 +1159,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg",
-        [](const py::handle& o, bool include_tensor_ranks_only) {
-          return tensorflow::PyoOrThrow(
-              TFE_Py_EncodeArg(o.ptr(), include_tensor_ranks_only));
-        });
+  m.def("TFE_Py_EncodeArg", [](const py::handle& o,
+                               bool include_tensor_ranks_only,
+                               bool encode_variables_by_resource_id) {
+    return tensorflow::PyoOrThrow(TFE_Py_EncodeArg(
+        o.ptr(), include_tensor_ranks_only, encode_variables_by_resource_id));
+  });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

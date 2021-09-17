@@ -77,6 +77,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_TPU = "TPU";
 const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
@@ -295,7 +296,7 @@ DEFINE_DATATYPETOENUM_VALUE(int8);
 DEFINE_DATATYPETOENUM_VALUE(tstring);
 DEFINE_DATATYPETOENUM_VALUE(complex64);
 DEFINE_DATATYPETOENUM_VALUE(complex128);
-DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(int64_t);
 DEFINE_DATATYPETOENUM_VALUE(uint64);
 DEFINE_DATATYPETOENUM_VALUE(bool);
 DEFINE_DATATYPETOENUM_VALUE(qint8);

@@ -675,6 +675,13 @@ message OpSharding {
   // type == TUPLE and instead metadata should be set on individual tuple
   // elements.
   repeated OpMetadata metadata = 7;
+
+  // This field is used to represented the sharding type of each subgroup.
+  // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
+  // replicate, manual, unreduced}} means that each of the last 3 dimensions
+  // in [2,2,2,2] represents a subgrouping in replicate, manual,
+  // unreduced sharding type respectively.
+  repeated Type last_tile_dims = 8;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

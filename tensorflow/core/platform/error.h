@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 
+// TODO(b/197995327): Rename this file to io_error.h or unify with errors.h.
 namespace tensorflow {
 
 Status IOError(const string& context, int err_number);

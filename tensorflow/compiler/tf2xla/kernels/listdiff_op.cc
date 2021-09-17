@@ -55,7 +55,7 @@ class ListDiffOp : public XlaOpKernel {
         status = ListDiffWithIndexType<int32>(context, idx_type);
         break;
       case DT_INT64:
-        status = ListDiffWithIndexType<int64>(context, idx_type);
+        status = ListDiffWithIndexType<int64_t>(context, idx_type);
         break;
       default:
         // This should never happen since we restrict this kernel to only match
@@ -70,7 +70,7 @@ class ListDiffOp : public XlaOpKernel {
  private:
   template <typename Tval, typename Tidx>
   Status ListDiff(XlaOpKernelContext* context) {
-    std::vector<int64> x_input, y_input;
+    std::vector<int64_t> x_input, y_input;
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(0, &x_input));
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(1, &y_input));
 
@@ -104,7 +104,7 @@ class ListDiffOp : public XlaOpKernel {
       case DT_INT32:
         return ListDiff<Tval, int32>(context);
       case DT_INT64:
-        return ListDiff<Tval, int64>(context);
+        return ListDiff<Tval, int64_t>(context);
       default:
         return errors::InvalidArgument(
             "ListDiff expects idx_out as either int32 or int64, not ",

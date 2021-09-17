@@ -23,6 +23,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
@@ -34,23 +35,30 @@ class EagerContextDistributedManager
     : public ImmediateExecutionDistributedManager {
  public:
   explicit EagerContextDistributedManager(EagerContext* context)
-      : context_(context) {}
+      : context_(context),
+        coordination_service_agent_(CreateCoordinationServiceAgent()) {}
 
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
                               int keep_alive_secs) override;
 
   Status EnableCollectiveOps(const ServerDef& server_def) override;
 
+  Status EnableCoordinationService(const std::string& service_type,
+                                   const WorkerEnv* worker_env,
+                                   const ServerDef& server_def,
+                                   WorkerCacheInterface* worker_cache) override;
+
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
-  CoordinationServiceInterface* GetCoordinationService() override {
-    return coordination_service_.get();
+  CoordinationServiceAgent* GetCoordinationServiceAgent() override {
+    return coordination_service_agent_.get();
   }
 
  private:
   EagerContext* context_;
   std::unique_ptr<CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

@@ -40,6 +40,14 @@ class InitTextFileToImportTestPass
  public:
   explicit InitTextFileToImportTestPass() {}
 
+  StringRef getArgument() const final {
+    return "tf-init-text-file-to-import-test";
+  }
+
+  StringRef getDescription() const final {
+    return "generate a temporary file and invoke InitTextFileToImportPass";
+  }
+
  private:
   void runOnOperation() override;
 };
@@ -97,6 +105,14 @@ class InitTextFileToImportSavedModelTestPass
  public:
   explicit InitTextFileToImportSavedModelTestPass() {}
 
+  StringRef getArgument() const final {
+    return "tf-init-text-file-to-import-saved-model-test";
+  }
+
+  StringRef getDescription() const final {
+    return "mimick a saved model and invoke InitTextFileToImportPass";
+  }
+
  private:
   void runOnOperation() override;
 };
@@ -133,14 +149,10 @@ void InitTextFileToImportSavedModelTestPass::runOnOperation() {
 
 }  // namespace
 
-static PassRegistration<InitTextFileToImportTestPass> pass(
-    "tf-init-text-file-to-import-test",
-    "generate a temporary file and invoke InitTextFileToImportPass");
+static PassRegistration<InitTextFileToImportTestPass> pass;
 
 static PassRegistration<InitTextFileToImportSavedModelTestPass>
-    saved_model_pass(
-        "tf-init-text-file-to-import-saved-model-test",
-        "mimick a saved model and invoke InitTextFileToImportPass");
+    saved_model_pass;
 
 }  // namespace TF
 }  // namespace mlir

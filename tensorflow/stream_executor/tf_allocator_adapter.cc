@@ -36,8 +36,8 @@ TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
 port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure,
-    int64 memory_space) {
+    int device_ordinal, uint64_t size, bool retry_on_failure,
+    int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   tensorflow::AllocationAttributes attrs;
   attrs.retry_on_failure = retry_on_failure;

@@ -57,7 +57,7 @@ DeviceProperties GetLocalCPUInfo() {
   device.set_l2_cache_size(Eigen::l2CacheSize());
   device.set_l3_cache_size(Eigen::l3CacheSize());
 
-  int64 free_mem = port::AvailableRam();
+  int64_t free_mem = port::AvailableRam();
   if (free_mem < INT64_MAX) {
     device.set_memory_size(free_mem);
   }

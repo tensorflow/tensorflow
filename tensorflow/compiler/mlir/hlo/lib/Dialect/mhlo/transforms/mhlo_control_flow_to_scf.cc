@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -39,7 +40,7 @@ void MatchAndRewrite(WhileOp whileOp);
 
 /// Pass that converts MHLO control flow to SCF.
 class ControlFlowToScfPass
-    : public mlir::PassWrapper<ControlFlowToScfPass, FunctionPass> {
+    : public LegalizeControlFlowToScfPassBase<ControlFlowToScfPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<scf::SCFDialect>();
   }

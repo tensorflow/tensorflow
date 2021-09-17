@@ -28,6 +28,10 @@ namespace tensorflow {
 
 class NcclCommunicator : public NcclCommunicatorInterface {
  public:
+  string GenerateCommunicatorKey() override {
+    return nccl_manager_.GenerateCommunicatorKey();
+  }
+
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override;
 
@@ -63,7 +67,14 @@ string NcclCollectiveKey(const string& exec_key, int step_id) {
 }
 }  // namespace
 
-std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator() {
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
+    const ConfigProto& config) {
+  // Skip creating a NcclCommunicator if there are 0 GPUs configured.
+  const auto& device_count = config.device_count();
+  auto item = device_count.find("GPU");
+  if (item != device_count.end() && item->second == 0) {
+    return nullptr;
+  }
   return absl::make_unique<NcclCommunicator>();
 }
 
@@ -206,7 +217,8 @@ void NcclCommunicator::StartAbort(const Status& s) {
 
 #else
 namespace tensorflow {
-std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator() {
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
+    const ConfigProto& config) {
   return nullptr;
 }
 }  // namespace tensorflow

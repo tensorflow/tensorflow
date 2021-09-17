@@ -97,7 +97,13 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    if run_params.dynamic_shape:
+      # All the ops are converted into a single TRTEngineOp.
+      return ["TRTEngineOp_0"]
+    else:
+      # Final squeeze and div ops are not converted. The x1 and x2 branches
+      # are segmented into separate TRTEngineOp.
+      return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
 if __name__ == "__main__":

@@ -111,6 +111,7 @@ struct OpData {
   int body_subgraph_index;
   bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
+  bool subgraphs_allocated;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -120,6 +121,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->body_subgraph_index = params->body_subgraph_index;
   op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
+  op_data->subgraphs_allocated = false;
   return op_data;
 }
 
@@ -175,6 +177,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                    context, this_subgraph, TfLiteIntArrayView(node->inputs),
                    body_subgraph, body_subgraph->inputs(), true));
   TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
+  op_data->subgraphs_allocated = true;
   if (body_subgraph->HasDynamicTensors()) {
     op_data->body_has_dynamic_output_tensors = true;
   } else {
@@ -214,7 +217,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto* subgraphs = this_subgraph->GetSubgraphs();
   Subgraph* cond_subgraph = (*subgraphs)[op_data->cond_subgraph_index].get();
@@ -255,6 +258,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // boundary. Currently we copy the input / output between the subgraphs. This
   // isn't optimized yet and a lot of redundant copies are made.
   // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
+
+  if (op_data->subgraphs_allocated == false) {
+    TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
+    TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
+  }
 
   if (op_data->body_has_dynamic_output_tensors) {
     // If body subgraph has dynamic outputs, the input of condition subgraph may
@@ -329,6 +337,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       context,
       CopyTensorsData(context, cond_subgraph, cond_subgraph->inputs(),
                       this_subgraph, TfLiteIntArrayView(node->outputs)));
+
+  TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseNonPersistentMemory());
+  TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseNonPersistentMemory());
+  op_data->subgraphs_allocated = false;
+
   return kTfLiteOk;
 }
 

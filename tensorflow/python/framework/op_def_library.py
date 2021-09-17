@@ -41,47 +41,47 @@ def _Attr(op_def, name):
   for attr in op_def.attr:
     if attr.name == name:
       return attr
-  raise TypeError("Inconsistent OpDef for '%s', missing attr '%s'" %
-                  (op_def.name, name))
+  raise TypeError(f"Inconsistent OpDef for '{op_def.name}', missing attr "
+                  f"'{name}'")
 
 
-def _AttrValue(attr_protos, name):
+def _AttrValue(attr_protos, name, op_type_name):
   if name in attr_protos:
     return attr_protos[name]
-  raise TypeError("Inconsistent OpDef, missing attr '%s' from '%s'." %
-                  (name, attr_protos))
+  raise TypeError(f"Inconsistent OpDef for '{op_type_name}', missing attr "
+                  f"'{name}' from '{attr_protos}'.")
 
 
 def _SatisfiesTypeConstraint(dtype, attr_def, param_name):
   if attr_def.HasField("allowed_values"):
     allowed_list = attr_def.allowed_values.list.type
+    allowed_values = ", ".join(dtypes.as_dtype(x).name for x in allowed_list)
     if dtype not in allowed_list:
       raise TypeError(
-          "Value passed to parameter '%s' has DataType %s not in list of "
-          "allowed values: %s" %
-          (param_name, dtypes.as_dtype(dtype).name,
-           ", ".join(dtypes.as_dtype(x).name for x in allowed_list)))
+          f"Value passed to parameter '{param_name}' has DataType "
+          f"{dtypes.as_dtype(dtype).name} not in list of allowed values: "
+          f"{allowed_values}")
 
 
 def _SatisfiesLengthConstraint(length, attr_def, param_name, op_type_name):
   if attr_def.has_minimum and length < attr_def.minimum:
-    raise ValueError("Attr '%s' of '%s' Op passed list of length %d "
-                     "less than minimum %d." %
-                     (param_name, op_type_name, length, attr_def.minimum))
+    raise ValueError(f"Attr '{param_name}' of '{op_type_name}' Op passed list "
+                     f"of length {length} less than minimum "
+                     f"{attr_def.minimum}.")
 
 
 def _SatisfiesAllowedStringsConstraint(value, attr_def, arg_name, op_type_name):
   if value not in attr_def.allowed_values.list.s:
-    raise ValueError(
-        "Attr '%s' of '%s' Op passed string '%s' not in: \"%s\"." %
-        (arg_name, op_type_name, compat.as_text(value), '", "'.join(
-            map(compat.as_text, attr_def.allowed_values.list.s))))
+    allowed_values = '", "'.join(
+        map(compat.as_text, attr_def.allowed_values.list.s))
+    raise ValueError(f"Attr '{arg_name}' of '{op_type_name}' Op passed string "
+                     f"'{compat.as_text(value)}' not in: \"{allowed_values}\".")
 
 
 def _SatisfiesIntMinimumConstraint(value, attr_def, arg_name, op_type_name):
   if value < attr_def.minimum:
-    raise ValueError("Attr '%s' of '%s' Op passed %d less than minimum %d." %
-                     (arg_name, op_type_name, value, attr_def.minimum))
+    raise ValueError(f"Attr '{arg_name}' of '{op_type_name}' Op passed {value} "
+                     f"less than minimum {attr_def.minimum}.")
 
 
 def _IsListParameter(arg):
@@ -163,33 +163,28 @@ def _Restructure(l, structure):
 
 def _MakeFloat(v, arg_name):
   if not isinstance(v, compat.real_types):
-    raise TypeError("Expected float for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected float for argument '{arg_name}' not {repr(v)}.")
   return float(v)
 
 
 def _MakeInt(v, arg_name):
   if isinstance(v, six.string_types):
-    raise TypeError("Expected int for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected int for argument '{arg_name}' not {repr(v)}.")
   try:
     return int(v)
   except (ValueError, TypeError):
-    raise TypeError("Expected int for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected int for argument '{arg_name}' not {repr(v)}.")
 
 
 def _MakeStr(v, arg_name):
   if not isinstance(v, compat.bytes_or_text_types):
-    raise TypeError("Expected string for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected string for argument '{arg_name}' not {repr(v)}.")
   return compat.as_bytes(v)  # Convert unicode strings to bytes.
 
 
 def _MakeBool(v, arg_name):
   if not isinstance(v, bool):
-    raise TypeError("Expected bool for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected bool for argument '{arg_name}' not {repr(v)}.")
   return v
 
 
@@ -197,8 +192,8 @@ def _MakeType(v, arg_name):
   try:
     v = dtypes.as_dtype(v).base_dtype
   except TypeError:
-    raise TypeError("Expected DataType for argument '%s' not %s." %
-                    (arg_name, repr(v)))
+    raise TypeError(f"Expected DataType for argument '{arg_name}' not "
+                    f"{repr(v)}.")
   return v.as_datatype_enum
 
 
@@ -220,9 +215,11 @@ def _MakeShape(v, arg_name):
   try:
     return tensor_shape.as_shape(v).as_proto()
   except TypeError as e:
-    raise TypeError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise TypeError(f"Error converting {repr(v)} (arg name = {arg_name}) to a "
+                    f"TensorShape: {e}")
   except ValueError as e:
-    raise ValueError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise TypeError(f"Error converting {repr(v)} (arg name = {arg_name}) to a "
+                    f"TensorShape: {e}")
 
 
 def _MakeTensor(v, arg_name):
@@ -230,8 +227,8 @@ def _MakeTensor(v, arg_name):
   if isinstance(v, tensor_pb2.TensorProto):
     return v
   raise TypeError(
-      "Don't know how to convert %s to a TensorProto for argument '%s'" %
-      (repr(v), arg_name))
+      f"Don't know how to convert {repr(v)} to a TensorProto for argument "
+      f"'{arg_name}'")
 
 
 def _MakeFunc(v, arg_name):
@@ -247,8 +244,8 @@ def _MakeFunc(v, arg_name):
     else:
       fn_attr = attr_value_pb2.NameAttrList(name=v.name)
   else:
-    raise TypeError("Don't know how to convert {} to a func for "
-                    "argument {}".format(v, arg_name))
+    raise TypeError(f"Don't know how to convert {repr(v)} to a func for "
+                    f"argument {arg_name}")
   return fn_attr
 
 
@@ -321,7 +318,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
   """Implementation of apply_op that returns output_structure, op."""
   op_def = op_def_registry.get(op_type_name)
   if op_def is None:
-    raise RuntimeError("Unrecognized Op name " + op_type_name)
+    raise RuntimeError(f"Unrecognized Op name {op_type_name}")
 
   # Determine the graph context.
   try:
@@ -331,8 +328,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
     # pylint: enable=protected-access
   except AssertionError as e:
     raise RuntimeError(
-        "Cannot determine graph for Op '%s' due to: %s"
-        % (op_type_name, e.message))
+        f"Cannot determine graph for Op '{op_type_name}' due to: {e.message}")
 
   # Default name if not specified.
   if name is None:
@@ -344,10 +340,9 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
     producer = g.graph_def_versions.producer
     if producer >= deprecation_version:
       raise NotImplementedError(
-          ("Op %s is not available in GraphDef version %d. "
-           "It has been removed in version %d. %s.") %
-          (op_type_name, producer, deprecation_version,
-           op_def.deprecation.explanation))
+          f"Op {op_type_name} is not available in GraphDef version {producer}. "
+          f"It has been removed in version {deprecation_version}. "
+          f"{op_def.deprecation.explanation}.")
 
   # Fill in the list of default types for all "type" attrs.  This
   # will be used to choose a preferred dtype to convert to in the
@@ -388,7 +383,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         input_name += "_"
         values = keywords.pop(input_name)
       else:
-        raise TypeError("No argument for input " + input_name)
+        raise TypeError(f"No argument for input {input_name} found in {op_def}")
 
       # Goals:
       # * Convert values to Tensors if it contains constants.
@@ -405,8 +400,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
       if _IsListParameter(input_arg):
         if not _IsListValue(values):
           raise TypeError(
-              "Expected list for '%s' argument to '%s' Op, not %s." %
-              (input_name, op_type_name, values))
+              f"Expected list for '{input_name}' argument to '{op_type_name}' "
+              f"Op, not {values}.")
         # In cases where we expect all elements of the list to have the
         # same dtype, try to cast non-Tensor elements to that type.
         dtype = None
@@ -436,9 +431,11 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
               dtype=dtype if dtype else None,
               preferred_dtype=default_dtype,
               as_ref=input_arg.is_ref)
-          if input_arg.number_attr and len(
-              set(v.dtype.base_dtype for v in values)) > 1:
-            raise TypeError()  # All types should match.
+          all_types = set(v.dtype.base_dtype for v in values)
+          if input_arg.number_attr and len(all_types) > 1:
+            # All types should match.
+            raise TypeError(f"Not all types matched for {input_arg.name} for "
+                            f"{op_type_name}. Got {all_types}")
         except (TypeError, ValueError):
           # What types does the conversion function think values have?
           observed_types = []
@@ -456,17 +453,15 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
               (input_name, op_type_name, observed))
           if input_arg.number_attr:
             if input_arg.type != types_pb2.DT_INVALID:
-              raise TypeError("%s that do not match expected type %s." %
-                              (prefix, dtype.name))
+              raise TypeError(f"{prefix} that do not match expected type "
+                              f"{dtype.name}.")
             elif input_arg.type_attr in attrs:
-              raise TypeError("%s that do not match type %s inferred from "
-                              "earlier arguments." %
-                              (prefix, dtype.name))
+              raise TypeError(f"{prefix} that do not match type {dtype.name} "
+                              "inferred from earlier arguments.")
             else:
-              raise TypeError("%s that don't all match." % prefix)
+              raise TypeError(f"{prefix} that don't all match.")
           else:
-            raise TypeError(
-                "%s that are invalid. Tensors: %s" % (prefix, values))
+            raise TypeError(f"{prefix} that are invalid. Tensors: {values}")
 
         types = [x.dtype for x in values]
         inputs.extend(values)
@@ -525,10 +520,10 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
             raise err
           else:
             raise TypeError(
-                "Expected %s passed to parameter '%s' of op '%s', got %s of "
-                "type '%s' instead. Error: %s" %
-                (dtypes.as_dtype(dtype).name, input_arg.name, op_type_name,
-                 repr(values), type(values).__name__, err))
+                f"Expected {dtypes.as_dtype(dtype).name} passed to parameter "
+                f"'{input_arg.name}' of op '{op_type_name}', got "
+                f"{repr(values)} of type '{type(values).__name__}' instead. "
+                f"Error: {err}")
         except ValueError:
           # What type does convert_to_tensor think it has?
           try:
@@ -536,13 +531,13 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
                 values, as_ref=input_arg.is_ref).dtype.name
           except ValueError as err:
             raise ValueError(
-                "Tried to convert '%s' to a tensor and failed. Error: %s" %
-                (input_name, err))
+                f"Tried to convert '{input_name}' to a tensor and failed. "
+                f"Error: {err}")
           prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                     (input_name, op_type_name, observed))
           if input_arg.type != types_pb2.DT_INVALID:
-            raise TypeError("%s expected type of %s." %
-                            (prefix, dtypes.as_dtype(input_arg.type).name))
+            raise TypeError(f"{prefix} expected type of "
+                            f"{dtypes.as_dtype(input_arg.type).name}.")
           else:
             # Update the maps with the default, if needed.
             k = input_arg.type_attr
@@ -553,9 +548,9 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
                   inferred_from[k] = "Default in OpDef"
 
             raise TypeError(
-                "%s type %s of argument '%s'." %
-                (prefix, dtypes.as_dtype(attrs[input_arg.type_attr]).name,
-                 inferred_from[input_arg.type_attr]))
+                f"{prefix} type "
+                f"{dtypes.as_dtype(attrs[input_arg.type_attr]).name} of "
+                f"argument '{inferred_from[input_arg.type_attr]}'.")
 
         types = [values.dtype]
         inputs.append(values)
@@ -566,26 +561,24 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         if input_arg.number_attr in attrs:
           if len(values) != attrs[input_arg.number_attr]:
             raise ValueError(
-                "List argument '%s' to '%s' Op with length %d must match "
-                "length %d of argument '%s'." %
-                (input_name, op_type_name, len(values),
-                 attrs[input_arg.number_attr],
-                 inferred_from[input_arg.number_attr]))
+                f"List argument '{input_name}' to '{op_type_name}' Op with "
+                f"length {len(values)} must match length "
+                f"{attrs[input_arg.number_attr]} of argument "
+                f"'{inferred_from[input_arg.number_attr]}'.")
         else:
           attrs[input_arg.number_attr] = len(values)
           inferred_from[input_arg.number_attr] = input_name
           num_attr = _Attr(op_def, input_arg.number_attr)
           if num_attr.has_minimum and len(values) < num_attr.minimum:
             raise ValueError(
-                "List argument '%s' to '%s' Op with length %d shorter "
-                "than minimum length %d." %
-                (input_name, op_type_name, len(values), num_attr.minimum))
+                f"List argument '{input_name}' to '{op_type_name}' Op with "
+                f"length {len(values)} shorter than minimum length "
+                f"{num_attr.minimum}.")
         # All tensors must have the same base type.
         if any(bt != base_types[0] for bt in base_types):
           raise TypeError(
-              "All tensors passed to '%s' of '%s' Op "
-              "must have the same type." %
-              (input_name, op_type_name))
+              f"All tensors passed to '{input_name}' of '{op_type_name}' Op "
+              f"must have the same type. Got {base_types} instead.")
         if input_arg.type != types_pb2.DT_INVALID:
           # <number-attr> * <type> case
           if base_types and base_types[0] != input_arg.type:
@@ -604,8 +597,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
             if input_arg.type_attr not in default_type_attr_map:
               raise TypeError(
                   "Don't know how to infer type variable from empty input "
-                  "list passed to input '%s' of '%s' Op." %
-                  (input_name, op_type_name))
+                  f"list passed to input '{input_name}' of '{op_type_name}' "
+                  "Op.")
           else:
             attrs[input_arg.type_attr] = base_types[0]
             inferred_from[input_arg.type_attr] = input_name
@@ -618,11 +611,10 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         if input_arg.type_attr in attrs:
           if attrs[input_arg.type_attr] != attr_value:
             raise TypeError(
-                "Input '%s' of '%s' Op has type %s that does not "
-                "match type %s of argument '%s'." %
-                (input_name, op_type_name, dtypes.as_dtype(attr_value).name,
-                 dtypes.as_dtype(attrs[input_arg.type_attr]).name,
-                 inferred_from[input_arg.type_attr]))
+                f"Input '{input_name}' of '{op_type_name}' Op has type "
+                f"{dtypes.as_dtype(attr_value).name} that does not match type "
+                f"{dtypes.as_dtype(attrs[input_arg.type_attr]).name} of "
+                f"argument '{inferred_from[input_arg.type_attr]}'.")
         else:
           for base_type in base_types:
             _SatisfiesTypeConstraint(base_type,
@@ -635,14 +627,15 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         attr_value = base_types
         if input_arg.type_list_attr in attrs:
           if attrs[input_arg.type_list_attr] != attr_value:
+            actual_types = ", ".join(
+                dtypes.as_dtype(x).name for x in attr_value)
+            expected_types = ", ".join(
+                dtypes.as_dtype(x).name
+                for x in attrs[input_arg.type_list_attr])
             raise TypeError(
-                "Input '%s' of '%s' Op has type list of %s that does not "
-                "match type list %s of argument '%s'." %
-                (input_name, op_type_name,
-                 ", ".join(dtypes.as_dtype(x).name for x in attr_value),
-                 ", ".join(dtypes.as_dtype(x).name
-                           for x in attrs[input_arg.type_list_attr]),
-                 inferred_from[input_arg.type_list_attr]))
+                f"Input '{input_name}' of '{op_type_name}' Op has type list of "
+                f"{actual_types} that does not match type list {expected_types}"
+                f" of argument '{inferred_from[input_arg.type_list_attr]}'.")
         else:
           for base_type in base_types:
             _SatisfiesTypeConstraint(base_type,
@@ -658,8 +651,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
       if input_arg.is_ref:
         if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
           raise TypeError(
-              ("'%s' Op requires that input '%s' be a mutable tensor "
-               "(e.g.: a tf.Variable)") % (op_type_name, input_name))
+              f"'{op_type_name}' Op requires that input '{input_name}' be a "
+              "mutable tensor (e.g.: a tf.Variable)")
         input_types.extend(types)
       else:
         input_types.extend(base_types)
@@ -670,7 +663,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
       if attr.name in attrs:
         if attr.name in keywords:
           raise TypeError(
-              "Should not specify value for inferred attr '%s'." % attr.name)
+              f"Should not specify value for inferred attr '{attr.name}' for "
+              f"{op_type_name}.")
         continue
       if attr.name in keywords:
         attrs[attr.name] = keywords.pop(attr.name)
@@ -682,7 +676,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         attrs[attr.name] = default_type_attr_map[attr.name]
         inferred_from.setdefault(attr.name, "Default in OpDef")
       else:
-        raise TypeError("No argument for attr " + attr.name)
+        raise TypeError(f"No argument found for attr {attr.name} for "
+                        f"{op_type_name}")
 
     # Convert attr values to AttrValue protos.
     attr_protos = {}
@@ -723,20 +718,21 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
     output_structure = []
     for arg in op_def.output_arg:
       if arg.number_attr:
-        n = _AttrValue(attr_protos, arg.number_attr).i
+        n = _AttrValue(attr_protos, arg.number_attr, op_type_name).i
         output_structure.append(n)
       elif arg.type_attr:
-        t = _AttrValue(attr_protos, arg.type_attr)
+        t = _AttrValue(attr_protos, arg.type_attr, op_type_name)
         output_structure.append(None)
       elif arg.type_list_attr:
-        t = _AttrValue(attr_protos, arg.type_list_attr)
+        t = _AttrValue(attr_protos, arg.type_list_attr, op_type_name)
         output_structure.append(len(t.list.type))
       else:
         output_structure.append(None)
 
     if keywords:
-      raise TypeError("apply_op() got unexpected keyword arguments: " +
-                      ", ".join(sorted(keywords.keys())))
+      all_keywords = ", ".join(sorted(keywords.keys()))
+      raise TypeError(f"{op_type_name} got unexpected keyword arguments: "
+                      f"{all_keywords}.")
 
     # NOTE(mrry): We add an explicit colocation constraint between
     # the newly created op and any of its reference-typed inputs.
@@ -781,7 +777,8 @@ def value_to_attr_value(value, attr_type, arg_name):  # pylint: disable=invalid-
 
   if attr_type.startswith("list("):
     if not _IsListValue(value):
-      raise TypeError("Expected list for attr " + arg_name)
+      raise TypeError(f"Expected list for attr {arg_name}, obtained "
+                      f"{type(value).__name__} instead.")
 
   if attr_type == "string":
     attr_value.s = _MakeStr(value, arg_name)
@@ -816,7 +813,7 @@ def value_to_attr_value(value, attr_type, arg_name):  # pylint: disable=invalid-
   elif attr_type == "list(func)":
     attr_value.list.func.extend([_MakeFunc(x, arg_name) for x in value])
   else:
-    raise TypeError("Unrecognized Attr type " + attr_type)
+    raise TypeError(f"Unrecognized Attr type {attr_type} for {arg_name}.")
   return attr_value
 
 

@@ -55,6 +55,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # _internal APIs
 from tensorflow.python.distribute.combinations import generate
+from tensorflow.python.distribute.experimental.rpc.rpc_ops import *
 from tensorflow.python.distribute.multi_process_runner import *
 from tensorflow.python.distribute.multi_worker_test_base import *
 from tensorflow.python.distribute.strategy_combinations import *
@@ -77,7 +78,6 @@ tf_export(v1=['AttrValue'])(AttrValue)
 tf_export(v1=['ConfigProto'])(ConfigProto)
 tf_export(v1=['Event', 'summary.Event'])(Event)
 tf_export(v1=['GPUOptions'])(GPUOptions)
-tf_export(v1=['GraphDef'])(GraphDef)
 tf_export(v1=['GraphOptions'])(GraphOptions)
 tf_export(v1=['HistogramProto'])(HistogramProto)
 tf_export(v1=['LogMessage'])(LogMessage)

@@ -113,6 +113,8 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
 //
 // `variables` is allowed to contain instances that don't track a resource
 // variable (i.e. variables[i].var() can be null for some i).
+Status LockVariables(absl::Span<VariableInfo*> variables)
+    TF_EXCLUSIVE_LOCK_FUNCTION();
 Status LockVariables(absl::Span<VariableInfo> variables)
     TF_EXCLUSIVE_LOCK_FUNCTION();
 
@@ -214,13 +216,13 @@ class XlaTensorBuffer : public TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
-    proto->set_requested_bytes(static_cast<int64>(expected_size_));
+    proto->set_requested_bytes(static_cast<int64_t>(expected_size_));
     proto->set_allocator_name(allocator_->Name());
     proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
     if (allocator_->TracksAllocationSizes()) {
-      auto ab = static_cast<int64>(allocator_->AllocatedSize(data()));
+      auto ab = static_cast<int64_t>(allocator_->AllocatedSize(data()));
       proto->set_allocated_bytes(ab);
-      int64 id = allocator_->AllocationId(data());
+      int64_t id = allocator_->AllocationId(data());
       if (id > 0) {
         proto->set_allocation_id(id);
       }

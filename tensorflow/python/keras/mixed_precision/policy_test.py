@@ -146,32 +146,32 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
       default_policy = '_infer'
     self.assertEqual(mp_policy.global_policy().name, default_policy)
     try:
-      mp_policy.set_policy('mixed_float16')
+      mp_policy.set_global_policy('mixed_float16')
       self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
       with ops.Graph().as_default():  # Policies are not associated with a graph
         self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
-      mp_policy.set_policy('_infer')
+      mp_policy.set_global_policy('_infer')
       self.assertEqual(mp_policy.global_policy().name, '_infer')
       policy = mp_policy.Policy('mixed_bfloat16')
-      mp_policy.set_policy(policy)
+      mp_policy.set_global_policy(policy)
       self.assertIs(mp_policy.global_policy(), policy)
     finally:
-      mp_policy.set_policy(None)
+      mp_policy.set_global_policy(None)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_global_policy_dtype_error(self):
     with self.assertRaisesRegex(
         ValueError,
-        'set_policy can only be used to set the global policy to '
+        'set_global_policy can only be used to set the global policy to '
         'floating-point policies, such as "float32" and "mixed_float16", but '
         'got policy: int32'):
-      mp_policy.set_policy('int32')
+      mp_policy.set_global_policy('int32')
     with self.assertRaisesRegex(
         ValueError,
-        'set_policy can only be used to set the global policy to '
+        'set_global_policy can only be used to set the global policy to '
         'floating-point policies, such as "float32" and "mixed_float16", but '
         'got policy: complex64'):
-      mp_policy.set_policy(mp_policy.Policy('complex64'))
+      mp_policy.set_global_policy(mp_policy.Policy('complex64'))
 
   @testing_utils.enable_v2_dtype_behavior
   def test_loss_scale_warning(self):
@@ -306,7 +306,7 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError, 'cannot be set to "mixed_float16", .* the mixed '
           'precision graph rewrite has already been enabled'):
-        mp_policy.set_policy('mixed_float16')
+        mp_policy.set_global_policy('mixed_float16')
       with mp_policy.policy_scope('float64'):
         pass  # Non-mixed policies are allowed
     finally:

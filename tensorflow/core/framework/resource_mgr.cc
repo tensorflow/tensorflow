@@ -30,9 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Used to generate unique names for anonymous variables
-static std::atomic<int64> current_id_;
-
 ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
@@ -43,7 +40,8 @@ ResourceHandle MakeResourceHandle(
   result.set_container(container);
   result.set_definition_stack_trace(definition_stack_trace);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
-    result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
+    result.set_name(
+        strings::StrCat("_AnonymousVar", ResourceHandle::GenerateUniqueId()));
   } else {
     result.set_name(name);
   }
@@ -97,24 +95,31 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
 }
 
 ResourceMgr::ResourceAndName::ResourceAndName()
-    : resource(nullptr), name(nullptr) {}
+    : resource(nullptr), name(nullptr), resource_owner(nullptr) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
-                                              string name)
-    : resource(resource), name(absl::make_unique<string>(std::move(name))) {}
+                                              string name,
+                                              ResourceBase* resource_owner)
+    : resource(resource),
+      name(absl::make_unique<string>(std::move(name))),
+      resource_owner(resource_owner) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(
     ResourceAndName&& other) noexcept {
-  resource = std::move(other.resource);
+  resource = nullptr;
+  std::swap(resource, other.resource);
   name = std::move(other.name);
+  resource_owner = std::move(other.resource_owner);
 }
 
 ResourceMgr::ResourceAndName::~ResourceAndName() {}
 
 ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
     ResourceAndName&& other) noexcept {
-  resource = std::move(other.resource);
+  resource = nullptr;
+  std::swap(resource, other.resource);
   name = std::move(other.name);
+  resource_owner = std::move(other.resource_owner);
   return *this;
 }
 
@@ -170,7 +175,8 @@ string ResourceMgr::DebugString() const {
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
-                             const string& name, ResourceBase* resource) {
+                             const string& name, ResourceBase* resource,
+                             bool owns_resource) {
   Container** b = &containers_[container];
   if (*b == nullptr) {
     *b = new Container;
@@ -178,7 +184,8 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 
   // NOTE: Separating out the construction of the map key and value so that the
   // key can contain a StringPiece that borrows from the string in the value.
-  ResourceAndName resource_and_name(resource, name);
+  ResourceAndName resource_and_name(resource, name,
+                                    owns_resource ? resource : nullptr);
   StringPiece borrowed_name(*resource_and_name.name);
   Container::value_type key_and_value(Key(type.hash_code(), borrowed_name),
                                       std::move(resource_and_name));
@@ -219,7 +226,7 @@ Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
     return errors::NotFound("Resource ", container, "/", resource_name, "/",
                             type_name, " does not exist.");
   }
-  *resource = const_cast<ResourceBase*>(iter->second.resource.get());
+  *resource = iter->second.resource;
   (*resource)->Ref();
   return Status::OK();
 }
@@ -316,7 +323,7 @@ Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
     name_ = ndef.name();
   } else {
     resource_is_private_to_kernel_ = true;
-    static std::atomic<int64> counter(0);
+    static std::atomic<int64_t> counter(0);
     name_ = strings::StrCat("_", counter.fetch_add(1), "_", ndef.name());
   }
   return Status::OK();
@@ -343,11 +350,19 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       ResourceBase** value) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  if (p.IsRefCounting()) {
+    TF_ASSIGN_OR_RETURN(*value, p.GetResource<ResourceBase>());
+    (*value)->Ref();
+    return Status::OK();
+  }
   return ctx->resource_manager()->Lookup(p, value);
 }
 
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  if (p.IsRefCounting()) {
+    return Status::OK();
+  }
   return ctx->resource_manager()->Delete(p);
 }
 

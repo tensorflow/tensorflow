@@ -145,7 +145,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
           py::arg("computation"),
           py::arg("compile_options") = CompileOptions());
 
-  py::class_<PyTpuBuffer>(m, "PyTpuBuffer")
+  py::class_<PyTpuBuffer>(m, "PyTpuBuffer", py::dynamic_attr())
       .def_property_readonly("client", &PyTpuBuffer::client)
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<PjRtDevice> dst_device) {
@@ -173,8 +173,16 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              }
              return LiteralToPython(std::move(literal));
            })
-      .def("shape", &PyTpuBuffer::on_host_shape)
+      .def_property_readonly("shape",
+                             [](const PyTpuBuffer& buffer) {
+                               return buffer.on_host_shape().dimensions();
+                             })
       .def("xla_shape", &PyTpuBuffer::on_host_shape)
+      .def_property_readonly(
+          "dtype",
+          [](PyTpuBuffer* buffer) {
+            return PrimitiveTypeToDtype(buffer->on_host_shape().element_type());
+          })
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",
@@ -229,7 +237,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
         return absl::StrFormat(
             "TpuDevice(id=%i, process_index=%i, coords=(%i,%i,%i), "
             "core_on_chip=%i)",
-            device.id(), device.task_id(), device.coords()[0],
+            device.id(), device.process_index(), device.coords()[0],
             device.coords()[1], device.coords()[2], device.core_on_chip());
       });
 }  // NOLINT(readability/fn_size)

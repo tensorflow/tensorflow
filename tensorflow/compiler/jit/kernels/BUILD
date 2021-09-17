@@ -32,6 +32,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/xla/client:client_library",
     "//tensorflow/compiler/xla/client:local_client",
     "//tensorflow/compiler/xla/service:compiler",
+    "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",

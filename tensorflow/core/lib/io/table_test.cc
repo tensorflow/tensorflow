@@ -101,7 +101,7 @@ class StringSink : public WritableFile {
     return errors::Unimplemented("StringSink does not support Name()");
   }
   Status Sync() override { return Status::OK(); }
-  Status Tell(int64* pos) override {
+  Status Tell(int64_t* pos) override {
     *pos = contents_.size();
     return Status::OK();
   }

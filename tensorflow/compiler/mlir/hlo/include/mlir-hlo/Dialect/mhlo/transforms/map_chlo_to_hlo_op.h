@@ -64,6 +64,7 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastMaxOp, mhlo::MaxOp);
   POPULATE_BCAST(BroadcastMinOp, mhlo::MinOp);
   POPULATE_BCAST(BroadcastMulOp, mhlo::MulOp);
+  POPULATE_BCAST(BroadcastNextAfterOp, NextAfterOp);
   POPULATE_BCAST(BroadcastOrOp, mhlo::OrOp);
   POPULATE_BCAST(BroadcastPolygammaOp, PolygammaOp);
   POPULATE_BCAST(BroadcastPowOp, mhlo::PowOp);

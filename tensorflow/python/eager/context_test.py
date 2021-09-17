@@ -19,8 +19,10 @@ from __future__ import print_function
 
 import weakref
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.xla.service import hlo_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -31,7 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ContextTest(test.TestCase):
+class ContextTest(test.TestCase, parameterized.TestCase):
 
   def testSetGlobalSeed(self):
     c = context.Context()
@@ -136,6 +138,10 @@ class ContextTest(test.TestCase):
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryInfoCPU(self):
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest('MklCPUAllocator does not throw exception. So skip test.')
+
     with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       context.context().get_memory_info('CPU:0')
 
@@ -171,6 +177,28 @@ class ContextTest(test.TestCase):
     # Cannot set logical device twice.
     with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
       ctx.set_logical_cpu_devices(8)
+
+  @parameterized.named_parameters([(f'_{stage}', stage) for stage in [
+      'hlo', 'hlo_serialized', 'optimized_hlo', 'optimized_hlo_serialized',
+      'optimized_hlo_proto_serialized', 'optimized_hlo_dot'
+  ]])
+  def testGetCompilerIr(self, stage):
+
+    @def_function.function(jit_compile=True)
+    def test_func(x):
+      return 2 * x
+
+    a = array_ops.ones((1000, 1000))  # 4 * 1000 * 1000 in bytes
+    result = test_func.experimental_get_compiler_ir(a)(stage=stage)
+    self.assertNotEmpty(result)
+    if stage == 'optimized_hlo_proto_serialized':
+      hlo_proto = hlo_pb2.HloProto.FromString(result)
+      allocations = hlo_proto.buffer_assignment.buffer_allocations
+      buffer_size = sum(
+          getattr(allocation, 'size') for allocation in allocations)
+      # The sizes of input and output are both 4 * 1000 * 1000 in bytes.
+      self.assertGreaterEqual(buffer_size, 2 * 4 * 1000 * 1000)
+      self.assertLess(buffer_size, 4 * 4 * 1000 * 1000)
 
 
 if __name__ == '__main__':

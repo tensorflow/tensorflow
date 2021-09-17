@@ -15,15 +15,6 @@ package(
 )
 
 cc_library(
-    name = "constants",
-    srcs = ["constants.cc"],
-    hdrs = ["constants.h"],
-    deps = [
-        "//tensorflow/core/platform:macros",
-    ],
-)
-
-cc_library(
     name = "save",
     srcs = ["save.cc"],
     hdrs = ["save.h"],
@@ -57,8 +48,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:protobuf",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -72,31 +62,5 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
-    ],
-)
-
-cc_library(
-    name = "metrics",
-    srcs = ["metrics.cc"],
-    hdrs = ["metrics.h"],
-    visibility = [
-        "//tensorflow/cc/saved_model:__subpackages__",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "metrics_test",
-    size = "small",
-    srcs = ["metrics_test.cc"],
-    deps = [
-        ":metrics",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )

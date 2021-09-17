@@ -61,6 +61,18 @@ class SvdOpTest(test.TestCase):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testThrowDeterminismError(self):
+    shape = [6, 5]
+    seed = [42, 24]
+    matrix1 = stateless_random_ops.stateless_random_normal(shape, seed)
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError, "Determinism is not yet supported "
+            "for Svd."):
+          self.evaluate(linalg_ops.svd(matrix1))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def DISABLED_testBadInputs(self):
     # TODO(b/185822300): re-enable after the bug is fixed in CUDA-11.x
     # The input to svd should be a tensor of at least rank 2.

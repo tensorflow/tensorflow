@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.h"
 
+// Generated dialect defs.
+#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_dialect.cc.inc"
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.cc.inc"
 

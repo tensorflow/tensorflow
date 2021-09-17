@@ -95,9 +95,9 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
                                  DeviceState* device) {
   if (node->attr().count(kOutputShapes) == 0) return;
 
-  int64 execution_count = node->attr().count(kExecutionCount) == 0
-                              ? 1
-                              : node->attr().at(kExecutionCount).i();
+  int64_t execution_count = node->attr().count(kExecutionCount) == 0
+                                ? 1
+                                : node->attr().at(kExecutionCount).i();
 
   auto& shape_annotation_stats = device->shape_annotation_stats;
   shape_annotation_stats.num_ops_annotated += 1;
@@ -499,7 +499,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const auto input_node_port_num = NodePosition(input_node_name);
 
       // Control dependencies should be treated as high priority. Current
-      // Channel device doesn't model a separate virual channel for control v/s
+      // Channel device doesn't model a separate virtual channel for control v/s
       // data transfers. So in the interim, it may be okay to let control
       // dependencies magically flow across devices bypassing the channel
       // device.
@@ -865,7 +865,9 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    bool extract_execution_count_attr,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -873,11 +875,18 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   bool previously_executed_merge =
       IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
 
-  // If there is annotation in the graph about execution times, we use that
-  // number, otherwise, we assume the node is executed once.
-  node_state.execution_count = node->attr().count(kExecutionCount) == 0
-                                   ? 1
-                                   : node->attr().at(kExecutionCount).i();
+  // Our approach to modeling loops is to extract the annotated _execution_count
+  // attribute and to multiply node_costs by the value of the attribute. If
+  // the attribute is not found then we assume a default execution count of 1.
+  // Note that in some simulation flows we will perform this multiplication
+  // elsewhere, as such we only perform this multiplication here if
+  // extract_execution_count_attr is true. Otherwise node_costs are unmodified
+  // and we assume the multiplication has been correctly carried out elsewhere.
+  node_state.execution_count = 1;
+
+  if (extract_execution_count_attr && node->attr().count(kExecutionCount) > 0) {
+    node_state.execution_count = node->attr().at(kExecutionCount).i();
+  }
 
   node_state.node_costs = node_costs;
   // TotalNodeCosts() Should be called after node_costs and execution_count.
@@ -898,8 +907,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
@@ -934,8 +951,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
         // by the target node.
         if (!IsStreamingPort(*node, port_num)) {
           device.memory_usage +=
-              CalculateOutputSize(node_state.output_properties, port_num) *
-              node_state.execution_count;
+              CalculateOutputSize(node_state.output_properties, port_num);
         }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
@@ -1001,8 +1017,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // de-allocate memory.
       if (!IsStreamingPort(*input, port)) {
         input_device.memory_usage -=
-            CalculateOutputSize(input_state.output_properties, port) *
-            node_state.execution_count;
+            CalculateOutputSize(input_state.output_properties, port);
       }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
@@ -1060,9 +1075,9 @@ Costs SchedulerState::Summary() const {
   for (const auto& name : device_names) {
     const auto& state = device_.at(name);
 
-    std::map<string, int64> op_to_memory;
+    std::map<string, int64_t> op_to_memory;
     // First profile only persistent memory usage.
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
@@ -1078,7 +1093,7 @@ Costs SchedulerState::Summary() const {
       op_to_memory[node->op()] += output_size;
       persistent_ops.insert(node->op());
     }
-    int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
+    int64_t max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
         max_memory_usage;
 
@@ -1142,7 +1157,7 @@ Costs SchedulerState::Summary() const {
         is_total_cost_accurate = false;
       }
 
-      int64 op_mem_usage = 0;
+      int64_t op_mem_usage = 0;
       auto it = op_to_memory.find(op);
       if (it != op_to_memory.end()) {
         op_mem_usage = it->second;
@@ -1174,6 +1189,9 @@ Costs SchedulerState::Summary() const {
 
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
+      critical_path_costs.persistent_memory = persistent_memory_usage;
+      critical_path_costs.temporary_memory = state.max_memory_usage;
+      critical_path_costs.max_memory = max_memory_usage;
     }
   }
 
@@ -1271,7 +1289,7 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       auto* mem_stats = node_stats->mutable_memory_stats();
       // SchedulerState does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
-      int64 persistent_memory_size = 0;
+      int64_t persistent_memory_size = 0;
       if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
       }
@@ -1281,9 +1299,9 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
   }
 }
 
-const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
+const std::unordered_map<string, int64_t> SchedulerState::GetPeakMemoryUsage()
     const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
@@ -1292,13 +1310,13 @@ const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
   return result;
 }
 
-const std::unordered_map<string, int64>
+const std::unordered_map<string, int64_t>
 SchedulerState::GetPersistentMemoryUsage() const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;

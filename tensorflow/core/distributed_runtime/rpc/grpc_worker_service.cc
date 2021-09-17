@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -442,8 +443,8 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
   VLOG(3) << "GrpcRecvTensorAsync req: " << request->DebugString();
-  const int64 request_id = request->request_id();
-  const int64 step_id = request->step_id();
+  const int64_t request_id = request->request_id();
+  const int64_t step_id = request->step_id();
 
   bool cache_enabled = (response_cache_ != nullptr && request_id != 0);
 
@@ -567,13 +568,13 @@ namespace {
 // TODO(tucker): When proto3 supports [ctype=CORD] then change
 // RecvBufRespExtra.tensor_content to a cord instead of a repeated string,
 // and remove this function.
-void SetTensorInRecvBufResp(int64 max_chunk_bytes, const Tensor* tensor,
+void SetTensorInRecvBufResp(int64_t max_chunk_bytes, const Tensor* tensor,
                             RecvBufResponse* response) {
   RecvBufRespExtra extra;
-  int64 num_bytes = tensor->TotalBytes();
+  int64_t num_bytes = tensor->TotalBytes();
   const char* head = reinterpret_cast<const char*>(DMAHelper::base(tensor));
   while (num_bytes > 0) {
-    int64 bytes =
+    int64_t bytes =
         max_chunk_bytes > 0 ? std::min(num_bytes, max_chunk_bytes) : num_bytes;
     extra.add_tensor_content(std::string(head, bytes));
     head += bytes;
@@ -585,8 +586,8 @@ void SetTensorInRecvBufResp(int64 max_chunk_bytes, const Tensor* tensor,
 
 void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                               RecvBufResponse* response, StatusCallback done) {
-  const int64 request_id = request->request_id();
-  const int64 step_id = request->step_id();
+  const int64_t request_id = request->request_id();
+  const int64_t step_id = request->step_id();
   bool cache_enabled = (response_cache_ != nullptr && request_id != 0);
 
   auto do_response = [this, response, done, cache_enabled](
@@ -669,9 +670,10 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
-          ScopedMemoryDebugAnnotation op_annotation(
+          profiler::ScopedMemoryDebugAnnotation op_annotation(
               "GrpcWorker::RecvBufAsync::consumer_callback", request->step_id(),
-              "dynamic", hook->prod_value->dtype(), &hook->prod_value->shape());
+              "dynamic", hook->prod_value->dtype(),
+              [hook]() { return hook->prod_value->shape().DebugString(); });
           Tensor* cpu_tensor =
               new Tensor(cpu_dev->GetAllocator(cpu_attr),
                          hook->prod_value->dtype(), hook->prod_value->shape());
@@ -740,7 +742,7 @@ void GrpcWorker::CleanupGraphAsync(const CleanupGraphRequest* request,
 
 WorkerEnv* GrpcWorker::env() { return env_; }
 
-void GrpcWorker::RemoveCacheEntryForId(int64 request_id) {
+void GrpcWorker::RemoveCacheEntryForId(int64_t request_id) {
   if (response_cache_) {
     response_cache_->EraseRequestId(request_id);
   }

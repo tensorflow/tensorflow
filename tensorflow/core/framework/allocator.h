@@ -32,8 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class TensorShape;
-
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
@@ -66,103 +64,27 @@ struct AllocationAttributes {
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
-// Annotations for memory profiling and debugging purpose. The runtime will
-// cache the annotations in thread-local memory, and some allocators will try to
-// tag allocations with the annotations.
-struct MemoryDebugAnnotation {
-  const char* pending_op_name = nullptr;
-  int64 pending_step_id = 0;
-  const char* pending_region_type = nullptr;
-  int32 pending_data_type = 0;
-  const TensorShape* pending_shape = nullptr;
-};
-
-// Wrapper class of MemoryDebugAnnotation for RAII.
-class ScopedMemoryDebugAnnotation {
- public:
-  static const MemoryDebugAnnotation& CurrentAnnotation() {
-    return annotation_;
-  }
-
-  explicit ScopedMemoryDebugAnnotation(const char* op_name) {
-    last_annotation_ = annotation_;
-    CleanupAnnotation();
-    annotation_.pending_op_name = op_name;
-  }
-
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
-    last_annotation_ = annotation_;
-    CleanupAnnotation();
-    annotation_.pending_op_name = op_name;
-    annotation_.pending_step_id = step_id;
-  }
-
-  // This constructor keeps the pending_op_name and pending_step_id from parent
-  // (if any).  Otherwise it overwrites with op_name.
-  explicit ScopedMemoryDebugAnnotation(const char* op_name,
-                                       const char* region_type, int32 data_type,
-                                       const TensorShape* shape) {
-    last_annotation_ = annotation_;
-    if (!annotation_.pending_op_name) {
-      annotation_.pending_op_name = op_name;
-    }
-    annotation_.pending_region_type = region_type;
-    annotation_.pending_data_type = data_type;
-    annotation_.pending_shape = shape;
-  }
-
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
-                                       const char* region_type, int32 data_type,
-                                       const TensorShape* shape) {
-    last_annotation_ = annotation_;
-    annotation_.pending_op_name = op_name;
-    annotation_.pending_step_id = step_id;
-    annotation_.pending_region_type = region_type;
-    annotation_.pending_data_type = data_type;
-    annotation_.pending_shape = shape;
-  }
-
-  ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
-
- private:
-  void CleanupAnnotation() {
-    annotation_.pending_op_name = nullptr;
-    annotation_.pending_step_id = 0;
-    annotation_.pending_region_type = nullptr;
-    annotation_.pending_data_type = 0;
-    annotation_.pending_shape = nullptr;
-  }
-
-  // Stores the current annotations.
-  static thread_local MemoryDebugAnnotation annotation_;
-
-  // Stores the previous values in case the annotations are nested.
-  MemoryDebugAnnotation last_annotation_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedMemoryDebugAnnotation);
-};
-
 // Runtime statistics collected by an allocator. Exactly the same as
 // stream_executor::AllocatorStats, but independently defined to preserve the
 // mutual independence of StreamExecutor and TensorFlow.
 struct AllocatorStats {
-  int64 num_allocs;          // Number of allocations.
-  int64 bytes_in_use;        // Number of bytes in use.
-  int64 peak_bytes_in_use;   // The peak bytes in use.
-  int64 largest_alloc_size;  // The largest single allocation seen.
+  int64_t num_allocs;          // Number of allocations.
+  int64_t bytes_in_use;        // Number of bytes in use.
+  int64_t peak_bytes_in_use;   // The peak bytes in use.
+  int64_t largest_alloc_size;  // The largest single allocation seen.
 
   // The upper limit of bytes of user allocatable device memory, if such a limit
   // is known.
-  absl::optional<int64> bytes_limit;
+  absl::optional<int64_t> bytes_limit;
 
   // Stats for reserved memory usage.
-  int64 bytes_reserved;       // Number of bytes reserved.
-  int64 peak_bytes_reserved;  // The peak number of bytes reserved.
+  int64_t bytes_reserved;       // Number of bytes reserved.
+  int64_t peak_bytes_reserved;  // The peak number of bytes reserved.
   // The upper limit on the number bytes of reservable memory,
   // if such a limit is known.
-  absl::optional<int64> bytes_reservable_limit;
+  absl::optional<int64_t> bytes_reservable_limit;
 
-  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+  int64_t largest_free_block_bytes;  // Largest free block's size in heap.
 
   AllocatorStats()
       : num_allocs(0),
@@ -264,7 +186,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(const void* ptr) const { return 0; }
+  virtual int64_t AllocationId(const void* ptr) const { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -292,8 +214,9 @@ class Allocator {
   virtual void SetSafeFrontier(uint64 count) {}
 
   // For allocator that are stream aware, allow to specify the compute
-  // stream this allocator is used for.
-  virtual void SetStream(void* stream) {}
+  // stream this allocator is used for. This can also trigger memory
+  // preallocation.
+  virtual void SetStreamAndPreallocateMemory(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.
@@ -338,7 +261,7 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(const void* ptr) const override {
+  int64_t AllocationId(const void* ptr) const override {
     return wrapped_->AllocationId(ptr);
   }
 

@@ -23,8 +23,8 @@ import warnings
 
 import six
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
@@ -38,7 +38,9 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -63,8 +65,23 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
     "`next_element` as the input to some computation that is invoked inside "
     "the loop.")
 
+# NOTE(jsimsa): Threshold used as a heuristic to check for infinite loop during
+# tf.function tracing.
+GET_NEXT_CALL_ERROR_THRESHOLD = 32
+
+GET_NEXT_CALL_ERROR_MESSAGE = (
+    "An unusually high number of `tf.data.Iterator.get_next()` calls was "
+    "detected. This suggests that the `for elem in dataset: ...` idiom is used "
+    "within tf.function with AutoGraph disabled. This idiom is only supported "
+    "when AutoGraph is enabled.")
+
 # Collection of all IteratorResources in the `Graph`.
 GLOBAL_ITERATORS = "iterators"
+
+
+autograph_ctx = lazy_loader.LazyLoader(
+    "autograph_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 def _device_stack_is_empty():
@@ -99,15 +116,22 @@ class Iterator(trackable.Trackable):
         corresponding to each component of an element of this iterator.
       output_classes: A (nested) structure of Python `type` objects
         corresponding to each component of an element of this iterator.
+
+    Raises:
+      TypeError: If `output_types`, `output_shapes`, or `output_classes` is not
+        specified.
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
 
     if (output_types is None or output_shapes is None
         or output_classes is None):
-      raise ValueError("If `structure` is not specified, all of "
-                       "`output_types`, `output_shapes`, and `output_classes`"
-                       " must be specified.")
+      raise ValueError(
+          "All of `output_types`, `output_shapes`, and `output_classes` "
+          "must be specified to create an iterator. Got "
+          f"`output_types` = {output_types!r}, "
+          f"`output_shapes` = {output_shapes!r}, "
+          f"`output_classes` = {output_classes!r}.")
     self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self._flat_tensor_shapes = structure.get_flat_tensor_shapes(
@@ -300,7 +324,11 @@ class Iterator(trackable.Trackable):
     else:
       # TODO(mrry): Consider whether one-shot iterators should have
       # initializers that simply reset their state to the beginning.
-      raise ValueError("Iterator does not have an initializer.")
+      raise ValueError(
+          "The iterator does not have an initializer. This means it was likely "
+          "created using `tf.data.Dataset.make_one_shot_iterator()`. For an "
+          "initializable iterator, use "
+          "`tf.data.Dataset.make_initializable_iterator()` instead.")
 
   def make_initializer(self, dataset, name=None):
     """Returns a `tf.Operation` that initializes this iterator on `dataset`.
@@ -340,21 +368,21 @@ class Iterator(trackable.Trackable):
           nest.flatten(dataset_output_classes)):
         if iterator_class is not dataset_class:
           raise TypeError(
-              "Expected output classes %r but got dataset with output class %r."
-              % (self.output_classes, dataset_output_classes))
+              f"Expected output classes {self.output_classes!r} but got "
+              f"dataset with output classes {dataset_output_classes!r}.")
       for iterator_dtype, dataset_dtype in zip(
           nest.flatten(self.output_types), nest.flatten(dataset_output_types)):
         if iterator_dtype != dataset_dtype:
           raise TypeError(
-              "Expected output types %r but got dataset with output types %r." %
-              (self.output_types, dataset_output_types))
+              f"Expected output types {self.output_types!r} but got dataset "
+              f"with output types {dataset_output_types!r}.")
       for iterator_shape, dataset_shape in zip(
           nest.flatten(self.output_shapes), nest.flatten(
               dataset_output_shapes)):
         if not iterator_shape.is_compatible_with(dataset_shape):
-          raise TypeError("Expected output shapes compatible with %r but got "
-                          "dataset with output shapes %r." %
-                          (self.output_shapes, dataset_output_shapes))
+          raise TypeError(
+              f"Expected output shapes compatible with {self.output_shapes!r} "
+              f"but got dataset with output shapes {dataset_output_shapes!r}.")
 
     # TODO(b/169442955): Investigate the need for this colocation constraint.
     with ops.colocate_with(self._iterator_resource):
@@ -677,12 +705,12 @@ class OwnedIterator(IteratorBase):
         `components` and `element_spec` is provided.
     """
     super(OwnedIterator, self).__init__()
-    error_message = ("Either `dataset` or both `components` and "
-                     "`element_spec` need to be provided.")
 
     if dataset is None:
       if (components is None or element_spec is None):
-        raise ValueError(error_message)
+        raise ValueError(
+            "When `dataset` is not provided, both `components` and "
+            "`element_spec` must be specified.")
       # pylint: disable=protected-access
       self._element_spec = element_spec
       self._flat_output_types = structure.get_flat_tensor_types(
@@ -692,8 +720,12 @@ class OwnedIterator(IteratorBase):
       self._iterator_resource, self._deleter = components
     else:
       if (components is not None or element_spec is not None):
-        raise ValueError(error_message)
+        raise ValueError(
+            "When `dataset` is provided, `element_spec` and `components` must "
+            "not be specified.")
       self._create_iterator(dataset)
+
+    self._get_next_call_count = 0
 
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
@@ -729,6 +761,13 @@ class OwnedIterator(IteratorBase):
     return self.__next__()
 
   def _next_internal(self):
+    autograph_status = autograph_ctx.control_status_ctx().status
+    autograph_disabled = autograph_status == autograph_ctx.Status.DISABLED
+    if not context.executing_eagerly() and autograph_disabled:
+      self._get_next_call_count += 1
+      if self._get_next_call_count > GET_NEXT_CALL_ERROR_THRESHOLD:
+        raise ValueError(GET_NEXT_CALL_ERROR_MESSAGE)
+
     if not context.executing_eagerly():
       # TODO(b/169442955): Investigate the need for this colocation constraint.
       with ops.colocate_with(self._iterator_resource):
@@ -905,7 +944,7 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       self,
       iterator_resource,
       name,
-      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+      external_state_policy=options_lib.ExternalStatePolicy.FAIL):
     serialized_iterator = gen_dataset_ops.serialize_iterator(
         iterator_resource, external_state_policy=external_state_policy.value)
     specs = [
@@ -939,3 +978,6 @@ def get_next_as_optional(iterator):
     of the iterator (if it exists) or no value.
   """
   return iterator.get_next_as_optional()
+
+
+_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)

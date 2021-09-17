@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -128,7 +129,8 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
 };
 
 struct LegalizeGatherToTorchIndexSelectPass
-    : public PassWrapper<LegalizeGatherToTorchIndexSelectPass, FunctionPass> {
+    : public LegalizeGatherToTorchIndexSelectPassBase<
+          LegalizeGatherToTorchIndexSelectPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());

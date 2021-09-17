@@ -38,7 +38,7 @@ namespace {
 
 class HloSchedulingTest : public HloTestBase {};
 
-int64 PeakMemoryUseOfEntryComputation(
+int64_t PeakMemoryUseOfEntryComputation(
     HloModule* module, LogicalBuffer::SizeFunction size_function) {
   CHECK(module->has_entry_computation());
   CHECK(module->has_schedule());
@@ -141,7 +141,7 @@ ENTRY root {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
-  int64 peak_memory;
+  int64_t peak_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), size_fn,
@@ -209,9 +209,8 @@ ENTRY entry {
     instructions_by_name[instruction->name()] = instruction;
   }
 
-  SequentialHloOrdering ordering(schedule);
-  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
-                                      instructions_by_name.at("n1")));
+  EXPECT_LT(absl::c_find(sequence, instructions_by_name.at("send-done")),
+            absl::c_find(sequence, instructions_by_name.at("n1")));
 }
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {

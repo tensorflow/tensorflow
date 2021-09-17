@@ -169,4 +169,4 @@ def _input_index(op, handle):
   for i, t in enumerate(op.inputs):
     if handle is t:
       return i
-  raise ValueError("%s not in list" % str(handle))
+  raise ValueError(f"{handle!s} not in list of inputs for op: {op!r}")

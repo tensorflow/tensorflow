@@ -79,37 +79,32 @@ class TrtShapeOptimizationProfileTest
     strategy_ = GetParam();
     builder_ = TrtUniquePtrType<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(logger_));
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     network_ = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
         builder_->createNetworkV2(flags_));
     builder_config_ = TrtUniquePtrType<nvinfer1::IBuilderConfig>(
         builder_->createBuilderConfig());
     builder_config_->setMaxWorkspaceSize(1 << 10);
-#else
-    network_ = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-        builder_->createNetwork());
-    builder_->setMaxWorkspaceSize(1 << 10);
-#endif
   }
 
   // Defines a simple network: output = input1 + input2.
   void DefineNetwork(nvinfer1::INetworkDefinition* network,
                      nvinfer1::Dims3& dims) {
-    nvinfer1::ITensor* input1 =
+    ITensorProxyPtr input1 =
         network->addInput("input1", nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input1);
+    EXPECT_NE(nullptr, input1->trt_tensor());
 
-    nvinfer1::ITensor* input2 =
+    ITensorProxyPtr input2 =
         network->addInput("input2", nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input1);
+    EXPECT_NE(nullptr, input2->trt_tensor());
 
-    auto layer = network->addElementWise(*input1, *input2,
-                                         nvinfer1::ElementWiseOperation::kSUM);
+    auto layer =
+        network->addElementWise(*input1->trt_tensor(), *input2->trt_tensor(),
+                                nvinfer1::ElementWiseOperation::kSUM);
     EXPECT_NE(nullptr, layer);
     // Mark the output.
-    nvinfer1::ITensor* output = layer->getOutput(0);
+    ITensorProxyPtr output = layer->getOutput(0);
     output->setName("output");
-    network->markOutput(*output);
+    network->markOutput(*output->trt_tensor());
   }
 
   void CheckProfile(const std::vector<nvinfer1::Dims3>& dimvec,
@@ -119,7 +114,6 @@ class TrtShapeOptimizationProfileTest
     int idx = profile->GetProfileNumber(shape_vec);
     ASSERT_EQ(idx >= 0, has_prof);
     if (idx < 0) return;
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
     for (int j = 0; j < dimvec.size(); j++) {
@@ -138,24 +132,19 @@ class TrtShapeOptimizationProfileTest
         EXPECT_TRUE(DimsEqual(dimvec[j], opt));
       }
     }
-#endif
   }
 
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
-#endif
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   std::vector<ExecutionContext> exec_contexts_;
   // The order is important: exec_context_ must be destroyed first, and logger
   // at last.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   const uint32_t flags_ =
       1U << static_cast<int>(
           nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-#endif
   ProfileStrategy strategy_;
 };
 
@@ -175,17 +164,12 @@ TEST_P(TrtShapeOptimizationProfileTest, Static) {
 
   TrtShapeOptimizationProfile profile;
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Configure and build engine - should be a no-op.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
 
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_, *builder_config_));
-#else
-  engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
-      builder_->buildCudaEngine(*network_));
-#endif
   EXPECT_NE(nullptr, engine);
   TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
   // A single execution context should be created for a graph with static input.
@@ -197,7 +181,6 @@ TEST_P(TrtShapeOptimizationProfileTest, Static) {
   EXPECT_EQ(0, profile.GetProfileNumber(shape_vec));
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_P(TrtShapeOptimizationProfileTest, Dynamic) {
   // Network with dynamic input shapes.
   nvinfer1::Dims3 dims(-1, -1, 10);
@@ -261,7 +244,6 @@ TEST_P(TrtShapeOptimizationProfileTest, Dynamic) {
                    strategy_ == ProfileStrategy::kRangeOptimal);
   CheckProfile(unseen_shapes, &profile, has_prof, false);
 }
-#endif
 
 }  // namespace tensorrt
 }  // namespace tensorflow

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -35,7 +36,7 @@ class ShuffleAndRepeatFusionTest(test_base.DatasetTestBase,
     expected = "ShuffleAndRepeat"
     dataset = dataset_ops.Dataset.range(10).apply(
         testing.assert_next([expected])).shuffle(10).repeat(2)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.shuffle_and_repeat_fusion = True
     dataset = dataset.with_options(options)

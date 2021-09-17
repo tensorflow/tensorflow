@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-int64 GetMinimumAlignmentForArray(
+int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
   CHECK(shape.IsArray());
   CHECK(!LayoutUtil::HasLayout(shape) || LayoutUtil::IsDense(shape.layout()));
@@ -33,7 +33,7 @@ int64 GetMinimumAlignmentForArray(
   // because we don't pad our tensors or otherwise have complicated data tiling
   // schemes.
 
-  int64 allocation_size_bytes =
+  int64_t allocation_size_bytes =
       ShapeUtil::ElementsIn(shape) *
       ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
   return target_machine_features.minimum_alignment_for_allocation(
@@ -84,12 +84,12 @@ bool PotentiallyImplementedAsEigenConvolution(
       convolution.convolution_dimension_numbers();
   // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+  const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
   if (num_spatial_dims > 2) {
     return false;
   }
 
-  for (int64 i = 0; i < num_spatial_dims; ++i) {
+  for (int64_t i = 0; i < num_spatial_dims; ++i) {
     if (dnums.input_spatial_dimensions(i) != i + 1) {
       return false;
     }

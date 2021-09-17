@@ -229,6 +229,15 @@ TEST(FloatMulOpTest, WithBroadcast2Elements) {
   }
 }
 
+TEST(FloatMulOpTest, ScalarAndOneElement) {
+  FloatMulOpModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {0.8});
+  m.PopulateTensor<float>(m.input2(), {0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({0.4})));
+}
+
 TEST(IntegerMulOpTest, NoActivation) {
   IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
                       {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},

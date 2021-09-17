@@ -132,6 +132,24 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_shaped_ops",
+    srcs = ["dynamic_shaped_ops.cc"],
+    hdrs = ["dynamic_shaped_ops.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:value_inference",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "loops",
     srcs = ["loops.cc"],
     hdrs = ["loops.h"],

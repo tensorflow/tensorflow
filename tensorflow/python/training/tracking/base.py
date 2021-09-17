@@ -696,6 +696,9 @@ class Trackable(object):
   def _object_identifier(self):
     """String used to identify this object in a SavedModel.
 
+    THIS FIELD HAS BEEN DEPRECATED IN FAVOR OF THE NAME REGISTERED WITH
+    `register_serializable`.
+
     Generally, the object identifier is constant across objects of the same
     class, while the metadata field is used for instance-specific data.
 
@@ -1048,6 +1051,37 @@ class Trackable(object):
     """
     return self._self_saveable_object_factories
 
+  def _gather_saveables_for_saved_model(self):
+    """Returns a dictionary that defines the checkpoint save/restore ops.
+
+    This is similar to `_gather_saveables_for_checkpoint`, but is only called
+    to write the save and restore ops to a SavedModel GraphDef. The SavedModel
+    checkpoint is still saved with `_gather_saveables_for_checkpoint`. To ensure
+    compatibility, make sure the dictionary keys and `SaveableObject` names
+    are the same in both functions.
+
+    By default, this function calls `_gather_saveables_for_checkpoint`.
+
+    This function should only be overwritten when the resources added to the
+    exported graph are different from the resources used to save the checkpoint.
+    As a general rule of thumb, if your class overrides `_map_resources` then
+    it should also override this function.
+
+    For example, distributed variables are saved to the SavedModel as normal
+    variables. In `_map_resources`, it returns a dictionary mapping itself to
+    a regular variable. In this function, it returns
+    `{VARIABLE_VALUE_KEY: mapped variable}`.
+
+    Returns:
+      The dictionary mapping attribute names to `SaveableObject` factories
+      described above. For example:
+      {VARIABLE_VALUE_KEY:
+       lambda name="global_name_for_this_object":
+       SaveableObject(name=name, ...)}
+
+    """
+    return self._gather_saveables_for_checkpoint()
+
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.
 
@@ -1104,6 +1138,10 @@ class Trackable(object):
     graph), which allows session based APIs (e.g, C++ loader API) to interact
     with resources owned by this object.
 
+    If you are overriding this function, make sure to implement
+    `_gather_saveables_for_saved_model`, which defines the save and restore ops
+    on the mapped resources.
+
     Args:
       save_options: A tf.saved_model.SaveOptions instance.
 
@@ -1116,3 +1154,122 @@ class Trackable(object):
           newly created resource tensors.
     """
     return {}, {}
+
+  def _serialize_to_proto(self, **kwargs):
+    """Returns a proto of any type to be saved into the SavedModel.
+
+    Trackable classes decorated with `register_serializable` should overwrite
+    this method to save metadata for this object to the SavedModel. The proto
+    returned by this function will be passed to `_deserialize_from_proto` in the
+    form of a `google.protobuf.Any` proto.
+
+    This data is only saved and used by the Python API. Existing C++ loading
+    APIs such as `tensorflow::LoadSavedModel` will not read this field at all.
+
+    Args:
+      **kwargs: Keyword arguments passed to the object during saving. There are
+        no kwargs at this time. One future kwarg would be the SavedModel
+        directory, which will be used by the Assets object.
+
+    Returns:
+      A new proto
+    """
+    del kwargs
+
+    return None
+
+  @classmethod
+  def _deserialize_from_proto(cls, **kwargs):
+    """Returns a new object restored by the SavedModel.
+
+    Trackable classes decorated with `register_serializable` should overwrite
+    this method to change how the object is loaded from SavedModel. By default,
+    the object is initialized with no arguments.
+
+    Example:
+
+    ```
+    def _serialize_to_proto(self, **unused_kwargs):
+      return Message(name="a")
+
+    @classmethod
+    def _deserialize_from_proto(cls, proto, **unused_kwargs):
+      if proto.Is(Message.DESCRIPTOR):
+        unpacked = Message()
+        proto.Unpack(unpacked)
+        return cls(unpacked.name)
+      else:
+        return cls()
+    ```
+
+    This function is only used by the Python API. C++ and TensorFlow Serving do
+    not have access to your registered class and cannot execute any of the
+    non-tf.functions attached to the Python class. However, all signatures and
+    tf.functions are still accessible.
+
+    **Avoid creating duplicate trackables**
+
+    SavedModel is saved by recursively gathering all of the trackables and their
+    children. SavedModel loading reverses those steps by creating all
+    trackables, then reconnecting the children trackables to their parents using
+    `Trackable._add_trackable_child`.
+
+    That means that if `_deserialize_from_proto` calls the `__init__` function,
+    which creates all of the children trackables, then those children end up
+    being created *twice*.
+
+    To avoid this, structure your code so that Trackables are not created
+    when deserialized from SavedModel:
+
+    ```
+    @register_serializable()
+    class Serializable(trackable):
+      def __init __(self, from_proto=False):
+        create_non_trackable_objects()
+        if not from_proto:
+          create_variables_and_other_trackables()
+
+      def _deserialize_from_proto(cls, **kwargs):
+        return cls(from_proto=True)
+
+      def _add_trackable_child(self, name, value):
+        self.__setattr__(name, value)
+    ```
+
+    Args:
+      **kwargs: Keyword arguments passed to the object when loading. As of now,
+        the only supported kwarg is:
+        * proto: A `google.protobuf.Any` proto read from the SavedModel.
+
+    Returns:
+      A new object.
+    """
+    del kwargs
+    return cls()
+
+  def _add_trackable_child(self, name, value):
+    """Restores a connection between trackables when loading from SavedModel.
+
+    SavedModel stores both the object metadata and its list of children. When
+    loading, this function is used along with `_deserialize_from_proto` to load
+    objects from the SavedModel: First, all saved objects are created with
+    `_deserialize_from_proto`. After that is complete, the children are
+    connected using `_add_trackable_child`.
+
+    **Example**
+
+    `tf.Module`, `tf.keras.Model` and Keras layers use `__setattr__` to track
+    children. This is why users can call `model.v = tf.Variable(...)`, and the
+    variable will be automatically saved to the checkpoint. The implementation
+    of this method for the listed objects is:
+
+    ```
+    def _add_trackable_child(self, name, value):
+      self.__setattr__(name, value)
+    ```
+
+    Args:
+      name: The name of the connection between the parent and child `Trackable`.
+      value: The child `Trackable` object.
+    """
+    self._track_trackable(value, name, overwrite=True)

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -41,7 +42,7 @@ namespace gpu {
 
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
   return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
-    Shape shape = TypeToShape(operand.getType());
+    Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
            LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
@@ -76,18 +77,20 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
         params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer)
             .opaque();
 
-    TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                        ToNcclDataType(config_.config.operand_element_type[i]));
+    PrimitiveType element_type = config_.config.operand_element_type[i];
+    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                        ToNcclDataTypeAndCountMultiplier(element_type));
+    ncclDataType_t dtype = dtype_and_multiplier.first;
+    int element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, count=%d, "
+        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, buffer.element_count,
-        static_cast<const void*>(comm), cu_stream);
+        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
+        cu_stream);
 
-    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(send_buffer, recv_buffer,
-                                           buffer.element_count, datatype, comm,
-                                           *cu_stream));
+    XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(
+        send_buffer, recv_buffer, element_count, dtype, comm, *cu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

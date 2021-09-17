@@ -8,6 +8,11 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -292,10 +297,28 @@ cc_library(
         "//tensorflow/compiler/xla/service:despecializer",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_runner_interface",
         "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor/lib",
     ],
+)
+
+tf_proto_library(
+    name = "run_hlo_module_proto",
+    srcs = ["run_hlo_module.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+xla_py_proto_library(
+    name = "run_hlo_module_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":run_hlo_module_proto"],
 )
 
 cc_library(
@@ -307,22 +330,22 @@ cc_library(
         ":hlo_control_flow_flattening",
         ":hlo_module_loader",
         ":prepare_reference_module",
+        ":run_hlo_module_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
-        "//tensorflow/stream_executor:platform",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -337,15 +360,17 @@ tf_cc_binary(
     deps = [
         ":run_hlo_module_lib",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:test",
+        "//tensorflow/core:framework_internal",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
@@ -358,10 +383,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:tuple_util",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -370,10 +394,12 @@ tf_cc_test(
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [
         ":hlo_control_flow_flattening",
+        "//tensorflow/compiler/xla/service:despecializer",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
     ],
 )
 

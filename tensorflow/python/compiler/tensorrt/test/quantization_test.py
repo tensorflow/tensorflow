@@ -64,8 +64,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Only test static engine mode, with or without calibration.
-    return (trt_test.IsTensorRTVersionGreaterEqual(5) and
-            trt_test.IsQuantizationMode(run_params.precision_mode) and
+    return (trt_test.IsQuantizationMode(run_params.precision_mode) and
             not run_params.convert_online and not run_params.dynamic_engine
            ), "test static engine, offline conversion and INT8"
 
@@ -89,8 +88,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Test static/dynamic engine with/without calibration.
-    return (trt_test.IsTensorRTVersionGreaterEqual(5) and
-            trt_test.IsQuantizationMode(run_params.precision_mode) and
+    return (trt_test.IsQuantizationMode(run_params.precision_mode) and
             not run_params.convert_online), "test offline conversion and INT8"
 
   def ExpectedEnginesToBuild(self, run_params):

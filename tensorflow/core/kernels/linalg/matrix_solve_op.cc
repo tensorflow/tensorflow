@@ -62,12 +62,12 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
                                       input_matrix_shapes[1].dim_size(1)})});
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = rows * rows * (rows + num_rhss);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -129,8 +129,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 nrhs = rhs.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -143,15 +143,22 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                       done);
     OP_REQUIRES_ASYNC(
         context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
+        errors::InvalidArgument("Input matrices must be squares, got ",
                                 input.dim_size(ndims - 2), " != ", n),
         done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
                       errors::InvalidArgument(
                           "Input matrix and right-hand side must have the "
-                          "same number of rows, got",
+                          "same number of rows, got ",
                           n, " != ", rhs.dim_size(ndims - 2)),
                       done);
+    for (int dim = 0; dim < ndims - 2; dim++) {
+      OP_REQUIRES_ASYNC(
+          context, input.dim_size(dim) == rhs.dim_size(dim),
+          errors::InvalidArgument(
+              "All input tensors must have the same outer dimensions."),
+          done);
+    }
 
     // Allocate output.
     Tensor* output;
@@ -197,7 +204,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       }
     }
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;
