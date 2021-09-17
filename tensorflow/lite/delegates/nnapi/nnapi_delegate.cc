@@ -1296,6 +1296,82 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  // Lower SQUARED_DIFFERENCE into SUB and MUL.
+  TfLiteStatus TransformSquaredDifferenceIntoSupportedOps(
+      int lite_node_index, TfLiteNode* node, TfLiteRegistration* reg) {
+    const TfLiteTensor& lhs = context_->tensors[node->inputs->data[0]];
+    const TfLiteTensor& output = context_->tensors[node->outputs->data[0]];
+
+    // Stage1 : diff = lhs - rhs
+    int diff_out_ann_index = 0;
+    {
+      // For quantized data type, choose a proper scale and zero point based on
+      // the output range.
+      float max_output = 0.f;
+      int diff_output_zero_point = 0;
+      int diff_output_nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+      switch (lhs.type) {
+        case kTfLiteFloat32:
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+          break;
+        case kTfLiteInt32:
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_INT32;
+          break;
+        case kTfLiteUInt8:
+          max_output = (255 - output.params.zero_point) * output.params.scale;
+          diff_output_zero_point = 128;
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
+          break;
+        case kTfLiteInt8:
+          max_output = (127 - output.params.zero_point) * output.params.scale;
+          diff_output_zero_point = 0;
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
+          break;
+        default:
+          return kTfLiteError;
+      }
+      // Final output range: [0, max_output], and output = diff^2,
+      // -> diff range: [-sqrt(max_output), sqrt(max_output)]
+      // This range corresponds to [1, 255] for uint8 with zero_point = 128,
+      // or [-127, 127] for int8 with zero_point = 0.
+      float diff_output_scale = 2.0f * std::sqrt(max_output) / 254.0f;
+
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
+                                   NN_TENSOR_FLAG_SCALAR_AS_TENSOR |
+                                       NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[1], /*hybrid_op=*/false,
+                                   NN_TENSOR_FLAG_SCALAR_AS_TENSOR |
+                                       NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              output.dims->size, reinterpret_cast<uint32_t*>(output.dims->data),
+              diff_output_nn_type, diff_output_scale, diff_output_zero_point,
+              &diff_out_ann_index));
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SUB, lite_node_index));
+    }
+
+    // Stage2 : out = diff * diff
+    {
+      augmented_inputs_.push_back(diff_out_ann_index);
+      augmented_inputs_.push_back(diff_out_ann_index);
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(context_,
+                        AddTensorOutput(node->outputs->data[0],
+                                        NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_MUL, lite_node_index));
+    }
+
+    return kTfLiteOk;
+  }
+
   // Finish emitting the op (of type `type`) into the NN API.
   TfLiteStatus FinalizeAddOperation(ANeuralNetworksOperationType type,
                                     int lite_node_index) {
@@ -3141,6 +3217,27 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support axis being the last dimension", &val_ctx);
     } break;
+    case kTfLiteBuiltinSquaredDifference: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
+                                 &val_ctx);
+      const auto input0_type = context->tensors[node->inputs->data[0]].type;
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8,
+                             kTfLiteInt8, kTfLiteInt32);
+      } else if (android_sdk_version >= kMinSdkVersionForNNAPI12) {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8);
+      } else {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32);
+      }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "NNAPI does not support input rank greater than 4", &val_ctx);
+    } break;
     default:
       // All other operators are not mapped.
       AddValidationFailure(NNAPIValidationFailureType::kUnsupportedOperator,
@@ -4850,6 +4947,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (reg->builtin_code == kTfLiteBuiltinSplitV) {
       TF_LITE_ENSURE_STATUS(
           builder.TransformSplitVIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
+    // Delegate SQUARED_DIFFERENCE by lowering it into SUB + MUL.
+    if (reg->builtin_code == kTfLiteBuiltinSquaredDifference) {
+      TF_LITE_ENSURE_STATUS(builder.TransformSquaredDifferenceIntoSupportedOps(
+          node_index, node, reg));
       continue;
     }
     // Fully quantized full LSTM.

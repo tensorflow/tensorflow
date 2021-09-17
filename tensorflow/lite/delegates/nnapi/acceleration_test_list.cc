@@ -406,6 +406,10 @@ SplitOpTest/SplitOpTest/.+/0,29
 # Only accelerated when both split_sizes and axis are constant
 SplitVOpTypedTest/.+/ConstSplits.+,30
 
+# squared_difference_test
+FloatSquaredDifferenceOpTest/.+,28
+(Integer|Quantized)SquaredDifferenceOpTest/.+,30
+
 # squeeze_test
 FloatSqueezeOpTest/.+,29
 
