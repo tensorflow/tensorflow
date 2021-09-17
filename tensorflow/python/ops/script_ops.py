@@ -114,7 +114,7 @@ class EagerFunc(object):
           "Only numeric data structures like Tensors or NumPy arrays should "
           "be returned; to return the value of a variable, make sure to obtain "
           "the Tensor backing it by calling `.read_value()` on the variable in "
-          "question: %s" % value)
+          f"question: {value}")
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
       # both Tensors and Python Nones. Unfortunately this breaks the
@@ -239,7 +239,8 @@ class FuncRegistry(object):
     """
     func = self._funcs.get(token, None)
     if func is None:
-      raise ValueError("callback %s is not found" % token)
+      raise ValueError(f"Could not find callback with key={token} in the "
+                       "registry.")
     if isinstance(func, EagerFunc):
       # NB: Different invocations of the same py_func will share the same
       # token, and the entries they stash in the tape_cache will collide.
@@ -290,8 +291,9 @@ def _internal_py_func(func,
                       use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
-    raise ValueError("Expected func to be callable, got func of type {}".format(
-        type(func)))
+    raise ValueError(
+        f"Expected func to be callable. Received func={func} of type "
+        f"{type(func)}.")
 
   original_func = func
 
