@@ -31,22 +31,18 @@ import six
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.core import _pywrap_py_func
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import type_annotations
 from tensorflow.python.util.tf_export import tf_export
 
 autograph = lazy_loader.LazyLoader(
@@ -296,54 +292,16 @@ def _internal_py_func(func,
         f"{type(func)}.")
 
   original_func = func
-
-  if not (eager and _py_func_input_or_output_is_structured(inp, Tout)):
-    flat_inp = inp
-    out_structure = Tout
-    flat_Tout = Tout if isinstance(Tout, (list, tuple)) else [Tout]
-  else:
-    # To handle structured inputs/outputs (including composite tensors):
-    # 1. Flatten the inputs to a list of tensors.
-    # 2. Create a wrapper function that expects flat inputs, and:
-    #    - Packs the inputs into the expected input structure.
-    #    - Calls the original function with that packed structure.
-    #    - Flattens and returns the result.
-    # 3. Pack the flat tensors returned by the wrapper function to have the
-    #    expected output structure.
-    flat_inp = nest.flatten(inp, expand_composites=True)
-    flat_Tout = nest.flatten(Tout, expand_composites=True)
-    flat_Tout = [_tensor_spec_to_dtype(v) for v in flat_Tout]
-    out_structure = nest.map_structure(_dtype_to_tensor_spec, Tout)
-
-    def wrapper_func(*flat_inp):
-      structured_inp = nest.pack_sequence_as(
-          inp, flat_inp, expand_composites=True)
-      original_out = out = original_func(*structured_inp)
-      out = _coerce_py_func_output_to_expected_structure(out, Tout)
-      try:
-        result = nest.flatten_up_to(out_structure, out, expand_composites=True)
-      except (TypeError, ValueError) as e:
-        raise ValueError(
-            f"py_function: func={original_func} returned "
-            f"{original_out!r}, which did not match Tout={Tout!r}") from e
-      # Check early for some of the possible return type mismatches.
-      # Upon flattening according to Tout, `result` should only contain
-      # TensorLike objects. Anything else means that Tout was incorrect,
-      # leading the flattening to leave some things unflattened.
-      # Note: we would catch this later (when we call convert_to_tensor),
-      # but we can give a better error message if we flag it here.
-      if any(not isinstance(t, _TENSOR_LIKE) for t in result):
-        raise ValueError(
-            f"py_function: func={original_func} returned "
-            f"{original_out!r}, which did not match Tout={Tout!r}")
-      return result
-
-    func = wrapper_func
-
   func = autograph.do_not_convert(func)
+
+  is_list_or_tuple = False
+  if isinstance(Tout, (list, tuple)):
+    is_list_or_tuple = True
+  else:
+    Tout = [Tout]
+
   if eager:
-    func = EagerFunc(
-        func, flat_Tout, is_grad_func, use_tape_cache=use_tape_cache)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
 
   # Tying the registered function's lifetime with the current default graph is
   # not reliable. For example, Estimator-based binaries may switch graphs in
@@ -385,23 +343,19 @@ def _internal_py_func(func,
 
   if eager:
     result = gen_script_ops.eager_py_func(
-        input=flat_inp,
+        input=inp,
         token=token,
         is_async=context.is_async(),
-        Tout=flat_Tout,
+        Tout=Tout,
         name=name)
   else:
     if stateful:
       result = gen_script_ops.py_func(
-          input=flat_inp, token=token, Tout=flat_Tout, name=name)
+          input=inp, token=token, Tout=Tout, name=name)
     else:
       result = gen_script_ops.py_func_stateless(
-          input=flat_inp, token=token, Tout=flat_Tout, name=name)
-
-  if isinstance(Tout, (list, tuple)) and not Tout:
-    return result  # For stateful ops, this returns an Operation object
-
-  return nest.pack_sequence_as(out_structure, result, expand_composites=True)
+          input=inp, token=token, Tout=Tout, name=name)
+  return result if is_list_or_tuple else result[0]
 
 
 # TODO(akshayka): Implement higher-order derivatives.
@@ -543,34 +497,19 @@ def eager_py_func(func, inp, Tout, name=None):
 
 
   Args:
-    func: A Python function that accepts `inp` as arguments, and returns a
-      value (or collection of values) whose type is described by `Tout`.
-
-    inp: Input arguments for `func`.  A list whose elements are one of the
-      following.
-
-      * A `Tensor`.
-      * A `CompositeTensor` (such as `tf.RaggedTensor`).
-      * A nested structures (as defined by `tf.nest`) whose leaves are `Tensor`s
-        or `CompositeTensor`s.
-
-    Tout: The type(s) of the value(s) returned by `func`.  One of the
-      following.
-
-      * If `func` returns a `Tensor` (or a value that can be converted to a
-        Tensor): the `tf.DType` for that value.
-      * If `func` returns a `CompositeTensor`: The `tf.TypeSpec` for that value.
-      * If `func` returns `None`: the empty list (`[]`).
-      * If `func` returns a nested structure (as defined by `tf.nest`) whose
-        leaves are `Tensor`s and `CompositeTensor`s: a corresponding nested
-        structure whose leaves are `DType` or `TypeSpec`.
-
+    func: A Python function which accepts a list of `Tensor` objects having
+      element types that match the corresponding `tf.Tensor` objects in `inp`
+      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
+      having element types that match the corresponding values in `Tout`.
+    inp: A list of `Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns; an empty list
+      if no value is returned (i.e., if the return value is `None`).
     name: A name for the operation (optional).
 
   Returns:
-    The value(s) computed by `func`: a `Tensor`, `CompositeTensor`, or nested
-    structure of `Tensor` and `CompositeTensor`; or an empty list if `func`
-    returns `None`.
+    A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
+    if `func` returns None.
   """
   return _eager_py_func(
       func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
@@ -800,73 +739,6 @@ def numpy_function(func, inp, Tout, name=None):
     Single or list of `tf.Tensor` which `func` computes.
   """
   return py_func_common(func, inp, Tout, stateful=True, name=name)
-
-
-def _dtype_to_tensor_spec(v):
-  return tensor_spec.TensorSpec(None, v) if isinstance(v, dtypes.DType) else v
-
-
-def _tensor_spec_to_dtype(v):
-  return v.dtype if isinstance(v, tensor_spec.TensorSpec) else v
-
-
-def _py_func_input_or_output_is_structured(inp, Tout):
-  """Returns true if the given input or output is structured.
-
-  When py_func has structured inputs or outputs, we use tf.nest to flatten and
-  reconstruct them.
-
-  Args:
-    inp: The `inp` argument to `py_function`.  List of Tensors or nested
-      structure containing Tensors and CompositeTensors.
-    Tout: The `Tout` argument to `py_function`.  DType or list of DTypes or
-      nested structure containing dtypes and TypeSpecs.
-  """
-  return ((not (isinstance(inp, (list, tuple)) and
-                all(isinstance(x, ops.Tensor) for x in inp))) or
-          (not (isinstance(Tout, dtypes.DType) or
-                (isinstance(Tout, (list, tuple)) and
-                 all(isinstance(t, dtypes.DType) for t in Tout)))))
-
-
-def _coerce_py_func_output_to_expected_structure(out, Tout):
-  """Coerce the value returned by user-supplied `func` to match `Tout`.
-
-  There are certain cases in which the user-spplied `func`'s return type may
-  not match the structure of `Tout`. In that case, the return value
-  is forced to match the `Tout`.  In particular:
-
-  1. The user's function is allowed to return a tuple or a single value
-     instead of a list, in which case py_function will return it in a list.
-     E.g., the following all return `[tf.constant(5)]`:
-        * tf.py_function(lambda x:  [x], [5], [tf.int32])
-        * tf.py_function(lambda x:    x, [5], [tf.int32])
-        * tf.py_function(lambda x: (x,), [5], [tf.int32])
-  2. If `Tout` is the empty list, then the value returned by `func` is ignored.
-
-  Args:
-    out: The value returned by the `func` argument to `tf.py_function`.
-    Tout: The `Tout` argument to `tf.py_function`.
-
-  Returns:
-    `out`, coerced to the correct structure.
-  """
-  if isinstance(Tout, (list, tuple)):
-    expected_type = type(Tout)
-    if isinstance(out, (list, tuple)):
-      if not isinstance(out, expected_type):
-        return expected_type(out)  # expected list but got tuple.
-    elif len(Tout) == 1:
-      return expected_type([out])  # expected list but got value.
-    elif not Tout:
-      return expected_type([])  # expected no output (so ignore return value).
-  return out
-
-
-# We can't do `isinstance(x, core_types.TensorLike)`, because `typing.Union`
-# does not support `isinstance` checks.  So extract the type arguments from
-# the `TensorLike` type union, so we can use that with `isinstance` checks.
-_TENSOR_LIKE = type_annotations.get_generic_type_args(core_types.TensorLike)
 
 
 ops.NotDifferentiable("PyFunc")
