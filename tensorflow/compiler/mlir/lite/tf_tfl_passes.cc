@@ -69,6 +69,12 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 
 void AddConvertHloToTfPass(std::string entry_function_name,
                            mlir::OpPassManager* pass_manager) {
+  // Legalize jax random to tflite custom op.
+  // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
+  // the random function body before being inlined.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateLegalizeJaxRandomPass());
+
   // Canonicalize, CSE etc.
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
