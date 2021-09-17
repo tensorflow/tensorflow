@@ -3072,6 +3072,7 @@ tf_cc_test(
         ":cost_measurement_registry",
         ":cost_util",
         ":request_cost_accessor_registry",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
