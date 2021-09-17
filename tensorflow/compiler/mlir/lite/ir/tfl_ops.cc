@@ -3310,7 +3310,23 @@ LogicalResult Verify(WhileOp op) {
     return op.emitOpError(llvm::formatv(
         "number of operands does not match number of results ({0} != {1})",
         op.getNumOperands(), op.getNumResults()));
-  // TODO(jpienaar): Verify operand, result & block arguments types
+  if (op.cond().front().getNumArguments() !=
+      op.body().front().getNumArguments())
+    return op.emitOpError(llvm::formatv(
+        "number of arguments in condition function does not match number of "
+        "arguments in body function ({0} != {1})",
+        op.cond().front().getNumArguments(),
+        op.body().front().getNumArguments()));
+  // Verify shapes are compatible.
+  for (auto it : llvm::zip(op.cond().front().getArgumentTypes(),
+                           op.body().front().getArgumentTypes())) {
+    if (failed(mlir::verifyCompatibleShape(std::get<0>(it), std::get<1>(it))))
+      return op->emitOpError(llvm::formatv(
+          "condition function's argument type does not match body "
+          "function's argument type ({0} != {1})",
+          std::get<0>(it), std::get<1>(it)));
+  }
+
   return success();
 }
 
