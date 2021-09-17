@@ -592,6 +592,35 @@ bool HasZeroes(TfLiteIntArrayView array) {
   return false;
 }
 
+// In SPLIT_V, it is legal to specify -1 in size_splits representing an unknown
+// split size taking as many values as possible. This function computes and
+// returns the actual value of this unknown size, or returns -1 if all split
+// sizes are known. The caller is responsible for making sure the size_splits
+// and axis tensor are constants.
+int ComputeSplitVUnknownSplitSize(const TfLiteContext* context,
+                                  const TfLiteNode* node) {
+  const auto& input = context->tensors[node->inputs->data[0]];
+  const auto& size_splits_tensor = context->tensors[node->inputs->data[1]];
+  const auto& axis_tensor = context->tensors[node->inputs->data[2]];
+
+  const auto* size_splits = size_splits_tensor.data.i32;
+  int num_splits = size_splits_tensor.dims->data[0];
+  bool has_unknown_split_size = false;
+  int sum_of_known_split_sizes = 0;
+  for (int i = 0; i < num_splits; i++) {
+    if (size_splits[i] == -1) {
+      has_unknown_split_size = true;
+    } else {
+      sum_of_known_split_sizes += size_splits[i];
+    }
+  }
+
+  int axis = axis_tensor.data.i32[0];
+  axis = axis < 0 ? axis + input.dims->size : axis;
+  int total_size = input.dims->data[axis];
+  return has_unknown_split_size ? total_size - sum_of_known_split_sizes : -1;
+}
+
 // Bit mask for tensor flags.
 enum {
   NN_TENSOR_FLAG_SCALAR_AS_TENSOR = 1U << 0,
@@ -1206,6 +1235,64 @@ class NNAPIOpBuilder {
     // Reshape the output tensor
     TF_LITE_ENSURE_STATUS(AppendReshape(
         concat_output_ann_index, node->outputs->data[0], lite_node_index));
+    return kTfLiteOk;
+  }
+
+  // Lower SPLIT_V into SLICEs.
+  TfLiteStatus TransformSplitVIntoSupportedOps(int lite_node_index,
+                                               TfLiteNode* node,
+                                               TfLiteRegistration* reg) {
+    auto& input = context_->tensors[node->inputs->data[0]];
+    int input_rank = input.dims->size;
+
+    const auto& size_splits_tensor = context_->tensors[node->inputs->data[1]];
+    const auto* size_splits = size_splits_tensor.data.i32;
+    int num_splits = size_splits_tensor.dims->data[0];
+    int axis = context_->tensors[node->inputs->data[2]].data.i32[0];
+    axis = axis < 0 ? axis + input_rank : axis;
+    TF_LITE_ENSURE(context_, axis >= 0);
+    TF_LITE_ENSURE(context_, axis < input_rank);
+    int unknown_split_size = ComputeSplitVUnknownSplitSize(context_, node);
+
+    // Keep track of the start index of a slice.
+    int slice_begin_index = 0;
+    for (int split_index = 0; split_index < num_splits; split_index++) {
+      int split_size = size_splits[split_index] == -1
+                           ? unknown_split_size
+                           : size_splits[split_index];
+      TF_LITE_ENSURE(context_, split_size > 0);
+
+      // Parameters of SLICE.
+      std::vector<int> begin_indices(input_rank);
+      std::vector<int> slice_sizes(input_rank);
+      for (int i = 0; i < input_rank; i++) {
+        if (i == axis) {
+          // Take only the splitted size.
+          begin_indices[i] = slice_begin_index;
+          slice_sizes[i] = split_size;
+        } else {
+          // Take the full size.
+          begin_indices[i] = 0;
+          slice_sizes[i] = input.dims->data[i];
+        }
+      }
+      slice_begin_index += split_size;
+
+      // Build NNAPI SLICE inputs and output.
+      TF_LITE_ENSURE_STATUS(AddTensorInput(
+          node->inputs->data[0],
+          /*hybrid_op=*/false, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_STATUS(
+          AddVectorInt32Operand(begin_indices.data(), begin_indices.size()));
+      TF_LITE_ENSURE_STATUS(
+          AddVectorInt32Operand(slice_sizes.data(), slice_sizes.size()));
+      int lite_output_index = node->outputs->data[split_index];
+      TF_LITE_ENSURE_STATUS(AddTensorOutput(
+          lite_output_index, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+
+      TF_LITE_ENSURE_STATUS(
+          FinalizeAddOperation(ANEURALNETWORKS_SLICE, lite_node_index));
+    }
     return kTfLiteOk;
   }
 
@@ -2873,6 +2960,39 @@ bool NNAPIDelegateKernel::Validate(
       Expect(axis.type == kTfLiteInt32 && axis.allocation_type == kTfLiteMmapRo,
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
+    } break;
+    case kTfLiteBuiltinSplitV: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+      // Tensor indices: value: 0, size_splits: 1, axis: 2
+      const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
+      const TfLiteTensor& size_splits = context->tensors[node->inputs->data[1]];
+      const TfLiteTensor& axis = context->tensors[node->inputs->data[2]];
+      EXPECT_INPUT_TYPE_IN(input.type, kTfLiteFloat32, kTfLiteUInt8,
+                           kTfLiteInt8, kTfLiteInt32);
+      bool size_splits_is_int32_const_vector =
+          size_splits.type == kTfLiteInt32 && size_splits.dims->size == 1 &&
+          size_splits.allocation_type == kTfLiteMmapRo;
+      bool axis_is_int32_const =
+          axis.type == kTfLiteInt32 && axis.allocation_type == kTfLiteMmapRo;
+      Expect(size_splits_is_int32_const_vector,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI only supports constant int32 size_splits vector.",
+             &val_ctx);
+      Expect(axis_is_int32_const,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI only supports constant int32 axis tensor.", &val_ctx);
+      if (size_splits_is_int32_const_vector && axis_is_int32_const) {
+        Expect(std::all_of(size_splits.data.i32,
+                           size_splits.data.i32 + size_splits.dims->data[0],
+                           [](auto size) { return size != 0; }),
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "NNAPI only supports non-zero split sizes.", &val_ctx);
+        Expect(ComputeSplitVUnknownSplitSize(context, node) != 0,
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "NNAPI only supports non-zero split sizes.", &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinLogSoftmax: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -4724,6 +4844,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (reg->builtin_code == kTfLiteBuiltinPack) {
       TF_LITE_ENSURE_STATUS(
           builder.TransformPackIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
+    // Delegate SPLIT_V by lowering it into SLICEs.
+    if (reg->builtin_code == kTfLiteBuiltinSplitV) {
+      TF_LITE_ENSURE_STATUS(
+          builder.TransformSplitVIntoSupportedOps(node_index, node, reg));
       continue;
     }
     // Fully quantized full LSTM.
