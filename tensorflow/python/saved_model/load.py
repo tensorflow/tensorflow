@@ -349,7 +349,7 @@ class Loader(object):
       # TODO(andresp): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
-      concrete_function.set_external_captures(bound_inputs)
+      captured_inputs_list = []
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
       if bound_inputs:
         for bound_input, internal_capture in zip(
@@ -357,7 +357,20 @@ class Loader(object):
           if distribute_utils.is_distributed_variable(bound_input):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
+            captured_inputs_list.append(bound_input)
+          elif distribute_utils.is_distributed_table(bound_input):
+            closure, spec = bound_input.resource_handle_call_time_value()
+            concrete_function.graph.replace_capture_with_deferred_capture(
+                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                closure,
+                spec,
+                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                placeholder=internal_capture)
+            captured_inputs_list.append(
+                concrete_function.graph.deferred_external_captures[-1])
+
           else:
+            captured_inputs_list.append(bound_input)
             concrete_function.graph.replace_capture(bound_input,
                                                     internal_capture)
             if internal_capture.dtype == dtypes.resource:
@@ -376,6 +389,8 @@ class Loader(object):
             # placeholder for this input.
             concrete_function.graph.capture(bound_input)
 
+      concrete_function.set_external_captures(captured_inputs_list)
+
   def _get_tensor_from_node(self, node_id, fn_name):
     """Resolves a node id into a tensor to be captured for a function."""
     if self._node_filters is not None and self._nodes[node_id] is None:
@@ -387,6 +402,8 @@ class Loader(object):
     with ops.init_scope():
       obj = self._nodes[node_id]
       if distribute_utils.is_distributed_variable(obj):
+        return obj
+      elif distribute_utils.is_distributed_table(obj):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle

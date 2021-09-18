@@ -836,6 +836,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/coordinator:coordinator_context",
+        "//tensorflow/python/keras/saving/saved_model:load_context",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
     ],

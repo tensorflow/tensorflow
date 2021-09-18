@@ -40,6 +40,7 @@ from tensorflow.python.ops import string_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
@@ -275,6 +276,8 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
     return self._init_op
 
 
+@registration.register_serializable(
+    predicate=lambda obj: isinstance(obj, StaticHashTable))
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
   """A generic hash table that is immutable once initialized.
@@ -387,6 +390,32 @@ class StaticHashTable(InitializableLookupTableBase):
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
     return exported_keys, exported_values
+
+  def _serialize_to_proto(self, **unused_kwargs):
+    return None
+
+  def _add_trackable_child(self, name, value):
+    setattr(self, name, value)
+    if isinstance(value, trackable_base.Trackable):
+      self._track_trackable(value, name)  # pylint:disable=protected-access
+
+  @classmethod
+  def _deserialize_from_proto(cls, proto, **unused_kwargs):
+
+    from tensorflow.python.saved_model import load  # pylint: disable=g-import-not-at-top
+
+    class _RestoredStaticHashTable(load._RestoredResource):  # pylint: disable=protected-access
+
+      @classmethod
+      def _resource_type(cls):
+        return "RestoredStaticHashTable"
+
+      def _add_trackable_child(self, name, value):
+        setattr(self, name, value)
+        if isinstance(value, trackable_base.Trackable):
+          self._track_trackable(value, name)  # pylint:disable=protected-access
+
+    return _RestoredStaticHashTable()
 
 
 @tf_export(v1=["lookup.StaticHashTable"])

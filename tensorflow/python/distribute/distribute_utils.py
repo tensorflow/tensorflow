@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import abc
-
 import contextlib
 import threading
+
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
@@ -221,6 +221,12 @@ def value_container(val):
 def is_distributed_variable(v):
   """Determine if a variable is ds variable or TPU mirrored variable."""
   return isinstance(v, values_lib.DistributedVariable)
+
+
+def is_distributed_table(v):
+  """Determine if an object is a DistributedTable."""
+  return v.__class__.__name__ in ("DistributedTable",
+                                  "RestoredDistributedTable")
 
 
 def _validate_colocate_extended(v, extended):
