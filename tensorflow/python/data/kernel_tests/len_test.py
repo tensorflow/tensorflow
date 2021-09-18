@@ -37,23 +37,26 @@ class LenTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testInfinite(self):
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements).repeat()
-    with self.assertRaisesRegex(TypeError, 'infinite'):
+    with self.assertRaisesRegex(TypeError, "infinite"):
       len(ds)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testUnknown(self):
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements).filter(lambda x: True)
-    with self.assertRaisesRegex(TypeError, 'unknown'):
+    with self.assertRaisesRegex(TypeError, "unknown"):
       len(ds)
 
   @combinations.generate(test_base.graph_only_combinations())
   def testGraphMode(self):
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    with self.assertRaisesRegex(TypeError, 'not supported while tracing'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"`tf.data.Dataset` only supports `len` in eager mode. Use "
+        r"`tf.data.Dataset.cardinality\(\)` instead."):
       len(ds)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   test.main()

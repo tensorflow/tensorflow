@@ -404,9 +404,9 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegex(
-          ValueError, "Please ensure that all datasets in the pipeline are "
-          "created in the same graph as the iterator."):
+      with self.assertRaisesRegex(ValueError,
+                                  "make sure that the dataset is created in "
+                                  "the same graph as the iterator"):
         _ = dataset_ops.make_one_shot_iterator(dataset)
 
   @combinations.generate(
@@ -414,9 +414,9 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegex(
-          ValueError, "Please ensure that all datasets in the pipeline are "
-          "created in the same graph as the iterator."):
+      with self.assertRaisesRegex(ValueError,
+                                  "make sure that the dataset is created in "
+                                  "the same graph as the iterator"):
         _ = dataset_ops.make_initializable_iterator(dataset)
 
   @combinations.generate(

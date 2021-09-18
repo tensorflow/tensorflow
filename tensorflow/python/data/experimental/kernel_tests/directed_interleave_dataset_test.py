@@ -277,7 +277,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
-    with self.assertRaisesRegex(ValueError, r"must have the same length"):
+    with self.assertRaisesRegex(ValueError, r"should have the same length"):
       dataset_ops.Dataset.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
@@ -296,7 +296,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       ])
 
     with self.assertRaisesRegex(
-        ValueError, r"`datasets` must be a non-empty list of datasets."):
+        ValueError, r"Invalid `datasets`. `datasets` should not be empty."):
       dataset_ops.Dataset.sample_from_datasets(datasets=[], weights=[])
 
     with self.assertRaisesRegex(TypeError, "tf.int64"):
@@ -324,29 +324,26 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       self.evaluate(next_element())
 
     with self.assertRaisesRegex(
-        ValueError, r"`datasets` must be a non-empty list of datasets."):
+        ValueError, r"Invalid `datasets`. `datasets` should not be empty."):
       dataset_ops.Dataset.choose_from_datasets(
           datasets=[], choice_dataset=dataset_ops.Dataset.from_tensors(1.0))
 
     with self.assertRaisesRegex(
-        TypeError, r"`choice_dataset` must be a dataset of scalar"):
-      dataset_ops.Dataset.choose_from_datasets([
-          dataset_ops.Dataset.from_tensors(0),
-          dataset_ops.Dataset.from_tensors(1)
-      ],
-                                               choice_dataset=None)
+        TypeError, r"`choice_dataset` should be a `tf.data.Dataset`"):
+      datasets = [dataset_ops.Dataset.range(42)]
+      dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset=None)
 
 
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                        parameterized.TestCase):
 
   def _build_dataset(self, probs, num_samples):
-    dataset = dataset_ops.Dataset.sample_from_datasets([
+    datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(None)
         for i in range(len(probs))
-    ],
-                                                       probs,
-                                                       seed=1813)
+    ]
+    dataset = dataset_ops.Dataset.sample_from_datasets(
+        datasets, probs, seed=1813)
     return dataset.take(num_samples)
 
   @combinations.generate(
