@@ -477,111 +477,25 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
-    jint num_threads, jobject delegate_list) {
+    jint num_threads) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
-
-  static jclass list_class = env->FindClass("java/util/List");
-  if (list_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List class.");
-    return 0;
-  }
-  static jmethodID list_size_method =
-      env->GetMethodID(list_class, "size", "()I");
-  if (list_size_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List.size method.");
-    return 0;
-  }
-  static jmethodID list_get_method =
-      env->GetMethodID(list_class, "get", "(I)Ljava/lang/Object;");
-  if (list_get_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List.get method.");
-    return 0;
-  }
-  static jclass delegate_class = env->FindClass("org/tensorflow/lite/Delegate");
-  if (delegate_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: "
-                   "Can't find org.tensorflow.lite.Delegate class.");
-    return 0;
-  }
-  static jmethodID delegate_get_native_handle_method =
-      env->GetMethodID(delegate_class, "getNativeHandle", "()J");
-  if (delegate_get_native_handle_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find org.tensorflow.lite.Delegate "
-                   "getNativeHandle method.");
-    return 0;
-  }
 
   FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
-
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
-
   std::unique_ptr<OpResolver> resolver = tflite_shims::CreateOpResolver();
-
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
-
-  // Add delegate_list to interpreter_builder.
-
-  // Java: int size = delegate_list->size();
-  jint size = env->CallIntMethod(delegate_list, list_size_method);
-  for (jint i = 0; i < size; ++i) {
-    // Java: Object jdelegate = delegate_list->get(i);
-    jobject jdelegate =
-        env->CallObjectMethod(delegate_list, list_get_method, i);
-    if (jdelegate == nullptr) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: null Delegate");
-      return 0;
-    }
-    // Java: long delegate_handle = jdelegate->getNativeHandle();
-    jlong delegate_handle =
-        env->CallLongMethod(jdelegate, delegate_get_native_handle_method);
-    if (delegate_handle == 0) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Found invalid handle");
-      return 0;
-    }
-    auto delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate_handle);
-    interpreter_builder.AddDelegate(delegate);
-  }
-
-  // Create the Interpreter.
   std::unique_ptr<Interpreter> interpreter;
   TfLiteStatus status = interpreter_builder(&interpreter);
   if (status != kTfLiteOk) {
-    if (status == kTfLiteDelegateError) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Failed to apply delegate: %s",
-                     error_reporter->CachedErrorMessage());
-    } else if (status == kTfLiteApplicationError) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Error applying delegate: %s",
-                     error_reporter->CachedErrorMessage());
-    } else {
-      const char* error_message = error_reporter->CachedErrorMessage();
-      if (std::strcmp(
-              error_message,
-              "Restored original execution plan after delegate application "
-              "failure.") == 0) {
-        ThrowException(env, tflite::jni::kIllegalArgumentException,
-                       "Internal error: Failed to apply delegate.");
-      } else {
-        ThrowException(env, tflite::jni::kIllegalArgumentException,
-                       "Internal error: Cannot create interpreter: %s",
-                       error_message);
-      }
-    }
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Internal error: Cannot create interpreter: %s",
+                   error_reporter->CachedErrorMessage());
     return 0;
   }
-
   // Note that tensor allocation is performed explicitly by the owning Java
   // NativeInterpreterWrapper instance.
   return reinterpret_cast<jlong>(interpreter.release());
@@ -665,6 +579,30 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     }
   }
   return is_changed ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jlong delegate_handle) {
+  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
+
+  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) return;
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) return;
+
+  TfLiteOpaqueDelegate* delegate = convertLongToDelegate(env, delegate_handle);
+  if (delegate == nullptr) return;
+
+  TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
+  if (status != kTfLiteOk) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Internal error: Failed to apply delegate: %s",
+                   error_reporter->CachedErrorMessage());
+  }
 }
 
 JNIEXPORT jlong JNICALL
