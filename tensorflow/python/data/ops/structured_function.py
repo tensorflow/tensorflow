@@ -181,8 +181,8 @@ class StructuredFunctionWrapper():
       except (ValueError, TypeError):
         six.reraise(
             TypeError,
-            TypeError("Unsupported return value from function passed to "
-                      "%s: %s." % (transformation_name, ret)),
+            TypeError(f"Unsupported return value from function passed to "
+                      f"{transformation_name}: {ret}."),
             sys.exc_info()[2])
       return ret
 
