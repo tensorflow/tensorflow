@@ -1,6 +1,6 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -24,12 +24,7 @@ cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],
-    copts = select({
-        clean_dep("//tensorflow:windows"): [
-            "/DTFL_COMPILE_LIBRARY",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts(),
     linkstatic = True,
     deps = [
         ":quantization_util",
@@ -57,12 +52,7 @@ cc_library(
     name = "xnnpack_delegate_test_mode",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],
-    copts = ["-DXNNPACK_DELEGATE_TEST_MODE=1"] + select({
-        clean_dep("//tensorflow:windows"): [
-            "/DTFL_COMPILE_LIBRARY",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts() + ["-DXNNPACK_DELEGATE_TEST_MODE=1"],
     linkstatic = True,
     deps = [
         ":quantization_util",
@@ -80,6 +70,7 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
