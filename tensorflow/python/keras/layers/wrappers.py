@@ -14,6 +14,7 @@
 # ==============================================================================
 # pylint: disable=protected-access
 # pylint: disable=g-classes-have-attributes
+
 """Wrapper layers: layers that augment the functionality of another layer."""
 
 import copy

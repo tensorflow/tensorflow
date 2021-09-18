@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Layer serialization/deserialization functions.
+"""
+Layer serialization/deserialization functions.
 """
 # pylint: disable=wildcard-import
 # pylint: disable=unused-import

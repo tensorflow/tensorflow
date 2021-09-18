@@ -63,7 +63,6 @@ commands.
 [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
 
 #### *Try your first TensorFlow program*
-
 ```shell
 $ python
 ```
@@ -72,13 +71,19 @@ $ python
 >>> import tensorflow as tf
 >>> tf.add(1, 2).numpy()
 3
->>> hello = tf.constant('Hello, TensorFlow!')
+>>> hello = tf.constant('Hello from TensorFlow!')
 >>> hello.numpy()
-b'Hello, TensorFlow!'
+b'Hello from TensorFlow!'
 ```
 
-For more examples, see the
-[TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
+##### What happened here ?
+1. We imported the TensorFlow library
+2. We add 1 to 2 and get the result as a Tensor
+3. We use `.numpy()` to convert the Tensor to a integer
+4. We make a constant with 'Hello from TensorFlow!' as the data and store it in the `hello` variable
+5. We call `hello.numpy()` to convert the Tensor to bytes.
+
+For more examples, see the [TensorFlow tutorials](https://www.tensorflow.org/tutorials/) page.
 
 ## Contribution guidelines
 

@@ -15,12 +15,13 @@
 # pylint: disable=invalid-name
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
+
 """Set of tools for real-time data augmentation on image data."""
 
 from keras_preprocessing import image
 import numpy as np
 try:
-  from scipy import linalg  # pylint: disable=unused-import
+  from scipy import linalg   # pylint: disable=unused-import
   from scipy import ndimage  # pylint: disable=unused-import
 except ImportError:
   pass
