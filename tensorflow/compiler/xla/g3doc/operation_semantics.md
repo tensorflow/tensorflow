@@ -1468,7 +1468,7 @@ as `batch_dims`.
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
 The `operand.rank` must equal the sum of `offset_dims.size` and
-`collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
+`collapsed_slice_dims.size`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
 If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
@@ -1520,10 +1520,11 @@ calculated as follows:
 4.  `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
     addition.
 
-`remapped_offset_dims` is a monotonic function with domain [`0`, `offset.size`)
-and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
-`offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
-`2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`remapped_offset_dims` is a monotonic function with domain [`0`,
+`offset_dims.size`) and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So
+if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
+`collapsed_slice_dims` is {`0`, `2`} then `remapped_offset_dims` is {`0`→`1`,
+`1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
