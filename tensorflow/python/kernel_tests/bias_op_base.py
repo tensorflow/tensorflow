@@ -285,6 +285,13 @@ class BiasAddTestBase(test.TestCase):
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
+  def test1x1Image(self):
+    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False)]:
+      np_input = np.arange(1.0, 129.0).reshape([4, 1, 1, 32]).astype(np.float32)
+      self._testGradient(np_input,
+                         np.random.rand(32).astype(np.float32), dtypes.float32,
+                         data_format, use_gpu)
+
   def testEmpty(self):
     np.random.seed(7)
     for shape in (0, 0), (2, 0), (0, 2), (4, 3, 0), (4, 0, 3), (0, 4, 3):

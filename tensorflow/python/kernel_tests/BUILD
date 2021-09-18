@@ -1788,6 +1788,7 @@ cuda_py_test(
     name = "bias_op_deterministic_test",
     size = "medium",
     srcs = ["bias_op_deterministic_test.py"],
+    shard_count = 2,
     deps = [
         ":bias_op_base",
     ],
