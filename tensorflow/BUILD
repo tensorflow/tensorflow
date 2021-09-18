@@ -1041,7 +1041,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
-            "-Wl,-unexported_symbols_list,$(location //tensorflow:tf_private_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
