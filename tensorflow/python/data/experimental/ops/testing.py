@@ -86,7 +86,9 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
     """See `assert_next()` for details."""
     self._input_dataset = input_dataset
     if transformations is None:
-      raise ValueError("At least one transformation should be specified")
+      raise ValueError(
+          "Invalid `transformations`. `transformations` should not be empty.")
+
     self._transformations = ops.convert_to_tensor(
         transformations, dtype=dtypes.string, name="transformations")
     variant_tensor = (
