@@ -71,8 +71,10 @@ class AutoShardPolicy(enum.IntEnum):
       return dataset_options_pb2.AutoShardPolicy.AUTO
     if obj == cls.HINT:
       return dataset_options_pb2.AutoShardPolicy.HINT
-    raise ValueError("%s._to_proto() is called with undefined enum %s." %
-                     (cls.__name__, obj.name))
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `OFF`, `FILE`, `DATA`,"
+        f"`AUTO`, and `HINT`. Got {obj.name}."
+    )
 
   @classmethod
   def _from_proto(cls, pb):
@@ -87,8 +89,10 @@ class AutoShardPolicy(enum.IntEnum):
       return cls.AUTO
     if pb == dataset_options_pb2.AutoShardPolicy.HINT:
       return cls.HINT
-    raise ValueError("%s._from_proto() is called with undefined enum %s." %
-                     (cls.__name__, pb))
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `OFF`, `FILE`, `DATA`,"
+        f"`AUTO`, and `HINT`. Got {pb}."
+    )
 
 
 @tf_export("data.experimental.ExternalStatePolicy")
@@ -111,8 +115,9 @@ class ExternalStatePolicy(enum.Enum):
       return dataset_options_pb2.ExternalStatePolicy.POLICY_FAIL
     if obj == cls.WARN:
       return dataset_options_pb2.ExternalStatePolicy.POLICY_WARN
-    raise ValueError("%s._to_proto() is called with undefined enum %s." %
-                     (cls.__name__, obj.name))
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `POLICY_IGNORE`,"
+        f"`POLICY_FAIL`, `POLICY_WARN`. Got {obj.name}.")
 
   @classmethod
   def _from_proto(cls, pb):
@@ -123,8 +128,9 @@ class ExternalStatePolicy(enum.Enum):
       return cls.FAIL
     if pb == dataset_options_pb2.ExternalStatePolicy.POLICY_WARN:
       return cls.WARN
-    raise ValueError("%s._from_proto() is called with undefined enum %s." %
-                     (cls.__name__, pb))
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `POLICY_IGNORE`,"
+        f"`POLICY_FAIL`, `POLICY_WARN`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutotuneOptions")
