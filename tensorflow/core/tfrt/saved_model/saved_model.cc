@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/enable_tf2_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -48,6 +50,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+// TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
+#include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -533,6 +537,20 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   metrics::AddTFRTVersionMetric();
+
+  if (options.compile_options.tpu_target ==
+      tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
+    auto s = CheckTpuMlirBridgeCompatibility(meta_graph_def);
+    if (!s.ok()) {
+      LOG(INFO)
+          << "TFRT detected Bridge unsupported feature, using TF fallback";
+      options.compile_options.tpu_target =
+          tensorflow::TfrtTpuInfraTarget::kTfFallback;
+    } else {
+      options.compile_options.tpu_target =
+          tensorflow::TfrtTpuInfraTarget::kTpurt;
+    }
+  }
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {

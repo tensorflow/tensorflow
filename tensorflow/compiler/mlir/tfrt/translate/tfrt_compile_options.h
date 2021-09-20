@@ -22,9 +22,11 @@ limitations under the License.
 namespace tensorflow {
 
 enum class TfrtTpuInfraTarget {
-  kNoTpu,       // No TPU support.
-  kTpurt,       // Target TPURT dialect and kernels.
-  kTfFallback,  // Target TPU kernels in TF Fallback.
+  kNoTpu,           // No TPU support.
+  kTpurt,           // Target TPURT dialect and kernels.
+  kTfFallback,      // Target TPU kernels in TF Fallback.
+  kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
+                    // whether the graph has unsupported feature in Bridge
 };
 
 struct TfrtCompileOptions {
