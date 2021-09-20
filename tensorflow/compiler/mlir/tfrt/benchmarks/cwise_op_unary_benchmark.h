@@ -61,8 +61,9 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
+  TfCpuRtPipelineOptions tf_cpurt_opts;
   JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, lower_from_tensorflow);
+      *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =

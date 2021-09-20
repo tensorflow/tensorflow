@@ -53,8 +53,10 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
-  JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, /*lower_from_tensorflow=*/true);
+  TfCpuRtPipelineOptions tf_cpurt_opts;
+  JitExecutable& jit_executable =
+      CreateJitExecutable(*host, mlir_input, function_name,
+                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
