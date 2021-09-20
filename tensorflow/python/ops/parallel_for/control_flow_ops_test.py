@@ -133,7 +133,7 @@ class PForTest(PForTestCase):
           lambda i: 1, dtypes.int32, 8, parallel_iterations=0)
 
   def test_parallel_iterations_one(self):
-    with self.assertRaisesRegex(ValueError, "Use for_loop instead"):
+    with self.assertRaisesRegex(ValueError, "Use `for_loop` instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
   def test_vectorized_map(self):
@@ -330,7 +330,7 @@ class ReductionTest(PForTestCase):
       return pfor_config.reduce_sum(x_i)
 
     with self.assertRaisesRegex(ValueError,
-                                "parallel_iterations currently unsupported"):
+                                "`parallel_iterations` currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
   def test_var_loop_len(self):
