@@ -2962,6 +2962,7 @@ cuda_py_test(
     name = "xent_op_deterministic_test",
     size = "medium",
     srcs = ["xent_op_deterministic_test.py"],
+    tags = ["notsan"],  # TODO(b/200548634): Remove.
     xla_enable_strict_auto_jit = False,
     deps = [
         ":xent_op_test_base",
