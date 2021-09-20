@@ -594,9 +594,9 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     auto init_start_time = absl::Now();
     TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
 
-    auto tpu_var_table = std::make_unique<tpu::TpuVariablesTable>();
+    auto tpu_model_resource = std::make_unique<tpu::TpuModelResource>();
     auto resource_context =
-        CreateResourceContext(*options.runtime, tpu_var_table.get(),
+        CreateResourceContext(*options.runtime, tpu_model_resource.get(),
                               options.compile_options.tpu_target);
     TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
                                       bef_file.get(), options,
@@ -619,7 +619,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         std::move(bef_file),
         std::move(initializers_and_signatures.signature_map),
         std::move(fallback_state), std::move(graph_execution_state),
-        std::move(tpu_var_table), std::move(resource_context))};
+        std::move(tpu_model_resource), std::move(resource_context))};
   }();
 
   if (!statusor_saved_model.ok()) {
@@ -636,7 +636,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
-    std::unique_ptr<tpu::TpuVariablesTable> tpu_var_table,
+    std::unique_ptr<tpu::TpuModelResource> tpu_model_resource,
     std::unique_ptr<tfrt::ResourceContext> resource_context)
     : SavedModel(options.runtime),
       options_(std::move(options)),
@@ -647,7 +647,7 @@ SavedModelImpl::SavedModelImpl(
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
-      tpu_var_table_(std::move(tpu_var_table)),
+      tpu_model_resource_(std::move(tpu_model_resource)),
       resource_context_(std::move(resource_context)) {}
 
 SavedModelImpl::~SavedModelImpl() = default;
@@ -888,7 +888,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
 std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
     const tensorflow::tfrt_stub::Runtime& runtime,
-    tpu::TpuVariablesTable* tpu_var_table,
+    tpu::TpuModelResource* tpu_model_resource,
     tensorflow::TfrtTpuInfraTarget tpu_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime.CreateRuntimeResources(resource_context.get());
@@ -897,7 +897,7 @@ std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
   // opposed to linking it in. We can do this by adding a callback with
   // `Runtime::AddCreateRuntimeResourceFn`.
   if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(resource_context.get(), tpu_var_table);
+    AddTpuResources(resource_context.get(), tpu_model_resource);
   }
   return resource_context;
 }
@@ -1090,8 +1090,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
   loading_result->name = joined_signature.name;
-  loading_result->resource_context = CreateResourceContext(
-      runtime(), tpu_var_table_.get(), options_.compile_options.tpu_target);
+  loading_result->resource_context =
+      CreateResourceContext(runtime(), tpu_model_resource_.get(),
+                            options_.compile_options.tpu_target);
 
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
       options_.compile_options, module.get(), &loading_result->bef));
