@@ -69,6 +69,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_fast_min_max(true);
+  opts.set_xla_gpu_strict_conv_algorithm_picker(true);
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
@@ -426,6 +427,12 @@ static void AllocateFlags() {
       flag_values->xla_gpu_crash_on_verification_failures(),
       "Crashes the program on extra verification failures, e.g. cuDNN cross "
       "checking failures"));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_strict_conv_algorithm_picker",
+      bool_setter_for(&DebugOptions::set_xla_gpu_strict_conv_algorithm_picker),
+      flag_values->xla_gpu_strict_conv_algorithm_picker(),
+      "Upgrades warnings to failures when all algorithms fail conv "
+      "autotuning."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_autotune_level",
       int32_setter_for(&DebugOptions::set_xla_gpu_autotune_level),

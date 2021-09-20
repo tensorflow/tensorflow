@@ -691,12 +691,28 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
+  const bool strict = instr->parent()
+                          ->parent()
+                          ->config()
+                          .debug_options()
+                          .xla_gpu_strict_conv_algorithm_picker();
+
   StatusOr<AutotuneResult> best_algo_or =
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
   if (!best_algo_or.ok()) {
-    LOG(WARNING) << "Failed to determine best cudnn convolution algorithm: "
-                 << best_algo_or.status()
-                 << "\n\nConvolution performance may be suboptimal.";
+    auto msg = absl::StrFormat(
+        "Failed to determine best cudnn convolution algorithm: "
+        "%s\n\nConvolution performance may be suboptimal.",
+        best_algo_or.status().ToString());
+
+    if (strict) {
+      return Unknown(
+          "%s  To ignore this failure and try to use a fallback algorithm, use "
+          "XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please "
+          "also file a bug for the root cause of failing autotuning.",
+          msg);
+    }
+    LOG(WARNING) << msg;
     return false;
   }
 
