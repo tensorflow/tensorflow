@@ -159,7 +159,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
   EXPECT_EQ(status.code(), error::OK);
 }
 
-TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
