@@ -30,10 +30,14 @@ import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.lib.core import _pywrap_py_func
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -293,12 +297,20 @@ def _internal_py_func(func,
 
   original_func = func
   func = autograph.do_not_convert(func)
+  inp = list(inp)
 
-  is_list_or_tuple = False
-  if isinstance(Tout, (list, tuple)):
-    is_list_or_tuple = True
-  else:
-    Tout = [Tout]
+  # Normalize Tout.
+  is_list_or_tuple = isinstance(Tout, (list, tuple))
+  Tout = Tout if is_list_or_tuple else [Tout]
+  Tout = [_as_dtype_or_type_spec(t) for t in Tout]
+
+  # Check if we need to handle CompositeTensor inputs or outputs.
+  handle_composite_tensors = (
+      eager and
+      (any(isinstance(v, composite_tensor.CompositeTensor) for v in inp) or
+       any(isinstance(t, type_spec.TypeSpec) for t in Tout)))
+  if handle_composite_tensors:
+    func, inp, Tout, out_structure = _wrap_for_composites(func, inp, Tout)
 
   if eager:
     func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
@@ -355,6 +367,11 @@ def _internal_py_func(func,
     else:
       result = gen_script_ops.py_func_stateless(
           input=inp, token=token, Tout=Tout, name=name)
+
+  if handle_composite_tensors and Tout:
+    result = nest.pack_sequence_as(
+        out_structure, result, expand_composites=True)
+
   return result if is_list_or_tuple else result[0]
 
 
@@ -497,19 +514,28 @@ def eager_py_func(func, inp, Tout, name=None):
 
 
   Args:
-    func: A Python function which accepts a list of `Tensor` objects having
-      element types that match the corresponding `tf.Tensor` objects in `inp`
-      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
-      having element types that match the corresponding values in `Tout`.
-    inp: A list of `Tensor` objects.
-    Tout: A list or tuple of tensorflow data types or a single tensorflow data
-      type if there is only one, indicating what `func` returns; an empty list
-      if no value is returned (i.e., if the return value is `None`).
+    func: A Python function that accepts `inp` as arguments, and returns a
+      value (or list of values) whose type is described by `Tout`.
+
+    inp: Input arguments for `func`.  A list whose elements are `Tensor`s or
+      `CompositeTensors` (such as `tf.RaggedTensor`); or a single `Tensor` or
+      `CompositeTensor`.
+
+    Tout: The type(s) of the value(s) returned by `func`.  One of the
+      following.
+
+      * If `func` returns a `Tensor` (or a value that can be converted to a
+        Tensor): the `tf.DType` for that value.
+      * If `func` returns a `CompositeTensor`: The `tf.TypeSpec` for that value.
+      * If `func` returns `None`: the empty list (`[]`).
+      * If `func` returns a list of `Tensor` and `CompositeTensor` values:
+        a corresponding list of `tf.DType`s and `tf.TypeSpec`s for each value.
+
     name: A name for the operation (optional).
 
   Returns:
-    A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
-    if `func` returns None.
+    The value(s) computed by `func`: a `Tensor`, `CompositeTensor`, or list of
+    `Tensor` and `CompositeTensor`; or an empty list if `func` returns `None`.
   """
   return _eager_py_func(
       func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
@@ -547,12 +573,12 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     `tf.compat.v1.py_func()` and you must pin the created operation to a device
     in that
     server (e.g. using `with tf.device():`).
-    
-  Note: It produces tensors of unknown shape and rank as shape inference 
+
+  Note: It produces tensors of unknown shape and rank as shape inference
     does not work on arbitrary Python code.
-    If you need the shape, you need to set it based on statically 
+    If you need the shape, you need to set it based on statically
     available information.
-    
+
     E.g.
     ```python
     import tensorflow as tf
@@ -571,7 +597,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     ds = tf.data.Dataset.range(10)
     ds = ds.map(preprocess_fn)
     ```
-    
+
   Args:
     func: A Python function, which accepts `ndarray` objects as arguments and
       returns a list of `ndarray` objects (or a single `ndarray`). This function
@@ -739,6 +765,77 @@ def numpy_function(func, inp, Tout, name=None):
     Single or list of `tf.Tensor` which `func` computes.
   """
   return py_func_common(func, inp, Tout, stateful=True, name=name)
+
+
+def _as_dtype_or_type_spec(t):
+  return t if isinstance(t, type_spec.TypeSpec) else dtypes.as_dtype(t)
+
+
+def _wrap_for_composites(func, inp, Tout):
+  """Wraps user inputs to support composite tensors for `py_function`.
+
+  1. Flattens `inp` to a list of Tensors (by flattening any composite tensors).
+  2. Creates a wrapper fuction for `func` that expects flat inputs and:
+     - Packs the inputs into the input structure expected by `func`.
+     - Calls `func` with the packed inputs.
+     - Checks that `func`'s output matches `Tout`.
+     - Flattens func`'s output to a list of Tensors (flattening any composite
+       tensors).
+
+  Args:
+    func: The function to wrap (`func` argument to `py_function`).
+    inp: The input arguments for func (`inp` argument to `py_function`).
+    Tout: The expected output types for func (`Tout` argument to `py_function).
+
+  Returns:
+    A tuple `(func, inp, Tout, out_structure)`, where `func` is the wrapped
+    function, `inp` is the flattened inputs, `Tout` is the list of expected
+    dtypes for the flattened outputs, and `out_structure` is the expected
+    output structure (which can be used to pack the output tensors).
+  """
+  in_structure = [
+      v if isinstance(v, composite_tensor.CompositeTensor) else 1 for v in inp
+  ]
+  inp = nest.flatten_up_to(in_structure, inp, expand_composites=True)
+  out_structure = Tout
+  Tout = [
+      v.dtype if isinstance(v, tensor_spec.TensorSpec) else v
+      for v in nest.flatten(Tout, expand_composites=True)
+  ]
+
+  def wrapped_func(*flat_inp):
+    structured_inp = nest.pack_sequence_as(
+        in_structure, flat_inp, expand_composites=True)
+    out = func(*structured_inp)
+    if not out_structure:
+      return []  # Ignore return value if none is requested/expected.
+    if not isinstance(out, (list, tuple)):
+      out = [out]  # func may return a single value instead of a list.
+    flat_out = []
+    for elt, expected_type in zip(out, out_structure):
+      if (isinstance(expected_type, type_spec.TypeSpec) and
+          not isinstance(expected_type, tensor_spec.TensorSpec)):
+        if not expected_type.is_compatible_with(elt):
+          # pylint: disable=protected-access
+          raise ValueError(
+              f"py_function: func={func} returned {out!r}, "
+              f"which did not match Tout={out_structure!r}.\nIn particular, "
+              f"{elt!r} is not compatible with {expected_type!r}.")
+        flat_out.extend(nest.flatten(elt, expand_composites=True))
+      else:
+        # Pro-actively check if the return value is a composite tensor when
+        # we expect a Tensor.  We would catch this later (when we call
+        # convert_to_tensor), but checking it here lets us give a better
+        # error message.
+        if isinstance(elt, composite_tensor.CompositeTensor):
+          raise ValueError(
+              f"py_function: func={func} returned {out!r}, "
+              f"which did not match Tout={out_structure!r}.\nIn particular, "
+              f"{elt!r} is not a Tensor.")
+        flat_out.append(elt)
+    return flat_out
+
+  return wrapped_func, inp, Tout, out_structure
 
 
 ops.NotDifferentiable("PyFunc")
