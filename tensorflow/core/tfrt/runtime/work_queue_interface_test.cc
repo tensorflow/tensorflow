@@ -40,7 +40,7 @@ TEST(DefaultWorkQueueWrapperTest, AddTask_OnlyTask) {
 
   auto av = tfrt::MakeUnconstructedAsyncValueRef<int>().ReleaseRCRef();
   work_queue_wrapper->AddTask(
-      tfrt::TaskFunction([av = av.CopyRef()] { av->emplace<int>(0); }));
+      tfrt::TaskFunction([av] { av->emplace<int>(0); }));
   work_queue_wrapper->Await(std::move(av));
 }
 
@@ -56,9 +56,8 @@ TEST(DefaultWorkQueueWrapperTest, AddTask_TaskAndExecutionContext) {
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   auto av = tfrt::MakeUnconstructedAsyncValueRef<int>().ReleaseRCRef();
-  work_queue_wrapper->AddTask(exec_ctx, tfrt::TaskFunction([av = av.CopyRef()] {
-                                av->emplace<int>(0);
-                              }));
+  work_queue_wrapper->AddTask(
+      exec_ctx, tfrt::TaskFunction([av] { av->emplace<int>(0); }));
   work_queue_wrapper->Await(std::move(av));
 }
 

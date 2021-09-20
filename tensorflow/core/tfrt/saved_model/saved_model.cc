@@ -243,7 +243,7 @@ tensorflow::Status RunInitializers(
                                           host, runtime.work_queue(),
                                           resource_context, fallback_state));
 
-  tfrt::ExecutionContext exec_ctx(req_ctx.CopyRef());
+  tfrt::ExecutionContext exec_ctx(req_ctx);
 
   // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
   // is the special function created by compiler, which calls a sequence of
@@ -1200,10 +1200,10 @@ tensorflow::Status SavedModelImpl::RunInternal(
     if (absl::ToChronoTime(absl::Now()) > deadline) {
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
-    req_deadline_tracker_.CancelRequestOnDeadline(deadline, req_ctx.CopyRef());
+    req_deadline_tracker_.CancelRequestOnDeadline(deadline, req_ctx);
   }
 
-  ExecutionContext exec_ctx{req_ctx.CopyRef()};
+  ExecutionContext exec_ctx{req_ctx};
   if (run_options.work_queue) {
     exec_ctx.set_work_queue(run_options.work_queue);
   }
