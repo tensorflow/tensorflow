@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -65,7 +66,7 @@ class XlaDotOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDotOp);
 };
 
-REGISTER_XLA_OP(Name("XlaDot"), XlaDotOp);
+REGISTER_XLA_OP(Name("XlaDot"), MlirXlaOpKernel);
 
 class XlaDotV2Op : public XlaDotOp {
  public:

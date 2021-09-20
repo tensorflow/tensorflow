@@ -3412,6 +3412,49 @@ TEST_F(OpTest, TruncateMod) {
   });
 }
 
+TEST_F(OpTest, XlaDot) {
+  Repeatedly([this]() {
+    auto type = Choose<DataType>({DT_INT32});
+    std::vector<int64_t> batch_dims = RandomDims(0, 2);
+    std::vector<int64_t> contracting_dims = RandomDims(0, 2);
+    std::vector<int64_t> lhs_outer_dims = RandomDims(0, 2);
+    std::vector<int64_t> rhs_outer_dims = RandomDims(0, 2);
+
+    xla::DotDimensionNumbers dnums;
+    for (auto i = 0; i < batch_dims.size(); ++i) {
+      dnums.add_lhs_batch_dimensions(i);
+      dnums.add_rhs_batch_dimensions(i);
+    }
+    for (auto i = 0; i < contracting_dims.size(); ++i) {
+      dnums.add_lhs_contracting_dimensions(batch_dims.size() + i);
+      dnums.add_rhs_contracting_dimensions(batch_dims.size() + i);
+    }
+    std::string dnums_data;
+    dnums.SerializeToString(&dnums_data);
+
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    lhs_dims.insert(lhs_dims.end(), batch_dims.begin(), batch_dims.end());
+    lhs_dims.insert(lhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+    lhs_dims.insert(lhs_dims.end(), lhs_outer_dims.begin(),
+                    lhs_outer_dims.end());
+    rhs_dims.insert(rhs_dims.end(), batch_dims.begin(), batch_dims.end());
+    rhs_dims.insert(rhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+    rhs_dims.insert(rhs_dims.end(), rhs_outer_dims.begin(),
+                    rhs_outer_dims.end());
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDot")
+            .RandomInput(type, lhs_dims)
+            .RandomInput(type, rhs_dims)
+            .Attr("dimension_numbers", dnums_data)
+            .Attr("precision_config", "")
+            .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, ZerosLike) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});

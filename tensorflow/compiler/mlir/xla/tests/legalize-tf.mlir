@@ -5370,6 +5370,24 @@ func @angle_c64(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 }
 
 //===----------------------------------------------------------------------===//
+// tf.XlaDot legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @xladot_matmul(
+// CHECK-SAME:    %[[LHS:.*]]: tensor<64x32xi8>, %[[RHS:.*]]: tensor<32x16xi8>) -> tensor<64x16xi32>
+func @xladot_matmul(%lhs : tensor<64x32xi8>, %rhs : tensor<32x16xi8>) -> tensor<64x16xi32> {
+  // CHECK: "mhlo.dot_general"(%[[LHS]], %[[RHS]]) {
+  // CHECK-SAME:  dot_dimension_numbers = {
+  // CHECK-SAME:      lhs_batching_dimensions = dense<> : tensor<0xi64>,
+  // CHECK-SAME:      lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_batching_dimensions = dense<> : tensor<0xi64>,
+  // CHECK-SAME:      rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+  // CHECK-SAME:  }, precision_config = []} : (tensor<64x32xi8>, tensor<32x16xi8>) -> tensor<64x16xi32>
+  %res = "tf.XlaDot"(%lhs, %rhs) {dimension_numbers = "\0A\01\01\12\01\00", precision_config = ""} : (tensor<64x32xi8>, tensor<32x16xi8>) -> tensor<64x16xi32>
+  return %res : tensor<64x16xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.XlaDotV2 legalization
 //===----------------------------------------------------------------------===//
 
