@@ -196,7 +196,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     delta = 0.25
-    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_data = [13, 0, 12, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.session():
@@ -214,7 +214,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     delta = 0.25
-    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_data = [13, 0, 12, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.session():
@@ -322,7 +322,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     x_np = np.array(x_rgb_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_rgb_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_rgb_data = [7, 9, 13, 140, 180, 226, 136, 121, 234, 172, 255, 128]
     y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
 
     with self.session():
