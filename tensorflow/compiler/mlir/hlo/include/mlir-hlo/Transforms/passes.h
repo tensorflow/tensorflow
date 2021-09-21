@@ -46,6 +46,7 @@ std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 /// CopyOpInterface.
 std::unique_ptr<FunctionPass> createCopyRemovalPass();
 
+/// Creates a pass that computes the allocated memory.
 std::unique_ptr<FunctionPass> createMemoryCountPass();
 
 } // namespace mlir

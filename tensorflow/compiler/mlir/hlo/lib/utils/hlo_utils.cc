@@ -163,5 +163,22 @@ int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
   return arg.getArgNumber();
 }
 
+/// Computes the memory usage of the given allocations.
+std::pair<size_t, size_t> computeMemory(const std::vector<Value> &allocs){
+  // Padding in Byte
+  const size_t padding = 64;
+  size_t totalSize = 0;
+  size_t allocCounter = 0;
+  for (const Value alloc : allocs) {
+    auto shape = alloc.getType().cast<ShapedType>();
+    size_t shapeBytes = llvm::divideCeil(shape.getSizeInBits(), 8);
+    size_t alignFactor = llvm::divideCeil(shapeBytes, padding);
+    size_t size = alignFactor * padding;
+    totalSize += size;
+    allocCounter++;
+  }
+  return std::make_pair(totalSize, allocCounter);
+}
+
 }  // namespace hlo
 }  // namespace mlir
