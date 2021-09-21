@@ -3540,22 +3540,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const MLIRImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
-    GraphDef graph_def;
-    if (import_options.enable_grappler) {
-      // Grappler is best-effort.
-      auto statusor = RunGrappler(*meta_graph_def);
-      if (statusor.ok()) {
-        graph_def = std::move(statusor).ValueOrDie();
-      } else {
-        // If the grappler fails, use the original graph def.
-        LOG(WARNING) << "SimpleSavedModelMLIRImportInput: grappler failed: "
-                     << statusor.status();
-        graph_def = meta_graph_def->graph_def();
-      }
-    } else {
-      graph_def = meta_graph_def->graph_def();
-    }
-
+    GraphDef graph_def = meta_graph_def->graph_def();
     auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
     if (import_options.upgrade_legacy) {
