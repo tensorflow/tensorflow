@@ -17,6 +17,7 @@
 import abc
 import typing
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type_field
@@ -503,6 +504,258 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     return copy
 
 
+@tf_export('experimental.ExtensionTypeBatchEncoder')
+class ExtensionTypeBatchEncoder(type_spec.TypeSpecBatchEncoder):
+  """Class used to encode and decode extension type values for batching.
+
+  In order to be batched and unbatched by APIs such as `tf.data.Dataset`,
+  `tf.keras`, and `tf.map_fn`, extension type values must be encoded as a list
+  of `tf.Tensor`s, where stacking, unstacking, or concatenating these encoded
+  tensors and then decoding the result must be equivalent to stacking,
+  unstacking, or concatenating the original values. `ExtensionTypeBatchEncoder`s
+  are responsible for implementing this encoding.
+
+  The default `ExtensionTypeBatchEncoder` that is used by
+  `BatchableExtensionType` assumes that extension type values can be stacked,
+  unstacked, or concatenated by simply stacking, unstacking, or concatenating
+  every nested `Tensor`, `ExtensionType`, `CompositeTensor`, and `TensorShape`
+  field.
+
+  Extension types where this is not the case will need to override
+  `__batch_encoder__` with a custom encoder that overrides the `batch`,
+  `unbatch`, `encode`, and `decode` methods. E.g.:
+
+  >>> class CustomBatchEncoder(ExtensionTypeBatchEncoder):
+  ...   pass # Override batch(), unbatch(), encode(), and decode().
+
+  >>> class CustomType(BatchableExtensionType):
+  ...   x: tf.Tensor
+  ...   y: tf.Tensor
+  ...   shape: tf.TensorShape
+  ...   __batch_encoder__ = CustomBatchEncoder()
+
+  For example, `tf.RaggedTensor` and `tf.SparseTensor` both use custom batch
+  encodings which define ops to "box" and "unbox" individual values into
+  `tf.variant` tensors.
+  """
+
+  def batch(self, spec, batch_size):
+    """Returns the TypeSpec representing a batch of values described by `spec`.
+
+    The default definition returns a `TypeSpec` that is equal to `spec`, except
+    that an outer axis with size `batch_size` is added to every nested
+    `TypeSpec` and `TensorShape` field.  Subclasses may override this default
+    definition, when necessary.
+
+    Args:
+      spec: The `TypeSpec` for an individual value.
+      batch_size: An `int` indicating the number of values that are batched
+        together, or `None` if the batch size is not known.
+
+    Returns:
+      A `TypeSpec` for a batch of values.
+    """
+
+    def batch_field(f):
+      if isinstance(f, type_spec.BatchableTypeSpec):
+        return f.__batch_encoder__.batch(f, batch_size)
+      elif isinstance(f, tensor_shape.TensorShape):
+        return [batch_size] + f
+      else:
+        return f
+
+    fields = tuple(spec.__dict__.items())
+    batched_fields = nest.map_structure(batch_field, fields)
+    return _create_object_from_type_and_dict(type(spec), batched_fields)
+
+  def unbatch(self, spec):
+    """Returns the TypeSpec for a single unbatched element in `spec`.
+
+    The default definition returns a `TypeSpec` that is equal to `spec`, except
+    that the outermost axis is removed from every nested `TypeSpec`, and
+    `TensorShape` field.  Subclasses may override this default definition, when
+    necessary.
+
+    Args:
+      spec: The `TypeSpec` for a batch of values.
+
+    Returns:
+      A `TypeSpec` for an individual value.
+    """
+
+    def unbatch_field(f):
+      if isinstance(f, type_spec.BatchableTypeSpec):
+        return f.__batch_encoder__.unbatch(f)
+      elif isinstance(f, tensor_shape.TensorShape):
+        return f[1:]
+      else:
+        return f
+
+    fields = tuple(spec.__dict__.items())
+    unbatched_fields = nest.map_structure(unbatch_field, fields)
+    return _create_object_from_type_and_dict(type(spec), unbatched_fields)
+
+  def encode(self, spec, value, minimum_rank=0):
+    """Encodes `value` as a list of stackable `tf.Tensor`s.
+
+    `encode` must always return the same number of `Tensor`s for a given `spec`,
+    and those `Tensor`s must be compatible with the `TensorSpec`s returned by
+    `self.encoding_specs(spec)`.
+
+    The default definition encodes each nested `Tensor`, `CompositeTensor`, or
+    `ExtensionType` field in `value`, and returns a flat list of the resulting
+    tensors.  Subclasses may override this default definition, when necessary.
+
+    Args:
+      spec: The TypeSpec of the value to encode.
+      value: A value compatible with `spec`.
+      minimum_rank: The minimum rank for the returned tensors.  This can be used
+        to ensure that the encoded values can be unbatched this number of
+        times.  If `minimum_rank>0`, then `t.shape[:minimum_rank]` must be
+          compatible for all tensors `t` returned by `encode`.
+
+    Returns:
+      A `list` of `tf.Tensor`s that encodes `value`.  Stacking, unstacking, or
+      concatenating these encoded tensors and then decoding the result must be
+      equivalent to stacking, unstacking, or concatenating the original values.
+    """
+
+    def encode_component(path, component_spec, component):
+      if not hasattr(component_spec, '__batch_encoder__'):
+        raise ValueError(f'Batchable value {value!r} contains a field '
+                         f'{path}: {component_spec!r} that is not batchable.')
+      return component_spec.__batch_encoder__.encode(component_spec, component,
+                                                     minimum_rank)
+
+    encoded_components = nest.map_structure_with_paths(
+        encode_component, spec._component_specs, spec._to_components(value))  # pylint: disable=protected-access
+    tensor_list = nest.flatten(encoded_components)
+    if minimum_rank > 0:
+      shape = tensor_shape.TensorShape([None] * minimum_rank)
+      for t in tensor_list:
+        if not shape.is_compatible_with(t.shape[:minimum_rank]):
+          raise ValueError(f'While converting {value!r} to a batchable tensor '
+                           f'encoding, got tensors with incompatible shape '
+                           f'prefixes {shape} and {t.shape[:minimum_rank]}. ')
+        shape = shape.merge_with(t.shape[:minimum_rank])
+    return tensor_list
+
+  def decode(self, spec, encoded_value):
+    """Decodes `value` from a batchable tensor encoding.
+
+    See `encode` for a description of the default encoding.  Subclasses may
+    override this default definition, when necessary.
+
+    Args:
+      spec: The TypeSpec for the result value.  If the encoded values were
+        stacked, then `spec` should be batched using `self.batch()`; or if the
+        encoded values were unstacked, then the `spec` should be unbatched using
+        `self.unbatch()`.
+      encoded_value: A list of `tf.Tensor`s that was returned by `encode`; or a
+        list of `Tensors` that was formed by stacking, unstacking, or
+        concatenating the values returned by `encode`.
+
+    Returns:
+      A value compatible with `type_spec`.
+    """
+    if not (isinstance(encoded_value, (list, tuple)) and
+            all(isinstance(t, ops.Tensor) for t in encoded_value)):
+      raise TypeError(f'Expected encoded_value to be a list of tf.Tensor, got '
+                      f'{encoded_value!r}')
+    component_specs = spec._component_specs  # pylint: disable=protected-access
+    component_encoding_specs = nest.map_structure(
+        lambda s: s.__batch_encoder__.encoding_specs(s),  # pylint: disable=unnecessary-lambda
+        component_specs)
+    component_encodings = nest.pack_sequence_as(component_encoding_specs,
+                                                encoded_value)
+    components = nest.map_structure_up_to(
+        component_specs,
+        lambda s, v: s.__batch_encoder__.decode(s, v),  # pylint: disable=unnecessary-lambda
+        component_specs,
+        component_encodings)
+
+    return spec._from_components(components)  # pylint: disable=protected-access
+
+  def encoding_specs(self, spec):
+    """Returns a list of `TensorSpec`(s) describing the encoding for `spec`.
+
+    The default definition uses `tf.function` to trace `self.encode`, and
+    returns a list of `TensorSpec`s based its return signature.  Subclasses may
+    override this default definition, when necessary.
+
+    Args:
+      spec: The TypeSpec whose encoding should be described.
+
+    Returns:
+      A list of `TensorSpec`, describing the tensor(s) that are returned by
+      `self.encode(spec, ...)`.
+    """
+    if hasattr(self, '__cached_encode_fn'):
+      encode_fn = self.__cached_encode_fn
+    else:
+      encode_fn = def_function.function(lambda v: self.encode(spec, v))
+      self.__cached_encode_fn = encode_fn
+    encode_result = encode_fn.get_concrete_function(spec).structured_outputs
+    # Note: we use shape=None in the returned TensorSpecs because we can't be
+    # certain what value will be used for `minimum_rank`, and that can impact
+    # the ranks of the returned tensors.
+    return [tensor_spec.TensorSpec(None, t.dtype) for t in encode_result]
+
+
+class BatchableExtensionTypeSpec(ExtensionTypeSpec,
+                                 type_spec.BatchableTypeSpec):
+  """Base class for TypeSpecs for BatchableExtensionTypes."""
+
+  __batch_encoder__ = ExtensionTypeBatchEncoder()
+
+  def _batch(self, batch_size):
+    return self.__batch_encoder__.batch(self, batch_size)
+
+  def _unbatch(self):
+    return self.__batch_encoder__.unbatch(self)
+
+  def _to_tensor_list(self, value):
+    return self.__batch_encoder__.encode(self, value)
+
+  def _to_batched_tensor_list(self, value):
+    return self.__batch_encoder__.encode(self, value, minimum_rank=1)
+
+  def _from_compatible_tensor_list(self, encoded_value):
+    return self.__batch_encoder__.decode(self, encoded_value)
+
+  @property
+  def _flat_tensor_specs(self):
+    return self.__batch_encoder__.encoding_specs(self)
+
+
+@tf_export('experimental.BatchableExtensionType')
+class BatchableExtensionType(ExtensionType):
+  """An ExtensionType that can be batched and unbatched.
+
+  `BatchableExtensionType`s can be used with APIs that require batching or
+  unbatching, including `Keras`, `tf.data.Dataset`, and `tf.map_fn`.  E.g.:
+
+  >>> class Vehicle(BatchableExtensionType):
+  ...   top_speed: tf.Tensor
+  ...   mpg: tf.Tensor
+  >>> batch = Vehicle([120, 150, 80], [30, 40, 12])
+  >>> tf.map_fn(lambda vehicle: vehicle.top_speed * vehicle.mpg, batch,
+  ...           fn_output_signature=tf.int32).numpy()
+  array([3600, 6000,  960], dtype=int32)
+
+  An `ExtensionTypeBatchEncoder` is used by these APIs to encode `ExtensionType`
+  values. The default encoder assumes that values can be stacked, unstacked, or
+  concatenated by simply stacking, unstacking, or concatenating every nested
+  `Tensor`, `ExtensionType`, `CompositeTensor`, or `TensorShape` field.
+  Extension types where this is not the case will need to override
+  `__batch_encoder__` with a custom `ExtensionTypeBatchEncoder`.  See
+  `tf.experimental.ExtensionTypeBatchEncoder` for more details.
+  """
+  # Let the metaclass know that it should *not* transform this class (since
+  # this class is part of the ExtensionType framework, and not a user class).
+  _tf_extension_type_do_not_transform_this_class = True
+
+
 # For Pickle __reduce__ protocol:
 def _deserialize_for_reduce(value_type, serialization):
   return value_type.Spec._deserialize(serialization)  # pylint: disable=protected-access
@@ -543,8 +796,10 @@ def _check_field_annotations(cls):
       if not isinstance(value, type):
         raise ValueError(f'{cls.__qualname__}.Spec must be a nested class; '
                          f'got {value}.')
-      if len(value.__mro__) > 2:
-        raise ValueError(f'{cls.__qualname__}.Spec may not have base classes.')
+      if (value.__bases__ != (type_spec.TypeSpec,) and value.__bases__ !=
+          (object,)):
+        raise ValueError(f'{cls.__qualname__}.Spec must be directly subclassed '
+                         'from tf.TypeSpec.')
     elif extension_type_field.ExtensionTypeField.is_reserved_name(name):
       raise ValueError(f'The field annotations for {cls.__name__} are '
                        f"invalid. Field '{name}' is reserved.")
@@ -691,8 +946,19 @@ def _add_type_spec(cls):
 
       spec_dict[name] = value
 
-  # Build and return the TypeSpec.
-  spec = type(spec_name, (ExtensionTypeSpec,), spec_dict)
+  if issubclass(cls, BatchableExtensionType):
+    type_spec_base = BatchableExtensionTypeSpec
+    if hasattr(cls,
+               '__batch_encoder__') and '__batch_encoder__' not in spec_dict:
+      spec_dict['__batch_encoder__'] = cls.__batch_encoder__
+  else:
+    type_spec_base = ExtensionTypeSpec
+    if hasattr(cls, '__batch_encoder__') or '__batch_encoder__' in spec_dict:
+      raise ValueError('__batch_encoder__ should only be defined for '
+                       'BatchableExtensionType classes.')
+
+  # Build the TypeSpec and store it as a nested class inside `cls`.
+  spec = type(spec_name, (type_spec_base,), spec_dict)
   spec.__qualname__ = spec_qualname
   setattr(cls, 'Spec', spec)
 

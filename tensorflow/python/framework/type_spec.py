@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import abc
 import collections
+import functools
 import re
 
 import typing
+import warnings
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
@@ -544,6 +546,138 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     return a
 
 
+class TypeSpecBatchEncoder(object, metaclass=abc.ABCMeta):
+  """Class used to encode and decode composite tensor values for batching.
+
+  In order to be batched and unbatched by APIs such as `tf.data.Dataset` and
+  `tf.map_fn`, composite tensors must be encoded using flat tensors that can
+  themselves be batched or unbatched.  `TypeSpecBatchEncoder`s are
+  responsible for implementing this encoding.
+
+  If a composite tensor's shape is a prefix of the shape of all of its
+  component tensors, then this encoding can usually be performed by just
+  returning those component tensors as a list.  But if the composite tensor
+  has components whose shape has a more complex relationship to the shape
+  of the composite tensor, then a custom `TypeSpecBatchEncoder` may
+  need to be implemented.
+  """
+
+  @abc.abstractmethod
+  def batch(self, spec, batch_size):
+    """Returns the TypeSpec representing a batch of values described by `spec`.
+
+    Args:
+      spec: The `TypeSpec` for an individual value.
+      batch_size: An `int` indicating the number of values that are batched
+        together, or `None` if the batch size is not known.
+
+    Returns:
+      A `TypeSpec` for a batch of values.
+    """
+    raise NotImplementedError(f"{type(self).__name__}.batch")
+
+  @abc.abstractmethod
+  def unbatch(self, spec):
+    """Returns the TypeSpec for a single unbatched element in `spec`.
+
+    Args:
+      spec: The `TypeSpec` for a batch of values.
+
+    Returns:
+      A `TypeSpec` for an individual value.
+    """
+    raise NotImplementedError(f"{type(self).__name__}.unbatch")
+
+  @abc.abstractmethod
+  def encode(self, spec, value, minimum_rank=0):
+    """Encodes `value` as a list of stackable `tf.Tensor`s.
+
+    Args:
+      spec: The TypeSpec of the value to encode.
+      value: A value compatible with `spec`.
+      minimum_rank: The minimum rank for the returned tensor(s).  This can be
+        used to ensure that the encoded tensor(s) can be unbatched this number
+        of times.
+
+    Returns:
+      A `tf.Tensor` or `list` of `tf.Tensor`s that encodes `value`.  Stacking,
+      unstacking, or concatenating these encoded tensors and then decoding the
+      result must be equivalent to stacking, unstacking, or concatenating the
+      original values.
+
+      If `encode` returns a list of `Tensors`, then they should be treated as
+      parallel tensors, and corresponding values should be combined. I.e.,
+      stacking, unstacking, or concatenating values must be equivalent to
+      stacking, unstacking, or concatenating each of the corresponding tensors
+      from the encoding.  If a list of `Tensors` is returned, they must
+      all have the same shape up to axis `minimum_rank`.
+    """
+    raise NotImplementedError(f"{type(self).__name__}.encode")
+
+  @abc.abstractmethod
+  def decode(self, spec, encoded_value):
+    """Decodes `value` from a batchable tensor encoding.
+
+    Args:
+      spec: The TypeSpec for the result value.  If the encoded values were
+        stacked, then `spec` should be batched using `self.batch()`; or if the
+        encoded values were unstacked, then the `spec` should be unbatched using
+        `self.unbatch().
+      encoded_value: A `Tensor` (or list of `Tensors`) that was returned by
+        `encode`; or a `Tensor` (or list of `Tensors`) that was formed by
+        stacking, unstacking, or concatenating the values returned by `encode`.
+
+    Returns:
+      A value compatible with `type_spec`.
+    """
+    raise NotImplementedError(f"{type(self).__name__}.decode")
+
+  @abc.abstractmethod
+  def encoding_specs(self, spec):
+    """Returns a list of `TensorSpec`(s) describing the encoding for `spec`.
+
+    Args:
+      spec: The TypeSpec whose encoding should be described.
+
+    Returns:
+      A list of `TensorSpec`, describing the tensor(s) that are returned by
+      `self.encode(spec, ...)`.
+    """
+    raise NotImplementedError(f"{type(self).__name__}.encoding_specs")
+
+
+class LegacyTypeSpecBatchEncoder(TypeSpecBatchEncoder):
+  """TypeSpecBatchEncoder for legacy composite tensor classes.
+
+  TODO(edloper): Update existing composite tensors to use non-legacy
+    CompositTensorBatchEncoders.
+  """
+
+  def batch(self, type_spec, batch_size):
+    return type_spec._batch(batch_size)  # pylint: disable=protected-access
+
+  def unbatch(self, type_spec):
+    return type_spec._unbatch()  # pylint: disable=protected-access
+
+  def encode(self, type_spec, value, minimum_rank=0):
+    if minimum_rank == 0:
+      return type_spec._to_tensor_list(value)  # pylint: disable=protected-access
+    elif minimum_rank == 1:
+      if not isinstance(type_spec, BatchableTypeSpec):
+        raise ValueError(f"{type_spec.__name__}.encode does not support "
+                         "minimum_rank>0.")
+      return type_spec._to_batched_tensor_list(value)  # pylint: disable=protected-access
+    else:
+      raise ValueError(f"{type_spec.__name__}.encode does not support "
+                       "minimum_rank>1.")
+
+  def decode(self, type_spec, encoded_value):
+    return type_spec._from_tensor_list(encoded_value)  # pylint: disable=protected-access
+
+  def encoding_specs(self, spec):
+    return spec._flat_tensor_specs  # pylint: disable=protected-access
+
+
 class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
   """TypeSpec with a batchable tensor encoding.
 
@@ -560,6 +694,8 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
   """
 
   __slots__ = []
+
+  __batch_encoder__ = LegacyTypeSpecBatchEncoder()
 
   @abc.abstractmethod
   def _batch(self, batch_size) -> TypeSpec:
@@ -587,7 +723,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
   def _flat_tensor_specs(self) -> typing.List[TypeSpec]:
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
     component_flat_tensor_specs = nest.map_structure(
-        lambda spec: spec._flat_tensor_specs,  # pylint: disable=protected-access
+        functools.partial(_get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
     return nest.flatten(component_flat_tensor_specs)
 
@@ -596,7 +732,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
       value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor`."""
     component_tensor_lists = nest.map_structure(
-        lambda spec, v: spec._to_tensor_list(v),  # pylint: disable=protected-access
+        _batchable_to_tensor_list,
         self._component_specs,
         self._to_components(value))
     return nest.flatten(component_tensor_lists)
@@ -605,10 +741,9 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
       self,
       value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor` each with rank>0."""
-    # pylint: disable=protected-access
     get_spec_tensor_list = lambda spec, v: (  # pylint: disable=g-long-lambda
-        spec._to_batched_tensor_list(v)
-        if isinstance(spec, BatchableTypeSpec) else spec._to_tensor_list(v))
+        _batchable_to_tensor_list(spec, v, minimum_rank=1)
+        if isinstance(spec, BatchableTypeSpec) else spec._to_tensor_list(v))  # pylint: disable=protected-access
     component_batched_tensor_lists = nest.map_structure(
         get_spec_tensor_list, self._component_specs, self._to_components(value))
     tensor_list = nest.flatten(component_batched_tensor_lists)
@@ -623,15 +758,43 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
   ) -> composite_tensor.CompositeTensor:
     """Reconstructs a value from a compatible flat list of `ops.Tensor`."""
     flat_specs = nest.map_structure(
-        lambda spec: spec._flat_tensor_specs,  # pylint: disable=protected-access
+        functools.partial(_get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
     nested_tensor_list = nest.pack_sequence_as(flat_specs, tensor_list)
     components = nest.map_structure_up_to(
         self._component_specs,
-        lambda spec, v: spec._from_compatible_tensor_list(v),  # pylint: disable=protected-access
+        _batchable_from_tensor_list,
         self._component_specs,
         nested_tensor_list)
     return self._from_components(components)
+
+
+def _get_batchable_flat_tensor_specs(spec, context_spec):
+  """Returns the flat tensor specs for `spec`."""
+  if hasattr(spec, "__batch_encoder__"):
+    return spec.__batch_encoder__.encoding_specs(spec)
+  else:
+    # TODO(edloper) Fix existing CompositeTensors that permit this, and
+    # then turn this warning into an error.
+    warnings.warn(f"Batchable type {context_spec} contains non-batchable "
+                  f"field or component with type {spec}.")
+    return spec._flat_tensor_specs  # pylint: disable=protected-access
+
+
+def _batchable_to_tensor_list(spec, value, minimum_rank=0):
+  """Returns a list of tensors encoding `value`, whose type is `spec`."""
+  if hasattr(spec, "__batch_encoder__"):
+    return spec.__batch_encoder__.encode(spec, value, minimum_rank)
+  else:
+    return spec._to_tensor_list(value)  # pylint: disable=protected-access
+
+
+def _batchable_from_tensor_list(spec, encoded_value):
+  """Returns a value with type `spec` decoded from `encoded_value`."""
+  if hasattr(spec, "__batch_encoder__"):
+    return spec.__batch_encoder__.decode(spec, encoded_value)
+  else:
+    return spec._from_compatible_tensor_list(encoded_value)  # pylint: disable=protected-access
 
 
 @tf_export("type_spec_from_value")
