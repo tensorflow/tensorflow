@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for v1 vs v2 API comparison."""
-import sys
-import atheris_no_libfuzzer as atheris
-from python_fuzzing import FuzzingHelper
-import tensorflow as tf
+import atheris
+with atheris.instrument_imports():
+  import sys
+  from python_fuzzing import FuzzingHelper
+  import tensorflow as tf
 
 
+@atheris.instrument_func
 def TestOneInput(input_bytes):
   """Test randomized integer fuzzing input for v1 vs v2 APIs."""
   fh = FuzzingHelper(input_bytes)
