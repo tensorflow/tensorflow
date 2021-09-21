@@ -1544,6 +1544,31 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return replica_id_in_sync_group
 
 
+def _make_axis_nonnegative(axis, rank):
+  # Convert a potentially negative `axis` to a non-negative one.
+  if isinstance(axis, int):
+    if axis >= 0:
+      return axis
+    else:
+      return axis + rank
+  else:
+    return array_ops.where_v2(
+        math_ops.greater_equal(axis, 0),
+        axis,
+        axis + rank)
+
+
+# List of Tensor dtypes supported by cross_replica_sum().
+_DTYPES_SUPPORTED_BY_CROSS_REPLICA_SUM = (
+    dtypes.bfloat16,
+    dtypes.float16,
+    dtypes.float32,
+    dtypes.float64,
+    dtypes.int32,
+    dtypes.uint32,
+)
+
+
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""
 
@@ -1569,63 +1594,115 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     """Places variables and ops on the specified logical device."""
     return self.strategy.extended.experimental_logical_device(logical_device_id)
 
-  # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
+  def _compute_all_gather_output_shape(self, value_shape, value_rank, axis):
+    if isinstance(value_rank, int):
+      output_shape = list(value_shape)
+      output_shape[axis] *= self.num_replicas_in_sync
+    else:
+      output_shape = array_ops.where_v2(
+          math_ops.equal(math_ops.range(value_rank), axis),
+          value_shape * context.num_replicas_in_sync,
+          value_shape)
+    return output_shape
+
   def all_gather(self, value, axis, experimental_hints=None):
     del experimental_hints
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
-    def _all_to_all(value, axis):
-      # The underlying AllToAllOp first do a split of the input value and then
-      # cross-replica communication and concatenation of the result. So we
-      # concatenate the local tensor here first.
-      inputs = array_ops.concat(
-          [value for _ in range(self.num_replicas_in_sync)], axis=0)
-      unordered_output = tpu_ops.all_to_all(
-          inputs,
-          concat_dimension=axis,
-          split_dimension=0,
-          split_count=self.num_replicas_in_sync)
+    def _all_gather_tensor(value, axis):
+      value = ops.convert_to_tensor(value)
 
-      # Re-order since xla.replica_id and ReplicaContext.replica_id mismatch.
-      # xla_id = xla.replica_id()
-      concat_replica_id = array_ops.concat([
-          array_ops.expand_dims_v2(self.replica_id_in_sync_group, 0)
-          for _ in range(self.num_replicas_in_sync)
-      ],
-                                           axis=0)
-      replica_ids = tpu_ops.all_to_all(
-          concat_replica_id,
-          concat_dimension=0,
-          split_dimension=0,
-          split_count=self.num_replicas_in_sync)
+      # Compute the shape and rank and rank of the input tensor. Use static
+      # shapes when possible to help with shape inference in graph mode, but
+      # fall back on dynamic shapes when necessary.
+      if value.shape.rank is None:
+        value_rank = array_ops.rank(value)
+        value_shape = array_ops.shape(value)
+      else:
+        value_rank = value.shape.rank
+        value_shape = value.shape.as_list()
+        value_shape_tensor = array_ops.shape(value)
+        for i in range(len(value_shape)):
+          if value_shape[i] is None:
+            value_shape[i] = value_shape_tensor[i]
 
-      splited_unordered = array_ops.split(
-          unordered_output,
-          num_or_size_splits=self.num_replicas_in_sync,
-          axis=axis)
-      sorted_with_extra_dim = math_ops.unsorted_segment_sum(
-          array_ops.concat([
-              array_ops.expand_dims(replica, axis=0)
-              for replica in splited_unordered
-          ],
-                           axis=0),
-          replica_ids,
-          num_segments=self.num_replicas_in_sync)
+      # In the code below, we will insert a new "replica" dimension immediately
+      # *before* `axis`. To ensure that it's inserted before and not after, we
+      # must make `axis` non-negative.
+      axis = _make_axis_nonnegative(axis, value_rank)
 
-      splited_with_extra_dim = array_ops.split(
-          sorted_with_extra_dim,
-          num_or_size_splits=self.num_replicas_in_sync,
-          axis=0)
-      squeezed = [
-          array_ops.squeeze(replica, axis=0)
-          for replica in splited_with_extra_dim
-      ]
-      result = array_ops.concat(squeezed, axis=axis)
-      return result
+      # Create a list or 1D int Tensor such as
+      #     [1, 1, ..., 1, num_replicas_in_sync, 1, ..., 1],
+      # which is equal to `num_replicas_in_sync` at index `axis`
+      # and is equal to 1 everywhere else.
+      if isinstance(value_rank, int):
+        replica_broadcast_shape = [1] * (value_rank + 1)
+        replica_broadcast_shape[axis] = self.num_replicas_in_sync
+      else:
+        replica_broadcast_shape = array_ops.where_v2(
+            math_ops.equal(math_ops.range(value_rank+1), axis),
+            self.num_replicas_in_sync,
+            1)
 
-    ys = [_all_to_all(t, axis=axis) for t in nest.flatten(value)]
+      output_shape = self._compute_all_gather_output_shape(
+          value_shape, value_rank, axis)
+
+      if value.dtype in _DTYPES_SUPPORTED_BY_CROSS_REPLICA_SUM:
+        # optimized all_gather implementation based on cross_replica_sum().
+        replica_id_mask = array_ops.one_hot(
+            self.replica_id_in_sync_group, self.num_replicas_in_sync)
+        replica_id_mask = array_ops.reshape(
+            replica_id_mask, replica_broadcast_shape)
+        replica_id_mask = math_ops.cast(replica_id_mask, value.dtype)
+
+        gathered_value = array_ops.expand_dims(value, axis) * replica_id_mask
+        gathered_value = self.all_reduce(
+            reduce_util.ReduceOp.SUM, gathered_value)
+        return array_ops.reshape(gathered_value, output_shape)
+      else:
+        # value.dtype isn't supported by cross_replica_sum(), so we fall back
+        # on a less efficient implementation based on all_to_all().
+
+        # The underlying AllToAllOp first do a split of the input value and then
+        # cross-replica communication and concatenation of the result. So we
+        # concatenate the local tensor here first.
+        inputs = array_ops.expand_dims(value, axis=axis)
+        inputs = array_ops.tile(inputs, replica_broadcast_shape)
+        unordered_output = tpu_ops.all_to_all(
+            inputs,
+            concat_dimension=axis,
+            split_dimension=axis,
+            split_count=self.num_replicas_in_sync)
+
+        # Re-order since xla.replica_id and ReplicaContext.replica_id mismatch.
+        # Start by computing a permutation -- a 1D Tensor which maps
+        #     tensor[xla.replica_id] = ReplicaContext.replica_id
+        concat_replica_id = array_ops.reshape(
+            self.replica_id_in_sync_group, [1])
+        concat_replica_id = array_ops.tile(
+            concat_replica_id, [self.num_replicas_in_sync])
+        xla_to_replica_context_id = tpu_ops.all_to_all(
+            concat_replica_id,
+            concat_dimension=0,
+            split_dimension=0,
+            split_count=self.num_replicas_in_sync)
+
+        # Now invert the mapping to get
+        #    tensor[ReplicaContext.replica_id] = xla.replica_id
+        replica_context_to_xla_id = math_ops.argmax(
+            array_ops.one_hot(xla_to_replica_context_id,
+                              self.num_replicas_in_sync),
+            axis=0)
+
+        # Reorder the output elements so that they're sorted based on
+        # ReplicaContext.replica_id instead of xla.replica_id.
+        sorted_with_extra_dim = array_ops.gather(
+            unordered_output, replica_context_to_xla_id, axis=axis)
+        return array_ops.reshape(sorted_with_extra_dim, output_shape)
+
+    ys = [_all_gather_tensor(t, axis=axis) for t in nest.flatten(value)]
     return nest.pack_sequence_as(value, ys)
 
 
