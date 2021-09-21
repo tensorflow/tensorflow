@@ -2127,17 +2127,23 @@ TEST_P(ParameterizedMetadataTest, WhileConv) {
 HloModule module
 
 %cond {
-  %vars.cond = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %vars.cond = (u32[], bf16[2, 2048, 768], bf16[128,512,2048], bf16[128,512,768], s32[]) parameter(0)
   %count.cond = u32[] get-tuple-element(%vars.cond), index=0
   %limit = u32[] constant(2)
   ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
 }
 
 %body {
-  %param = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %param = (u32[], bf16[2, 2048, 768], bf16[128,512,2048], bf16[128,512,768], s32[]) parameter(0)
+  %i0 = s32[] constant(0)
   %count = u32[] get-tuple-element(%param), index=0
-  %kernel = bf16[2048, 768]{1,0}
+  %gte0 = bf16[2,2048,768]{2,1,0}
    get-tuple-element(%param), index=1
+  %index = s32[] get-tuple-element(%param), index=4
+  %dys = bf16[1,2048,768]{2,1,0} dynamic-slice(%gte0, s32[] %index, s32[] %i0, s32[] %i0),
+   dynamic_slice_sizes={1,2048,768}
+  %kernel = bf16[2048, 768]{1,0}
+   reshape(%dys)
   %lhs = bf16[128,512,2048]{2,1,0}
    get-tuple-element(%param), index=2,
    sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
@@ -2146,7 +2152,7 @@ HloModule module
     convolution(bf16[128,512,2048]{2,1,0} %lhs,
     bf16[2048,768,1]{2,1,0} %reshape), window={size=1},
     dim_labels=0bf_io0->0bf, sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
-  ROOT %tuple = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%count, %kernel, %lhs, %convolution)
+  ROOT %tuple = (u32[], bf16[2,2048,768], bf16[128,512,2048], bf16[128,512,768], s32[]) tuple(%count, %gte0, %lhs, %convolution, index)
 }
 
 ENTRY %entry {
@@ -2155,9 +2161,12 @@ ENTRY %entry {
   %p1 = bf16[128,512,2048] parameter(1),
    sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
   %p2 = bf16[128,512,768] parameter(2)
+  %reshape0 = bf16[1,2048,768] reshape(%p0)
+  %concat0 = bf16[2,2048,768] concatenate(%reshape0, %reshape0), dimensions={0}
   %zero = u32[] constant(0)
-  %init = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%zero, %p0, %p1, %p2)
-  %while = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) while(%init), body=%body, condition=%cond
+  %p3 = s32[] parameter(3)
+  %init = (u32[], bf16[2, 2048, 768], bf16[128,512,2048], bf16[128,512,768], s32[]) tuple(%zero, %concat0, %p1, %p2, %p3)
+  %while = (u32[], bf16[2, 2048, 768], bf16[128,512,2048], bf16[128,512,768], s32[]) while(%init), body=%body, condition=%cond
   ROOT %result = bf16[128,512,768] get-tuple-element(%while), index=3, sharding={replicated}
 })";
 
@@ -2175,6 +2184,68 @@ ENTRY %entry {
   ASSERT_NE(kernel, nullptr);
   EXPECT_THAT(kernel, op::Sharding("{devices=[2,1,8]0,2,4,6,8,10,12,14,1,3,5,"
                                    "7,9,11,13,15 last_tile_dim_replicate}"));
+}
+
+TEST_P(ParameterizedMetadataTest, DoNotPassThroughConcatAtFirstIteration) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = bf16[16,2048,768] parameter(0),
+    sharding={devices=[2,1,1,8]0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15 last_tile_dim_replicate}
+  %concat = bf16[32,2048,768] concatenate(%p0, %p0), dimensions={0}
+  %add = bf16[32,2048,768] add(%concat, %concat),
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %result = bf16[32,2048,768] copy(%add)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* kernel = FindInstruction(module.get(), "concat");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_THAT(kernel, op::Sharding("{devices=[8,1,2]0,1,2,3,4,5,6,7,8,"
+                                   "9,10,11,12,13,14,15}"));
+}
+
+TEST_P(ParameterizedMetadataTest,
+       DoNotPassThroughDynamicSliceAtFirstIteration) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = bf16[64,2048,768] parameter(0),
+    sharding={devices=[2,1,1,8]0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15 last_tile_dim_replicate}
+  %p1 = s32[] parameter(1)
+  %i0 = s32[] constant(0)
+  %dys = bf16[32,2048,768] dynamic-slice(%p0, s32[] %p1, s32[] %i0, s32[] %i0),
+   dynamic_slice_sizes={32,2048,768}
+  %add = bf16[32,2048,768] add(%dys, %dys),
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %result = bf16[32,2048,768] copy(%add)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* kernel = FindInstruction(module.get(), "dys");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_THAT(kernel, op::Sharding("{devices=[8,1,2]0,1,2,3,4,5,6,7,8,"
+                                   "9,10,11,12,13,14,15}"));
 }
 
 TEST_P(ParameterizedMetadataTest, Dot) {
