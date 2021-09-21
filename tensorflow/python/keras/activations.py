@@ -592,10 +592,7 @@ def get(identifier):
   """
   if identifier is None:
     return linear
-  if isinstance(identifier, str):
-    identifier = str(identifier)
-    return deserialize(identifier)
-  elif isinstance(identifier, dict):
+  if isinstance(identifier, (str,dict)):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier
