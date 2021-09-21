@@ -1434,7 +1434,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
-          ".* are different from found partitions .*"):
+          ".* and found partitions .*"):
         variable_scope.get_variable("name0", shape=(3, 1, 1))
 
     with variable_scope.variable_scope(
@@ -1442,7 +1442,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
-          ".* are different from found partitions .*"):
+          ".* and found partitions .*"):
         variable_scope.get_variable("name0", shape=(3, 1, 1))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1539,12 +1539,10 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
   def testNonCallableGetterFails(self):
-    with self.assertRaisesRegex(ValueError,
-                                r"Argument `custom_getter` is not callable."):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       with variable_scope.variable_scope("scope0", custom_getter=3):
         variable_scope.get_variable("name0")
-    with self.assertRaisesRegex(ValueError,
-                                r"Argument `custom_getter` is not callable."):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       variable_scope.get_variable("name0", custom_getter=3)
 
   @test_util.run_in_graph_and_eager_modes
