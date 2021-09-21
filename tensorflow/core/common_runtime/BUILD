@@ -1939,6 +1939,7 @@ cc_library(
     hdrs = ["no_op_cost_measurement.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_constants",
         ":cost_measurement_registry",
         "@com_google_absl//absl/strings",
     ],
@@ -2004,6 +2005,13 @@ cc_library(
         ":request_cost_accessor",
         ":request_cost_accessor_registry",
     ],
+)
+
+cc_library(
+    name = "cost_constants",
+    hdrs = ["cost_constants.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 # -----------------------------------------------------------------------------
