@@ -902,27 +902,30 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       const ConvolutionDimensionNumbers& dnums =
           convolution->convolution_dimension_numbers();
 
+      absl::InlinedVector<int64_t, 2> input_dims;
+      absl::InlinedVector<int64_t, 2> kernel_dims;
+      absl::InlinedVector<int64_t, 2> output_dims;
+      if (one_dim_convolution) {
+        input_dims.push_back(1);
+        kernel_dims.push_back(1);
+        output_dims.push_back(1);
+      }
+
       // Input tensor.
       const Shape& input_shape = convolution->operand(0)->shape();
       int64_t input_batch =
           input_shape.dimensions(dnums.input_batch_dimension());
-      int64_t input_rows =
-          input_shape.dimensions(dnums.input_spatial_dimensions(0));
-      int64_t input_cols =
-          one_dim_convolution
-              ? 1
-              : input_shape.dimensions(dnums.input_spatial_dimensions(1));
+      for (int d : dnums.input_spatial_dimensions()) {
+        input_dims.push_back(input_shape.dimensions(d));
+      }
       int64_t input_channels =
           input_shape.dimensions(dnums.input_feature_dimension());
 
       // Kernel tensor.
       const Shape& kernel_shape = convolution->operand(1)->shape();
-      int64_t kernel_rows =
-          kernel_shape.dimensions(dnums.kernel_spatial_dimensions(0));
-      int64_t kernel_cols =
-          one_dim_convolution
-              ? 1
-              : kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
+      for (int d : dnums.kernel_spatial_dimensions()) {
+        kernel_dims.push_back(kernel_shape.dimensions(d));
+      }
       int64_t kernel_channels =
           kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
       int64_t kernel_filters =
@@ -930,32 +933,28 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
       // Output tensor.
       const Shape& convolution_shape = convolution->shape();
-      int64_t output_rows =
-          convolution_shape.dimensions(dnums.output_spatial_dimensions(0));
-      int64_t output_cols = one_dim_convolution
-                                ? 1
-                                : convolution_shape.dimensions(
-                                      dnums.output_spatial_dimensions(1));
+      for (int d : dnums.output_spatial_dimensions()) {
+        output_dims.push_back(convolution_shape.dimensions(d));
+      }
 
       // Extract the window stride for the convolution.
       const Window& window = convolution->window();
-      int64_t row_stride = window.dimensions(0).stride();
-      int64_t col_stride =
-          one_dim_convolution ? 1 : window.dimensions(1).stride();
-
-      int64_t padding_top = window.dimensions(0).padding_low();
-      int64_t padding_bottom = window.dimensions(0).padding_high();
-      int64_t padding_left =
-          one_dim_convolution ? 0 : window.dimensions(1).padding_low();
-      int64_t padding_right =
-          one_dim_convolution ? 0 : window.dimensions(1).padding_high();
-
-      int64_t lhs_row_dilation = window.dimensions(0).base_dilation();
-      int64_t lhs_col_dilation =
-          one_dim_convolution ? 1 : window.dimensions(1).base_dilation();
-      int64_t rhs_row_dilation = window.dimensions(0).window_dilation();
-      int64_t rhs_col_dilation =
-          one_dim_convolution ? 1 : window.dimensions(1).window_dilation();
+      absl::InlinedVector<int64_t, 2> strides;
+      absl::InlinedVector<std::pair<int64_t, int64_t>, 2> padding;
+      absl::InlinedVector<int64_t, 2> base_dilation;
+      absl::InlinedVector<int64_t, 2> window_dilation;
+      if (one_dim_convolution) {
+        strides.push_back(1);
+        padding.push_back({0, 0});
+        base_dilation.push_back(1);
+        window_dilation.push_back(1);
+      }
+      for (const auto& d : window.dimensions()) {
+        strides.push_back(d.stride());
+        padding.push_back({d.padding_low(), d.padding_high()});
+        base_dilation.push_back(d.base_dilation());
+        window_dilation.push_back(d.window_dilation());
+      }
 
       PrimitiveType primitive_type = lhs->shape().element_type();
       llvm::Type* ir_ptr_type = primitive_type == F16
@@ -981,6 +980,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
                         "conv2d function.";
       }
+      TF_RET_CHECK(input_dims.size() == 2);
+      TF_RET_CHECK(kernel_dims.size() == 2);
+      TF_RET_CHECK(output_dims.size() == 2);
+      TF_RET_CHECK(strides.size() == 2);
+      TF_RET_CHECK(padding.size() == 2);
+      TF_RET_CHECK(base_dilation.size() == 2);
+      TF_RET_CHECK(window_dilation.size() == 2);
       EmitCallToFunc(fn_name,
                      {
                          GetExecutableRunOptionsArgument(),
@@ -988,25 +994,25 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                          BitCast(lhs_address, ir_ptr_type),
                          BitCast(rhs_address, ir_ptr_type),
                          b_.getInt64(input_batch),
-                         b_.getInt64(input_rows),
-                         b_.getInt64(input_cols),
+                         b_.getInt64(input_dims[0]),
+                         b_.getInt64(input_dims[1]),
                          b_.getInt64(input_channels),
-                         b_.getInt64(kernel_rows),
-                         b_.getInt64(kernel_cols),
+                         b_.getInt64(kernel_dims[0]),
+                         b_.getInt64(kernel_dims[1]),
                          b_.getInt64(kernel_channels),
                          b_.getInt64(kernel_filters),
-                         b_.getInt64(output_rows),
-                         b_.getInt64(output_cols),
-                         b_.getInt64(row_stride),
-                         b_.getInt64(col_stride),
-                         b_.getInt64(padding_top),
-                         b_.getInt64(padding_bottom),
-                         b_.getInt64(padding_left),
-                         b_.getInt64(padding_right),
-                         b_.getInt64(lhs_row_dilation),
-                         b_.getInt64(lhs_col_dilation),
-                         b_.getInt64(rhs_row_dilation),
-                         b_.getInt64(rhs_col_dilation),
+                         b_.getInt64(output_dims[0]),
+                         b_.getInt64(output_dims[1]),
+                         b_.getInt64(strides[0]),
+                         b_.getInt64(strides[1]),
+                         b_.getInt64(padding[0].first),
+                         b_.getInt64(padding[0].second),
+                         b_.getInt64(padding[1].first),
+                         b_.getInt64(padding[1].second),
+                         b_.getInt64(base_dilation[0]),
+                         b_.getInt64(base_dilation[1]),
+                         b_.getInt64(window_dilation[0]),
+                         b_.getInt64(window_dilation[1]),
                      },
                      b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
