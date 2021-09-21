@@ -3838,7 +3838,14 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     const HloComputation* reducer,
-    absl::Span<llvm::Value* const> partial_result_addresses) {
+    absl::Span<llvm::Value* const> partial_result_addresses,
+    int threads_per_block) {
+  // This only works when the block size is a multiple of 32 threads.
+
+  // We check this here as a mistake in the number of threads per
+  // block is very hard to detect.
+  CHECK_EQ(threads_per_block % 32, 0);
+
   for (int distance = 16; distance >= 1; distance /= 2) {
     absl::InlinedVector<llvm::Value*, 2> reduction_params;
 
@@ -4060,7 +4067,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
                              {constant(partial_result_idx)}, "current_output"));
   }
 
-  EmitFullWarpShuffleDownLoopForReduce(reducer, current_outputs);
+  EmitFullWarpShuffleDownLoopForReduce(reducer, current_outputs,
+                                       mapping_scheme.GetThreadsPerBlock());
 
   KernelSupportLibrary ksl(&b_);
   llvm::Value* warp_id =
@@ -4107,7 +4115,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
       selected_values.push_back(selected_value);
     }
 
-    EmitFullWarpShuffleDownLoopForReduce(reducer, selected_values);
+    EmitFullWarpShuffleDownLoopForReduce(reducer, selected_values,
+                                         mapping_scheme.GetThreadsPerBlock());
 
     ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x), [&] {
       if (reduction_codegen_state.IsRaceFree()) {
@@ -4191,7 +4200,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
     shmem_transposed_addrs.push_back(shmem_transposed_addr);
   }
 
-  EmitFullWarpShuffleDownLoopForReduce(reducer, shmem_transposed_addrs);
+  EmitFullWarpShuffleDownLoopForReduce(reducer, shmem_transposed_addrs,
+                                       mapping_scheme.GetThreadsPerBlock());
 
   // Some warps in the block are completely outside of the bound of the
   // tensor, so they should not write any output at all.
