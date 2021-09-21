@@ -188,11 +188,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
-        strip_prefix = "oneDNN-2.3-rc2",
+        sha256 = "a19e5fcf04d6ff775cc5f9d9d0ef01e4c74e77519caf4077052f16f037eba6a6",
+        strip_prefix = "oneDNN-2.4-rc",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
         ],
     )
 
