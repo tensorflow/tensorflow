@@ -198,6 +198,7 @@ tf_cc_test(
     ],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
+        "no_bef_thunk",  # complex<fp16> tests fail, see b/187959015.
     ],
     deps = [
         ":gpu_codegen_test",

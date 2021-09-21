@@ -657,10 +657,10 @@ build:tfrt --deleted_packages=
 # bazel test --config=experimental_enable_bef_thunk \
 #   //tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test
 build:experimental_enable_bef_thunk --config=tfrt
-build:experimental_enable_bef_thunk --config=cuda
 build:experimental_enable_bef_thunk --//tensorflow/compiler/xla/service/gpu:enable_bef_thunk
 build:experimental_enable_bef_thunk --@tf_runtime//:enable_gpu
 build:experimental_enable_bef_thunk --@rules_cuda//cuda:enable_cuda
+build:experimental_enable_bef_thunk --@rules_cuda//cuda:cuda_runtime=//tensorflow/compiler/xla/service/gpu:cuda_runtime_for_xlir
 build:experimental_enable_bef_thunk --nocheck_visibility
 build:experimental_enable_bef_thunk --incompatible_strict_action_env
 build:experimental_enable_bef_thunk --config=monolithic

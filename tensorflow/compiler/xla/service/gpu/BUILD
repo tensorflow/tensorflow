@@ -879,6 +879,27 @@ cc_library(
     }),
 )
 
+# Target used as --@rules_cuda//cuda:cuda_runtime when BefThunk is enabled.
+# TFRT uses this target to link against CUDA libraries. Using TFRT's own
+# cuda_stubs would duplicate symbols from stream_executor's stubs.
+cc_library(
+    name = "cuda_runtime_for_xlir",
+    deps = select({
+        ":is_bef_thunk_enabled": [
+            "@local_config_nccl//:nccl",
+            "//tensorflow/stream_executor/cuda:cublas_lt_stub",
+            "//tensorflow/stream_executor/cuda:cublas_stub",
+            "//tensorflow/stream_executor/cuda:cuda_stub",
+            "//tensorflow/stream_executor/cuda:cudart_stub",
+            "//tensorflow/stream_executor/cuda:cudnn_stub",
+            "//tensorflow/stream_executor/cuda:cufft_stub",
+            "//tensorflow/stream_executor/cuda:cusolver_stub",
+            "@tf_runtime//backends/gpu:cublas_compat",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
