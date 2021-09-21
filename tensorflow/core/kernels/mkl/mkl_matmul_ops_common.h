@@ -42,7 +42,7 @@ inline bool ExecuteSingleThreadedGemm(int m, int n, int k, int bytes) {
   // to determine if the matrix multiplication should be run on a single thread.
   ptrdiff_t l2_size = cache_sizes.m_l2;
   constexpr int kHeuristicMultiplier = 1;
-  int mul_size = bytes * (m * n + k * (m + n));
+  const int mul_size = bytes * (m * n + k * (m + n));
   const int l2_heur = l2_size * kHeuristicMultiplier;
   return mul_size < l2_heur;
 }
