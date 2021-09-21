@@ -36,6 +36,7 @@ function run_build () {
 
   "${BAZEL_WRAPPER_PATH}" \
     test \
+    --nodistinct-host-configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \
     --action_env=PATH \
