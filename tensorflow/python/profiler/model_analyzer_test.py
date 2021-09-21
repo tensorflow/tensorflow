@@ -446,15 +446,11 @@ class PrintModelAnalysisTest(test.TestCase):
       self.assertGreater(len(profile_pb.string_table), 30)
 
       has_rnn = False
-      has_loop = False
       for s in profile_pb.string_table:
         if s.find('rnn') > 0:
           has_rnn = True
-        if s.find('while') > 0:
-          has_loop = True
         self.assertFalse(s.startswith('ops.py'))
       self.assertTrue(has_rnn)
-      self.assertTrue(has_loop)
 
   def testPprof(self):
     for attr in ['micros', 'bytes', 'accelerator_micros', 'cpu_micros',
