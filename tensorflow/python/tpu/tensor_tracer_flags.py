@@ -428,7 +428,8 @@ class TTParameters(object):
       if flag_name == wanted_flag_name:
         return True, flag_value
       pos = match.end()
-    raise RuntimeError('Should not reach here.')
+    raise RuntimeError('Invalid tensor tracer flag. Could not recognize %s.' %
+                       flag_name)
 
   def _flag_value_to_re_list(self, flag_name):
     """Converts list of strings to compiled RE."""
