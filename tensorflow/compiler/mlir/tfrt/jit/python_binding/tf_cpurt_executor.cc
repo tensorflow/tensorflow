@@ -76,7 +76,7 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
+  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
     tensorflow::TfCpuRtPipelineOptions opts;
     opts.codegen_reductions = codegen_reductions;
     opts.codegen_cwise = codegen_cwise;

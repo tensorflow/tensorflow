@@ -8,9 +8,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -25,9 +23,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -42,9 +38,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -59,9 +53,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -76,9 +68,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -93,9 +83,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -110,9 +98,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -127,9 +113,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -144,9 +128,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -161,9 +143,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
@@ -178,9 +158,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "noasan",
         "nomsan",
-        "notsan",
     ],
     deps = [
         # copybara:uncomment "//testing/pybase",
