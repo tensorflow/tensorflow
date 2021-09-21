@@ -152,6 +152,9 @@ bool CanUseSubBuffer(const GpuInfo& gpu_info) {
   if (!gpu_info.IsCL11OrHigher()) {
     return false;
   }
+  if (gpu_info.IsPowerVR()) {
+    return false;
+  }
   if (gpu_info.IsMali() &&
       (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
     // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
