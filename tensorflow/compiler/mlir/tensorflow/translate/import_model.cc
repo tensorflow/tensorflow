@@ -132,6 +132,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 namespace tensorflow {
 
 const char kImportModelDefaultGraphFuncName[] = "main";
+const char kOutputShapesAttrName[] = "_output_shapes";
 
 using mlir::NamedAttrList;
 using mlir::TensorType;
@@ -144,7 +145,7 @@ namespace {
 
 bool IsOutputShapesAttribute(const AttrValue& attr_value,
                              llvm::StringRef attr_name) {
-  return attr_name.compare("_output_shapes") == 0 &&
+  return attr_name.compare(kOutputShapesAttrName) == 0 &&
          attr_value.value_case() == AttrValue::kList;
 }
 
@@ -892,6 +893,18 @@ Status ImporterBase::AddNodesToShapeRefiner(
 
     auto set_shape_from_list_attr = [&](const AttrValue* attr) {
       auto& list = attr->list();
+      // This follows the same approach as in ValidateShape, but only flags
+      // warning in case where there are mismatch in number of shapes and
+      // outputs and in which case it just returns without attempting to refine.
+      if (list.shape_size() != node->num_outputs()) {
+        LOG(WARNING) << "Node '" << node->name() << "' has "
+                     << node->num_outputs() << " outputs but the "
+                     << kOutputShapesAttrName
+                     << " attribute specifies shapes for " << list.shape_size()
+                     << " outputs";
+        return Status::OK();
+      }
+
       for (auto shape : llvm::enumerate(list.shape())) {
         auto* node_context = shape_refiner_->GetContext(node);
         shape_inference::ShapeHandle handle;
@@ -904,17 +917,6 @@ Status ImporterBase::AddNodesToShapeRefiner(
       }
       return Status::OK();
     };
-
-    // We currently have no other way to get shapes from ReadVariableOp's.
-    // Some graphs seem to have _output_shapes attributes on them, so use that
-    // if possible.
-    // Note: _output_shapes are optionally set when the user exports the graph
-    // and it is not guaranteed (nor an error if missing). There is not a
-    // promised contract, so effectively a heuristic.
-    if (node->op_def().name() == "ReadVariableOp") {
-      if (const AttrValue* attr = node->attrs().Find("_output_shapes"))
-        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
-    }
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
@@ -929,11 +931,20 @@ Status ImporterBase::AddNodesToShapeRefiner(
           return EmitErrorWithLocationStr(*node, status);
         }
         node_context->set_output(0, handle);
-      } else if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+      } else if (const AttrValue* attr =
+                     node->attrs().Find(kOutputShapesAttrName)) {
         TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
       } else {
         node_context->set_output(0, node_context->UnknownShape());
       }
+    }
+
+    // Following GraphConstructor::ValidateShape called from
+    // GraphConstructor::Convert, override the shape if _output_shapes is set.
+    if (specs_.unconditionally_use_set_output_shapes ||
+        node->op_def().name() == "ReadVariableOp") {
+      if (const AttrValue* attr = node->attrs().Find(kOutputShapesAttrName))
+        TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
     }
   }
 
@@ -1052,7 +1063,27 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
   DataType dtype = node.properties()->output_types[idx];
 
   // Returns output type given inference context.
-  auto shape_ic = [&](shape_inference::InferenceContext* c) {
+  auto shape_ic =
+      [&](shape_inference::InferenceContext* c) -> StatusOr<mlir::Type> {
+    // TODO(b/200093974): Post triage, consider following
+    // GraphConstructor::ValidateShape in checking _output_shapes always.
+    if (specs_.unconditionally_use_set_output_shapes) {
+      if (const AttrValue* attr = node.attrs().Find(kOutputShapesAttrName)) {
+        auto& list = attr->list();
+        if (list.shape_size() > idx) {
+          const TensorShapeProto& p = list.shape()[idx];
+          shape_inference::ShapeHandle h;
+          Status s = c->MakeShapeFromShapeProto(p, &h);
+          if (!s.ok())
+            return errors::InvalidArgument(
+                "Node '", node.name(), " has an invalid ",
+                kOutputShapesAttrName, " attribute (shape #", idx, " error:'",
+                s.error_message(), "')");
+          c->set_output(idx, h);
+        }
+      }
+    }
+
     return ConvertDataTypeAndShape(dtype, c->output(idx),
                                    c->output_handle_shapes_and_types(idx), c,
                                    builder);
@@ -1119,6 +1150,23 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
   auto default_type = [&]() -> StatusOr<mlir::Type> {
     mlir::Type element_type;
     TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+
+    // TODO(b/200093974): Post triage, consider following
+    // GraphConstructor::ValidateShape in checking _output_shapes.
+    if (specs_.unconditionally_use_set_output_shapes) {
+      if (const AttrValue* attr = node.attrs().Find(kOutputShapesAttrName)) {
+        auto& list = attr->list();
+        if (list.shape_size() > idx) {
+          llvm::SmallVector<int64_t, 4> shape;
+          const TensorShapeProto& shape_proto = list.shape()[idx];
+          if (shape_proto.unknown_rank())
+            return mlir::UnrankedTensorType::get(element_type);
+          TF_RETURN_IF_ERROR(ConvertToMlirShape(shape_proto, &shape));
+          return mlir::RankedTensorType::get(shape, element_type);
+        }
+      }
+    }
+
     return mlir::UnrankedTensorType::get(element_type);
   };
 
@@ -2662,7 +2710,8 @@ class SavedModelObjectGraphImporter : public ImporterBase {
   // Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
       SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, bool add_default_attributes);
+      mlir::MLIRContext* context, bool add_default_attributes,
+      bool unconditionally_use_set_output_shapes);
 
  private:
   explicit SavedModelObjectGraphImporter(
@@ -3408,7 +3457,9 @@ Status CreateSavedModelIR(
 
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
     SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, bool add_default_attributes) {
+    mlir::MLIRContext* context, bool add_default_attributes,
+    // TODO(b/200093974): Remove post triage.
+    bool unconditionally_use_set_output_shapes) {
   LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
@@ -3416,6 +3467,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
 
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
+  specs.unconditionally_use_set_output_shapes =
+      unconditionally_use_set_output_shapes;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -4123,9 +4176,11 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, bool add_default_attributes) {
+    absl::Span<std::string> exported_names, bool add_default_attributes,
+    bool unconditionally_use_set_output_shapes) {
   return SavedModelObjectGraphImporter::Convert(
-      saved_model, exported_names, context, add_default_attributes);
+      saved_model, exported_names, context, add_default_attributes,
+      unconditionally_use_set_output_shapes);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(

@@ -18,12 +18,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+// TODO(jpienaar): This file and class are confusingly named. This seems to be
+// a SavedModel only import options file that exposes a subset of the
+// GraphImportConfig options, but the naming would make one think it is more
+// general.
 struct MLIRImportOptions {
   // If true, functionalize the input graph before importing it into MLIR.
   bool upgrade_legacy = false;
 
   // If true, run grappler over the input graph before importing it into MLIR.
   bool enable_grappler = false;
+
+  // Whether to unconditionally use the shape set via _output_shapes on import.
+  bool unconditionally_use_set_output_shapes = false;
 };
 
 }  // namespace tensorflow
