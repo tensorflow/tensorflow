@@ -126,7 +126,6 @@ def _build_advisor_options(options):
 class Profiler(object):
   """TensorFlow multi-step profiler.
 
-  https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
   ```python
   Typical use case:
