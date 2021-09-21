@@ -69,17 +69,17 @@ StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
   bool succeeded = (exit_status == 0);
   auto env = tensorflow::Env::Default();
   if (!succeeded) {
-    LOG(WARNING) << "Tried to execute FileCheck at " << file_check_path;
+    LOG(ERROR) << "Tried to execute FileCheck at " << file_check_path;
     if (!env->FileExists(file_check_path).ok()) {
-      LOG(WARNING) << "NOTE: FileCheck binary does not exist!";
+      LOG(ERROR) << "NOTE: FileCheck binary does not exist!";
     }
 
-    LOG(WARNING) << "FileCheck error:\n" << standard_error;
+    // Log at ERROR level so these show up even if you don't pass --logtostderr.
+    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
+    LOG(ERROR) << "FileCheck input was:\n" << input;
   } else if (!standard_error.empty()) {
-    LOG(INFO) << "FileCheck stderr:";
-    XLA_LOG_LINES(tensorflow::INFO, standard_error);
-    LOG(INFO) << "FileCheck input was:";
-    XLA_LOG_LINES(tensorflow::INFO, input);
+    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
+    LOG(INFO) << "FileCheck input was:\n" << input;
   }
   return succeeded;
 }

@@ -25,11 +25,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_solvers.h"
+=======
+>>>>>>> google_upstream/master
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 

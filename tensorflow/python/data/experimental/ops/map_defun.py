@@ -51,12 +51,13 @@ def map_defun(fn,
     A list of `Tensor` objects with the same types as `output_dtypes`.
   """
   if not isinstance(elems, list):
-    raise ValueError("`elems` must be a list of tensors.")
+    raise ValueError(f"`elems` must be a list of tensors, but was {elems}.")
   if not isinstance(output_dtypes, list):
-    raise ValueError("`output_dtypes` must be a list of `tf.DType` objects.")
+    raise ValueError("`output_dtypes` must be a list of `tf.DType` objects, "
+                     f"but was {output_dtypes}.")
   if not isinstance(output_shapes, list):
     raise ValueError("`output_shapes` must be a list of `tf.TensorShape` "
-                     "objects.")
+                     f"objects, but was {output_shapes}.")
 
   concrete_fn = fn._get_concrete_function_internal()  # pylint: disable=protected-access
   # TODO(shivaniagrawal/rachelim): what about functions created without

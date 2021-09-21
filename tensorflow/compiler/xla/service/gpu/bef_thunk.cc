@@ -355,7 +355,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
       loc, get_context_op, builder.getStringAttr(""),
       builder.getI64IntegerAttr(key));
 
-  auto module_function_op = builder.create<tfrt::gpu::ModuleFunctionOp>(
+  auto module_function_op = builder.create<tfrt::gpu::ModuleGetFunctionOp>(
       loc, module_load_op, builder.getStringAttr(kernel_name));
 
   auto grid_dim_x = builder.create<tfrt::compiler::ConstantUI32Op>(

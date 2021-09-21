@@ -51,11 +51,15 @@ class TFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testConstructorErrorsTensorInput(self):
-    with self.assertRaisesRegex(TypeError,
-                                "filenames.*must be.*Tensor.*string"):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got "
+        "`tf.int32` elements."):
       readers.TFRecordDataset([1, 2, 3])
-    with self.assertRaisesRegex(TypeError,
-                                "filenames.*must be.*Tensor.*string"):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got "
+        "`tf.int32` elements."):
       readers.TFRecordDataset(constant_op.constant([1, 2, 3]))
     # convert_to_tensor raises different errors in graph and eager
     with self.assertRaises(Exception):

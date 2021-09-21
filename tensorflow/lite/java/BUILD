@@ -2,7 +2,7 @@
 # TensorFlow Lite Java API.
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -54,7 +54,7 @@ filegroup(
     srcs = JAVA_API_SRCS,
 )
 
-# Java sources exclude API files.
+# Java sources excluding API files.
 filegroup(
     name = "java_runtime_srcs",
     srcs = [x for x in JAVA_SRCS if x not in JAVA_API_SRCS],
@@ -74,6 +74,7 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
+        "src/main/java/org/tensorflow/lite/XnnpackDelegate.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
@@ -717,6 +718,7 @@ cc_library(
 # This library will get automatically loaded by TensorFlowLite.init().
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/java/src/main/native",
@@ -737,6 +739,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni_stable.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/java/src/main/native:native_stable",
@@ -755,6 +758,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 tflite_jni_binary(
     name = "libtensorflowlite_gpu_jni.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",

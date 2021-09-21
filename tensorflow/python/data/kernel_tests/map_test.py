@@ -29,11 +29,13 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1468,6 +1470,57 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     num_outputs = 10
     verify_fn(self, lambda: _build_ds(num_outputs), num_outputs=num_outputs)
+
+
+class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(index=[-1, 4, 5])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([-1, 0, 1,
+                                                      2]).map(lambda x: x * 2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(index=[-1, 0])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([]).map(lambda x: x // 2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(combinations.times(test_base.v2_only_combinations()))
+  def testBasic(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3, 4,
+                                                      5]).map(lambda x: x * 3)
+    for i in range(5):
+      self.assertEqual(self.evaluate(random_access.at(dataset, index=i)), i * 3)
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(elements=[0, 10, 20, 40])))
+  def testMultipleCombinations(self, elements):
+    dataset = dataset_ops.Dataset.range(elements).map(lambda x: x // 2)
+    for i in range(elements):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)), i // 2)
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(elements=[0, 10, 20, 40])))
+  def testMapFnInFunction(self, elements):
+
+    @def_function.function
+    def _map_fn(x):
+      return math_ops.square(x)
+
+    dataset = dataset_ops.Dataset.range(elements).map(_map_fn)
+    for i in range(elements):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)),
+          self.evaluate(math_ops.square(i)))
 
 
 if __name__ == "__main__":

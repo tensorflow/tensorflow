@@ -280,10 +280,10 @@ class ConstantTest(test.TestCase):
                                 "setting an array element with a sequence"):
       c = constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegex(ValueError, "must be a dense"):
+    with self.assertRaisesRegex(ValueError, "Expected.*to be a dense tensor"):
       c = constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegex(ValueError, "must be a dense"):
+    with self.assertRaisesRegex(ValueError, "Expected.*to be a dense tensor"):
       c = constant_op.constant([[1, 2], [3], [4, 5]])
 
 
@@ -329,7 +329,7 @@ class AsTensorTest(test.TestCase):
       self.assertAllEqual([2**31, 2, 3], self.evaluate(x))
 
       with self.assertRaisesRegex(ValueError,
-                                  "a dimension is too large .2147483648."):
+                                  "a dimension is too large.*int64"):
         x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
                                   dtype=dtypes_lib.int32)
 

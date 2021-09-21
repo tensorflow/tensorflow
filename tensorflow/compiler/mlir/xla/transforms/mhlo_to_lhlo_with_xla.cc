@@ -1577,6 +1577,16 @@ Status LhloDialectEmitter::Initialize() {
     NamedAttrList arg_attr_list;
     mlir::Type arg_type = MemRefType::get({alloc->size()}, i8_type_);
 
+    // Propagate source location information for every HLOInstruction that
+    // uses this allocation.
+    std::vector<mlir::Location> buf_locs;
+    buf_locs.reserve(alloc->assigned_buffers().size());
+    for (const auto& entry : alloc->assigned_buffers()) {
+      const xla::HloValue* hlo_value = entry.first;
+      buf_locs.push_back(getLocation(hlo_value->instruction()));
+    }
+    mlir::Location loc = builder_.getFusedLoc(buf_locs);
+
     if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
@@ -1615,7 +1625,7 @@ Status LhloDialectEmitter::Initialize() {
         }
       }
     }
-    block->addArgument(arg_type);
+    block->addArgument(arg_type, loc);
     allocations_[alloc] = block->getArguments().back();
     args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
   }

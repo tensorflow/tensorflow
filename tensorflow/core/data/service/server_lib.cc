@@ -117,6 +117,10 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   return Status::OK();
 }
 
+size_t DispatchGrpcDataServer::NumActiveJobs() {
+  return service_->NumActiveJobs();
+}
+
 WorkerGrpcDataServer::WorkerGrpcDataServer(
     const experimental::WorkerConfig& config)
     : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer"),

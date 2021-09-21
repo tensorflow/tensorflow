@@ -1679,6 +1679,9 @@ class HloPadInstruction : public HloInstruction {
   // Returns the padding configuration for a pad node.
   const PaddingConfig& padding_config() const { return padding_config_; }
   PaddingConfig* mutable_padding_config() { return &padding_config_; }
+  // Returns the operand being padded.
+  const HloInstruction* padded_operand() const { return operand(0); }
+  HloInstruction* mutable_padded_operand() { return mutable_operand(0); }
   // Returns the padding value.
   const HloInstruction* padding_value() const { return operand(1); }
   HloInstruction* mutable_padding_value() { return mutable_operand(1); }

@@ -151,7 +151,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     # Static rank
     with self.assertRaisesRegex(
         ValueError, "Invalid value passed for `per_example_loss`. "
-        "Expected a tensor with at least rank 1,"):
+        "Expected a tensor with at least rank 1."):
       nn_impl.compute_average_loss(per_example_loss)
 
     with context.graph_mode():

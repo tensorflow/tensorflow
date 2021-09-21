@@ -460,6 +460,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::BACKWARD_DATA;
     case CudnnConvKind::kForward:
       return se::dnn::FORWARD;
+    case CudnnConvKind::kForwardActivation:
+      return se::dnn::FORWARD_BIAS_ACTIVATION;
     default:
       break;
   }

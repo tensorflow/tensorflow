@@ -1014,6 +1014,7 @@ cc_library(
     deps = [
         ":attr_value_proto_cc",
         ":attr_value_util",
+        ":full_type_proto_cc",
         ":op_def_proto_cc",
         ":op_def_util",
         ":tensor",

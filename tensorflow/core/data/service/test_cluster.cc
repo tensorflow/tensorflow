@@ -36,18 +36,25 @@ constexpr const char kProtocol[] = "grpc";
 
 TestCluster::TestCluster(int num_workers) : num_workers_(num_workers) {}
 
+TestCluster::TestCluster(const TestCluster::Config& config)
+    : num_workers_(config.num_workers), config_(config) {}
+
 Status TestCluster::Initialize() {
   if (initialized_) {
     return errors::FailedPrecondition(
         "Test cluster has already been initialized.");
   }
   initialized_ = true;
-  experimental::DispatcherConfig config;
-  config.set_protocol(kProtocol);
+  experimental::DispatcherConfig dispatcher_config;
+  dispatcher_config.set_protocol(kProtocol);
+  dispatcher_config.set_job_gc_check_interval_ms(
+      config_.job_gc_check_interval_ms);
+  dispatcher_config.set_job_gc_timeout_ms(config_.job_gc_timeout_ms);
+  dispatcher_config.set_client_timeout_ms(config_.client_timeout_ms);
   for (int i = 0; i < num_workers_; ++i) {
-    config.add_worker_addresses("localhost");
+    dispatcher_config.add_worker_addresses("localhost");
   }
-  TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_));
+  TF_RETURN_IF_ERROR(NewDispatchServer(dispatcher_config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
   dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());
   workers_.reserve(num_workers_);

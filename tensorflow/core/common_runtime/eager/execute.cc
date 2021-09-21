@@ -1181,6 +1181,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     for (int i = 0, end = num_outputs; i < end; ++i) {
       if (retvals[i] != nullptr) {
         retvals[i]->Unref();
+        retvals[i] = nullptr;
       }
     }
   }
@@ -1415,6 +1416,9 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (!s.ok()) {
     for (size_t i = 0; i < num_outputs; ++i) {
       retvals[i]->Unref();
+      // Ensure that any smart pointers created to wrap results become noops
+      // rather than operating on invalid memory.
+      retvals[i] = nullptr;
     }
   }
 
@@ -1648,6 +1652,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   // allocated.
   if (!s.ok()) {
     (*result)->Unref();
+    *result = nullptr;
   }
 
   return s;
@@ -1741,6 +1746,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {
       result[0]->Unref();
+      result[0] = nullptr;
     }
     return s;
 #endif  // !IS_MOBILE_PLATFORM
@@ -1874,6 +1880,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
           for (int i = 0, end = num_outputs; i < end; ++i) {
             if (retvals[i] != nullptr) {
               retvals[i]->Unref();
+              retvals[i] = nullptr;
             }
           }
         }

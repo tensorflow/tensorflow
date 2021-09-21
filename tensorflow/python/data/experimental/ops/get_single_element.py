@@ -144,6 +144,8 @@ def get_single_element(dataset):
       one element.
   """
   if not isinstance(dataset, dataset_ops.DatasetV2):
-    raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+    raise TypeError(
+        f"Invalid `dataset`. Expected a `tf.data.Dataset` object "
+        f"but got {type(dataset)}.")
 
   return dataset.get_single_element()

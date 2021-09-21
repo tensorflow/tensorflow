@@ -1511,7 +1511,6 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  std::cerr << m->ToString();
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   *computation_layout.mutable_parameter_layout(0) =
@@ -1520,14 +1519,12 @@ ENTRY main {
       ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {93184, 4}, {0, 1}));
   *computation_layout.mutable_result_layout() = ShapeLayout(
       ShapeUtil::MakeShapeWithLayout(F32, {2, 512, 364}, {0, 1, 2}));
-  std::cerr << computation_layout.ToString();
   ChannelLayoutConstraints channel_constraints;
   LayoutAssignment layout_assignment(
       &computation_layout,
       /*channel_constraints=*/&channel_constraints,
       /* reverse_computation_order = */ true);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
-  std::cerr << m->ToString();
   const HloInstruction* call_1 = FindInstruction(m.get(), "reshape.8494");
   ExpectLayoutIs(call_1->shape(), {0, 1, 2});
   const HloInstruction* on_true = FindInstruction(m.get(), "reshape.8493");

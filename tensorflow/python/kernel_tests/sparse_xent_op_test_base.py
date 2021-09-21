@@ -254,7 +254,7 @@ class SparseXentOpTestBase(test.TestCase):
           xent_grad, [logits])
 
       if (not context.executing_eagerly() and
-          not config.deterministic_ops_enabled()):
+          not config.is_op_determinism_enabled()):
         # Check that second derivative is calculated.
         # (it is equivalent to being `BatchMatMul` op in the graph because of
         # implementation of xentropy grad)

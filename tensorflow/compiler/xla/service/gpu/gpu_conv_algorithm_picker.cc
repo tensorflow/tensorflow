@@ -102,27 +102,6 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         se::StreamExecutor* stream_exec) {
-  std::vector<AlgorithmDesc> algorithms;
-  bool succ = false;
-  switch (kind) {
-    case CudnnConvKind::kBackwardFilter:
-      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kForward:
-    case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(&algorithms);
-      break;
-  }
-  DCHECK(succ);
-
-  return algorithms;
-}
-
 StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
     const HloCustomCallInstruction* instr,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
@@ -418,7 +397,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind dnn_kind,
+                      GetDNNConvKindFromCudnnConvKind(config.kind));
+
+  std::vector<AlgorithmDesc> algorithms;
+  if (!stream_exec_->GetConvolveAlgorithms(dnn_kind, &algorithms)) {
+    return Status(tensorflow::error::UNKNOWN, "GetConvolveAlgorithms failed.");
+  }
+  for (const AlgorithmDesc& alg : algorithms) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      alg.ToString()),
@@ -705,12 +691,28 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
+  const bool strict = instr->parent()
+                          ->parent()
+                          ->config()
+                          .debug_options()
+                          .xla_gpu_strict_conv_algorithm_picker();
+
   StatusOr<AutotuneResult> best_algo_or =
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
   if (!best_algo_or.ok()) {
-    LOG(WARNING) << "Failed to determine best cudnn convolution algorithm: "
-                 << best_algo_or.status()
-                 << "\n\nConvolution performance may be suboptimal.";
+    auto msg = absl::StrFormat(
+        "Failed to determine best cudnn convolution algorithm: "
+        "%s\n\nConvolution performance may be suboptimal.",
+        best_algo_or.status().ToString());
+
+    if (strict) {
+      return Unknown(
+          "%s  To ignore this failure and try to use a fallback algorithm, use "
+          "XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please "
+          "also file a bug for the root cause of failing autotuning.",
+          msg);
+    }
+    LOG(WARNING) << msg;
     return false;
   }
 

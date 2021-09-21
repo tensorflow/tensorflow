@@ -36,6 +36,7 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
@@ -226,7 +227,6 @@ filegroup(
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",
-        "@upb//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

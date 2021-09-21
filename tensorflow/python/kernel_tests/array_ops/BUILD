@@ -74,6 +74,7 @@ cuda_py_test(
     name = "scatter_nd_ops_test",
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
+    shard_count = 2,
     tags = ["noasan"],  # http://b/32635055
     deps = [
         "//tensorflow/python:array_ops",

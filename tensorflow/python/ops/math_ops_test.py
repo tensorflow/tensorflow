@@ -820,6 +820,19 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Results should always be exactly zero.
     self.assertAllEqual(tf_result, zero)
 
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
+                            (dtypes.complex64), (dtypes.complex128))
+  def testNonFiniteInNumerator(self, dtype):
+    nums = constant_op.constant([np.nan, np.inf, np.NINF], dtype=dtype)
+    zeros = constant_op.constant([0, 0, 0], dtype=dtype)
+    ones = constant_op.constant([1, 1, 1], dtype=dtype)
+    with test_util.use_gpu():
+      tf_result_zeros = math_ops.div_no_nan(nums, zeros)
+      self.assertAllEqual([0, 0, 0], tf_result_zeros)
+      tf_result_ones = math_ops.div_no_nan(nums, ones)
+      self.assertAllEqual(nums / ones, tf_result_ones)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MultiplyNoNanTest(test_util.TensorFlowTestCase):
@@ -835,6 +848,10 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(tf_result_zeros, zeros)
         tf_result_ones = math_ops.multiply_no_nan(x, ones)
         self.assertAllEqual(tf_result_ones, x)
+        # Normal floating point arithmetic if nonfinite values are in the
+        # second argument.
+        tf_result_reverseargs = math_ops.multiply_no_nan(zeros, x)
+        self.assertAllEqual(zeros * x, tf_result_reverseargs)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -996,7 +1013,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert elements of .* to Tensor")
 
     class RHSReturnsTrue(object):
 

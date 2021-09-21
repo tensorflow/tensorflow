@@ -726,21 +726,28 @@ Status DatasetBase::InputDatasets(
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (errors::IsUnimplemented(status) && ctx->is_graph_rewrite()) {
-    Tensor t(DT_VARIANT, TensorShape({}));
-    // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
-    // increment the refcount of `dataset` here to retain ownership.
-    dataset->Ref();
-    TF_RETURN_IF_ERROR(
-        StoreDatasetInVariantTensor(const_cast<DatasetBase*>(dataset), &t));
-    TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
-    DCHECK_NE(ctx->input_list(), nullptr);
-    ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG_EVERY_N_SEC(WARNING, 30)
-        << "Input of " << dataset->DebugString()
-        << " will not be optimized because the dataset does not implement the "
-           "AsGraphDefInternal() method needed to apply optimizations.";
-    return Status::OK();
+  if (ctx->is_graph_rewrite()) {
+    if (status.ok()) {
+      // Record cardinality in an unregistered attributes so that rewrites have
+      // this information.
+      (*output)->AddAttr(kCardinalityAttrForRewrite, dataset->Cardinality());
+    } else if (errors::IsUnimplemented(status)) {
+      Tensor t(DT_VARIANT, TensorShape({}));
+      // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
+      // increment the refcount of `dataset` here to retain ownership.
+      dataset->Ref();
+      TF_RETURN_IF_ERROR(
+          StoreDatasetInVariantTensor(const_cast<DatasetBase*>(dataset), &t));
+      TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
+      DCHECK_NE(ctx->input_list(), nullptr);
+      ctx->input_list()->emplace_back((*output)->name(), std::move(t));
+      LOG_EVERY_N_SEC(WARNING, 30)
+          << "Input of " << dataset->DebugString()
+          << " will not be optimized because the dataset does not implement "
+             "the "
+             "AsGraphDefInternal() method needed to apply optimizations.";
+      return Status::OK();
+    }
   }
   return status;
 }

@@ -792,6 +792,16 @@ def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
 def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
 
 //===----------------------------------------------------------------------===//
+// XlaDotOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
+          (HLO_DotGeneralOp $lhs, $rhs,
+                            (ToDotDimNumsAttr $dimension_numbers),
+                            (ToPrecisionConfigsAttr $precision_config)),
+          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
 // XlaDotV2Op op.
 //===----------------------------------------------------------------------===//
 

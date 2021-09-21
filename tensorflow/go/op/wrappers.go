@@ -7095,25 +7095,6 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 	return scope.AddOperation(opspec)
 }
 
-// Delete the tensor specified by its handle in the session.
-//
-// Arguments:
-//	handle: The handle for a tensor stored in the session state.
-//
-// Returns the created operation.
-func DeleteSessionTensor(scope *Scope, handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DeleteSessionTensor",
-		Input: []tf.Input{
-			handle,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Store the input tensor in the state of the current session.
 //
 // Arguments:
@@ -17482,6 +17463,55 @@ func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.Data
 	}
 	opspec := tf.OpSpec{
 		Type: "MutableHashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Delete the tensor specified by its handle in the session.
+//
+// Arguments:
+//	handle: The handle for a tensor stored in the session state.
+//
+// Returns the created operation.
+func DeleteSessionTensor(scope *Scope, handle tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DeleteSessionTensor",
+		Input: []tf.Input{
+			handle,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Creates a uninitialized anonymous hash table.
+//
+// This op creates a new anonymous hash table (as a resource) everytime
+// it is executed, with the specified dtype of its keys and values,
+// returning the resource handle.  Before using the table you will have
+// to initialize it.  After initialization the table will be
+// immutable. The table is anonymous in the sense that it can only be
+// accessed by the returned resource handle (e.g. it cannot be looked up
+// by a name in a resource manager). The table will be automatically
+// deleted when all resource handles pointing to it are gone.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns The resource handle to the newly created hash-table resource.
+func AnonymousHashTable(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	opspec := tf.OpSpec{
+		Type: "AnonymousHashTable",
 
 		Attrs: attrs,
 	}

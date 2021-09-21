@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -36,14 +37,25 @@ class OpResolver {
   virtual const TfLiteRegistration* FindOp(const char* op,
                                            int version) const = 0;
 
+  using TfLiteDelegatePtrVector =
+      std::vector<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>>;
   // Returns optional delegates for resolving and handling ops in the flatbuffer
   // model. This may be used in addition to the standard TfLiteRegistration
   // lookup for graph resolution.
-  using TfLiteDelegatePtrVector =
-      std::vector<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>>;
+  // WARNING: This API is deprecated, GetDelegateCreators is preferred.
   virtual TfLiteDelegatePtrVector GetDelegates(int num_threads) const {
-    return TfLiteDelegatePtrVector();
+    return {};
   }
+
+  // Represent a function that creates a TfLite delegate instance.
+  using TfLiteDelegateCreator =
+      std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
+          int /*num_threads*/)>;
+  using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+  // Returns a vector of delegate creators to create optional delegates for
+  // resolving and handling ops in the flatbuffer model. This may be used in
+  // addition to the standard TfLiteRegistration lookup for graph resolution.
+  virtual TfLiteDelegateCreators GetDelegateCreators() const { return {}; }
 
   virtual ~OpResolver() {}
 

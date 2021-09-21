@@ -565,55 +565,6 @@ tf_cuda_cc_test(
 )
 
 cc_library(
-    name = "layout_optimizer",
-    srcs = ["layout_optimizer.cc"],
-    hdrs = [
-        "layout_optimizer.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_optimizer",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:devices",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/costs:virtual_placer",
-        "//tensorflow/core/grappler/utils:frame",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "layout_optimizer_test",
-    srcs = ["layout_optimizer_test.cc"],
-    deps = [
-        ":layout_optimizer",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/grappler:devices",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:single_machine",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/costs:virtual_placer",
-        "//tensorflow/core/grappler/utils:grappler_test",
-    ],
-)
-
-cc_library(
     name = "auto_mixed_precision",
     srcs = ["auto_mixed_precision.cc"],
     hdrs = [
@@ -689,6 +640,7 @@ cc_library(
         ":remapper",
         ":scoped_allocator_optimizer",
         ":shape_optimizer",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -704,8 +656,11 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        #TODO(b/200087693): LLVM does not build on Fuchsia.
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [":tfg_optimizer_hook"],
+    }),
 )
 
 tf_cuda_cc_test(
@@ -732,6 +687,42 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tfg_optimizer_hook",
+    srcs = ["tfg_optimizer_hook.cc"],
+    hdrs = ["tfg_optimizer_hook.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:import",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "tfg_optimizer_hook_test",
+    srcs = ["tfg_optimizer_hook_test.cc"],
+    deps = [
+        ":tfg_optimizer_hook",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "@llvm-project//mlir:Pass",
     ],
 )
 

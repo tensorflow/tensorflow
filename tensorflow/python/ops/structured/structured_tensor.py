@@ -558,31 +558,26 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
     >>> StructuredTensor.from_pyval(s1).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 4 8], shape=(3,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 4 8]),)
 
     >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
     >>> StructuredTensor.from_pyval(s2).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 2 4 6 8]),)
 
     >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
     >>> StructuredTensor.from_pyval(s3).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 3 3 7 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 3 3 7 8]),)
 
     >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
     >>> StructuredTensor.from_pyval(s4).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4], shape=(3,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 4]),
+     tf.RowPartition(row_splits=[0 2 4 6 8]))
 
 
     >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
     >>> StructuredTensor.from_pyval(s5).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 3 5], shape=(4,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 3 5 7 8], shape=(6,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 3 5]),
+     tf.RowPartition(row_splits=[0 2 3 5 7 8]))
 
     Note that shapes for nested fields (such as `x['b']` in the above example)
     are not considered part of the shape of a `StructuredTensor`, and are not

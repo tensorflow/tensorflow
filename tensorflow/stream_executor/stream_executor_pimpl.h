@@ -364,9 +364,15 @@ class StreamExecutor {
   // platform that underlies this interface.
   bool SupportsDnn() const;
 
+  // Returns the list of supported algorithms for the specified convolution
+  // operation.
+  bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
+                             std::vector<dnn::AlgorithmDesc> *out_algorithms);
+
   // Returns the list of supported algorithms for the forward convolution
   // operation.
-  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
+  bool GetConvolveForwardAlgorithms(
+      std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Returns the supported execution plans for the convolution operation.
   bool GetConvolveExecutionPlans(

@@ -122,7 +122,9 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util:tf_export",
     ],
 )

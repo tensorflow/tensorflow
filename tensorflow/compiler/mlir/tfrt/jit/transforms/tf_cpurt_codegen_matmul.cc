@@ -33,15 +33,6 @@ struct CodegenStrategyForMatMulPass
     full_alloca_promotion.setUseFullTileBuffersByDefault(true).setUseAlloca(
         true);
 
-    // Vector contraction options.
-    mlir::vector::VectorTransformsOptions vector_transforms_ops;
-    vector_transforms_ops.setVectorTransformsOptions(
-        mlir::vector::VectorContractLowering::OuterProduct);
-
-    // Vector transfer options.
-    mlir::VectorTransferToSCFOptions vector_transfer_opts;
-    vector_transfer_opts.setUnroll(true);
-
     // TODO(ezhulenev): Set up tiling options depending on the target machine.
 
     // Tile and vectorize linalg.matmul operations.
@@ -51,9 +42,7 @@ struct CodegenStrategyForMatMulPass
     mlir::linalg::CodegenStrategy matmul_strategy;
     matmul_strategy.tile<mlir::linalg::MatmulOp>(matmul_tiling)
         .promote<mlir::linalg::MatmulOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::MatmulOp>()
-        .setVectorTransformsOptions(vector_transforms_ops)
-        .setVectorTransferToSCFOptions(vector_transfer_opts);
+        .vectorize<mlir::linalg::MatmulOp>();
     matmul_strategy.transform(getFunction());
 
     // Tile and vectorize linalg.vecmat operations. Interchange loop order to
@@ -64,10 +53,25 @@ struct CodegenStrategyForMatMulPass
     mlir::linalg::CodegenStrategy vecmat_strategy;
     vecmat_strategy.tile<mlir::linalg::VecmatOp>(vecmat_tiling)
         .promote<mlir::linalg::VecmatOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::VecmatOp>()
+        .vectorize<mlir::linalg::VecmatOp>();
+    vecmat_strategy.transform(getFunction());
+
+    // Vector contraction options.
+    mlir::vector::VectorTransformsOptions vector_transforms_ops;
+    vector_transforms_ops.setVectorTransformsOptions(
+        mlir::vector::VectorContractLowering::OuterProduct);
+
+    // Vector transfer options.
+    mlir::VectorTransferToSCFOptions vector_transfer_opts;
+    vector_transfer_opts.setUnroll(true);
+
+    mlir::linalg::CodegenStrategy vector_lowering_strategy;
+    vector_lowering_strategy.setEnableVectorTransferPartialRewrite(true)
+        .setEnableVectorContractLowering(true)
+        .setEnableVectorToSCFConversion(true)
         .setVectorTransformsOptions(vector_transforms_ops)
         .setVectorTransferToSCFOptions(vector_transfer_opts);
-    vecmat_strategy.transform(getFunction());
+    vector_lowering_strategy.transform(getFunction());
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {

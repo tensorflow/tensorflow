@@ -127,6 +127,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
 
+// Replace the tfl wrapped random function body with tfl.customOp.
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass();
+
 // Creates a pass which is responsible for legalizing TensorFlow variables to
 // TensorFlow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();

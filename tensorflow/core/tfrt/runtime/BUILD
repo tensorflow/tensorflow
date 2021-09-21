@@ -58,6 +58,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

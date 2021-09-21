@@ -260,7 +260,11 @@ class DeterminantOpGpu : public AsyncOpKernel {
       done();
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+<<<<<<< HEAD
                                                     std::move(info_checker));
+=======
+                                                   std::move(info_checker));
+>>>>>>> google_upstream/master
   }
 };
 
@@ -407,7 +411,11 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       done();
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+<<<<<<< HEAD
                                                     std::move(info_checker));
+=======
+                                                   std::move(info_checker));
+>>>>>>> google_upstream/master
   }
 };
 

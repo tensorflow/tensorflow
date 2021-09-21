@@ -29,7 +29,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"
+<<<<<<< HEAD
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+=======
+>>>>>>> google_upstream/master
 
 namespace tensorflow {
 

@@ -284,49 +284,6 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
   @combinations.generate(
       combinations.combine(
           mode=["eager"],
-          input_type=["input_fn", "dataset"],
-          distribution=[
-              strategy_combinations.one_device_strategy,
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.multi_worker_mirrored_2x1_cpu
-          ]))
-  def testDisablingOwnedIteratorsInTF2(self, distribution, input_type):
-    if not tf2.enabled():
-      self.skipTest("unsupported test combination")
-
-    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
-    input_workers = input_lib.InputWorkers(worker_device_pairs)
-    dataset_fn = lambda _: dataset_ops.DatasetV2.range(10)
-    dataset_or_input_fn = self._create_dataset_or_input_fn(
-        input_type, dataset_fn)
-
-    input_workers = input_lib.InputWorkers(worker_device_pairs)
-    if input_type == "dataset":
-      dist_dataset = input_lib.get_distributed_dataset(dataset_or_input_fn,
-                                                       input_workers,
-                                                       distribution)
-    else:
-      dist_dataset = input_lib.get_distributed_datasets_from_function(
-          dataset_or_input_fn, input_workers, [distribute_lib.InputContext()],
-          distribution)
-
-    # Default Iterator types in TF2.
-    iterator = iter(dist_dataset)
-    self.assertIsInstance(iterator, input_lib.DistributedIterator)
-    self.assertIsInstance(iterator._iterators[0],
-                          input_lib._SingleWorkerOwnedDatasetIterator)
-
-    # Disable creating owned iterators by setting a property on the strategy.
-    distribution._enable_legacy_iterators = True
-    iterator = iter(dist_dataset)
-    self.assertIsInstance(iterator, input_lib.DistributedIteratorV1)
-    self.assertIsInstance(iterator._iterators[0],
-                          input_lib._SingleWorkerDatasetIterator)
-
-  @combinations.generate(
-      combinations.combine(
-          mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ]))
@@ -906,7 +863,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
               strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
           ]))
-  def testGetNextOptionalShape(self, distribution):
+  def testGetNextOptionalShapeFinite(self, distribution):
     batch_size = 8
     dataset = dataset_ops.DatasetV2.from_tensor_slices({
         "feature": array_ops.ones([batch_size, 10]),
@@ -914,7 +871,6 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     })
     dataset = dataset.batch(batch_size, drop_remainder=True)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
-    per_replica_batch_size = batch_size // distribution.num_replicas_in_sync
 
     @def_function.function
     def train_fn():
@@ -925,9 +881,90 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
         # Assert the shapes are still static from all replicas.
         for replica_id in range(len(distribution.extended.worker_devices)):
-          self.assertEqual([per_replica_batch_size, 10],
-                           feature[replica_id].shape)
-          self.assertEqual([per_replica_batch_size], label[replica_id].shape)
+          self.assertEqual([None, 10],
+                           feature[replica_id].shape.as_list())
+          self.assertEqual([None], label[replica_id].shape.as_list())
+
+    train_fn()
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          ]))
+  def testGetNextOptionalShapeInfinite(self, distribution):
+    batch_size = 8
+    dataset = dataset_ops.DatasetV2.from_tensor_slices({
+        "feature": array_ops.ones([batch_size, 10]),
+        "label": array_ops.ones([batch_size]),
+    })
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.repeat()
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    per_replica_batch_size = batch_size // distribution.num_replicas_in_sync
+
+    @def_function.function
+    def train_fn():
+      data = iter(dist_dataset).get_next_as_optional().get_value()
+      data = nest.map_structure(distribution.experimental_local_results, data)
+      feature = data["feature"]
+      label = data["label"]
+
+      # Assert the shapes are still static from all replicas.
+      for replica_id in range(len(distribution.extended.worker_devices)):
+        self.assertEqual([per_replica_batch_size, 10],
+                         feature[replica_id].shape.as_list())
+        self.assertEqual([per_replica_batch_size],
+                         label[replica_id].shape.as_list())
+
+    train_fn()
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          ]))
+  def testGetNextOptionalShapeEmpty(self, distribution):
+    batch_size = 8
+    dataset = dataset_ops.DatasetV2.from_tensor_slices({
+        "feature": array_ops.ones([batch_size, 10]),
+        "label": array_ops.ones([batch_size]),
+    })
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.repeat()
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    per_replica_batch_size = batch_size // distribution.num_replicas_in_sync
+
+    @def_function.function
+    def train_fn():
+      data = iter(dist_dataset).get_next_as_optional()
+      feature_specs = data.element_spec["feature"]._component_specs
+      value_specs = data.element_spec["label"]._component_specs
+      if not isinstance(feature_specs, tuple):
+        feature_specs = (feature_specs,)
+        value_specs = (value_specs,)
+      # Assert the shapes are still static from all replicas.
+      for replica_id in range(len(distribution.extended.worker_devices)):
+        self.assertEqual([per_replica_batch_size, 10],
+                         feature_specs[replica_id].shape.as_list())
+        self.assertEqual([per_replica_batch_size],
+                         value_specs[replica_id].shape.as_list())
 
     train_fn()
 
@@ -1047,6 +1084,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
@@ -1077,14 +1115,14 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           "ragged": ragged_tensor,
           "sparse": ragged_tensor.to_sparse(),
       })
-      dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
-      return dataset.batch(batch_size, drop_remainder=drop_remainder)
+      dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+      return dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
 
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
     dataset = self._wrap_dataset(input_type, dataset_or_input_fn,
                                  distribution.extended._input_workers,
-                                 len(distribution.extended.worker_devices),
+                                 distribution.num_replicas_in_sync,
                                  distribution)
     # Assert that the tensors are rebatched and sparsity is preserved.
     per_replica_batch = defun(lambda x: next(iter(x)))(dataset)
@@ -1216,12 +1254,9 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
-              strategy_combinations.one_device_strategy,
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              # TODO(mdan): Add these?
-              # strategy_combinations.multi_worker_mirrored_2x1_cpu,
-              # strategy_combinations.multi_worker_mirrored_2x1_gpu,
-              # strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
@@ -1229,8 +1264,6 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
   def testRaggedSparseGetNextAsOptionalInLoop(self, distribution, input_type,
                                               drop_remainder):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
-    self.skipTest("b/323359921")
-
     global_batch_size = 8
 
     def dataset_fn(ctx=None):
@@ -1245,8 +1278,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           "ragged": ragged_tensor,
           "sparse": ragged_tensor.to_sparse(),
       })
-      dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
-      return dataset.batch(batch_size, drop_remainder=drop_remainder)
+      dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+      return dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
 
     if input_type == "dataset":
       ds = distribution.experimental_distribute_dataset(
@@ -1259,10 +1292,14 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       """Sums the `PerReplica` values in the `per_replica_features` map."""
 
       def map_fn(per_replica_values):
-        per_replica_sums = distribution.run(
-            (lambda x: math_ops.reduce_sum(x.values)) if all(
-                map(sparse_tensor.is_sparse, per_replica_values.values)) else
-            math_ops.reduce_sum, (per_replica_values,))
+
+        def _sum(value):
+          if sparse_tensor.is_sparse(value):
+            return math_ops.reduce_sum(value.values)
+          else:
+            return math_ops.reduce_sum(value)
+
+        per_replica_sums = distribution.run(_sum, args=(per_replica_values,))
         return distribution.reduce(
             reduce_util.ReduceOp.SUM, per_replica_sums, axis=None)
 

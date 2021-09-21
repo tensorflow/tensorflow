@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
+#include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
@@ -3402,6 +3403,14 @@ Status MemorySpaceAssignment::ParentAllocation::Process() {
        ->parameter_instruction(0)
        ->mutable_shape() = new_while_operand->shape();
   defining_position_.index = {new_tuple_index};
+  // Also replace the while op with a tuple that has the old shape. Note that we
+  // need to first take a snapshot of the users before calling ExtractPrefix
+  // since ExtractPrefix introduces additional gte users.
+  std::vector<HloInstruction*> while_users = calling_instruction_->users();
+  HloInstruction* tuple_with_old_shape =
+      TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
+  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
+      while_users, tuple_with_old_shape));
   return Allocation::Process();
 }
 

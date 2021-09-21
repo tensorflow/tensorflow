@@ -69,6 +69,46 @@ ENTRY main {
       )");
 }
 
+TEST_F(ReductionDegenerateDimRemoverTest,
+       ReductionWithDegenerateDimensionsVariadic) {
+  const char* hlo_text = R"(
+HloModule ReduceWithDegenerateDimensions
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  input = f32[1,3,1,4,1,5,1] parameter(0)
+  idxs = u32[1,3,1,4,1,5,1] parameter(1)
+  zero = f32[] constant(0)
+  zero_idx = u32[] constant(0)
+
+  ROOT out = (f32[1,1,1,1], u32[1,1,1,1]) reduce(input, idxs, zero, zero_idx), dimensions={1,3,5}, to_apply=argmax
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHloWithShapes(hlo_text,
+                              R"(
+// CHECK: (f32[], u32[]) reduce(f32[3,4,5]{2,1,0} %bitcast, u32[3,4,5]{2,1,0} %bitcast.1, f32[] %zero, u32[] %zero_idx), dimensions={0,1,2}
+)");
+}
+
 TEST_F(ReductionDegenerateDimRemoverTest, DegenerateWithEmptyDimension) {
   const char* hlo_text = R"(
 HloModule ReduceWithDegenerateDimensions

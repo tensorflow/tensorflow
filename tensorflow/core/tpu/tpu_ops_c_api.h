@@ -27,7 +27,10 @@ limitations under the License.
 typedef struct TpuSerializedProto TpuSerializedProto;
 
 namespace tensorflow {
+
 class TpuMeshCommonState;
+class TpuEmbeddingEngineState;
+
 }  // namespace tensorflow
 
 extern "C" {
@@ -58,6 +61,8 @@ struct HostComputeMetadataSerializedProto {
 };
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
+
+typedef struct XLA_TpuEmbeddingEngineState XLA_TpuEmbeddingEngineState;
 
 typedef struct TpuProfiler TpuProfiler;
 
@@ -177,6 +182,19 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 // Returns a pointer to an opaque mesh data structure used internally.
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
+
+// Creates a new TPU embedding engine state object.
+TFTPU_CAPI_EXPORT XLA_TpuEmbeddingEngineState* TpuEmbeddingEngineState_Create();
+
+// Delete the given TPU embedding engine state object. Once deleted the object
+// is unusable.
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngineState_Free(
+    XLA_TpuEmbeddingEngineState* engine_state);
+
+// Returns a pointer to an opaque embedding engine state data structure used
+// internally.
+TFTPU_CAPI_EXPORT void* TpuEmbeddingEngineState_GetState(
+    XLA_TpuEmbeddingEngineState* engine_state);
 
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Create(
     TfTpuOrdinalSelector** ordinal_selector, int num_cores_per_replica);
@@ -488,6 +506,10 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_GetState);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Destroy);

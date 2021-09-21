@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -284,7 +285,11 @@ class SvdOpGpu : public AsyncOpKernel {
     };
 
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+<<<<<<< HEAD
                                                     std::move(info_checker));
+=======
+                                                   std::move(info_checker));
+>>>>>>> google_upstream/master
   }
 
   // The SVD if m >= n

@@ -33,8 +33,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_solvers.h"
+=======
+>>>>>>> google_upstream/master
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 #if GOOGLE_CUDA

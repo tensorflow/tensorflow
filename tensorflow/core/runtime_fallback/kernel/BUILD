@@ -412,6 +412,7 @@ cc_library(
         ":kernel_fallback_tensor_conversion_alwayslink",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:model_metadata",
+        "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor_alwayslink",
     ] + select({

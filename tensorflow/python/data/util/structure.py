@@ -181,7 +181,10 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       # comprise Tensors, SparseTensors, and nests, we do not need to
       # support all structure types here.
       raise TypeError(
-          "Could not build a structure for output class %r" % (flat_class,))
+          "Could not build a structure for output class {}. Make sure any "
+          "component class in `output_classes` inherits from one of the "
+          "following classes: `tf.TypeSpec`, `tf.sparse.SparseTensor`, "
+          "`tf.Tensor`, `tf.TensorArray`.".format(flat_class.__name__))
 
   return nest.pack_sequence_as(output_classes, flat_ret)
 
@@ -209,8 +212,8 @@ def _from_tensor_list_helper(decode_fn, element_spec, tensor_list):
   flat_specs = nest.flatten(element_spec)
   flat_spec_lengths = [len(spec._flat_tensor_specs) for spec in flat_specs]
   if sum(flat_spec_lengths) != len(tensor_list):
-    raise ValueError("Expected %d tensors but got %d." %
-                     (sum(flat_spec_lengths), len(tensor_list)))
+    raise ValueError("Expected {} tensors but got {}.".format(
+        sum(flat_spec_lengths), len(tensor_list)))
 
   i = 0
   flat_ret = []
@@ -483,8 +486,9 @@ def type_spec_from_value(element, use_fallback=True):
       logging.vlog(
           3, "Failed to convert %r to tensor: %s" % (type(element).__name__, e))
 
-  raise TypeError("Could not build a TypeSpec for %r with type %s" %
-                  (element, type(element).__name__))
+  raise TypeError("Could not build a `TypeSpec` for {} with type {}".format(
+      element,
+      type(element).__name__))
 
 
 # TODO(b/149584798): Move this to framework and add tests for non-tf.data
@@ -547,8 +551,8 @@ class NoneTensorSpec(type_spec.BatchableTypeSpec):
 
   def most_specific_compatible_shape(self, other):
     if type(self) is not type(other):
-      raise ValueError("No TypeSpec is compatible with both %s and %s" %
-                       (self, other))
+      raise ValueError("No `TypeSpec` is compatible with both {} and {}".format(
+          self, other))
     return self
 
 

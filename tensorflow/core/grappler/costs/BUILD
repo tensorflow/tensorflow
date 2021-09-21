@@ -258,6 +258,7 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
     ] + tf_protos_grappler(),
 )

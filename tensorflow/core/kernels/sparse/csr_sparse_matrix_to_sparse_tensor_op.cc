@@ -32,8 +32,12 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_solvers.h"
+=======
+>>>>>>> google_upstream/master
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {

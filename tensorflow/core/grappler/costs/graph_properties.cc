@@ -615,6 +615,8 @@ bool IsAllowListedOpTypeForEvaluateNode(const string& op_type) {
           "Unpack",
           "GatherV2",
           "Pack",
+          // Used in batch_gather_nd: tensorflow/python/ops/array_ops.py
+          "ExpandDims",
       }));
   return kOpTpeAllowlist->find(op_type) != kOpTpeAllowlist->end();
 }

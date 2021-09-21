@@ -140,6 +140,12 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
+bool IsVariantWithUnsupportedDeviceCopy(const Node* node) {
+  bool is_mutex_lock_op = node->op_def().name() == "MutexLock";
+  bool is_dataset_op = data::DatasetOpKernel::IsDatasetOp(node->op_def());
+  return is_mutex_lock_op || is_dataset_op;
+}
+
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
@@ -820,7 +826,7 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
 
     auto enter = [&](Node* n) -> void {
       // TODO(b/199443424): Replace this logic with propagated type information.
-      if (data::DatasetOpKernel::IsDatasetOp(n->op_def())) {
+      if (IsVariantWithUnsupportedDeviceCopy(n)) {
         // NOTE: Datasets are expected to live on the host. This code should be
         // updated if that changes. Under this assumption, however, we must
         // locate some ops on the host when the input is a dataset variant.

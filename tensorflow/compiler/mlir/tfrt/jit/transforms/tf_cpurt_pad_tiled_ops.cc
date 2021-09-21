@@ -114,9 +114,10 @@ struct PaddingPattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     }
     if (padded_op) {
       filter.replaceLinalgTransformationFilter(rewriter, padded_op);
+    } else {
+      // In case the op did not require padding, mark the op.
+      filter.replaceLinalgTransformationFilter(rewriter, op);
     }
-    // In case the op did not require padding, mark the op.
-    filter.replaceLinalgTransformationFilter(rewriter, op);
     return success();
   }
 

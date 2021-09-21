@@ -102,10 +102,13 @@ class Initializer(object):
   def _validate_kwargs(self, kwargs, support_partition=True):
     for kwarg in kwargs:
       if kwarg not in [_PARTITION_SHAPE, _PARTITION_OFFSET]:
-        raise TypeError("Unknown keyword arguments: %s" % kwarg)
+        raise TypeError(
+            "Keyword argument should be one of "
+            f"{list([_PARTITION_SHAPE, _PARTITION_OFFSET])}. Received: {kwarg}")
       elif not support_partition:
-        raise ValueError("%s initializer doesn't support partition-related"
-                         " arguments" % self.__class__.__name__)
+        raise ValueError(
+            f"{self.__class__.__name__} initializer doesn't support "
+            "partition-related arguments")
 
 
 @tf_export("zeros_initializer", v1=[])
@@ -148,7 +151,8 @@ class Zeros(Initializer):
     self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
-      raise ValueError("Expected numeric or boolean dtype, got %s." % dtype)
+      raise ValueError("Argument `dtype` expected to be numeric or boolean. "
+                       f"Received {dtype}.")
     if _PARTITION_SHAPE in kwargs:
       shape = kwargs[_PARTITION_SHAPE]
     return array_ops.zeros(shape, dtype)
@@ -194,7 +198,8 @@ class Ones(Initializer):
     self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
-      raise ValueError("Expected numeric or boolean dtype, got %s." % dtype)
+      raise ValueError("Argument `dtype` expected to be numeric or boolean. "
+                       f"Received {dtype}.")
     if _PARTITION_SHAPE in kwargs:
       shape = kwargs[_PARTITION_SHAPE]
     return array_ops.ones(shape, dtype)
@@ -267,8 +272,8 @@ class Constant(Initializer):
   def __init__(self, value=0):
     if not (np.isscalar(value) or isinstance(value, (list, tuple, np.ndarray))):
       raise TypeError(
-          "Invalid type for initial value: %s (expected Python scalar, list or "
-          "tuple of values, or numpy.ndarray)." % type(value))
+          f"Invalid type for initial value: {type(value).__name__}. Expected "
+          "Python scalar, list or tuple of values, or numpy.ndarray.")
     self.value = value
 
   def __call__(self, shape, dtype=None, **kwargs):
@@ -347,7 +352,8 @@ class RandomUniform(Initializer):
     self._validate_kwargs(kwargs)
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_floating and not dtype.is_integer:
-      raise ValueError("Expected float or integer dtype, got %s." % dtype)
+      raise ValueError("Argument `dtype` expected to be numeric or boolean. "
+                       f"Received {dtype}.")
     if _PARTITION_SHAPE in kwargs:
       shape = kwargs[_PARTITION_SHAPE]
     return self._random_generator.random_uniform(shape, self.minval,
@@ -548,16 +554,20 @@ class VarianceScaling(Initializer):
                distribution="truncated_normal",
                seed=None):
     if scale <= 0.:
-      raise ValueError("`scale` must be positive float.")
+      raise ValueError("Argument `scale` must be a positive float. Received: "
+                       f"{scale}")
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
-      raise ValueError("Invalid `mode` argument:", mode)
+      raise ValueError("Argument `mode` should be one of ('fan_in', 'fan_out', "
+                       f"'fan_avg'). Received: {mode}")
     distribution = distribution.lower()
     # Compatibility with keras-team/keras.
     if distribution == "normal":
       distribution = "truncated_normal"
     if distribution not in {"uniform", "truncated_normal",
                             "untruncated_normal"}:
-      raise ValueError("Invalid `distribution` argument:", distribution)
+      raise ValueError("Argument `distribution` should be one of ('uniform', "
+                       "'truncated_normal', 'untruncated_normal'). Received: "
+                       f"{distribution}")
     self.scale = scale
     self.mode = mode
     self.distribution = distribution
@@ -672,8 +682,9 @@ class Orthogonal(Initializer):
     dtype = _assert_float_dtype(dtype)
     # Check the shape
     if len(shape) < 2:
-      raise ValueError("The tensor to initialize must be "
-                       "at least two-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     # Flatten the input shape with the last dimension remaining
     # its original shape so it works for conv2d
     num_rows = 1
@@ -743,8 +754,9 @@ class Identity(Initializer):
     self._validate_kwargs(kwargs, support_partition=False)
     dtype = _assert_float_dtype(dtype)
     if len(shape) != 2:
-      raise ValueError(
-          "Identity matrix initializer can only be used for 2D matrices.")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     initializer = linalg_ops_impl.eye(*shape, dtype=dtype)
     return self.gain * initializer
 
@@ -1048,7 +1060,8 @@ def _assert_float_dtype(dtype):
   """
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating:
-    raise ValueError("Expected floating point type, got %s." % dtype)
+    raise ValueError("Argument `dtype` is expected to be floating point. "
+                     f"Received: {dtype}.")
   return dtype
 
 

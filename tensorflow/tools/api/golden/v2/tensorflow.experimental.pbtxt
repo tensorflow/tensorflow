@@ -1,6 +1,10 @@
 path: "tensorflow.experimental"
 tf_module {
   member {
+    name: "ExtensionType"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
@@ -25,11 +29,27 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "dispatch_for_api"
+    argspec: "args=[\'api\'], varargs=signatures, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_binary_elementwise_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_unary_elementwise_apis"
+    argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "register_filesystem_plugin"
     argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unregister_dispatch_for"
+    argspec: "args=[\'dispatch_target\'], varargs=None, keywords=None, defaults=None"
   }
 }

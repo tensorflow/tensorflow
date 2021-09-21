@@ -355,6 +355,13 @@ REGISTER_OP("HashTableV2")
     .SetIsStateful()
     .SetShapeFn(ScalarOutput);
 
+REGISTER_OP("AnonymousHashTable")
+    .Output("table_handle: resource")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .SetIsStateful()
+    .SetShapeFn(ScalarOutput);
+
 REGISTER_OP("MutableHashTable")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")

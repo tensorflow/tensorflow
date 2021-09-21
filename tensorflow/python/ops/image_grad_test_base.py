@@ -537,7 +537,7 @@ class CropAndResizeOpTestBase(test.TestCase):
               with test_util.device(use_gpu=True):
                 with self.cached_session():
                   # pylint: disable=cell-var-from-loop
-                  if (config.deterministic_ops_enabled() and
+                  if (config.is_op_determinism_enabled() and
                       test_util.is_gpu_available()):
                     with self.assertRaises(errors_impl.UnimplementedError):
                       gradient_checker_v2.compute_gradient(

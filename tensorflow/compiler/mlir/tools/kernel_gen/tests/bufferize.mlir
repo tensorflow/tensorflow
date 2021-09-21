@@ -18,8 +18,8 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 // CHECK-LABEL: @tensor.from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> f32
 func @tensor.from_elements(%a : f32) -> f32 {
-  // CHECK: %[[B:.*]] = constant 1.2
-  // CHECK: %[[C:.*]] = constant 2.3
+  // CHECK-DAG: %[[B:.*]] = constant 1.2
+  // CHECK-DAG: %[[C:.*]] = constant 2.3
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: %[[C0:.*]] = constant 0 : index
@@ -42,8 +42,8 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -81,14 +81,14 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C5:.*]] = constant 5.000000e+00 : f32
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C5:.*]] = constant 5.000000e+00 : f32
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C6:.*]] = constant 6.000000e+00 : f32
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C6:.*]] = constant 6.000000e+00 : f32
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
   // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
   // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
   %result = constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
@@ -99,8 +99,8 @@ func @const() -> tensor<3xf32> {
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>

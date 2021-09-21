@@ -701,7 +701,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cuda_sparse",
     srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
+<<<<<<< HEAD
     hdrs = ["cuda_sparse.h", "gpu_solvers.h"],
+=======
+    hdrs = [
+        "cuda_sparse.h",
+        "gpu_solvers.h",
+    ],
+>>>>>>> google_upstream/master
     compatible_with = [],
     deps = [
         ":cuda_solvers",

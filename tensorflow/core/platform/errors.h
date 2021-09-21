@@ -62,8 +62,12 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 // Returns all payloads from a Status as a key-value map.
 inline std::unordered_map<std::string, std::string> GetPayloads(
     const ::tensorflow::Status& status) {
-  // TODO(b/197552541): Update with Status API.
-  return status.GetAllPayloads();
+  std::unordered_map<std::string, std::string> payloads;
+  status.ForEachPayload(
+      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        payloads[std::string(key)] = std::string(value);
+      });
+  return payloads;
 }
 
 // Inserts all given payloads into the given status. Will overwrite existing
@@ -71,7 +75,6 @@ inline std::unordered_map<std::string, std::string> GetPayloads(
 inline void InsertPayloads(
     ::tensorflow::Status& status,
     const std::unordered_map<std::string, std::string>& payloads) {
-  // TODO(b/197552541): Update with Status API.
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);
   }
@@ -81,8 +84,10 @@ inline void InsertPayloads(
 // payloads in the destination if they exist with the same key.
 inline void CopyPayloads(const ::tensorflow::Status& from,
                          ::tensorflow::Status& to) {
-  // TODO(b/197552541): Update with Status API.
-  InsertPayloads(to, from.GetAllPayloads());
+  from.ForEachPayload(
+      [&to](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        to.SetPayload(key, value);
+      });
 }
 
 // Creates a new status with the given code, message and payloads.

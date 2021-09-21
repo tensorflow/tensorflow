@@ -836,7 +836,10 @@ class Interpreter {
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
-  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
+  using TfLiteDelegateCreator =
+      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+  using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+  TfLiteDelegateCreators lazy_delegate_providers_;
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;

@@ -244,7 +244,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
         TypeError,
-        "The scan function must return a pair comprising the new state and the "
+        "`scan_func` should return a pair consisting of new state and the "
         "output value."):
       dataset.scan(
           initial_state=constant_op.constant(1, dtype=dtypes.int32),

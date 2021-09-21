@@ -28,13 +28,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import dispatch
 
 
 #===============================================================================
 # ragged_gather
 #===============================================================================
-def gather(params,
-           indices,
+@dispatch.dispatch_for_api(array_ops.gather_v2)
+def gather(params: ragged_tensor.RaggedOrDense,
+           indices: ragged_tensor.RaggedOrDense,
            validate_indices=None,
            axis=None,
            batch_dims=0,
@@ -324,10 +326,24 @@ def _increase_rank_to(t, rank):
     return array_ops.reshape(t, new_shape)
 
 
+@dispatch.dispatch_for_api(array_ops.gather)
+def _ragged_gather_v1(params: ragged_tensor.RaggedOrDense,
+                      indices: ragged_tensor.RaggedOrDense,
+                      validate_indices=None,
+                      name=None,
+                      axis=0,
+                      batch_dims=0):
+  return gather(params, indices, validate_indices, axis, batch_dims, name)
+
+
 #===============================================================================
 # ragged.gather_nd
 #===============================================================================
-def gather_nd(params, indices, batch_dims=0, name=None):
+@dispatch.dispatch_for_api(array_ops.gather_nd_v2)
+def gather_nd(params: ragged_tensor.RaggedOrDense,
+              indices: ragged_tensor.RaggedOrDense,
+              batch_dims=0,
+              name=None):
   """Gather slices from `params` using `n`-dimensional indices.
 
   This operation is similar to `gather`, but it uses the innermost dimension
@@ -464,6 +480,14 @@ def gather_nd(params, indices, batch_dims=0, name=None):
 
       # Gather using the flattened index tuples and params.
       return gather(flattened_params, flattened_index_tuples)
+
+
+@dispatch.dispatch_for_api(array_ops.gather_nd)
+def _ragged_gather_nd_v1(params: ragged_tensor.RaggedOrDense,
+                         indices: ragged_tensor.RaggedOrDense,
+                         name=None,
+                         batch_dims=0):
+  return gather_nd(params, indices, batch_dims, name)
 
 
 #===============================================================================

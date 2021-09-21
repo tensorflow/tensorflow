@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -163,6 +164,54 @@ class RangeCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     stop = 10
     verify_fn(self, lambda: self._build_range_dataset(start, stop),
               stop - start)
+
+
+class RangeRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 2, 3])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.range(2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 0])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.range(0)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBasic(self):
+    dataset = dataset_ops.Dataset.range(10)
+    for i in range(10):
+      self.assertEqual(self.evaluate(random_access.at(dataset, index=i)), i)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              start=[-1, 0, 5],
+              stop=[-5, 0, 10],
+              step=[-3, 1, 5],
+              output_type=[
+                  dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64
+              ])))
+  def testMultipleCombinations(self, start, stop, step, output_type):
+    dataset = dataset_ops.Dataset.range(
+        start, stop, step, output_type=output_type)
+    expected_output = np.arange(
+        start, stop, step, dtype=output_type.as_numpy_dtype)
+    len_dataset = self.evaluate(dataset.cardinality())
+    for i in range(len_dataset):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)), expected_output[i])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=len_dataset))
 
 
 if __name__ == "__main__":

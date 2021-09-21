@@ -518,7 +518,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (executable.IsError()) {
       EmitErrors(results, executable.GetError(), exec_ctx);
@@ -575,7 +575,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
       EmitErrors(results, jit_executable.GetError(), exec_ctx);

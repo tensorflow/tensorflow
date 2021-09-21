@@ -62,8 +62,9 @@ class OptionsBase(object):
     if hasattr(self, name):
       object.__setattr__(self, name, value)
     else:
-      raise AttributeError(
-          "Cannot set the property %s on %s." % (name, type(self).__name__))
+      raise AttributeError("Cannot set the property {} on {}.".format(
+          name,
+          type(self).__name__))
 
   def _set_mutable(self, mutable):
     """Change the mutability property to `mutable`."""
@@ -71,11 +72,11 @@ class OptionsBase(object):
 
   def _to_proto(self):
     """Convert options to protocol buffer."""
-    raise NotImplementedError("%s._to_proto()" % type(self).__name__)
+    raise NotImplementedError("{}._to_proto()".format(type(self).__name__))
 
   def _from_proto(self, pb):
     """Convert protocol buffer to options."""
-    raise NotImplementedError("%s._from_proto()" % type(self).__name__)
+    raise NotImplementedError("{}._from_proto()".format(type(self).__name__))
 
 
 # Creates a namedtuple with three keys for optimization graph rewrites settings.
@@ -107,8 +108,9 @@ def create_option(name, ty, docstring, default_factory=lambda: None):
 
   def set_fn(option, value):
     if not isinstance(value, ty):
-      raise TypeError("Property \"%s\" must be of type %s, got: %r (type: %r)" %
-                      (name, ty, value, type(value)))
+      raise TypeError(
+          "Property \"{}\" must be of type {}, got: {} (type: {})".format(
+              name, ty, value, type(value)))
     option._options[name] = value  # pylint: disable=protected-access
 
   return property(get_fn, set_fn, None, docstring)
@@ -145,11 +147,14 @@ def merge_options(*options_list):
 
   for options in options_list:
     if not isinstance(options, result_type):
-      raise TypeError("Incompatible options type: %r vs %r" % (type(options),
-                                                               result_type))
+      raise TypeError(
+          "Could not merge incompatible options of type {} and {}.".format(
+              type(options), result_type))
 
   if not isinstance(options_list[0], OptionsBase):
-    raise TypeError("The inputs should inherit from `OptionsBase`")
+    raise TypeError(
+        "All options to be merged should inherit from `OptionsBase` but found "
+        "option of type {} which does not.".format(type(options_list[0])))
 
   default_options = result_type()
   result = result_type()

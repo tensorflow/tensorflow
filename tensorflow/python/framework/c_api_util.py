@@ -166,7 +166,7 @@ class ApiDefMap(object):
   def get_op_def(self, op_name):
     if op_name in self._op_per_name:
       return self._op_per_name[op_name]
-    raise ValueError("No entry found for " + op_name + ".")
+    raise ValueError(f"No op_def found for op name {op_name}.")
 
   def op_names(self):
     return self._op_per_name.keys()

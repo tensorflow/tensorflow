@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_xfeed.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -218,6 +219,8 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
       std::unique_ptr<HloModule> hlo_module,
       xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
   VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
+  static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
+  DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
   cpu::CpuCompiler compiler;

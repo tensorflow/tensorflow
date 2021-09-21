@@ -155,7 +155,9 @@ class DispatchServer(object):
     config = config or DispatcherConfig()
     if config.fault_tolerant_mode and not config.work_dir:
       raise ValueError(
-          "Cannot enable fault tolerant mode without configuring a work_dir")
+          "Cannot enable fault tolerant mode without configuring a work dir. "
+          "Make sure to set `work_dir` in the `config` object passed to "
+          "`DispatcherServer`.")
     self._config = config
     config_proto = service_config_pb2.DispatcherConfig(
         port=config.port,
@@ -324,7 +326,9 @@ class WorkerServer(object):
         creating it. Defaults to True.
     """
     if config.dispatcher_address is None:
-      raise ValueError("must specify a dispatcher_address")
+      raise ValueError(
+          "Must specify a `dispatcher_address` in the `config` passed "
+          "to `WorkerServer`.")
     if isinstance(config, service_config_pb2.WorkerConfig):
       config_proto = config
     else:

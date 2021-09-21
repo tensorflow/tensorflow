@@ -22,8 +22,8 @@ import abc
 import collections
 import re
 
+import typing
 import numpy as np
-import six
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -45,8 +45,7 @@ ops = LazyLoader("ops", globals(),
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
-@six.add_metaclass(abc.ABCMeta)
-class TypeSpec(object):
+class TypeSpec(object, metaclass=abc.ABCMeta):
   """Specifies a TensorFlow value type.
 
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
@@ -115,7 +114,7 @@ class TypeSpec(object):
       return False
     return self.__is_compatible(self._serialize(), spec_or_value._serialize())  # pylint: disable=protected-access
 
-  def most_specific_compatible_type(self, other):
+  def most_specific_compatible_type(self, other: "TypeSpec") -> "TypeSpec":
     """Returns the most specific TypeSpec compatible with `self` and `other`.
 
     Args:
@@ -139,7 +138,7 @@ class TypeSpec(object):
         self._serialize(), other._serialize())  # pylint: disable=protected-access
     return self._deserialize(merged)
 
-  def _with_tensor_ranks_only(self):
+  def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
 
     Returns:
@@ -216,7 +215,7 @@ class TypeSpec(object):
 
   # === Tensor list encoding for values ===
 
-  def _to_tensor_list(self, value):
+  def _to_tensor_list(self, value) -> typing.List["ops.Tensor"]:
     """Encodes `value` as a flat list of `tf.Tensor`.
 
     By default, this just flattens `self._to_components(value)` using
@@ -236,7 +235,7 @@ class TypeSpec(object):
     """
     return nest.flatten(self._to_components(value), expand_composites=True)
 
-  def _from_tensor_list(self, tensor_list):
+  def _from_tensor_list(self, tensor_list: typing.List["ops.Tensor"]):
     """Reconstructs a value from a flat list of `tf.Tensor`.
 
     Args:
@@ -253,7 +252,8 @@ class TypeSpec(object):
     self.__check_tensor_list(tensor_list)
     return self._from_compatible_tensor_list(tensor_list)
 
-  def _from_compatible_tensor_list(self, tensor_list):
+  def _from_compatible_tensor_list(self,
+                                   tensor_list: typing.List["ops.Tensor"]):
     """Reconstructs a value from a compatible flat list of `tf.Tensor`.
 
     Args:
@@ -316,21 +316,21 @@ class TypeSpec(object):
 
   # === Operators ===
 
-  def __eq__(self, other):
+  def __eq__(self, other) -> bool:
     # pylint: disable=protected-access
     return (type(other) is type(self) and
             self.__get_cmp_key() == other.__get_cmp_key())
 
-  def __ne__(self, other):
+  def __ne__(self, other) -> bool:
     return not self == other
 
-  def __hash__(self):
+  def __hash__(self) -> int:
     return hash(self.__get_cmp_key())
 
   def __reduce__(self):
     return type(self), self._serialize()
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return "%s%r" % (type(self).__name__, self._serialize())
 
   # === Legacy Output ===
@@ -351,17 +351,19 @@ class TypeSpec(object):
   # === Private Helper Methods ===
 
   def __check_tensor_list(self, tensor_list):
+    """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""
     expected = self._flat_tensor_specs
     specs = [type_spec_from_value(t) for t in tensor_list]
     if len(specs) != len(expected):
-      raise ValueError(f"Cannot create a tensor from the input list because "
-                       f"the tensor spec expects {len(expected)} items, "
-                       f"but the provided tensor list has {len(specs)} items.")
+      raise ValueError(f"Cannot create a {self.value_type.__name__} from the "
+                       f"tensor list because the TypeSpec expects "
+                       f"{len(expected)} items, but the provided tensor list "
+                       f"has {len(specs)} items.")
     for i, (s1, s2) in enumerate(zip(specs, expected)):
       if not s1.is_compatible_with(s2):
-        raise ValueError(f"Cannot create a tensor from the input list because "
-                         f"item {i} ({tensor_list[i]!r}) is incompatible "
-                         f"with the expected type spec {s2}.")
+        raise ValueError(f"Cannot create a {self.value_type.__name__} from the "
+                         f"tensor list because item {i} ({tensor_list[i]!r}) "
+                         f"is incompatible with the expected TypeSpec {s2}.")
 
   def __get_cmp_key(self):
     """Returns a hashable eq-comparable key for `self`."""
@@ -542,7 +544,7 @@ class TypeSpec(object):
     return a
 
 
-class BatchableTypeSpec(TypeSpec):
+class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
   """TypeSpec with a batchable tensor encoding.
 
   The batchable tensor encoding is a list of `tf.Tensor`s that supports
@@ -560,7 +562,7 @@ class BatchableTypeSpec(TypeSpec):
   __slots__ = []
 
   @abc.abstractmethod
-  def _batch(self, batch_size):
+  def _batch(self, batch_size) -> TypeSpec:
     """Returns a TypeSpec representing a batch of objects with this TypeSpec.
 
     Args:
@@ -570,29 +572,70 @@ class BatchableTypeSpec(TypeSpec):
     Returns:
       A `TypeSpec` representing a batch of objects with this TypeSpec.
     """
-    raise NotImplementedError("%s._batch" % type(self).__name__)
+    raise NotImplementedError(f"{type(self).__name__}._batch")
 
   @abc.abstractmethod
-  def _unbatch(self):
+  def _unbatch(self) -> TypeSpec:
     """Returns a TypeSpec representing a single element this TypeSpec.
 
     Returns:
       A `TypeSpec` representing a single element of objects with this TypeSpec.
     """
-    raise NotImplementedError("%s._unbatch" % type(self).__name__)
+    raise NotImplementedError(f"{type(self).__name__}._unbatch")
 
-  def _to_batched_tensor_list(self, value):
-    """Returns a tensor list encoding for value with rank>0."""
-    tensor_list = self._to_tensor_list(value)
+  @property
+  def _flat_tensor_specs(self) -> typing.List[TypeSpec]:
+    """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
+    component_flat_tensor_specs = nest.map_structure(
+        lambda spec: spec._flat_tensor_specs,  # pylint: disable=protected-access
+        self._component_specs)
+    return nest.flatten(component_flat_tensor_specs)
+
+  def _to_tensor_list(
+      self,
+      value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
+    """Encodes `value` as a flat list of `ops.Tensor`."""
+    component_tensor_lists = nest.map_structure(
+        lambda spec, v: spec._to_tensor_list(v),  # pylint: disable=protected-access
+        self._component_specs,
+        self._to_components(value))
+    return nest.flatten(component_tensor_lists)
+
+  def _to_batched_tensor_list(
+      self,
+      value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
+    """Encodes `value` as a flat list of `ops.Tensor` each with rank>0."""
+    # pylint: disable=protected-access
+    get_spec_tensor_list = lambda spec, v: (  # pylint: disable=g-long-lambda
+        spec._to_batched_tensor_list(v)
+        if isinstance(spec, BatchableTypeSpec) else spec._to_tensor_list(v))
+    component_batched_tensor_lists = nest.map_structure(
+        get_spec_tensor_list, self._component_specs, self._to_components(value))
+    tensor_list = nest.flatten(component_batched_tensor_lists)
     if any(t.shape.ndims == 0 for t in tensor_list):
       raise ValueError(
           f"While converting {value} to a list of tensors for batching, "
           f"found a scalar item which cannot be batched.")
     return tensor_list
 
+  def _from_compatible_tensor_list(
+      self, tensor_list: typing.List["ops.Tensor"]
+  ) -> composite_tensor.CompositeTensor:
+    """Reconstructs a value from a compatible flat list of `ops.Tensor`."""
+    flat_specs = nest.map_structure(
+        lambda spec: spec._flat_tensor_specs,  # pylint: disable=protected-access
+        self._component_specs)
+    nested_tensor_list = nest.pack_sequence_as(flat_specs, tensor_list)
+    components = nest.map_structure_up_to(
+        self._component_specs,
+        lambda spec, v: spec._from_compatible_tensor_list(v),  # pylint: disable=protected-access
+        self._component_specs,
+        nested_tensor_list)
+    return self._from_components(components)
+
 
 @tf_export("type_spec_from_value")
-def type_spec_from_value(value):
+def type_spec_from_value(value) -> TypeSpec:
   """Returns a `tf.TypeSpec` that represents the given `value`.
 
   Examples:
@@ -640,7 +683,7 @@ def type_spec_from_value(value):
                   f"unsupported type {type(value)}.")
 
 
-def _type_spec_from_value(value):
+def _type_spec_from_value(value) -> TypeSpec:
   """Returns a `TypeSpec` that represents the given `value`."""
   if isinstance(value, ops.Tensor):
     # Note: we do not include Tensor names when constructing TypeSpecs.

@@ -18,12 +18,15 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
@@ -128,6 +131,49 @@ constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
     "TensorDataset",
     "TensorSliceDataset",
 };
+
+// The semantics of these ops are not affected by the change of the batch
+// size. There are three categories:
+//   1. The op doesn't change the elements of the dataset, e.g. CacheDataset and
+//   all ops that sets options.
+//   2. The op is dataset-element-wise transformation which is orthogonoal to
+//   the batch size, e.g. ParseExampleDataset.
+//   3. RebatchDataset. This is a special case. RebatchDataset is added by
+//   tf.distribute at the end of the input pipeline and will be specially
+//   handled.
+constexpr std::array<const char*, 20> kBatchSizeOrthogonalDatasetOps = {
+    "AssertCardinalityDataset",
+    "AssertNextDataset",
+    "BytesProducedStatsDataset",
+    "CacheDataset",
+    "FinalizeDataset",
+    "Identity",
+    "LatencyStatsDataset",
+    "MaxIntraOpParallelismDataset",
+    "ModelDataset",
+    "NonSerializableDataset",
+    "OptimizeDataset",
+    "OptionsDataset",
+    "ParseExampleDataset",
+    "PrefetchDataset",
+    "PrivateThreadPoolDataset",
+    "RebatchDataset",
+    "RepeatDataset",
+    "SetStatsAggregatorDataset",
+    "SleepDataset",
+    "ThreadPoolDataset",
+};
+
+constexpr std::array<const char*, 2> kBatchDatasetOps = {
+    "BatchDataset",
+    "ParallelBatchDataset",
+};
+
+constexpr std::array<const char*, 2> kMapAndBatchDatasetOps = {
+    "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
+};
+
 // clang-format on
 
 Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
@@ -458,6 +504,30 @@ const NodeDef* FindFuncAndTensorSliceDataset(
                                        graph, nodes_to_delete);
 }
 
+enum class DropRemainderValue { kUnknown, kTrue, kFalse };
+
+DropRemainderValue GetDropRemainder(const MutableGraphView& graph,
+                                    const NodeDef& batch_node) {
+  const NodeDef* drop_remainder = nullptr;
+  if (IsDatasetNodeOfType(batch_node, kBatchDatasetOps)) {
+    drop_remainder = graph.GetNode(batch_node.input(2));
+  } else if (IsDatasetNodeOfType(batch_node, kMapAndBatchDatasetOps)) {
+    drop_remainder = graph.GetNode(batch_node.input(4));
+  } else {
+    LOG(ERROR) << "Expect a batch node but get " << batch_node.DebugString();
+    return DropRemainderValue::kUnknown;
+  }
+  if (!IsConstant(*drop_remainder)) {
+    return DropRemainderValue::kUnknown;
+  }
+  bool drop_remainder_value;
+  if (!GetNodeAttr(*drop_remainder, "value", &drop_remainder_value).ok()) {
+    return DropRemainderValue::kUnknown;
+  }
+  return drop_remainder_value ? DropRemainderValue::kTrue
+                              : DropRemainderValue::kFalse;
+}
+
 Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
                            int64_t index, FunctionLibraryDefinition* flib,
                            MutableGraphView* graph,
@@ -672,50 +742,130 @@ Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
   return Status::OK();
 }
 
-Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
-                     int64_t index, AutoShardPolicy policy,
-                     int64_t num_replicas, GraphDef* output,
-                     AutoShardPolicy* policy_applied) {
+Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
+                      int64_t index, AutoShardPolicy policy,
+                      int64_t num_replicas, MutableGraphView* graph,
+                      AutoShardPolicy* policy_applied) {
   *policy_applied = policy;
-  if (policy == AutoShardPolicy::OFF ||
-      (policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
-    return Status::OK();
-  }
-
-  *output = item.graph;
-  MutableGraphView graph(output);
-  FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
-
-  NodeDef* sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
-
+  FunctionLibraryDefinition flib(OpRegistry::Global(),
+                                 graph->graph()->library());
   switch (policy) {
     case AutoShardPolicy::OFF:
       return Status::OK();
     case AutoShardPolicy::FILE:
-      return ShardByFile(*sink_node, num_workers, index, &flib, &graph);
+      return ShardByFile(sink_node, num_workers, index, &flib, graph);
     case AutoShardPolicy::DATA:
-      return ShardByData(*sink_node, num_workers, index, num_replicas, &graph);
+      return ShardByData(sink_node, num_workers, index, num_replicas, graph);
     case AutoShardPolicy::HINT:
-      return ShardByHint(*sink_node, num_workers, index, num_replicas, &graph);
+      return ShardByHint(sink_node, num_workers, index, num_replicas, graph);
     case AutoShardPolicy::AUTO:
     default:
-      Status s = ShardByFile(*sink_node, num_workers, index, &flib, &graph);
+      Status s = ShardByFile(sink_node, num_workers, index, &flib, graph);
       if (errors::IsNotFound(s)) {
         LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
                         "as it failed to apply FILE sharding policy because of "
                         "the following reason: "
                      << s.error_message();
         *policy_applied = AutoShardPolicy::DATA;
-        return ShardByData(*sink_node, num_workers, index, num_replicas,
-                           &graph);
+        return ShardByData(sink_node, num_workers, index, num_replicas, graph);
       }
       *policy_applied = AutoShardPolicy::FILE;
       return s;
   }
 }
 
+Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
+                     int64_t index, AutoShardPolicy policy,
+                     int64_t num_replicas, GraphDef* output) {
+  *output = item.graph;
+  MutableGraphView graph(output);
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
+
+  AutoShardPolicy policy_applied = policy;
+  if (policy != AutoShardPolicy::OFF &&
+      !(policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
+    TF_RETURN_IF_ERROR(ApplyAutoShard(*sink_node, num_workers, index, policy,
+                                      num_replicas, &graph, &policy_applied));
+  }
+
+  // Only record metrics on the first shard to avoid duplication.
+  if (index == 0) {
+    // item.id is always the same so we use the address of the output as id.
+    string id = strings::StrCat(reinterpret_cast<uint64>(output));
+    {
+      std::vector<std::string> ineligible_reason;
+      bool is_eligible = internal::IsEligibleRewriteBatchSize(
+          *sink_node, graph, &ineligible_reason);
+      metrics::RecordTFDataAutoShardRewriteBatchSize(is_eligible,
+                                                     ineligible_reason);
+    }
+    metrics::RecordTFDataAutoShard(id, policy_applied, num_workers,
+                                   num_replicas);
+  }
+  return Status::OK();
+}
+
 }  // anonymous namespace
+
+namespace internal {
+bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
+                                const MutableGraphView& graph,
+                                std::vector<std::string>* ineligible_reason) {
+  ineligible_reason->clear();
+  NodeDef* input_node = graph_utils::GetInputNode(sink_node, graph);
+  // We always traverse the graph until we arrive at a batch node to collect all
+  // ineligible reasons;
+  while (input_node != nullptr) {
+    // 1. If the node is insensitive to the batch size of the input, we continue
+    // looking at the input dataset of the node.
+    if (IsDatasetNodeOfType(*input_node, kBatchSizeOrthogonalDatasetOps)) {
+      input_node = graph_utils::GetInputNode(*input_node, graph);
+      continue;
+    }
+    // 2. We arrive at a batch node. Examine its drop_remainder input and
+    // cardinality to determine eligibility.
+    if (IsDatasetNodeOfType(*input_node, kBatchDatasetOps) ||
+        IsDatasetNodeOfType(*input_node, kMapAndBatchDatasetOps)) {
+      DropRemainderValue drop_remainder = GetDropRemainder(graph, *input_node);
+      int64_t cardinality = data::kUnknownCardinality;
+      bool cardinality_available = true;
+      AttrSlice attrs(*input_node);
+      if (!TryGetNodeAttr(attrs, data::kCardinalityAttrForRewrite,
+                          &cardinality)) {
+        cardinality_available = false;
+      }
+
+      if (drop_remainder == DropRemainderValue::kFalse ||
+          (cardinality_available &&
+           cardinality == data::kInfiniteCardinality)) {
+        return ineligible_reason->empty();
+      } else {
+        if (drop_remainder == DropRemainderValue::kUnknown) {
+          ineligible_reason->push_back("BATCH_DROP_REMAINDER_UNKNOWN");
+        }
+        if (!cardinality_available) {
+          ineligible_reason->push_back("BATCH_CARDINALITY_NOT_AVAILABLE");
+        }
+        if (drop_remainder == DropRemainderValue::kTrue &&
+            cardinality_available &&
+            cardinality != data::kInfiniteCardinality) {
+          ineligible_reason->push_back("BATCH_DROP_REMAINDER_NOT_INFINITE");
+        }
+        return false;
+      }
+    }
+    // 3. We encountered other nodes before arriving at a batch node. We don't
+    // know whether this node is sensitive to the batch size or not and we err
+    // on the safe side.
+    ineligible_reason->push_back(
+        strings::StrCat("OP_NOT_SUPPORTED_", input_node->op()));
+    input_node = graph_utils::GetInputNode(*input_node, graph);
+  }
+  ineligible_reason->push_back("BATCH_NOT_FOUND");
+  return false;
+}
+}  // namespace internal
 
 Status AutoShard::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
@@ -767,18 +917,8 @@ Status AutoShard::OptimizeAndCollectStats(Cluster* cluster,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
-  AutoShardPolicy policy_applied;
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_,
-                                   auto_shard_policy_, num_replicas_, output,
-                                   &policy_applied));
-
-  // Only record on the first shard to avoid duplication.
-  if (index_ == 0) {
-    // item.id is always the same so we use the address of the cluster as id.
-    string id = strings::StrCat(reinterpret_cast<uint64>(cluster));
-    metrics::RecordTFDataAutoShard(id, policy_applied, num_workers_,
-                                   num_replicas_);
-  }
+                                   auto_shard_policy_, num_replicas_, output));
   stats->num_changes++;
   return Status::OK();
 }

@@ -5555,7 +5555,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
     // Don't decide to swap if the input size is one, since many convolution
     // implementations can easily hand that special case efficiently.
     kernel_product *= kernel_size;
-    swapped_kernel_product *= input_size == 1 ? kernel_size : input_size;
+    swapped_kernel_product *=
+        input_size == 1 && window_dims[spatial_dim].stride() == 1 &&
+                window_dims[spatial_dim].window_dilation() == 1 &&
+                window_dims[spatial_dim].padding_high() == kernel_size - 1 &&
+                window_dims[spatial_dim].padding_low() == kernel_size - 1
+            ? kernel_size
+            : input_size;
 
     auto new_dim = swapped_window.add_dimensions();
     new_dim->set_size(input_size);

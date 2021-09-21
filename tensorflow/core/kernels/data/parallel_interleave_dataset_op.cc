@@ -398,7 +398,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       bool increase_min =
           GetExperiments().contains("min_outer_interleave_parallelism") &&
           ctx->interleave_depth() == 0;
-      double min = increase_min ? dataset()->cycle_length_ : 1;
+      // When the `min_outer_interleave_parallelism` is enabled, we increase
+      // the minimum parallelism based on empirical evidence (see
+      // go/tf-data-max-autotuning for details).
+      double min =
+          increase_min
+              ? std::min(
+                    static_cast<double>(dataset()->cycle_length_),
+                    std::ceil(std::pow(27 * dataset()->cycle_length_, 0.5)))
+              : 1;
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
           {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,

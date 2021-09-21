@@ -448,6 +448,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
+OpSharding = _xla.OpSharding  # type: ignore
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -633,21 +634,6 @@ def make_convolution_dimension_numbers(
         sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                key=lambda i: rhs_spec.index(out_spec[i])))
   return dimension_numbers
-
-
-class OpSharding(object):
-  """Python representation of a xla.OpSharding protobuf."""
-  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings', 'replicate_on_last_tile_dim')
-
-  Type = _xla.OpSharding_Type
-
-  def __init__(self):
-    self.type = self.Type.REPLICATED
-    self.tile_assignment_dimensions = []
-    self.tile_assignment_devices = []
-    self.tuple_shardings = []
-    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

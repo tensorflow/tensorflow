@@ -183,7 +183,11 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         else:
           return None
       elif len(new_batch_dim.shape) > 1:
-        raise ValueError("Expected batch_sizes to be a scalar or vector.")
+        raise ValueError(
+            f"Invalid `batch_sizes`. Expected `batch_sizes` to be a scalar or "
+            f"a vector. Received `batch_sizes` of rank "
+            f"{len(new_batch_dim.shape)}."
+        )
 
     if self._may_form_partial_batches(new_batch_dim):
       return None
@@ -202,9 +206,9 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       if shape.rank is None:
         return None
       if len(shape) < 1:
-        raise ValueError("Expected a dataset whose elements have rank >= 1 "
-                         "but found a dataset whose elements are scalars. "
-                         "You can fix the issue by adding the `batch` "
+        raise ValueError("Invalid `batch_sizes`. Expected dataset with "
+                         "rank of >= 1 but found a dataset with "
+                         "scalar elements. Fix the issue by adding the `batch` "
                          "transformation to the dataset.")
       return shape.dims[0].value
 
@@ -219,7 +223,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     known_input_batch_dims = np.asarray(known_input_batch_dims)
     if not np.all(known_input_batch_dims == known_input_batch_dims[0]):
-      raise ValueError("Batch dimensions of input dataset are not compatible.")
+      raise ValueError(
+          f"Invalid `input_dataset.` The batch dimension of component 0 "
+          f"is {known_input_batch_dims[0]}, while the batch dimension "
+          f"of component i is {known_input_batch_dims}.")
 
     return known_input_batch_dims[0] % desired_batch_size != 0
 
@@ -266,10 +273,11 @@ class _LegacyRebatchDataset(dataset_ops.UnaryDataset):
         return None
 
       if len(output_shape) < 1:
-        raise ValueError("Expected a dataset whose elements have rank >= 1 "
-                         "but found a dataset whose elements are scalars. "
-                         "You can fix the issue by adding the `batch` "
-                         "transformation to the dataset.")
+        raise ValueError(
+            "Invalid `input_dataset`. Expected a dataset whose elements "
+            "have rank >= 1 but found a dataset whose elements are scalars. "
+            "Fix the issue by adding the `batch` transformation to the "
+            "dataset.")
       output_dims = [d.value for d in output_shape.dims]
 
       if output_dims[0] is not None and output_dims[0] % num_replicas == 0:
@@ -324,7 +332,10 @@ def replicate(dataset, devices):
     A dictionary mapping device name to a dataset on that device.
   """
   if not isinstance(dataset, dataset_ops.DatasetV2):
-    raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+    raise TypeError(
+        f"Invalid `dataset`. Expected a `tf.data.Dataset` object but "
+        f"got {type(dataset)}."
+    )
 
   # pylint: disable=protected-access
   dataset_device = dataset._variant_tensor.device

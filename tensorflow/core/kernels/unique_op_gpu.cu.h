@@ -29,7 +29,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_solvers.h" // For ScratchSpace
+=======
+#include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
+>>>>>>> google_upstream/master
 
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/util.h"
 
@@ -78,17 +79,20 @@ constexpr int kMissingIndex = -1;
 
 struct RemapperContext {
   explicit RemapperContext(GrapplerItem* item, Status* status,
+                           RewriterConfig::CpuLayout cpu_layout_conversion,
                            bool xla_auto_clustering_on)
       : nodes_to_preserve(item->NodesToPreserve()),
         graph_view(&item->graph, status),
         graph_properties(*item),
         inferred_graph_properties(false),
+        cpu_layout_conversion(cpu_layout_conversion),
         xla_auto_clustering_on(xla_auto_clustering_on) {}
 
   std::unordered_set<string> nodes_to_preserve;
   utils::MutableGraphView graph_view;
   GraphProperties graph_properties;
   bool inferred_graph_properties;
+  RewriterConfig::CpuLayout cpu_layout_conversion;
   bool xla_auto_clustering_on;
 };
 
@@ -281,31 +285,35 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
   }
 }
 
-bool IsCpuCompatibleDataFormat(const NodeDef* conv2d) {
+bool IsCpuCompatibleDataFormat(const RemapperContext& ctx,
+                               const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   const string& data_format = conv2d->attr().at(kDataFormat).s();
-  return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW");
+  return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW") ||
+         (ctx.cpu_layout_conversion == RewriterConfig::NHWC_TO_NCHW &&
+          data_format == "NCHW");
 }
 
-bool IsGpuCompatibleDataFormat(const NodeDef* conv2d) {
+bool IsGpuCompatibleDataFormat(const RemapperContext& ctx,
+                               const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   const string& data_format = conv2d->attr().at(kDataFormat).s();
   return data_format == "NHWC" || data_format == "NCHW";
 }
 
-bool IsCpuCompatibleConv2D(const NodeDef* conv2d) {
+bool IsCpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   return NodeIsOnCpu(conv2d) && IsCpuCompatibleDataType(conv2d) &&
-         IsCpuCompatibleDataFormat(conv2d);
+         IsCpuCompatibleDataFormat(ctx, conv2d);
 }
 
-bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
+bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   return NodeIsOnGpu(conv2d) && IsGpuCompatibleDataType(conv2d) &&
-         IsGpuCompatibleDataFormat(conv2d);
+         IsGpuCompatibleDataFormat(ctx, conv2d);
 }
 
-bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
+bool IsCpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
 }
@@ -321,11 +329,11 @@ template <typename Pattern>
 bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   const NodeDef& node = ctx.graph_view.graph()->node(matched.contraction);
   if (IsConv2D(node)) {
-    return IsCpuCompatibleConv2D(&node);
+    return IsCpuCompatibleConv2D(ctx, &node);
   } else if (IsDepthwiseConv2dNative(node)) {
     return (IsMKLEnabled() && IsCpuCompatibleDepthwiseConv2dNative(&node));
   } else if (IsMatMul(node)) {
-    return IsCpuCompatibleMatMul(&node);
+    return IsCpuCompatibleMatMul(ctx, &node);
   } else {
     return false;
   }
@@ -367,7 +375,8 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   const NodeDef& activation_node = graph->node(matched.activation);
   bool is_relu = IsRelu(activation_node);
 
-  return is_relu && is_spatial_conv && IsGpuCompatibleConv2D(&contraction_node);
+  return is_relu && is_spatial_conv &&
+         IsGpuCompatibleConv2D(ctx, &contraction_node);
 }
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched) {
@@ -592,7 +601,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   if (!IsConv2D(*conv2d_node_def) || !NodeIsOnCpu(conv2d_node_def) ||
       !HaveSameDataType(node_def, conv2d_node_def) ||
       !IsCpuCompatibleDataType(conv2d_node_def) ||
-      !IsCpuCompatibleDataFormat(conv2d_node_def) ||
+      !IsCpuCompatibleDataFormat(ctx, conv2d_node_def) ||
       HasControlFaninOrFanout(*conv2d_node_view) ||
       !HasAtMostOneFanoutAtPort0(*conv2d_node_view) ||
       IsInPreserveSet(ctx, conv2d_node_def))
@@ -2120,7 +2129,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
   Status status;
-  RemapperContext ctx(&mutable_item, &status, xla_auto_clustering_on_);
+  RemapperContext ctx(&mutable_item, &status, cpu_layout_conversion_,
+                      xla_auto_clustering_on_);
   TF_RETURN_IF_ERROR(status);
   // Processing graph in reverse-topological sorted order allows to remap
   // longer chains of dependent ops in one pass.

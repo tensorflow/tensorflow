@@ -349,6 +349,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:cost_util",
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/common_runtime:request_cost_accessor",
         "//tensorflow/core/common_runtime:request_cost_accessor_registry",
