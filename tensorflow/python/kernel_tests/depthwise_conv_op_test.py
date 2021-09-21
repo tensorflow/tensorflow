@@ -320,14 +320,8 @@ class DepthwiseConv2DTest(test.TestCase):
 
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-<<<<<<< HEAD
-    with self.session(graph=graph) as sess, ops.device(
-        "/gpu:0" if use_gpu else "/cpu:0"):
-      tolerance = {
-=======
     with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = tolerance or {
->>>>>>> google_upstream/master
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
           dtypes.float64: 1e-12,

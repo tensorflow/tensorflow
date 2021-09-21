@@ -1344,13 +1344,8 @@ tf_kernel_library(
     deps = if_cuda([
                "//tensorflow/core/util:cuda_solvers",
            ]) + if_rocm([
-<<<<<<< HEAD
-	       "//tensorflow/core/util:rocm_solvers",
-	   ]) + [":gpu_prim_hdrs"] +
-=======
                "//tensorflow/core/util:rocm_solvers",
            ]) + [":gpu_prim_hdrs"] +
->>>>>>> google_upstream/master
            ARRAY_DEPS,
 )
 

@@ -47,19 +47,13 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/util/gpu_solvers.h"
->>>>>>> google_upstream/master
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/util/gpu_solvers.h"
->>>>>>> google_upstream/master
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 

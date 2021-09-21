@@ -286,11 +286,7 @@ class QrOpGpu : public AsyncOpKernel {
 
     // Asynchronously check return status from cuSolver kernels.
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-<<<<<<< HEAD
-                                                    std::move(done));
-=======
                                                    std::move(done));
->>>>>>> google_upstream/master
   }
 
  private:

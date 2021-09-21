@@ -33,10 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-<<<<<<< HEAD
-#include "tensorflow/core/util/gpu_solvers.h"
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
