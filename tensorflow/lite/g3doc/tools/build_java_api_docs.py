@@ -40,6 +40,14 @@ flags.DEFINE_bool(
     'search_hints', True,
     '[UNUSED] Include metadata search hints in the generated files')
 
+# This tool expects to live within a directory structure that hosts multiple
+# repositories, like so:
+# /root (name not important)
+#   /tensorflow (github.com/tensorflow/tensorflow - home of this script)
+#   /tensorflow_lite_support (github.com/tensorflow/tflite-support)
+#   /android/sdk (android.googlesource.com/platform/prebuilts/sdk
+#     - Note that this needs a branch with an api/ dir, such as *-release)
+# Internally, both the monorepo and the external build system do this for you.
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 SOURCE_PATH_CORE = REPO_ROOT / 'tensorflow/lite/java/src/main/java'
 SOURCE_PATH_SUPPORT = REPO_ROOT / 'tensorflow_lite_support/java/src/java'
@@ -48,6 +56,10 @@ SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
     'org.tensorflow.lite.task': 'Task Library',
+}
+
+EXTERNAL_APIS = {
+    'https://developer.android.com': REPO_ROOT / 'android/sdk/api/26.txt'
 }
 
 
@@ -75,7 +87,8 @@ def main(unused_argv):
         source_path=merged_temp_dir,
         output_dir=pathlib.Path(FLAGS.output_dir),
         site_path=pathlib.Path(FLAGS.site_path),
-        section_labels=SECTION_LABELS)
+        section_labels=SECTION_LABELS,
+        federated_docs=EXTERNAL_APIS)
 
 
 if __name__ == '__main__':
