@@ -5821,7 +5821,10 @@ cc_library(
     hdrs = [
         "custom_call_status_internal.h",
     ],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow/compiler/tf2xla:__pkg__",
+    ],
     deps = [
         ":custom_call_status",
         "@com_google_absl//absl/strings",
