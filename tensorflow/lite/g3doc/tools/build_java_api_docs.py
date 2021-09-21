@@ -51,11 +51,15 @@ flags.DEFINE_bool(
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 SOURCE_PATH_CORE = REPO_ROOT / 'tensorflow/lite/java/src/main/java'
 SOURCE_PATH_SUPPORT = REPO_ROOT / 'tensorflow_lite_support/java/src/java'
+SOURCE_PATH_ODML = REPO_ROOT / 'tensorflow_lite_support/odml/java/image/src'
 
+# This (key) ordering is preserved in the TOC output.
 SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
     'org.tensorflow.lite.task': 'Task Library',
+    # If we ever need other ODML packages, drop the `.image` here.
+    'com.google.android.odml.image': 'ODML',
 }
 
 EXTERNAL_APIS = {
@@ -81,9 +85,10 @@ def main(unused_argv):
     merged_temp_dir = pathlib.Path(merge_tmp_dir)
     overlay(SOURCE_PATH_CORE, merged_temp_dir)
     overlay(SOURCE_PATH_SUPPORT, merged_temp_dir)
+    overlay(SOURCE_PATH_ODML, merged_temp_dir)
 
     gen_java.gen_java_docs(
-        package='org.tensorflow.lite',
+        package=['org.tensorflow.lite', 'com.google.android.odml'],
         source_path=merged_temp_dir,
         output_dir=pathlib.Path(FLAGS.output_dir),
         site_path=pathlib.Path(FLAGS.site_path),
