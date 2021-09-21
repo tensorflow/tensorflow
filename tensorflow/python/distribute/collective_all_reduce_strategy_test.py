@@ -56,6 +56,7 @@ from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
@@ -70,21 +71,26 @@ _CollectiveAllReduceStrategyExperimental = (
 def create_test_objects(cluster_spec=None,
                         task_type=None,
                         task_id=None,
-                        num_gpus=None):
+                        num_gpus=None,
+                        num_tpus=None):
   sess_config = config_pb2.ConfigProto()
   if num_gpus is None:
     num_gpus = context.num_gpus()
+  if num_tpus is None:
+    num_tpus = context.context().list_physical_devices('TPU')
+  if num_tpus:
+    tpu_strategy_util.initialize_tpu_system()
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
         cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
-        num_accelerators={'GPU': num_gpus})
+        num_accelerators={'GPU': num_gpus, 'TPU': num_tpus})
     target = 'grpc://' + cluster_spec[task_type][task_id]
   else:
     cluster_resolver = SimpleClusterResolver(
-        ClusterSpec({}), num_accelerators={'GPU': num_gpus})
+        ClusterSpec({}), num_accelerators={'GPU': num_gpus, 'TPU': num_tpus})
     target = ''
 
   strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
@@ -103,12 +109,13 @@ class CollectiveAllReduceStrategyTestBase(
     CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
-  def _get_test_object(self, task_type, task_id, num_gpus=0):
+  def _get_test_object(self, task_type, task_id, num_gpus=0, num_tpus=0):
     strategy, target, session_config = create_test_objects(
         cluster_spec=self._cluster_spec,
         task_type=task_type,
         task_id=task_id,
-        num_gpus=num_gpus)
+        num_gpus=num_gpus,
+        num_tpus=num_tpus)
     return strategy, target, session_config
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
@@ -122,7 +129,7 @@ class CollectiveAllReduceStrategyTestBase(
           init_ops_v2.GlorotUniform(), (1, 1), dtype=dtypes.float32)
       kernel = variables.Variable(
           initial_value=initializer,
-          name='gpu_%d/kernel' % d.extended._num_gpus_per_worker,
+          name='gpu_%d/kernel' % d.extended._num_devices_per_worker,
           trainable=True)
 
       def loss_fn(x):
@@ -167,7 +174,8 @@ class CollectiveAllReduceStrategyTestBase(
 
       before_out, after_out = step()
 
-      if context.num_gpus() < d.extended._num_gpus_per_worker:
+      if (d.extended._local_device_type == 'GPU'
+          and context.num_gpus() < d.extended._num_devices_per_worker):
         return True
 
       sess.run(variables.global_variables_initializer())
@@ -443,6 +451,12 @@ class LocalCollectiveAllReduceStrategy(
       self._test_minimize_loss_graph(None, None, required_gpus)
 
   @combinations.generate(
+      combinations.combine(mode=['eager'], required_tpus=[2]))
+  def testMinimizeLossTPU(self, required_tpus):
+    strategy, _, _ = self._get_test_object(None, None, num_tpus=required_tpus)
+    self._test_minimize_loss_eager(strategy)
+
+  @combinations.generate(
       combinations.combine(
           mode=['graph'], required_gpus=2, use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
@@ -562,6 +576,11 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
         ],
         mode=['eager']))
 class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    if context.context().list_physical_devices('TPU'):
+      self.skipTest('Test not supported on TPUs')
 
   def test_replica_id_in_sync_group(self, strategy):
 
