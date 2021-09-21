@@ -82,27 +82,28 @@ class _PartitionInfo(object):
     if not isinstance(full_shape, collections_abc.Sequence) or isinstance(
         full_shape, six.string_types):
       raise TypeError(
-          "`full_shape` must be a sequence (like tuple or list) instead of " +
-          type(full_shape).__name__)
+          "Argument `full_shape` must be a sequence (like tuple or list). "
+          f"Received full_shape={full_shape} of type "
+          f"{type(full_shape).__name__}.")
 
     if not isinstance(var_offset, collections_abc.Sequence) or isinstance(
         var_offset, six.string_types):
       raise TypeError(
-          "`var_offset` must be a sequence (like tuple or list) instead of " +
-          type(var_offset).__name__)
+          "Argument `var_offset` must be a sequence (like tuple or list). "
+          f"Received var_offset={var_offset} of type "
+          f"{type(var_offset).__name__}.")
 
     if len(var_offset) != len(full_shape):
       raise ValueError(
-          "Expected equal length, but `var_offset` is of length {} while "
-          "full_shape is of length {}.".format(
-              len(var_offset), len(full_shape)))
+          "Argument `var_offset` and `full_shape` are of unequal lengths. "
+          f"Received var_offset={var_offset} with length {len(var_offset)} and "
+          f"full_shape={full_shape} of length {len(full_shape)}.")
 
     for offset, shape in zip(var_offset, full_shape):
       if offset < 0 or offset >= shape:
         raise ValueError(
-            "Expected 0 <= offset < shape but found offset={}, shape={} for "
-            "var_offset={}, full_shape={}".format(offset, shape, var_offset,
-                                                  full_shape))
+            f"Expected 0 <= offset < shape but found offset={offset}, shape="
+            f"{shape} for var_offset={var_offset}, full_shape={full_shape}.")
 
     self._full_shape = full_shape
     self._var_offset = var_offset
@@ -156,22 +157,22 @@ class _PartitionInfo(object):
     if not isinstance(shape, collections_abc.Sequence) or isinstance(
         shape, six.string_types):
       raise TypeError(
-          "`shape` must be a sequence (like tuple or list) instead of " +
-          type(shape).__name__)
+          "Argument `shape` must be a sequence (like tuple or list). Received "
+          f"shape={shape} of type {type(shape).__name__}.")
 
     if len(shape) != len(self.full_shape):
       raise ValueError(
-          "Expected equal length, but received shape={} of length {} while "
-          "self.full_shape={} is of length {}.".format(shape, len(shape),
-                                                       self.full_shape,
-                                                       len(self.full_shape)))
+          "Argument `shape` and attribute `full_shape` have unequal lengths. "
+          f"Received shape={shape} of length {len(shape)}, while "
+          f"`self.full_shape`={self.full_shape} is of length "
+          f"{len(self.full_shape)}.")
 
     for i in xrange(len(shape)):
       if self.var_offset[i] + shape[i] > self.full_shape[i]:
         raise ValueError(
-            "With self.var_offset={}, a partition of shape={} would exceed "
-            "self.full_shape={} in dimension {}.".format(
-                self.var_offset, shape, self.full_shape, i))
+            f"With self.var_offset={self.var_offset}, a partition of shape="
+            f"{shape} would exceed self.full_shape={self.full_shape} in "
+            f"dimension {i}.")
 
     slice_dim = None
     for i in xrange(len(shape)):
@@ -179,9 +180,9 @@ class _PartitionInfo(object):
         continue
       if slice_dim is not None:
         raise ValueError(
-            "Cannot use single_slice_dim() with shape={} and "
-            "self.full_shape={} since slice dim could be either dimension {} "
-            "or {}.".format(shape, self.full_shape, i, slice_dim))
+            f"Cannot use single_slice_dim() with shape={shape} and "
+            f"self.full_shape={self.full_shape} since slice dim could be either"
+            f" dimension {i} or {slice_dim}.")
       slice_dim = i
 
     return slice_dim
@@ -419,8 +420,8 @@ class _VariableStore(object):
         EagerVariableStore.
     """
     if custom_getter is not None and not callable(custom_getter):
-      raise ValueError("Passed a custom_getter which is not callable: %s" %
-                       custom_getter)
+      raise ValueError("Argument `custom_getter` is not callable. Received: "
+                       f"{custom_getter}.")
 
     with ops.init_scope():
       if context.executing_eagerly():
@@ -480,8 +481,8 @@ class _VariableStore(object):
       # Partitioned variable case
       if partitioner is not None and not is_scalar:
         if not callable(partitioner):
-          raise ValueError("Partitioner must be callable, but received: %s" %
-                           partitioner)
+          raise ValueError("Argument `partitioner` must be callable. Received: "
+                           f"{partitioner}.")
         with ops.name_scope(None):
           return self._get_partitioned_variable(
               name=name,
@@ -525,8 +526,8 @@ class _VariableStore(object):
       if "%s/part_0" % name in self._vars:
         raise ValueError(
             "No partitioner was provided, but a partitioned version of the "
-            "variable was found: %s/part_0. Perhaps a variable of the same "
-            "name was already created with partitioning?" % name)
+            f"variable was found: {name}/part_0. Perhaps a variable of the same "
+            "name was already created with partitioning?")
 
       return self._get_single_variable(
           name=name,
@@ -696,8 +697,8 @@ class _VariableStore(object):
     if name in self._vars:
       raise ValueError(
           "A partitioner was provided, but an unpartitioned version of the "
-          "variable was found: %s.  Perhaps a variable of the same name was "
-          "already created without partitioning?" % name)
+          f"variable was found: {name}. Perhaps a variable of the same name "
+          "was already created without partitioning?")
 
     shape = tensor_shape.as_shape(shape)
     if initializing_from_value:
@@ -710,34 +711,36 @@ class _VariableStore(object):
     if name in self._partitioned_vars:
       if reuse is False:
         raise ValueError(
-            "Partitioned variable with name %s already exists. Did you mean to "
-            "set reuse=True or reuse=tf.AUTO_REUSE in VarScope?" % name)
+            f"Partitioned variable with name {name} already exists. Did you "
+            "mean to set `reuse`=True or `reuse`=tf.AUTO_REUSE in VarScope?")
 
       existing_var = self._partitioned_vars[name]
       if not shape.is_compatible_with(existing_var.get_shape()):
         raise ValueError(
-            "Trying to reuse partitioned variable %s, but specified shape %s "
-            "and found shape %s." % (name, shape, existing_var.get_shape()))
+            f"Trying to reuse partitioned variable {name}, but specified shape "
+            f"{shape} is incompatible with found shape "
+            f"{existing_var.get_shape()}.")
       if not dtype.is_compatible_with(existing_var.dtype):
         raise ValueError(
-            "Trying to reuse partitioned variable %s, but specified dtype %s "
-            "and found dtype %s." % (name, dtype.name, existing_var.dtype.name))
+            f"Trying to reuse partitioned variable {name}, but specified dtype "
+            f"{dtype.name} is incompatible with found dtype "
+            f"{existing_var.dtype.name}.")
 
       # pylint: disable=protected-access
       if (partitions is not None and
           existing_var._get_partitions() != partitions):
         raise ValueError(
-            "Trying to reuse partitioned variable %s, but specified partitions "
-            "%s and found partitions %s." %
-            (name, partitions, existing_var._get_partitions()))
+            f"Trying to reuse partitioned variable {name}, but specified "
+            f"partitions {partitions} are different from found partitions "
+            f"{existing_var._get_partitions()}.")
       # pylint: enable=protected-access
 
       return existing_var
 
     if reuse is True:
-      raise ValueError("PartitionedVariable %s does not exist, or was not "
-                       "created with tf.get_variable(). Did you mean to set "
-                       "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
+      raise ValueError(f"PartitionedVariable {name} does not exist, or was not "
+                       "created with `tf.get_variable()`. Did you mean to set "
+                       "`reuse=False` or `reuse=tf.AUTO_REUSE` in VarScope?")
 
     slice_dim, num_slices = _get_slice_dim_and_num_slices(partitions)
 
@@ -745,15 +748,15 @@ class _VariableStore(object):
       if "%s/part_%d" % (name, num_slices - 1) not in self._vars:
         raise ValueError(
             "Partitioner returned a different partitioning than what was "
-            "already found.  Partitioner returned %d shards, and shard "
-            "%s/part_0 was found, but %s/part_%d was not." %
-            (num_slices, name, name, num_slices - 1))
+            f"already found. Partitioner returned {num_slices} shards, and "
+            f"shard {name}/part_0 was found, but {name}/part_{num_slices - 1} "
+            "was not.")
       if "%s/part_%d" % (name, num_slices) in self._vars:
         raise ValueError(
             "Partitioner returned a different partitioning than what was "
-            "already found.  Partitioner returned %d shards, and shard "
-            "%s/part_0 was found, but so was the extra shard %s/part_%d." %
-            (num_slices, name, name, num_slices))
+            f"already found. Partitioner returned {num_slices} shards, and "
+            f"shard {name}/part_0 was found, but so was the extra shard "
+            f"{name}/part_{num_slices}.")
 
     vs = []
     for i, (var_offset, var_shape) in enumerate(
@@ -870,7 +873,8 @@ class _VariableStore(object):
     if initializer is not None and not callable(initializer):
       initializing_from_value = True
     if shape is not None and initializing_from_value:
-      raise ValueError("If initializer is a constant, do not specify shape.")
+      raise ValueError("If `initializer` is a constant, do not specify "
+                       f"`shape`. Received shape={shape}.")
 
     dtype = dtypes.as_dtype(dtype)
     shape = tensor_shape.as_shape(shape)
@@ -879,9 +883,9 @@ class _VariableStore(object):
       # Here we handle the case when returning an existing variable.
       if reuse is False:
         var = self._vars[name]
-        err_msg = ("Variable %s already exists, disallowed."
+        err_msg = (f"Variable {name} already exists, disallowed."
                    " Did you mean to set reuse=True or "
-                   "reuse=tf.AUTO_REUSE in VarScope?" % name)
+                   "reuse=tf.AUTO_REUSE in VarScope?")
         # ResourceVariables don't have an op associated with so no traceback
         if isinstance(var, resource_variable_ops.ResourceVariable):
           raise ValueError(err_msg)
@@ -891,26 +895,28 @@ class _VariableStore(object):
         # functions to create variables) so we take more than needed in the
         # default case.
         tb = [x for x in tb if "tensorflow/python" not in x[0]][:5]
-        raise ValueError("%s Originally defined at:\n\n%s" %
-                         (err_msg, "".join(traceback.format_list(tb))))
+        small_traceback = "".join(traceback.format_list(tb))
+        raise ValueError(
+            f"{err_msg} Originally defined at:\n\n{small_traceback}.")
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
-        raise ValueError("Trying to share variable %s, but specified shape %s"
-                         " and found shape %s." %
-                         (name, shape, found_var.get_shape()))
+        raise ValueError(
+            f"Trying to share variable {name}, but specified shape {shape} is "
+            f"incompatible with found shape {found_var.get_shape()}.")
       if not dtype.is_compatible_with(found_var.dtype):
         dtype_str = dtype.name
         found_type_str = found_var.dtype.name
-        raise ValueError("Trying to share variable %s, but specified dtype %s"
-                         " and found dtype %s." %
-                         (name, dtype_str, found_type_str))
+        raise ValueError(
+            f"Trying to share variable {name}, but specified dtype {dtype_str} "
+            f"is incompatible with found dtype {found_type_str}.")
       return found_var
 
     # The code below handles only the case of creating a new variable.
     if reuse is True:
-      raise ValueError("Variable %s does not exist, or was not created with "
-                       "tf.get_variable(). Did you mean to set "
-                       "reuse=tf.AUTO_REUSE in VarScope?" % name)
+      raise ValueError(
+          f"Variable {name} does not exist, or was not created with "
+          "`tf.get_variable()`. Did you mean to set `reuse=tf.AUTO_REUSE` in "
+          "VarScope?")
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
@@ -943,7 +949,7 @@ class _VariableStore(object):
                            "be a callable with no arguments and the "
                            "shape should not be provided or an instance of "
                            "`tf.keras.initializers.*' and `shape` should be "
-                           "fully defined.")
+                           f"fully defined. Received: {initializer}.")
 
     # Create the variable.
     if use_resource is None:
@@ -1018,8 +1024,8 @@ class _VariableStore(object):
       initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
-      raise ValueError("An initializer for variable %s of %s is required" %
-                       (name, dtype.base_dtype))
+      raise ValueError(f"Argument `initializer` for variable {name} of type "
+                       f"{dtype.base_dtype} is required.")
 
     return initializer, initializing_from_value
 
@@ -1226,7 +1232,7 @@ class VariableScope(object):
     """Sets whether to use ResourceVariables for this scope."""
     if context.executing_eagerly() and not use_resource:
       raise ValueError("When eager execution is enabled, "
-                       "use_resource cannot be set to false.")
+                       "argument `use_resource` cannot be set to false.")
     self._use_resource = use_resource
 
   def set_regularizer(self, regularizer):
@@ -1236,8 +1242,8 @@ class VariableScope(object):
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
     if context.executing_eagerly():
-      raise NotImplementedError("Caching devices are not yet supported "
-                                "when eager execution is enabled.")
+      raise NotImplementedError("Argument `caching_device` is not yet supported"
+                                " when eager execution is enabled.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
@@ -1311,8 +1317,9 @@ class VariableScope(object):
           not callable(initializer)):
         init_dtype = ops.convert_to_tensor(initializer).dtype.base_dtype
         if init_dtype != dtype:
-          raise ValueError("Initializer type '%s' and explicit dtype '%s' "
-                           "don't match." % (init_dtype, dtype))
+          raise ValueError(f"Initializer type '{init_dtype}', obtained from "
+                           f"initializer={initializer} and explicit dtype "
+                           f"'{dtype}' don't match.")
       if initializer is None:
         initializer = self._initializer
       if constraint is None:
@@ -1371,14 +1378,14 @@ class VariableScope(object):
 
     if self._custom_getter is not None:
       raise ValueError(
-          "Private access to _get_partitioned_variable is not allowed when "
-          "a custom getter is set.  Current custom getter: %s.  "
-          "It is likely that you're using create_partitioned_variables.  "
-          "If so, consider instead using get_variable with a non-empty "
-          "partitioner parameter instead." % self._custom_getter)
+          "Private access to `_get_partitioned_variable` is not allowed when "
+          "a custom getter is set. Current custom getter: "
+          f"{self._custom_getter}. It is likely that you're using "
+          "`create_partitioned_variables`. If so, consider instead using "
+          "`get_variable` with a non-empty partitioner parameter instead.")
 
     if partitioner is None:
-      raise ValueError("No partitioner was specified")
+      raise ValueError("Argument `partitioner` not specified.")
 
     # This allows the variable scope name to be used as the variable name if
     # this function is invoked with an empty name arg, for backward
@@ -1842,11 +1849,11 @@ def _get_partitioned_variable(name,
   scope = get_variable_scope()
   if scope.custom_getter is not None:
     raise ValueError(
-        "Private access to _get_partitioned_variable is not allowed when "
-        "a custom getter is set.  Current custom getter: %s.  "
-        "It is likely that you're using create_partitioned_variables.  "
-        "If so, consider instead using get_variable with a non-empty "
-        "partitioner parameter instead." % scope.custom_getter)
+        "Private access to `_get_partitioned_variable` is not allowed when "
+        f"a custom getter is set. Current custom getter: {scope.custom_getter}."
+        " It is likely that you're using `create_partitioned_variables`. "
+        "If so, consider instead using `get_variable` with a non-empty "
+        "`partitioner` parameter instead.")
   return scope._get_partitioned_variable(
       _get_default_variable_store(),
       name,
@@ -2303,14 +2310,16 @@ class variable_scope(object):
     self._use_resource = use_resource
     self._constraint = constraint
     if self._default_name is None and self._name_or_scope is None:
-      raise TypeError("If default_name is None then name_or_scope is required")
+      raise TypeError("If argument `default_name` is None then argument "
+                      "`name_or_scope` is required")
     if self._reuse is False:
       # We don't allow non-inheriting scopes, False = None here.
       self._reuse = None
     if not (self._reuse is True
             or self._reuse is None
             or self._reuse is AUTO_REUSE):
-      raise ValueError("The reuse parameter must be True or False or None.")
+      raise ValueError("Argument `reuse` must be True or False or None. "
+                       f"Received reuse={self._reuse}.")
     if self._values is None:
       self._values = []
     self._in_graph_mode = not context.executing_eagerly()
@@ -2319,8 +2328,8 @@ class variable_scope(object):
     self._cached_pure_variable_scope = None
     self._current_name_scope = None
     if not isinstance(auxiliary_name_scope, bool):
-      raise TypeError("The auxiliary_name_scope must be `True` or `False`, "
-                      "while get {}".format(auxiliary_name_scope))
+      raise TypeError("Argument `auxiliary_name_scope` must be `True` or "
+                      f"`False`. Received: {auxiliary_name_scope}.")
     self._auxiliary_name_scope = auxiliary_name_scope
 
   def __enter__(self):
@@ -2378,8 +2387,10 @@ class variable_scope(object):
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
                         (VariableScope,) + six.string_types):
-        raise TypeError("VariableScope: name_or_scope must be a string or "
-                        "VariableScope.")
+        raise TypeError("VariableScope: `name_or_scope` must be a string or "
+                        f"VariableScope. Received name_or_scope="
+                        f"{self._name_or_scope} of type "
+                        f"{type(self._name_or_scope).__name__}.")
       if isinstance(self._name_or_scope, six.string_types):
         name_scope = self._name_or_scope
       else:
@@ -2440,7 +2451,8 @@ class variable_scope(object):
 
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if self._reuse:
-        raise ValueError("reuse=True cannot be used without a name_or_scope")
+        raise ValueError("Argument `reuse`=True cannot be used without "
+                         "specifying argument `name_or_scope`.")
       current_name_scope = current_name_scope or ops.name_scope(
           self._default_name, skip_on_eager=False)
       try:
@@ -2534,25 +2546,27 @@ def _call_partitioner(partitioner, shape, dtype):
   """
   if not shape.is_fully_defined():
     raise ValueError("Shape of a new partitioned variable must be "
-                     "fully defined, but instead was %s." % (shape,))
+                     f"fully defined. Received shape={shape}.")
   if shape.ndims < 1:
-    raise ValueError("A partitioned Variable must have rank at least 1, "
-                     "shape: %s" % shape)
+    raise ValueError("A partitioned Variable must have rank at least 1. "
+                     f"Received shape={shape} of rank: {shape.ndims}.")
 
   slicing = partitioner(shape=shape, dtype=dtype)
   if not isinstance(slicing, collections_abc.Sequence):
-    raise ValueError("Partitioner must return a sequence, but saw: %s" %
-                     slicing)
+    raise ValueError("Ppartitioner must return a sequence, but saw "
+                     f"{slicing} of type {type(slicing).__name__}.")
   if len(slicing) != shape.ndims:
     raise ValueError(
         "Partitioner returned a partition list that does not match the "
-        "Variable's rank: %s vs. %s" % (slicing, shape))
+        f"Variable's rank: {len(slicing)} vs. {shape}.")
   if any(p < 1 for p in slicing):
-    raise ValueError("Partitioner returned zero partitions for some axes: %s" %
-                     slicing)
+    raise ValueError("Partitioner returned zero partitions for some axes: "
+                     f"{slicing}.")
   if sum(p > 1 for p in slicing) > 1:
-    raise ValueError("Can only slice a variable along one dimension: "
-                     "shape: %s, partitioning: %s" % (shape, slicing))
+    raise ValueError("Attemping to slice along multiple="
+                     f"{sum(p > 1 for p in slicing)} dimensions. Can only slice"
+                     f" a variable along one dimension: shape: {shape}, "
+                     f"partitioning: {slicing}.")
   return slicing
 
 
