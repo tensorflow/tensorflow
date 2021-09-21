@@ -32,7 +32,8 @@ std::unique_ptr<FunctionPass> createBufferReusePass();
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<FunctionPass> createTestUserangePass();
 
-/// Creates a pass that removes operations that implements a CopyOpInterface.
+/// Creates a pass that removes redundant operations that implement a
+/// CopyOpInterface.
 std::unique_ptr<FunctionPass> createCopyRemovalPass();
 
 }  // namespace mlir
