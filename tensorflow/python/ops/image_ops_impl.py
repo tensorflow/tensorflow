@@ -2470,12 +2470,12 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
-        scaled = math_ops.multiply(image, dtype.max)
-        rounded = math_ops.round(scaled)
+        scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        scaled = math_ops.multiply(image, scale)
         if saturate:
-          return math_ops.saturate_cast(rounded, dtype, name=name)
+          return math_ops.saturate_cast(scaled, dtype, name=name)
         else:
-          return math_ops.cast(rounded, dtype, name=name)
+          return math_ops.cast(scaled, dtype, name=name)
 
 
 @tf_export('image.rgb_to_grayscale')
