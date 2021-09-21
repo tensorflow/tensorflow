@@ -5461,5 +5461,66 @@ ENTRY %reshape {
           "{devices=[1,1,1,1,2,2]0,2,1,3 last_tile_dims={manual,replicated}}"));
 }
 
+TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[10,10], f32[10,10]) parameter(0)
+  %count.cond = u32[] get-tuple-element((u32[], f32[10,10], f32[10,10]) %vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(u32[] %count.cond, u32[] %limit), direction=LT
+}
+
+%body {
+  %vars = (u32[], f32[10,10], f32[10,10]) parameter(0)
+  %count = u32[] get-tuple-element(%vars), index=0
+  %acc = f32[10,10] get-tuple-element((u32[], f32[10,10],f32[10,10]) %vars), index=1
+  %cvt = s32[10,10] convert(acc)
+
+  %one = u32[] constant(1)
+  %count.1 = u32[] add(u32[] %count, u32[] %one)
+  %acc.i = s32[10,10] add(s32[10,10] %cvt, s32[10,10] %cvt), sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  %acc.1 = f32[10,10] convert(acc.i)
+  ROOT %tuple = (u32[], f32[10,10], f32[10,10]) tuple(u32[] %count.1, f32[10,10] %acc, f32[10,10] %acc.1)
+}
+
+ENTRY %entry {
+  %p0 = f32[10,10] parameter(0)
+  %p0.copy = f32[10,10] copy(f32[10,10] %p0), sharding={devices=[4,1]0,1,2,3}
+  %p1 = f32[10,10] parameter(1)
+  %p2 = f32[10,10] parameter(2)
+  %p2.copy = f32[10,10] copy(f32[10,10] %p2)
+  %zero = u32[] constant(0)
+  %init = (u32[], f32[10,10], f32[10,10]) tuple(u32[] %zero, f32[10,10] %p0.copy, f32[10,10] %p2.copy)
+  %while = (u32[], f32[10,10], f32[10,10]) while((u32[], f32[10,10], f32[10,10]) %init),
+    body=%body, condition=%cond
+  %g1 = u32[] get-tuple-element((u32[], f32[10,10], f32[10,10]) %while), index=0
+  %g2 = f32[10,10] get-tuple-element((u32[], f32[10,10], f32[10,10]) %while), index=1
+  %g3 = f32[10,10] get-tuple-element((u32[], f32[10,10], f32[10,10]) %while), index=2
+  ROOT %t = (u32[], f32[10,10], f32[10,10]) tuple(%g1, %g2, %g3)
+})";
+
+  // Propagation of user-defined partial sharding of while-related instruction
+  // (body root in this test).
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto body_root = FindInstruction(module.get(), "tuple");
+  EXPECT_NE(nullptr, body_root);
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  VLOG(0) << "Mod:";
+  XLA_VLOG_LINES(0, module->ToString());
+  EXPECT_TRUE(changed);
+  const HloInstruction* convert_instr = FindInstruction(module.get(), "cvt");
+
+  EXPECT_THAT(convert_instr, op::Sharding("{devices=[4,1]0,1,2,3}"));
+}
+
 }  // namespace
 }  // namespace xla
