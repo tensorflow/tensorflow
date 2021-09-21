@@ -229,7 +229,8 @@ Status ResolveDeviceAssignment(
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
-  static const int kTimeoutSeconds = 30;
+  // TODO(nnigania): workaround for b/199436990
+  static const int kTimeoutSeconds = 300;
   if (!collective_reduce_info) {
     // An empty device assignment is sufficient for the case where no
     // collectives are present.
