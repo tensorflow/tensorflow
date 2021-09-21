@@ -225,10 +225,15 @@ def while_loop(cond,
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
     # beginning of the loop execution.
-    loop_vars = loop_vars + body_graph.external_captures
+    deferred_external_captures = nest.flatten(
+        [c() for c in body_graph.deferred_external_captures],
+        expand_composites=True)
+    loop_vars = (
+        loop_vars + body_graph.external_captures + deferred_external_captures)
     # TODO(srbs): Update lowering code to create _Enter nodes with
     # is_constant=True for inputs that are directly passed to outputs.
     body_graph.outputs.extend(body_graph.internal_captures)
+    body_graph.outputs.extend(body_graph.deferred_internal_captures)
 
     # Capture the extra `external_captures` of `body_graph` in `cond_graph` so
     # that it expects to receive those as arguments.
@@ -237,7 +242,8 @@ def while_loop(cond,
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
       _duplicate_body_captures_in_cond(
-          cond_graph, body_graph.external_captures[num_cond_captures:])
+          cond_graph, body_graph.external_captures[num_cond_captures:] +
+          deferred_external_captures)
 
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not

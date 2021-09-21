@@ -34,6 +34,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -173,6 +174,22 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         return tape.gradient(x, v)
 
       self.assertAllEqual(fnWithLoop(), 4.0)
+
+  def testDeferredCaptures(self):
+    with context.eager_mode():
+      c = constant_op.constant(10)
+
+      @def_function.function
+      def F():
+
+        def Body(_):
+          return ops.get_default_graph().capture_call_time_value(
+              lambda: c, tensor_spec.TensorSpec([], dtypes.int32))
+
+        x, = while_loop_v2(lambda i: True, Body, [0], maximum_iterations=1)
+        return x
+
+      self.assertAllEqual(F(), 10)
 
   def checkIteratedGradients(self, func):
     with context.eager_mode():
