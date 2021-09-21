@@ -41,7 +41,7 @@ message DispatcherConfig {
 }
 
 // Configuration for a tf.data service WorkerServer.
-// Next id: 10
+// Next id: 11
 message WorkerConfig {
   // The port for the worker to bind to. A value of 0 indicates that the
   // worker may bind to any available port.
@@ -54,6 +54,11 @@ message WorkerConfig {
   // will be replaced with the worker's bound port. This is useful when the port
   // is set to `0`.
   string worker_address = 4;
+  // Tags attached to the worker. This allows reading from selected workers.
+  // For example, by applying a "COLOCATED" tag, tf.data service is able to read
+  // from the local tf.data worker if one exists, then from off-TF-host workers,
+  // to avoid cross-TF-host reads.
+  repeated string worker_tags = 10;
   // How often the worker should heartbeat to the master. A value of 0 indicates
   // that the decision should be left up to the runtime.
   int64 heartbeat_interval_ms = 5;

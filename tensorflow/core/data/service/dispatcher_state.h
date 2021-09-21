@@ -83,12 +83,15 @@ class DispatcherState {
 
   // A worker registered with the dispatcher.
   struct Worker {
-    explicit Worker(const std::string& address,
-                    const std::string& transfer_address)
-        : address(address), transfer_address(transfer_address) {}
+    explicit Worker(const RegisterWorkerUpdate& register_worker)
+        : address(register_worker.worker_address()),
+          transfer_address(register_worker.transfer_address()),
+          tags(register_worker.worker_tags().begin(),
+               register_worker.worker_tags().end()) {}
 
     const std::string address;
     const std::string transfer_address;
+    const std::vector<std::string> tags;
   };
 
   // A key for identifying a named job. The key contains a user-specified name,
@@ -183,18 +186,20 @@ class DispatcherState {
   };
 
   struct Task {
-    explicit Task(int64_t task_id, const std::shared_ptr<Job>& job,
-                  const std::string& worker_address,
-                  const std::string& transfer_address)
-        : task_id(task_id),
+    template <class T>
+    explicit Task(const T& create_task_update, const std::shared_ptr<Job>& job)
+        : task_id(create_task_update.task_id()),
           job(job),
-          worker_address(worker_address),
-          transfer_address(transfer_address) {}
+          worker_address(create_task_update.worker_address()),
+          transfer_address(create_task_update.transfer_address()),
+          worker_tags(create_task_update.worker_tags().begin(),
+                      create_task_update.worker_tags().end()) {}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
     const std::string transfer_address;
+    const std::vector<std::string> worker_tags;
     int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;

@@ -194,3 +194,18 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
+
+tf_py_test(
+    name = "worker_tags_test",
+    size = "medium",
+    srcs = ["worker_tags_test.py"],
+    shard_count = 16,
+    deps = [
+        ":multi_process_cluster",
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

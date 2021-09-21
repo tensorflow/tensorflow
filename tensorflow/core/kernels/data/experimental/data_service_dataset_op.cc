@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/ascii.h"
@@ -94,6 +95,12 @@ constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
 constexpr int64_t kLocalTaskBufferSize = 2;
+
+bool IsColocatedTask(const TaskInfo& task) {
+  return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
+    return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
+  });
+}
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -473,22 +480,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    // Returns whether all local tasks have finished.
-    bool LocalTasksFinished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return !tasks_.empty() && finished_tasks_ >= tasks_.size();
+    // Returns whether the iterator has finished and should return.
+    bool Finished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      return num_running_worker_threads_ == 0 && !ShouldWaitForNext();
     }
 
-    // Returns whether the iterator has finished and should return.
-    // If `target_workers_` is LOCAL, it waits for all local tasks to finish.
-    // If `target_workers_` is ANY, it waits for the job to finish.
-    bool Finished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (num_running_worker_threads_ > 0) {
-        return false;
+    // Returns whether the iterator has more data.
+    bool ShouldWaitForNext() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (should_finish_job_) {
+        return !job_finished_;
       }
-      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL) {
-        return job_finished_ || LocalTasksFinished();
-      }
-      return job_finished_;
+      return tasks_.empty() || finished_tasks_ < tasks_.size();
     }
 
     void EnsureThreadsStarted(IteratorContext* ctx)
@@ -513,9 +515,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void DeleteLocalWorkerTasks() {
-      if (dataset()->target_workers_ != TARGET_WORKERS_LOCAL) {
-        return;
-      }
       std::vector<std::shared_ptr<Task>> tasks;
       {
         mutex_lock l(mu_);
@@ -525,10 +524,24 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (const std::shared_ptr<Task>& task : tasks) {
         std::shared_ptr<DataServiceWorkerImpl> worker =
             LocalWorkers::Get(task->info.worker_address());
-        if (worker) {
+        if (worker && ShouldDeleteLocalTask(task->info)) {
           worker->DeleteLocalTask(task->info);
         }
       }
+    }
+
+    // Deletes the task if it is only read by the local client.
+    bool ShouldDeleteLocalTask(const TaskInfo& task) const {
+      if (StrictRoundRobin()) {
+        return false;
+      }
+
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL) {
+        return true;
+      }
+
+      return dataset()->target_workers_ == TARGET_WORKERS_AUTO &&
+             IsColocatedTask(task);
     }
 
     // Periodically refresh the task list.
@@ -689,6 +702,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (!ShouldReadFromTask(task)) {
           VLOG(3) << "Skipping untargeted worker task " << task.task_id();
+          should_finish_job_ = false;
           continue;
         }
         Status s = AddTask(it->second);
@@ -700,9 +714,25 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    bool ShouldReadFromTask(const TaskInfo& task) const {
+    bool ShouldReadFromTask(const TaskInfo& task) const
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (StrictRoundRobin()) {
+        return true;
+      }
+
+      const bool is_local_task =
+          (LocalWorkers::Get(task.worker_address()) != nullptr);
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-          LocalWorkers::Get(task.worker_address()) == nullptr) {
+          !is_local_task) {
+        return false;
+      }
+
+      // Cross-TF/TPU host reads may cause resource contention on the TF/TPU
+      // hosts. tf.data service avoids reading from non-local TF-hosted workers.
+      const bool is_cross_tf_host_read =
+          !is_local_task && IsColocatedTask(task);
+      if (dataset()->target_workers_ == TARGET_WORKERS_AUTO &&
+          is_cross_tf_host_read) {
         return false;
       }
       return true;
@@ -788,9 +818,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.notify_one();
           }
           while (true) {
-            if (cancelled_ || job_finished_ ||
-                (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-                 LocalTasksFinished())) {
+            if (cancelled_ || !ShouldWaitForNext()) {
               return;
             }
             task_to_process = GetTaskToProcess();
@@ -1218,6 +1246,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
 
     bool job_finished_ = false;
+    bool should_finish_job_ TF_GUARDED_BY(mu_) = true;
+
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
     std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };

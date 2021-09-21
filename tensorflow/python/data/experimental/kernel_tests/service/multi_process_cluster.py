@@ -28,9 +28,10 @@ _WORKER_SHUTDOWN_QUIET_PERIOD_MS = 100
 class _RemoteWorkerProcess(multi_process_lib.Process):
   """Runs a worker server in a new process to simulate a remote worker."""
 
-  def __init__(self, dispatcher_address, pipe_writer):
+  def __init__(self, dispatcher_address, worker_tags, pipe_writer):
     super(_RemoteWorkerProcess, self).__init__()
     self._dispatcher_address = dispatcher_address
+    self._worker_tags = worker_tags
     self._pipe_writer = pipe_writer
 
   def run(self):
@@ -38,7 +39,9 @@ class _RemoteWorkerProcess(multi_process_lib.Process):
 
   def start_worker(self):
     self._worker = data_service_test_base.TestWorker(
-        self._dispatcher_address, _WORKER_SHUTDOWN_QUIET_PERIOD_MS)
+        self._dispatcher_address,
+        _WORKER_SHUTDOWN_QUIET_PERIOD_MS,
+        worker_tags=self._worker_tags)
     self._worker.start()
     self._pipe_writer.send(self._worker.worker_address())
     self._worker.join()
@@ -64,11 +67,12 @@ class MultiProcessCluster(object):
   def __init__(self,
                num_local_workers,
                num_remote_workers,
+               worker_tags=None,
                worker_addresses=None):
     self._work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._start_dispatcher(worker_addresses)
-    self._start_local_workers(num_local_workers)
-    self._start_remote_workers(num_remote_workers)
+    self._start_local_workers(num_local_workers, worker_tags)
+    self._start_remote_workers(num_remote_workers, worker_tags)
 
   def _start_dispatcher(self, worker_addresses, port=0):
     self._dispatcher = server_lib.DispatchServer(
@@ -80,28 +84,32 @@ class MultiProcessCluster(object):
             fault_tolerant_mode=True),
         start=True)
 
-  def _start_local_workers(self, num_workers):
+  def _start_local_workers(self, num_workers, worker_tags=None):
     self._local_workers = []
     for _ in range(num_workers):
-      self.start_local_worker()
+      self.start_local_worker(worker_tags)
 
-  def _start_remote_workers(self, num_workers):
+  def _start_remote_workers(self, num_workers, worker_tags=None):
     # List of (worker address, remote worker process) tuples.
     self._remote_workers = []
     for _ in range(num_workers):
-      self.start_remote_worker()
+      self.start_remote_worker(worker_tags)
 
-  def start_local_worker(self):
+  def start_local_worker(self, worker_tags=None):
     worker = data_service_test_base.TestWorker(
-        self.dispatcher_address(), _WORKER_SHUTDOWN_QUIET_PERIOD_MS)
+        self.dispatcher_address(),
+        _WORKER_SHUTDOWN_QUIET_PERIOD_MS,
+        worker_tags=worker_tags)
     worker.start()
     self._local_workers.append(worker)
 
-  def start_remote_worker(self):
+  def start_remote_worker(self, worker_tags=None):
     pipe_reader, pipe_writer = multi_process_lib.multiprocessing.Pipe(
         duplex=False)
-    worker_process = _RemoteWorkerProcess(self.dispatcher_address(),
-                                          pipe_writer)
+    worker_process = _RemoteWorkerProcess(
+        self.dispatcher_address(),
+        worker_tags=worker_tags,
+        pipe_writer=pipe_writer)
     worker_process.start()
     worker_address = pipe_reader.recv()
     self._remote_workers.append((worker_address, worker_process))
