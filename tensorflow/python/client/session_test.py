@@ -76,6 +76,7 @@ except ImportError:
 defaultdict = collections.defaultdict  # pylint:disable=invalid-name
 
 
+@test_util.with_eager_op_as_function
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1961,8 +1962,15 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(c, 3)
     self.assertEqual(d, 3)
+
     # Ensure that we did log device placement.
-    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    # We have three modes of execution at the moment:
+    # (1) TF1 Graph (2) TF2 eager (3) TF2 eager with function wrapping.
+    # The codepaths taken by each are slightly different in all resulting in
+    # slightly different logging messages.
+    log_msg = ('Executing op AddV2'
+               if ops.executing_eagerly_outside_functions() else 'AddV2')
+    add_executions = [l for l in str(log).splitlines() if log_msg in l]
     self.assertEqual(len(add_executions), 2)
 
     @def_function.function
