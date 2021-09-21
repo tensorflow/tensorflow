@@ -1886,6 +1886,7 @@ cc_library(
     name = "buffer_packing",
     srcs = ["lib/Transforms/buffer_packing.cc"],
     hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
         "include/mlir-hlo/Transforms/PassDetail.h",
         "include/mlir-hlo/Transforms/passes.h",
     ],
