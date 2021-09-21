@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/python/...",
         # copybara:uncomment "//tensorflow_serving/batching/google/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
+        # copybara:uncomment "//third_party/tf_runtime_google/...",
     ],
 )
 
