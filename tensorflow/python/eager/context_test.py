@@ -178,6 +178,21 @@ class ContextTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
       ctx.set_logical_cpu_devices(8)
 
+  def testSetLogicalLocalCpuDevice(self):
+    ctx = context.Context()
+
+    # Manually add a remote CPU device into logical device list.
+    ctx._logical_devices = []  # pylint: disable=protected-access
+    dev = context.LogicalDevice(name='/job:worker/replica:0/task:1',
+                                device_type='CPU')
+    ctx._logical_devices.append(dev)  # pylint: disable=protected-access
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 1)
+
+    # This would pass the check since the previously added device is not local.
+    ctx.set_logical_cpu_devices(4)
+    # Logical device list would be overwritten after initialization.
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 4)
+
   @parameterized.named_parameters([(f'_{stage}', stage) for stage in [
       'hlo', 'hlo_serialized', 'optimized_hlo', 'optimized_hlo_serialized',
       'optimized_hlo_proto_serialized', 'optimized_hlo_dot'

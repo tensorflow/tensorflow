@@ -1618,9 +1618,16 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
     self.ensure_initialized()
     # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
