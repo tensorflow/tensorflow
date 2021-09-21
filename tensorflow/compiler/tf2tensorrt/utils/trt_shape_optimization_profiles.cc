@@ -169,7 +169,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       VLOG(2) << "Input " << i << " is (probably) a shape tensor, n_values="
               << input.NumElements();
     } else {
-      VLOG(2) << "Input " << i << " is not a  shape tensor";
+      VLOG(2) << "Input " << i << " is not a shape tensor";
       actual_shape_values_[i] = {0, {}};
     }
   }

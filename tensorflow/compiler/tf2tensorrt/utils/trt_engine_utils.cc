@@ -114,6 +114,7 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       // Before TRT 8, an input tensor can be pruned if it is not used by the
       // network (e.g. only its shape is used, but the shape is already defined
       // by the optimization profile by setting min=max). nvbugs/3153064
+      VLOG(2) << "Skipping pruned input " << input_name;
       continue;
     }
     const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
@@ -207,6 +208,8 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
     // Allocate output tensor of TRTEngineOp.
     Tensor* output_tensor = nullptr;
     if (ctx) {
+      VLOG(2) << "Allocating " << output_name << " with shape "
+              << output_shape.DebugString();
       TF_RETURN_IF_ERROR(ctx->allocate_output(i, output_shape, &output_tensor));
     } else {
       // This path is used for unit tests. The tensor is already allocated.

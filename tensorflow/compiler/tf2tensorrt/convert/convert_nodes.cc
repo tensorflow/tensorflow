@@ -1566,9 +1566,9 @@ Status Converter::BuildCudaEngine(
     for (int i = 0; i < nbBindings; i++) {
       auto get_location_string = [&engine](int i) {
         if ((*engine)->getLocation(i) == nvinfer1::TensorLocation::kDEVICE)
-          return "on device";
+          return " on device";
         else
-          return "on host";
+          return " on host";
       };
 
       VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i)
