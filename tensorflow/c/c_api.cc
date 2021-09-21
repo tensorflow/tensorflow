@@ -399,12 +399,48 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
   }
 }
 
+// TF_TensorToTensorV1 decodes a string serialization to DT_RESOURCE.
+// In the TFv1 convention, TF_Tensor can hold a string serialization of
+// DT_RESOURCE. The string serialization is converted back to a
+// ResourceHandle during Session run where the TF_Tensor is converted to a
+// Tensor.
+// TFv2 does not depend on this conversion. There is no matching
+// TF_TensorFromTensorV1 because the conversion to string is performed by the
+// python side of Session.
+static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
+  Status status = TF_TensorToTensor(src, dst);
+  if (!status.ok()) {
+    return status;
+  }
+  if (dst->dtype() == tensorflow::DT_RESOURCE) {
+    const auto tensor_interface =
+        tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor);
+
+    if (dst->dims() != 0) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
+          "shape ",
+          dst->shape().DebugString());
+    }
+    *dst = tensorflow::Tensor(tensorflow::DT_RESOURCE, dst->shape());
+    if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
+            string(static_cast<const char*>(tensor_interface->Data()),
+                   tensor_interface->ByteSize()))) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: unable to parse resource handle");
+    }
+    return Status::OK();
+  }
+  return Status::OK();
+}
+
 static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
                           std::vector<std::pair<string, Tensor>>* input_pairs,
                           TF_Status* status) {
   const int ninputs = input_pairs->size();
   for (int i = 0; i < ninputs; ++i) {
-    status->status = TF_TensorToTensor(c_inputs[i], &(*input_pairs)[i].second);
+    status->status =
+        TF_TensorToTensorV1(c_inputs[i], &(*input_pairs)[i].second);
     if (!status->status.ok()) return false;
   }
   return true;

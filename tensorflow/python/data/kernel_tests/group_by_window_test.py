@@ -364,6 +364,15 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         window_size=4)
     self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(np.int64(42)).group_by_window(
+        key_func=lambda x: x,
+        reduce_func=lambda key, window: window.batch(4),
+        window_size=4,
+        name="group_by_window")
+    self.assertDatasetProduces(dataset, [[42]])
+
 
 class GroupByWindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                   parameterized.TestCase):

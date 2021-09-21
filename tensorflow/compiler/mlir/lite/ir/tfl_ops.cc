@@ -3191,6 +3191,25 @@ static LogicalResult Verify(TransposeOp op) {
     }
   }
 
+  // Verify the quantized axis if the type is UniformQuantizedPerAxisType. Other
+  // verifications to make sure the input and output has the same quantization
+  // type, scale and zero point are performed by the SameOperandsAndResultsScale
+  // trait.
+  auto in_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  auto out_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(output_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (in_per_axis_qtype && out_per_axis_qtype) {
+    if (out_per_axis_qtype.getQuantizedDimension() < axes.size() &&
+        axes[out_per_axis_qtype.getQuantizedDimension()] !=
+            in_per_axis_qtype.getQuantizedDimension()) {
+      return op.emitOpError(
+          "has mismatched quantized axes of input and output");
+    }
+  }
+
   return success();
 }
 
@@ -3217,10 +3236,31 @@ static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
     output_shape[i] = input_shape[perm_val.getSExtValue()];
   }
 
-  TFL::TransposeOp::build(
-      *builder, result,
-      RankedTensorType::get(output_shape, input_type.getElementType()), input,
-      perm);
+  auto element_type = input_type.getElementType();
+  // For UniformQuantizedPerAxisType element type, the quantized dimension
+  // should be changed corresponding with the transpose.
+  auto per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (per_axis_qtype) {
+    int32_t quantized_dimension = per_axis_qtype.getQuantizedDimension();
+    for (int i = 0; i < output_shape.size(); ++i) {
+      const APInt perm_val = perm_value_it[i];
+      if (perm_val.getSExtValue() == quantized_dimension) {
+        quantized_dimension = i;
+        break;
+      }
+    }
+    element_type = quant::UniformQuantizedPerAxisType::get(
+        per_axis_qtype.getFlags(), per_axis_qtype.getStorageType(),
+        per_axis_qtype.getExpressedType(), per_axis_qtype.getScales(),
+        per_axis_qtype.getZeroPoints(), quantized_dimension,
+        per_axis_qtype.getStorageTypeMin(), per_axis_qtype.getStorageTypeMax());
+  }
+
+  TFL::TransposeOp::build(*builder, result,
+                          RankedTensorType::get(output_shape, element_type),
+                          input, perm);
 }
 
 //===----------------------------------------------------------------------===//

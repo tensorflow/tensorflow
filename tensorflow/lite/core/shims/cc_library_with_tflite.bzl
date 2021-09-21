@@ -1,6 +1,11 @@
 """Definitions for targets that use the TFLite shims."""
 
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts_warnings",
+    "tflite_custom_c_library",
+    "tflite_jni_binary",
+)
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def alias_with_tflite(name, actual, **kwargs):
@@ -206,5 +211,35 @@ def jni_binary_with_tflite(
     tflite_jni_binary(
         name = name,
         deps = deps + tflite_deps,
+        **kwargs
+    )
+
+def custom_c_library_with_tflite(
+        name,
+        models = [],
+        **kwargs):
+    """Generates a tflite c library, stripping off unused operators.
+
+    This library includes the C API and the op kernels used in the given models.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+       **kwargs: kwargs to cc_library_with_tflite.
+    """
+    tflite_custom_c_library(
+        name = "%s_c_api" % name,
+        models = models,
+    )
+
+    cc_library_with_tflite(
+        name = name,
+        hdrs = ["//tensorflow/lite/core/shims:c/c_api.h"],
+        copts = tflite_copts_warnings(),
+        deps = [
+            ":%s_c_api" % name,
+        ],
         **kwargs
     )

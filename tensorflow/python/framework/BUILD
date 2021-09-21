@@ -2000,7 +2000,6 @@ tf_python_pybind_extension(
     module_name = "_errors_test_helper",
     deps = [
         "//tensorflow/python/lib/core:pybind11_status",
-        "@com_google_absl//absl/strings:cord",
         "@pybind11",
     ],
 )

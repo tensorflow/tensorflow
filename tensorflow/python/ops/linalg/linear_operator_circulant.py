@@ -98,8 +98,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     self._name = name
 
     if block_depth not in allowed_block_depths:
-      raise ValueError("Expected block_depth to be in %s.  Found: %s." %
-                       (allowed_block_depths, block_depth))
+      raise ValueError(
+          f"Argument `block_depth` must be one of {allowed_block_depths}. "
+          f"Received: {block_depth}.")
     self._block_depth = block_depth
 
     with ops.name_scope(name, values=[spectrum]):
@@ -109,12 +110,16 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       if not self.spectrum.dtype.is_complex:
         if is_self_adjoint is False:
           raise ValueError(
-              "A real spectrum always corresponds to a self-adjoint operator.")
+              f"A real spectrum always corresponds to a self-adjoint operator. "
+              f"Expected argument `is_self_adjoint` to be True when "
+              f"`spectrum.dtype.is_complex` = True. "
+              f"Received: {is_self_adjoint}.")
         is_self_adjoint = True
 
       if is_square is False:
         raise ValueError(
-            "A [[nested] block] circulant operator is always square.")
+            f"A [[nested] block] circulant operator is always square. "
+            f"Expected argument `is_square` to be True. Received: {is_square}.")
       is_square = True
 
       super(_BaseLinearOperatorCirculant, self).__init__(
@@ -136,8 +141,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     if spectrum.shape.ndims is not None:
       if spectrum.shape.ndims < self.block_depth:
         raise ValueError(
-            "Argument spectrum must have at least %d dimensions.  Found: %s" %
-            (self.block_depth, spectrum))
+            f"Argument `spectrum` must have at least {self.block_depth} "
+            f"dimensions. Received: {spectrum}.")
     return spectrum
 
   @property

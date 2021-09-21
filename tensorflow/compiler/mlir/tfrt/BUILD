@@ -492,6 +492,7 @@ cc_library(
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:mlirtobef_translate",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
         "@tf_runtime//backends/gpu:gpu_system",
     ],
 )
@@ -626,6 +627,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
 )
 

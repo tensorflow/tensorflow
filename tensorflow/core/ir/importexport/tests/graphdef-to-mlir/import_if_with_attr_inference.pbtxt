@@ -1,10 +1,10 @@
 # RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
 
-# CHECK: tfg.If
-# CHECK-SAME: else_branch = #tfg.func<@XTimesTwo, {}>
-# CHECK_SAME: then_branch = #tfg.func<@IfWithWhileThen, {}>
+# CHECK: If
+# CHECK-SAME: else_branch = #tf_type.func<@XTimesTwo, {}>,
+# CHECK_SAME: then_branch = #tf_type.func<@IfWithWhileThen, {}>
 
-# CHECK:       tfg.func generic @XTimesTwo
+# CHECK: func generic @XTimesTwo
 
 node {
   name: "pred"

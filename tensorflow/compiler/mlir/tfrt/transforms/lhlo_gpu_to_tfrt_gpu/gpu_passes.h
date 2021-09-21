@@ -26,10 +26,6 @@ namespace tensorflow {
 // to be consumed by MLIR's gpu-async-region pass.
 std::unique_ptr<mlir::FunctionPass> createLmhloGpuAsyncConversionPass();
 
-// Creates a pass that rewrites a function that has been processed by MLIR's
-// gpu-async-region pass so that it can be lowered to bef.
-std::unique_ptr<mlir::FunctionPass> createAsyncGpuTfrtConversionPass();
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_GPU_PASSES_H_

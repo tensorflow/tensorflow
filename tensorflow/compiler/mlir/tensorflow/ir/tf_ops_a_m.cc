@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -95,6 +96,41 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
   if (operands.size() == 1) return *inputs().begin();
+
+  // Fold if there is only one single non-zero operand or all operands are zero.
+  int non_zero_index = -1;
+  auto IsKnownZero = [](Attribute attr) {
+    if (!attr) return false;
+    auto splat = attr.dyn_cast<SplatElementsAttr>();
+    if (!splat) return false;
+    Type element_ty = splat.getType().getElementType();
+    if (element_ty.isa<FloatType>())
+      return splat.getSplatValue<llvm::APFloat>().isZero();
+    if (element_ty.isa<IntegerType>())
+      return splat.getSplatValue<llvm::APInt>().getSExtValue() == 0;
+    return false;
+  };
+
+  for (auto it : llvm::enumerate(operands)) {
+    if (IsKnownZero(it.value())) continue;
+    if (non_zero_index != -1) {
+      // Don't fold if we find more than 1 non-zero operand.
+      return {};
+    }
+    non_zero_index = it.index();
+  }
+
+  // Only fold when the result shape is fully static.
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (!result_ty || !result_ty.hasStaticShape()) return {};
+
+  if (non_zero_index == -1)
+    return SplatElementsAttr::get(
+        result_ty, operands.begin()->cast<DenseElementsAttr>().getSplatValue());
+
+  // Check the non-zero operand's shape matches the result shape.
+  if (result_ty == inputs()[non_zero_index].getType())
+    return inputs()[non_zero_index];
   return {};
 }
 

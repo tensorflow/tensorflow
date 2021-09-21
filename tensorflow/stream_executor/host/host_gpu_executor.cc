@@ -182,12 +182,7 @@ port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
 
 bool HostExecutor::HostCallback(Stream* stream,
                                 std::function<port::Status()> callback) {
-  AsHostStream(stream)->EnqueueTask([callback]() {
-    port::Status s = callback();
-    if (!s.ok()) {
-      LOG(WARNING) << "Host callback failed: " << s;
-    }
-  });
+  AsHostStream(stream)->EnqueueTaskWithStatus(callback);
   return true;
 }
 
@@ -269,8 +264,7 @@ bool HostExecutor::StopTimer(Stream* stream, Timer* timer) {
 }
 
 port::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
-  AsHostStream(stream)->BlockUntilDone();
-  return port::Status::OK();
+  return AsHostStream(stream)->BlockUntilDone();
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>

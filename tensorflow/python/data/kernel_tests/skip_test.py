@@ -43,6 +43,11 @@ class SkipTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         [tuple(components[0][i:i + 1]) for i in range(start_range, 10)])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).skip(0, name="skip")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class SkipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):

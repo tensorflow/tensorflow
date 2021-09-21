@@ -74,7 +74,7 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+  opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
   opts.specialization = specialization;
   opts.type_converter = mlir::BufferizeTypeConverter();
 

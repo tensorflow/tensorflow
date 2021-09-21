@@ -341,6 +341,12 @@ class FunctionInstantiationHelper {
           fnode.experimental_debug_info());
     }
 
+    // Tye info.
+    // TODO(mdan): Might this need adjustment at instantiation?
+    if (fnode.has_experimental_type()) {
+      *gnode->mutable_experimental_type() = fnode.experimental_type();
+    }
+
     return Status::OK();
   }
 

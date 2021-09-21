@@ -943,8 +943,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
         // by the target node.
         if (!IsStreamingPort(*node, port_num)) {
           device.memory_usage +=
-              CalculateOutputSize(node_state.output_properties, port_num) *
-              node_state.execution_count;
+              CalculateOutputSize(node_state.output_properties, port_num);
         }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
@@ -1010,8 +1009,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // de-allocate memory.
       if (!IsStreamingPort(*input, port)) {
         input_device.memory_usage -=
-            CalculateOutputSize(input_state.output_properties, port) *
-            node_state.execution_count;
+            CalculateOutputSize(input_state.output_properties, port);
       }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
@@ -1183,6 +1181,9 @@ Costs SchedulerState::Summary() const {
 
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
+      critical_path_costs.persistent_memory = persistent_memory_usage;
+      critical_path_costs.temporary_memory = state.max_memory_usage;
+      critical_path_costs.max_memory = max_memory_usage;
     }
   }
 

@@ -647,6 +647,12 @@ alias(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+cc_library(
+    name = "determinism_test_util",
+    hdrs = [":determinism_test_util.h"],
+    deps = [":determinism"],
+)
+
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],

@@ -3987,11 +3987,7 @@ def add(x, y, name=None):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
-  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`, but it
-  waits for all of its inputs to be ready before beginning to sum.
-  This buffering can result in higher memory consumption when inputs are ready
-  at different times, since the minimum temporary storage required is
-  proportional to the input size rather than the output size.
+  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`.
 
   This op does not [broadcast](
   https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)

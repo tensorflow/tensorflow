@@ -40,9 +40,6 @@
     [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
     and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
     for the migration.
-  * Add experimental API `experimental_from_jax` to support conversion from Jax
-    models to TensorFlow Lite.
-  * Support uint32 data type for cast op.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -143,6 +140,37 @@
     distributed computations.
   * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
     to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+*  distribute.experimental.rpc package:
+   * distribute.experimental.rpc package introduces APIs to create a GRPC based
+    server to register tf.function methods and a GRPC client to invoke remote
+    registered methods. RPC APIs are intended for multi-client setups i.e. server
+  and clients are started in separate binaries independently.
+
+   * Example usage to create server:
+     ```
+        server = tf.distribute.experimental.rpc.Server.create("grpc", 
+                "127.0.0.1:1234")
+        @tf.function(input_signature=[
+          tf.TensorSpec([], tf.int32),
+          tf.TensorSpec([], dtypes.int32)
+        ])
+        def _remote_multiply(a, b):
+          return tf.math.multiply(a, b)
+
+        server.register("multiply", _remote_multiply)
+     ```
+    * Example usage to create client:
+      ```
+      client = tf.distribute.experimental.rpc.Client.create("grpc", address)
+      a = tf.constant(2, dtype=tf.int32)
+      b = tf.constant(3, dtype=tf.int32)
+      result = client.multiply(a, b)
+      ```
+* `tf.lite`:
+  * Add experimental API `experimental_from_jax` to support conversion from Jax
+    models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
+  * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
 
 ## Bug Fixes and Other Changes
 
@@ -167,12 +195,18 @@
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
+    *   Added support for user-defined names of tf.data core Python API, which
+        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs
         that are files. This will enable creating hermetic SavedModels when
         using datasets created from files.
     *   Promoting
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
+        endpoint.
+    *   Promoting
+        `tf.data.experimental.choose_from_datasets` API to
+        `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
         endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.

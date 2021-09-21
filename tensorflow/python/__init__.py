@@ -158,6 +158,11 @@ nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
 
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
+
 # Special dunders that we choose to export:
 _exported_dunders = set([
     '__version__',

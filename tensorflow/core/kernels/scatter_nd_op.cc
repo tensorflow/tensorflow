@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
 
@@ -71,6 +72,11 @@ class ScatterNdOp : public OpKernel {
     const Tensor& updates = c->input(1);
     const Tensor& shape_input = c->input(2);
 
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(c, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for ScatterNd."));
+    }
     OP_REQUIRES(c, indices.shape().dims() >= 1,
                 errors::InvalidArgument(
                     "Indices shape must have rank at least one. Found:",
@@ -146,6 +152,12 @@ class TensorScatterOp : public OpKernel {
     const Tensor& input = c->input(0);
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(c, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for TensorScatter."));
+    }
 
     OP_REQUIRES(c, indices.shape().dims() >= 1,
                 errors::InvalidArgument(
@@ -250,6 +262,11 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(c, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for ScatterNdUpdate."));
+    }
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));

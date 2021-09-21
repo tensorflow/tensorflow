@@ -130,7 +130,7 @@ class _ModuleInitCodeBuilder(object):
     if (api_name in self._dest_import_to_id and
         symbol_id != self._dest_import_to_id[api_name] and symbol_id != -1):
       raise SymbolExposedTwiceError(
-          'Trying to export multiple symbols with same name: %s.' % api_name)
+          f'Trying to export multiple symbols with same name: {api_name}')
     self._dest_import_to_id[api_name] = symbol_id
 
   def add_import(self, symbol, source_module_name, source_name,
@@ -695,13 +695,14 @@ def create_api_files(output_files,
       fp.write(contents)
 
   if missing_output_files:
+    missing_files = ',\n'.join(sorted(missing_output_files))
     raise ValueError(
-        """Missing outputs for genrule:\n%s. Be sure to add these targets to
-tensorflow/python/tools/api/generator/api_init_files_v1.bzl and
-tensorflow/python/tools/api/generator/api_init_files.bzl (tensorflow repo),
-keras/api/api_init_files.bzl (keras repo), or
-tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator repo)""" %
-        ',\n'.join(sorted(missing_output_files)))
+        f'Missing outputs for genrule:\n{missing_files}. Be sure to add these '
+        'targets to tensorflow/python/tools/api/generator/api_init_files_v1.bzl'
+        ' and tensorflow/python/tools/api/generator/api_init_files.bzl '
+        '(tensorflow repo), keras/api/api_init_files.bzl (keras repo), or '
+        'tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator '
+        'repo)')
 
 
 def main():
@@ -815,8 +816,8 @@ def main():
     lazy_loading = False
   else:
     # This should never happen (tm).
-    raise ValueError('Invalid value for --loading flag: %s. Must be one of '
-                     'lazy, static, default.' % args.loading)
+    raise ValueError(f'Invalid value for --loading flag: {args.loading}. Must '
+                     'be one of lazy, static, default.')
 
   create_api_files(outputs, packages, packages_to_ignore,
                    args.root_init_template, args.apidir,

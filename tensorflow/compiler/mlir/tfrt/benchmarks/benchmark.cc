@@ -68,7 +68,7 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
   opts.num_worker_threads = host.GetNumWorkerThreads();
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   if (lower_from_tensorflow) {
-    opts.register_pass_pipeline = tensorflow::CreateTfCpuRtPipeline;
+    opts.register_pass_pipeline = tensorflow::CreateDefaultTfCpuRtPipeline;
   }
   opts.type_converter = mlir::BufferizeTypeConverter();
 

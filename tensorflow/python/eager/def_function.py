@@ -66,6 +66,7 @@ from __future__ import print_function
 
 import functools
 import threading
+import types as types_lib
 import weakref
 import six
 
@@ -77,6 +78,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -1273,14 +1275,28 @@ class Function(core.GenericFunction):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `Function` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `Function` here to allow different instances each
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  For composite
+    # tensors, we can just treat `instance` as a normal parameter.  But for
+    # other types, we create a new instance of `Function` here to allow
+    # different instances each to create variables once, thereby allowing
+    # methods to be decorated with tf.function. Keeps a cache to avoid retracing
+    # the function every time the descriptor is accessed.
+    # TODO(mdan): Identify types which can just be parameters more generically.
+    #
+    # The check for instance._type_spec=None is used because certain classes
+    # (including subclasses of tf.linalg.LinearOperator) are subclasses of
+    # CompositeTensor but do not actually implement the required APIs.
+    # TODO(b/199278478): Fix those classes, then remove the check for
+    # `instance._type_spec is not None`.
+    if (isinstance(instance, composite_tensor.CompositeTensor) and
+        instance._type_spec is not None):  # pylint: disable=protected-access
+      return types_lib.MethodType(self, instance)
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
+      # TODO(mdan): If the CompositeTensor path works, do the same here.
+      # It's unclear whether we need the tf-decorator, or could just call
+      # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
           function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]

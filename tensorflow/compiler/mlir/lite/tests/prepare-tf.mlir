@@ -655,5 +655,18 @@ func @scatter_nd_add(%arg0: tensor<7xi64>, %arg1: tensor<1x1xi32>, %arg2: tensor
   // CHECK:  %[[SCATTER:.*]] = "tf.TensorScatterUpdate"(%arg0, %arg1, %[[ADD]]) : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
   // CHECK:  return %[[SCATTER]] : tensor<7xi64>
 }
+
+func @add_v2_uint32(%arg0: tensor<ui32>, %arg1: tensor<ui32>) -> tensor<ui32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<ui32>, tensor<ui32>) -> tensor<ui32>
+  return %0 : tensor<ui32>
+
+  // CHECK-LABEL: add_v2_uint32
+  // CHECK:  %[[CAST:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<ui32>) -> tensor<i32>
+  // CHECK:  %[[CAST1:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<ui32>) -> tensor<i32>
+  // CHECK:  %[[ADD:.*]] = "tf.AddV2"(%[[CAST]], %[[CAST1]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK:  %[[CAST2:.*]] = "tf.Cast"(%[[ADD]]) {Truncate = false} : (tensor<i32>) -> tensor<ui32>
+  // CHECK:  return %[[CAST2]] : tensor<ui32>
+}
+
 }
 

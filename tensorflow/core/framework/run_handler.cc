@@ -52,8 +52,8 @@ RunHandlerEnvironment::RunHandlerEnvironment(
     : env_(env), thread_options_(thread_options), name_(name) {}
 
 RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
-    std::function<void()> f) {
-  return env_->StartThread(thread_options_, name_, [=]() {
+    std::function<void()> f, const std::string& thread_name) {
+  return env_->StartThread(thread_options_, thread_name, [=]() {
     // Set the processor flag to flush denormals to zero.
     port::ScopedFlushDenormal flush;
     // Set the processor rounding mode to ROUND TO NEAREST.
@@ -366,10 +366,18 @@ void RunHandlerThreadPool::Start() {
       }
     }
     thread_data_[i].sub_thread_pool_id = sub_thread_pool_id;
-    thread_data_[i].thread.reset(
-        env_.CreateThread([this, i, num_blocking_threads]() {
-          WorkerLoop(i, i < num_blocking_threads);
-        }));
+    const bool is_blocking_thread = (i < num_blocking_threads) ? true : false;
+    // The blocking threads will handle both inter and intra op workload;
+    // non-blocking thread will handle intra op workload only; and the
+    // sub thread pool is only provided for blocking threads.
+    // Name the threads accordingly.
+    thread_data_[i].thread.reset(env_.CreateThread(
+        [this, is_blocking_thread, i, sub_thread_pool_id]() {
+          WorkerLoop(i, is_blocking_thread);
+        },
+        is_blocking_thread
+            ? strings::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
+            : strings::StrCat(name_, "_non_blocking_thread")));
   }
 }
 
@@ -377,7 +385,7 @@ void RunHandlerThreadPool::StartOneThreadForTesting() {
   cancelled_ = false;
   thread_data_[0].sub_thread_pool_id = 0;
   thread_data_[0].thread.reset(
-      env_.CreateThread([this]() { WorkerLoop(0, true); }));
+      env_.CreateThread([this]() { WorkerLoop(0, true); }, name_));
 }
 
 void RunHandlerThreadPool::AddWorkToQueue(ThreadWorkSource* tws,
@@ -846,6 +854,10 @@ class RunHandlerPool::Impl {
                                      "#");
             },
             profiler::TraceMeLevel::kInfo);
+        TRACESTRING(
+            strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
+                            "with timeout in millisecond",
+                            timeout_in_ms));
         if (timeout_in_ms == 0) {
           mu_.Await(Condition(this, &Impl::has_free_handler));
         } else if (!mu_.AwaitWithDeadline(

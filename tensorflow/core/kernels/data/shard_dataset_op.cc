@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 
@@ -92,6 +93,12 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index_ + (num_shards_ * index), out_tensors);
   }
 
  protected:

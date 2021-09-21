@@ -8869,6 +8869,17 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 	return op.Output(0)
 }
 
+// OptionsDatasetAttr is an optional argument to OptionsDataset.
+type OptionsDatasetAttr func(optionalAttr)
+
+// OptionsDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func OptionsDatasetMetadata(value string) OptionsDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset by attaching tf.data.Options to `input_dataset`.
 //
 // Arguments:
@@ -8876,11 +8887,14 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 //	serialized_options: A `tf.string` scalar `tf.Tensor` of serialized `tf.data.Options` protocol buffer.
 //
 //
-func OptionsDataset(scope *Scope, input_dataset tf.Output, serialized_options string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func OptionsDataset(scope *Scope, input_dataset tf.Output, serialized_options string, output_types []tf.DataType, output_shapes []tf.Shape, optional ...OptionsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"serialized_options": serialized_options, "output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "OptionsDataset",
 		Input: []tf.Input{
@@ -9061,6 +9075,17 @@ func Iterator(scope *Scope, shared_name string, container string, output_types [
 	return op.Output(0)
 }
 
+// TFRecordDatasetAttr is an optional argument to TFRecordDataset.
+type TFRecordDatasetAttr func(optionalAttr)
+
+// TFRecordDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TFRecordDatasetMetadata(value string) TFRecordDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that emits the records from one or more TFRecord files.
 //
 // Arguments:
@@ -9070,18 +9095,34 @@ func Iterator(scope *Scope, shared_name string, container string, output_types [
 // compression), (ii) "ZLIB", or (iii) "GZIP".
 //	buffer_size: A scalar representing the number of bytes to buffer. A value of
 // 0 means no buffering will be performed.
-func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
+func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output, optional ...TFRecordDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "TFRecordDataset",
 		Input: []tf.Input{
 			filenames, compression_type, buffer_size,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// FixedLengthRecordDatasetAttr is an optional argument to FixedLengthRecordDataset.
+type FixedLengthRecordDatasetAttr func(optionalAttr)
+
+// FixedLengthRecordDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func FixedLengthRecordDatasetMetadata(value string) FixedLengthRecordDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
 }
 
 // Creates a dataset that emits the records from one or more binary files.
@@ -9095,18 +9136,34 @@ func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 //	footer_bytes: A scalar representing the number of bytes to skip at the end
 // of a file.
 //	buffer_size: A scalar representing the number of bytes to buffer. Must be > 0.
-func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf.Output, record_bytes tf.Output, footer_bytes tf.Output, buffer_size tf.Output) (handle tf.Output) {
+func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf.Output, record_bytes tf.Output, footer_bytes tf.Output, buffer_size tf.Output, optional ...FixedLengthRecordDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FixedLengthRecordDataset",
 		Input: []tf.Input{
 			filenames, header_bytes, record_bytes, footer_bytes, buffer_size,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// TextLineDatasetAttr is an optional argument to TextLineDataset.
+type TextLineDatasetAttr func(optionalAttr)
+
+// TextLineDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TextLineDatasetMetadata(value string) TextLineDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
 }
 
 // Creates a dataset that emits the lines of one or more text files.
@@ -9117,15 +9174,20 @@ func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf
 //	compression_type: A scalar containing either (i) the empty string (no
 // compression), (ii) "ZLIB", or (iii) "GZIP".
 //	buffer_size: A scalar containing the number of bytes to buffer.
-func TextLineDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
+func TextLineDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output, optional ...TextLineDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "TextLineDataset",
 		Input: []tf.Input{
 			filenames, compression_type, buffer_size,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -9152,6 +9214,17 @@ func DeleteMultiDeviceIterator(scope *Scope, multi_device_iterator tf.Output, it
 	return scope.AddOperation(opspec)
 }
 
+// RangeDatasetAttr is an optional argument to RangeDataset.
+type RangeDatasetAttr func(optionalAttr)
+
+// RangeDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RangeDatasetMetadata(value string) RangeDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset with a range of values. Corresponds to python's xrange.
 //
 // Arguments:
@@ -9160,11 +9233,14 @@ func DeleteMultiDeviceIterator(scope *Scope, multi_device_iterator tf.Output, it
 //	step: corresponds to step in python's xrange().
 //
 //
-func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...RangeDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "RangeDataset",
 		Input: []tf.Input{
@@ -9174,6 +9250,17 @@ func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// PaddedBatchDatasetAttr is an optional argument to PaddedBatchDataset.
+type PaddedBatchDatasetAttr func(optionalAttr)
+
+// PaddedBatchDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func PaddedBatchDatasetMetadata(value string) PaddedBatchDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
 }
 
 // Creates a dataset that batches and pads `batch_size` elements from the input.
@@ -9189,11 +9276,14 @@ func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output,
 //	padding_values: A list of scalars containing the padding value to use for
 // each of the outputs.
 //
-func PaddedBatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, padded_shapes []tf.Output, padding_values []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+func PaddedBatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, padded_shapes []tf.Output, padding_values []tf.Output, output_shapes []tf.Shape, optional ...PaddedBatchDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "PaddedBatchDataset",
 		Input: []tf.Input{
@@ -9213,6 +9303,14 @@ type BatchDatasetV2Attr func(optionalAttr)
 func BatchDatasetV2ParallelCopy(value bool) BatchDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["parallel_copy"] = value
+	}
+}
+
+// BatchDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func BatchDatasetV2Metadata(value string) BatchDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
 	}
 }
 
@@ -9258,6 +9356,14 @@ type ShuffleDatasetAttr func(optionalAttr)
 func ShuffleDatasetReshuffleEachIteration(value bool) ShuffleDatasetAttr {
 	return func(m optionalAttr) {
 		m["reshuffle_each_iteration"] = value
+	}
+}
+
+// ShuffleDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ShuffleDatasetMetadata(value string) ShuffleDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
 	}
 }
 
@@ -9355,6 +9461,14 @@ func PrefetchDatasetBufferSizeMin(value int64) PrefetchDatasetAttr {
 	}
 }
 
+// PrefetchDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func PrefetchDatasetMetadata(value string) PrefetchDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that asynchronously prefetches elements from `input_dataset`.
 //
 // Arguments:
@@ -9405,6 +9519,17 @@ func LoopCond(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// SkipDatasetAttr is an optional argument to SkipDataset.
+type SkipDatasetAttr func(optionalAttr)
+
+// SkipDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func SkipDatasetMetadata(value string) SkipDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that skips `count` elements from the `input_dataset`.
 //
 // Arguments:
@@ -9413,11 +9538,14 @@ func LoopCond(scope *Scope, input tf.Output) (output tf.Output) {
 // that should be skipped.  If count is -1, skips everything.
 //
 //
-func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...SkipDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "SkipDataset",
 		Input: []tf.Input{
@@ -9429,6 +9557,17 @@ func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_
 	return op.Output(0)
 }
 
+// RepeatDatasetAttr is an optional argument to RepeatDataset.
+type RepeatDatasetAttr func(optionalAttr)
+
+// RepeatDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RepeatDatasetMetadata(value string) RepeatDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that emits the outputs of `input_dataset` `count` times.
 //
 // Arguments:
@@ -9437,11 +9576,14 @@ func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_
 // be repeated. A value of `-1` indicates that it should be repeated infinitely.
 //
 //
-func RepeatDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func RepeatDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...RepeatDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "RepeatDataset",
 		Input: []tf.Input{
@@ -9515,12 +9657,26 @@ func Unpack(scope *Scope, value tf.Output, num int64, optional ...UnpackAttr) (o
 	return output
 }
 
+// ConcatenateDatasetAttr is an optional argument to ConcatenateDataset.
+type ConcatenateDatasetAttr func(optionalAttr)
+
+// ConcatenateDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ConcatenateDatasetMetadata(value string) ConcatenateDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that concatenates `input_dataset` with `another_dataset`.
-func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ConcatenateDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ConcatenateDataset",
 		Input: []tf.Input{
@@ -9682,12 +9838,26 @@ func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output,
 	return op.Output(0)
 }
 
+// TensorDatasetAttr is an optional argument to TensorDataset.
+type TensorDatasetAttr func(optionalAttr)
+
+// TensorDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TensorDatasetMetadata(value string) TensorDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that emits `components` as a tuple of tensors once.
-func TensorDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+func TensorDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape, optional ...TensorDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "TensorDataset",
 		Input: []tf.Input{
@@ -10326,12 +10496,26 @@ func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.O
 	return op.Output(0)
 }
 
+// UniqueDatasetAttr is an optional argument to UniqueDataset.
+type UniqueDatasetAttr func(optionalAttr)
+
+// UniqueDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func UniqueDatasetMetadata(value string) UniqueDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that contains the unique elements of `input_dataset`.
-func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...UniqueDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "UniqueDataset",
 		Input: []tf.Input{
@@ -10360,12 +10544,26 @@ func ExperimentalUnbatchDataset(scope *Scope, input_dataset tf.Output, output_ty
 	return op.Output(0)
 }
 
+// UnbatchDatasetAttr is an optional argument to UnbatchDataset.
+type UnbatchDatasetAttr func(optionalAttr)
+
+// UnbatchDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func UnbatchDatasetMetadata(value string) UnbatchDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // A dataset that splits the elements of its input into multiple elements.
-func UnbatchDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func UnbatchDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...UnbatchDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "UnbatchDataset",
 		Input: []tf.Input{
@@ -12072,6 +12270,14 @@ func ShardDatasetRequireNonEmpty(value bool) ShardDatasetAttr {
 	}
 }
 
+// ShardDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ShardDatasetMetadata(value string) ShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
 //
 // Arguments:
@@ -12667,7 +12873,7 @@ type StatelessSampleDistortedBoundingBoxAttr func(optionalAttr)
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func StatelessSampleDistortedBoundingBoxAspectRatioRange(value []float32) StatelessSampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12678,7 +12884,7 @@ func StatelessSampleDistortedBoundingBoxAspectRatioRange(value []float32) Statel
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func StatelessSampleDistortedBoundingBoxAreaRange(value []float32) StatelessSampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -12849,7 +13055,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12860,7 +13066,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -18678,6 +18884,14 @@ func ShuffleAndRepeatDatasetReshuffleEachIteration(value bool) ShuffleAndRepeatD
 	}
 }
 
+// ShuffleAndRepeatDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ShuffleAndRepeatDatasetMetadata(value string) ShuffleAndRepeatDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that shuffles and repeats elements from `input_dataset`
 //
 // pseudorandomly.
@@ -20095,7 +20309,7 @@ func SampleDistortedBoundingBoxV2Seed2(value int64) SampleDistortedBoundingBoxV2
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -20106,7 +20320,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -20440,7 +20654,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to {dtype:DT_UINT8 tensor_shape:{dim:{size:4}} int_val:255 int_val:0 int_val:0 int_val:255}
+// If not specified, defaults to {dtype:DT_UINT8  tensor_shape:{dim:{size:4}}  int_val:255  int_val:0  int_val:0  int_val:255}
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -21288,6 +21502,17 @@ func TensorScatterUpdate(scope *Scope, tensor tf.Output, indices tf.Output, upda
 	return op.Output(0)
 }
 
+// TakeDatasetAttr is an optional argument to TakeDataset.
+type TakeDatasetAttr func(optionalAttr)
+
+// TakeDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TakeDatasetMetadata(value string) TakeDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that contains `count` elements from the `input_dataset`.
 //
 // Arguments:
@@ -21297,11 +21522,14 @@ func TensorScatterUpdate(scope *Scope, tensor tf.Output, indices tf.Output, upda
 // is taken.
 //
 //
-func TakeDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func TakeDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...TakeDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "TakeDataset",
 		Input: []tf.Input{
@@ -22739,7 +22967,7 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DDilations(value []int64) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -23034,7 +23262,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) Quantized
 // QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -23101,7 +23329,7 @@ func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwi
 // QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -23160,7 +23388,7 @@ func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2D
 // QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -23218,7 +23446,7 @@ func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChann
 // QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
 //
 // value: list of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -24693,6 +24921,17 @@ func TopK(scope *Scope, input tf.Output, k int64, optional ...TopKAttr) (values 
 	return op.Output(0), op.Output(1)
 }
 
+// DatasetToSingleElementAttr is an optional argument to DatasetToSingleElement.
+type DatasetToSingleElementAttr func(optionalAttr)
+
+// DatasetToSingleElementMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func DatasetToSingleElementMetadata(value string) DatasetToSingleElementAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Outputs the single element from the given dataset.
 //
 // Arguments:
@@ -24701,11 +24940,14 @@ func TopK(scope *Scope, input tf.Output, k int64, optional ...TopKAttr) (values 
 //
 //
 // Returns The components of the single element of `input`.
-func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DatasetToSingleElementAttr) (components []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DatasetToSingleElement",
 		Input: []tf.Input{
@@ -25634,7 +25876,7 @@ func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26055,7 +26297,7 @@ func Conv3DBackpropFilterV2DataFormat(value string) Conv3DBackpropFilterV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterV2Dilations(value []int64) Conv3DBackpropFilterV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26098,7 +26340,7 @@ func Conv3DBackpropFilterV2(scope *Scope, input tf.Output, filter_sizes tf.Outpu
 type Conv3DBackpropFilterAttr func(optionalAttr)
 
 // Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26161,7 +26403,7 @@ func Conv3DDataFormat(value string) Conv3DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DDilations(value []int64) Conv3DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26304,7 +26546,7 @@ func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dN
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropInputDilations(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26541,7 +26783,7 @@ func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26660,6 +26902,17 @@ func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, 
 	return scope.AddOperation(opspec)
 }
 
+// RandomDatasetAttr is an optional argument to RandomDataset.
+type RandomDatasetAttr func(optionalAttr)
+
+// RandomDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RandomDatasetMetadata(value string) RandomDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a Dataset that returns pseudorandom numbers.
 //
 // Creates a Dataset that returns a stream of uniformly distributed
@@ -26680,11 +26933,14 @@ func ResourceScatterUpdate(scope *Scope, resource tf.Output, indices tf.Output, 
 //	seed2: A second scalar seed to avoid seed collision.
 //
 //
-func RandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func RandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...RandomDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "RandomDataset",
 		Input: []tf.Input{
@@ -29856,7 +30112,7 @@ func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DDilations(value []int64) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -29987,7 +30243,7 @@ func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropInputDilations(value []int64) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -31276,6 +31532,14 @@ type PaddedBatchDatasetV2Attr func(optionalAttr)
 func PaddedBatchDatasetV2ParallelCopy(value bool) PaddedBatchDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["parallel_copy"] = value
+	}
+}
+
+// PaddedBatchDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func PaddedBatchDatasetV2Metadata(value string) PaddedBatchDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
 	}
 }
 
@@ -33063,6 +33327,14 @@ type TensorSliceDatasetAttr func(optionalAttr)
 func TensorSliceDatasetIsFiles(value bool) TensorSliceDatasetAttr {
 	return func(m optionalAttr) {
 		m["is_files"] = value
+	}
+}
+
+// TensorSliceDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TensorSliceDatasetMetadata(value string) TensorSliceDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
 	}
 }
 
@@ -36025,7 +36297,7 @@ func SparseCrossHashed(scope *Scope, indices []tf.Output, values []tf.Output, sh
 type Conv3DBackpropInputAttr func(optionalAttr)
 
 // Conv3DBackpropInputDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -37929,6 +38201,17 @@ func CudnnRNN(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Outpu
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
+// BatchDatasetAttr is an optional argument to BatchDataset.
+type BatchDatasetAttr func(optionalAttr)
+
+// BatchDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func BatchDatasetMetadata(value string) BatchDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that batches `batch_size` elements from `input_dataset`.
 //
 // Arguments:
@@ -37937,11 +38220,14 @@ func CudnnRNN(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Outpu
 // batch.
 //
 //
-func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...BatchDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "BatchDataset",
 		Input: []tf.Input{
@@ -42577,6 +42863,18 @@ func ResourceSparseApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom 
 	return scope.AddOperation(opspec)
 }
 
+// Whether TPU Embedding is initialized in a distributed TPU system.
+func IsTPUEmbeddingInitialized(scope *Scope) (is_tpu_embedding_initialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IsTPUEmbeddingInitialized",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates and returns an empty tensor map.
 //
 // handle: an empty tensor map
@@ -46696,7 +46994,7 @@ func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -49227,6 +49525,17 @@ func StatelessRandomUniformInt(scope *Scope, shape tf.Output, seed tf.Output, mi
 	return op.Output(0)
 }
 
+// WindowDatasetAttr is an optional argument to WindowDataset.
+type WindowDatasetAttr func(optionalAttr)
+
+// WindowDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func WindowDatasetMetadata(value string) WindowDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 //   Combines (nests of) input elements into a dataset of (nests of) windows.
 //
 //   A "window" is a finite dataset of flat elements of size `size` (or possibly
@@ -49285,11 +49594,14 @@ func StatelessRandomUniformInt(scope *Scope, shape tf.Output, seed tf.Output, mi
 // dropped if its size is smaller than `window_size`.
 //
 //
-func WindowDataset(scope *Scope, input_dataset tf.Output, size tf.Output, shift tf.Output, stride tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func WindowDataset(scope *Scope, input_dataset tf.Output, size tf.Output, shift tf.Output, stride tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...WindowDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "WindowDataset",
 		Input: []tf.Input{
@@ -49846,6 +50158,103 @@ func TPUPartitionedOutput(scope *Scope, inputs tf.Output, num_splits int64, opti
 	return output
 }
 
+// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
+type FusedResizeAndPadConv2DAttr func(optionalAttr)
+
+// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
+//
+// value: If true, the centers of the 4 corner pixels of the input and output tensors are
+// aligned, preserving the values at the corner pixels. Defaults to false.
+// If not specified, defaults to false
+func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
+	return func(m optionalAttr) {
+		m["resize_align_corners"] = value
+	}
+}
+
+// Performs a resize and padding as a preprocess during a convolution.
+//
+// It's often possible to do spatial transformations more efficiently as part of
+// the packing stage of a convolution, so this op allows for an optimized
+// implementation where these stages are fused together. This prevents the need to
+// write out the intermediate results as whole tensors, reducing memory pressure,
+// and we can get some latency gains by merging the transformation calculations.
+// The data_format attribute for Conv2D isn't supported by this op, and defaults to
+// 'NHWC' order.
+// Internally this op uses a single per-graph scratch buffer, which means that it
+// will block if multiple versions are being run in parallel. This is because this
+// operator is primarily an optimization to minimize memory usage.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//	paddings: A two-column matrix specifying the padding sizes. The number of
+// rows must be the same as the rank of `input`.
+//	filter: 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
+// of `input`. Must be in the same order as the dimension specified with format.
+//	padding: The type of padding algorithm to use.
+func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedResizeAndPadConv2D",
+		Input: []tf.Input{
+			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
+type TPUPartitionedInputAttr func(optionalAttr)
+
+// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
+//
+// value: An integer describles which dimension is partitioned. -1 means
+// those inputs are replicated.
+// If not specified, defaults to 0
+func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
+	return func(m optionalAttr) {
+		m["partition_dim"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. This op
+//
+// Arguments:
+//	inputs: A list of partitioned inputs which must have the same shape.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInput",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Replica ID.
 func XlaReplicaId(scope *Scope) (id tf.Output) {
 	if scope.Err() != nil {
@@ -50371,7 +50780,7 @@ func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2d
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -50417,6 +50826,17 @@ func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_s
 	return op.Output(0)
 }
 
+// ZipDatasetAttr is an optional argument to ZipDataset.
+type ZipDatasetAttr func(optionalAttr)
+
+// ZipDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ZipDatasetMetadata(value string) ZipDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that zips together `input_datasets`.
 //
 // The elements of the resulting dataset are created by zipping corresponding
@@ -50429,11 +50849,14 @@ func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_s
 //	input_datasets: List of `N` variant Tensors representing datasets to be zipped together.
 //
 //
-func ZipDataset(scope *Scope, input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ZipDataset(scope *Scope, input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ZipDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ZipDataset",
 		Input: []tf.Input{
@@ -50875,7 +51298,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataTy
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -51281,103 +51704,6 @@ func RetrieveTPUEmbeddingFrequencyEstimatorParameters(scope *Scope, num_shards i
 	return op.Output(0), op.Output(1)
 }
 
-// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
-type FusedResizeAndPadConv2DAttr func(optionalAttr)
-
-// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
-//
-// value: If true, the centers of the 4 corner pixels of the input and output tensors are
-// aligned, preserving the values at the corner pixels. Defaults to false.
-// If not specified, defaults to false
-func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
-	return func(m optionalAttr) {
-		m["resize_align_corners"] = value
-	}
-}
-
-// Performs a resize and padding as a preprocess during a convolution.
-//
-// It's often possible to do spatial transformations more efficiently as part of
-// the packing stage of a convolution, so this op allows for an optimized
-// implementation where these stages are fused together. This prevents the need to
-// write out the intermediate results as whole tensors, reducing memory pressure,
-// and we can get some latency gains by merging the transformation calculations.
-// The data_format attribute for Conv2D isn't supported by this op, and defaults to
-// 'NHWC' order.
-// Internally this op uses a single per-graph scratch buffer, which means that it
-// will block if multiple versions are being run in parallel. This is because this
-// operator is primarily an optimization to minimize memory usage.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
-//	paddings: A two-column matrix specifying the padding sizes. The number of
-// rows must be the same as the rank of `input`.
-//	filter: 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.
-//
-//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
-// of `input`. Must be in the same order as the dimension specified with format.
-//	padding: The type of padding algorithm to use.
-func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FusedResizeAndPadConv2D",
-		Input: []tf.Input{
-			input, size, paddings, filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
-type TPUPartitionedInputAttr func(optionalAttr)
-
-// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
-//
-// value: An integer describles which dimension is partitioned. -1 means
-// those inputs are replicated.
-// If not specified, defaults to 0
-func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
-	return func(m optionalAttr) {
-		m["partition_dim"] = value
-	}
-}
-
-// An op that groups a list of partitioned inputs together. This op
-//
-// Arguments:
-//	inputs: A list of partitioned inputs which must have the same shape.
-//
-// Returns A handle which represents the full shape of partitioned tensors.
-func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUPartitionedInput",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SerializeSparseAttr is an optional argument to SerializeSparse.
 type SerializeSparseAttr func(optionalAttr)
 
@@ -51508,6 +51834,17 @@ func LinSpace(scope *Scope, start tf.Output, stop tf.Output, num tf.Output) (out
 	return op.Output(0)
 }
 
+// CacheDatasetAttr is an optional argument to CacheDataset.
+type CacheDatasetAttr func(optionalAttr)
+
+// CacheDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func CacheDatasetMetadata(value string) CacheDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
 // Creates a dataset that caches elements from `input_dataset`.
 //
 // A CacheDataset will iterate over the input_dataset, and store tensors. If the
@@ -51521,11 +51858,14 @@ func LinSpace(scope *Scope, start tf.Output, stop tf.Output, num tf.Output) (out
 // will be a directory.
 //
 //
-func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...CacheDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "CacheDataset",
 		Input: []tf.Input{

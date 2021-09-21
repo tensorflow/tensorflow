@@ -465,7 +465,7 @@ class RandomUniform(Initializer):
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
                    "of passing it to the constructor", "dtype")
-  def __init__(self, minval=0, maxval=None, seed=None, dtype=dtypes.float32):
+  def __init__(self, minval=.0, maxval=None, seed=None, dtype=dtypes.float32):
     self.minval = minval
     self.maxval = maxval
     self.seed = seed

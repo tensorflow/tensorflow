@@ -70,7 +70,9 @@ const std::vector<std::vector<Tensor>>& MemoryCache::data() {
 
 AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<MemoryCacheManager>(ctx) {}
+    : AnonymousResourceOp<MemoryCacheManager>(ctx,
+                                              /* ref_counting */ false,
+                                              /* return_deleter */ true) {}
 
 string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
 

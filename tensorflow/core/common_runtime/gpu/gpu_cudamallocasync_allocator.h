@@ -83,11 +83,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   bool ClearStats() override;
 
-  void SetStream(void* stream) override {
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-    cuda_stream_ = *(static_cast<CUstream*>(stream));
-#endif
-  }
+  void SetStreamAndPreallocateMemory(void* stream) override;
 
   // With the right VLOG set, it prints:
   // - the number of ptr currently allocated per size (histogram).
@@ -119,6 +115,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   static std::atomic<int> number_instantiated_;
 
   string name_;
+
+  bool reserve_memory_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCudaMallocAsyncAllocator);
 

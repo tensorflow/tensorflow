@@ -3487,6 +3487,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "BatchDatasetV2"
@@ -3524,6 +3531,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -7153,6 +7167,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "CacheDatasetV2"
@@ -7183,6 +7204,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -8454,6 +8482,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -11581,6 +11616,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -16847,6 +16889,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "FinalizeDataset"
@@ -16923,6 +16972,13 @@ op {
     name: "handle"
     type: DT_VARIANT
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -16954,6 +17010,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -17199,6 +17262,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -18660,6 +18730,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -18954,6 +19031,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -20264,6 +20348,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Inv"
@@ -20465,6 +20556,13 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "IsTPUEmbeddingInitialized"
+  output_arg {
+    name: "is_tpu_embedding_initialized"
+    type: DT_BOOL
   }
 }
 op {
@@ -21419,6 +21517,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -22854,6 +22959,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "MapClear"
@@ -22940,6 +23052,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -26895,6 +27014,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "OrderedMapClear"
@@ -27484,6 +27610,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "PaddedBatchDatasetV2"
@@ -27536,6 +27669,13 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -27675,6 +27815,13 @@ op {
       s: "default"
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ParallelConcat"
@@ -27784,6 +27931,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ParallelInterleaveDatasetV2"
@@ -27837,6 +27991,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -27893,6 +28054,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -27957,6 +28125,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ParallelMapDataset"
@@ -28018,6 +28193,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ParallelMapDatasetV2"
@@ -28077,6 +28259,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -29548,6 +29737,13 @@ op {
     type: "int"
     default_value {
       i: 0
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -35179,6 +35375,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -35763,6 +35966,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36403,6 +36613,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36865,6 +37082,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -43600,6 +43824,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterAdd"
@@ -45400,6 +45631,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ShardedFilename"
@@ -45480,6 +45718,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ShuffleAndRepeatDatasetV2"
@@ -45530,6 +45775,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -45573,6 +45825,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ShuffleDatasetV2"
@@ -45603,6 +45862,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -45650,6 +45916,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -45843,6 +46116,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -46269,6 +46549,13 @@ op {
     name: "Tshard_func_args"
     type: "list(type)"
     has_minimum: true
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -53345,6 +53632,13 @@ op {
     name: "handle"
     type: DT_VARIANT
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -53859,6 +54153,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TakeManySparseFromTensorsMap"
@@ -53932,6 +54233,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -55029,6 +55337,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -55884,6 +56199,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -56039,6 +56361,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -56724,6 +57053,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "UnbatchGrad"
@@ -57147,6 +57483,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -58037,6 +58380,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "WindowOp"
@@ -58651,5 +59001,12 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }

@@ -294,6 +294,14 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testName(self, num_parallel_calls):
+    dataset = dataset_ops.Dataset.range(5).batch(
+        5, num_parallel_calls=num_parallel_calls, name='batch')
+    self.assertDatasetProduces(dataset, [list(range(5))])
+
 
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):

@@ -20,9 +20,6 @@ from __future__ import print_function
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.data.util import structure
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -173,6 +170,12 @@ def sample_from_datasets_v1(datasets,
 sample_from_datasets_v1.__doc__ = sample_from_datasets_v2.__doc__
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.choose_from_datasets(...)` instead. Note that, "
+    "unlike the experimental endpoint, the non-experimental endpoint "
+    "sets `stop_on_empty_dataset=True` by default. You should set this "
+    "argument explicitly in case you would like to match the behavior of the "
+    "experimental endpoint.")
 @tf_export("data.experimental.choose_from_datasets", v1=[])
 def choose_from_datasets_v2(datasets,
                             choice_dataset,
@@ -218,17 +221,18 @@ def choose_from_datasets_v2(datasets,
     TypeError: If `datasets` or `choice_dataset` has the wrong type.
     ValueError: If `datasets` is empty.
   """
-  if not datasets:
-    raise ValueError("`datasets` must be a non-empty list of datasets.")
-  if choice_dataset is None or not structure.are_compatible(
-      choice_dataset.element_spec, tensor_spec.TensorSpec([], dtypes.int64)):
-    raise TypeError("`choice_dataset` must be a dataset of scalar "
-                    "`tf.int64` tensors.")
-  # pylint: disable=protected-access
-  return dataset_ops._DirectedInterleaveDataset(choice_dataset, datasets,
-                                                stop_on_empty_dataset)
+  return dataset_ops.Dataset.choose_from_datasets(
+      datasets=datasets,
+      choice_dataset=choice_dataset,
+      stop_on_empty_dataset=stop_on_empty_dataset)
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.choose_from_datasets(...)` instead. Note that, "
+    "unlike the experimental endpoint, the non-experimental endpoint "
+    "sets `stop_on_empty_dataset=True` by default. You should set this "
+    "argument explicitly in case you would like to match the behavior of the "
+    "experimental endpoint.")
 @tf_export(v1=["data.experimental.choose_from_datasets"])
 def choose_from_datasets_v1(datasets,
                             choice_dataset,

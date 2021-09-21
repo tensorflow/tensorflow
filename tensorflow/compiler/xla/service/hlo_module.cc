@@ -252,6 +252,9 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   if (config_.alias_passthrough_params()) {
     s << ", alias_passthrough_params=true";
   }
+  if (config_.allow_spmd_sharding_propagation_to_output()) {
+    s << ", allow_spmd_sharding_propagation_to_output=true";
+  }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
@@ -456,6 +459,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    module_config.set_allow_spmd_sharding_propagation_to_output(
+        execution_options->allow_spmd_sharding_propagation_to_output());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(

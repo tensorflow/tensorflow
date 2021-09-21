@@ -420,6 +420,11 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
     for _ in range(30):
       self.evaluate(next_element())
 
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    dataset = dataset.snapshot(path=self._snapshot_dir, name="snapshot")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
                          parameterized.TestCase):

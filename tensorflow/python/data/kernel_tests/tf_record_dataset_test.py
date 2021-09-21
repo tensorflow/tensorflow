@@ -50,7 +50,7 @@ class TFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
     return repeat_dataset
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordDatasetConstructorErrorsTensorInput(self):
+  def testConstructorErrorsTensorInput(self):
     with self.assertRaisesRegex(TypeError,
                                 "filenames.*must be.*Tensor.*string"):
       readers.TFRecordDataset([1, 2, 3])
@@ -170,11 +170,20 @@ class TFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
         dataset, expected_output=expected_output * 10, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDatasetPathlib(self):
+  def testPathlib(self):
     files = [pathlib.Path(self._filenames[0])]
 
     expected_output = [self._record(0, i) for i in range(self._num_records)]
     ds = readers.TFRecordDataset(files)
+    self.assertDatasetProduces(
+        ds, expected_output=expected_output, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    files = [self._filenames[0]]
+
+    expected_output = [self._record(0, i) for i in range(self._num_records)]
+    ds = readers.TFRecordDataset(files, name="tf_record_dataset")
     self.assertDatasetProduces(
         ds, expected_output=expected_output, assert_items_equal=True)
 

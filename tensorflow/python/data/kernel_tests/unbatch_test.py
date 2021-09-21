@@ -224,6 +224,11 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         (list(range(10)), None)).unbatch().map(lambda x, y: x)
     self.assertDatasetProduces(dataset, expected_output=range(10))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors([42]).unbatch(name="unbatch")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class UnbatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                             parameterized.TestCase):

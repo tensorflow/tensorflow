@@ -32,7 +32,8 @@ def convert_data_format(data_format, ndim):
     elif ndim == 5:
       return 'NDHWC'
     else:
-      raise ValueError('Input rank not supported:', ndim)
+      raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                       'input rank 3, 4 or 5.')
   elif data_format == 'channels_first':
     if ndim == 3:
       return 'NCW'
@@ -41,9 +42,11 @@ def convert_data_format(data_format, ndim):
     elif ndim == 5:
       return 'NCDHW'
     else:
-      raise ValueError('Input rank not supported:', ndim)
+      raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                       'input rank 3, 4 or 5.')
   else:
-    raise ValueError('Invalid data_format:', data_format)
+    raise ValueError(f'Invalid data_format: {data_format}. We only support '
+                     '"channels_first" or "channels_last"')
 
 
 def normalize_tuple(value, n, name):
@@ -69,19 +72,19 @@ def normalize_tuple(value, n, name):
     try:
       value_tuple = tuple(value)
     except TypeError:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                       str(n) + ' integers. Received: ' + str(value))
+      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                       f'integers. Received: {str(value)}')
     if len(value_tuple) != n:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                       str(n) + ' integers. Received: ' + str(value))
+      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                       f'integers. Received: {str(value)}')
     for single_value in value_tuple:
       try:
         int(single_value)
       except (ValueError, TypeError):
-        raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                         str(n) + ' integers. Received: ' + str(value) + ' '
-                         'including element ' + str(single_value) + ' of type' +
-                         ' ' + str(type(single_value)))
+        raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                         f'integers. Received: {str(value)} including element '
+                         f'{str(single_value)} of type '
+                         f'{str(type(single_value))}')
     return value_tuple
 
 
@@ -89,8 +92,8 @@ def normalize_data_format(value):
   data_format = value.lower()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('The `data_format` argument must be one of '
-                     '"channels_first", "channels_last". Received: ' +
-                     str(value))
+                     '"channels_first", "channels_last". Received: '
+                     f'{str(value)}.')
   return data_format
 
 
@@ -98,7 +101,7 @@ def normalize_padding(value):
   padding = value.lower()
   if padding not in {'valid', 'same'}:
     raise ValueError('The `padding` argument must be one of "valid", "same". '
-                     'Received: ' + str(padding))
+                     f'Received: {str(padding)}.')
   return padding
 
 

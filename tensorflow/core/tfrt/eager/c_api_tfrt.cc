@@ -1489,10 +1489,13 @@ tensorflow::Status OperationInterface::Initialize() {
   FunctionCache::FunctionCacheResult result;
 
   tensorflow::TfrtFunctionCompileOptions compile_options;
-  // TODO(tfrt-devs): Formalize the convention of converting TF's device name
-  // to MLIR compilation option's device name.
-  std::string tf_device_name = device_name_;
-  compile_options.default_device = std::move(tf_device_name);
+
+  // Use the host device if the user does not place the function to a specific
+  // device.
+  compile_options.default_device =
+      device_name_.empty() ? context_->GetEagerContext()->HostCPUName()
+                           : device_name_;
+
   // TODO(b/172659131): Do not use TFRT native ops for TF integration for now.
   // Re-enable once we have a concrete plan to implement feature complete
   // TFRT native ops (kernels).

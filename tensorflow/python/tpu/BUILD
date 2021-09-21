@@ -246,6 +246,7 @@ pytype_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:training",
         "//tensorflow/python:util",

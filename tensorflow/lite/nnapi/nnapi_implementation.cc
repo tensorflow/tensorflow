@@ -23,7 +23,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdlib>
 
-#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
 #ifdef __ANDROID__
@@ -314,6 +313,83 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksExecution_enableInputAndOutputPadding);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_setReusable);
+
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
+
 #ifndef __ANDROID__
   // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
   // then determine android_sdk_version by testing which functions are
@@ -434,6 +510,57 @@ std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
   ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setReusable);
 
   ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getRuntimeFeatureLevel);
+
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(
+      SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
 
   // There are several functions that are defined in the SL but are not yet used
   // in the delegate:

@@ -121,6 +121,12 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
         lambda x: math_ops.logical_not(math_ops.equal(x, 5)))
     self.assertDatasetProduces(dataset, range(5))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).take_while(
+        lambda _: True, name="take_while")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class TakeWhileCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                               parameterized.TestCase):

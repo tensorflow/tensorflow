@@ -60,10 +60,10 @@ func @unrollSplit(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<
 }
 
 // CHECK:        func @unrollSplit([[VAL_0:%.*]]: tensor<i32>, [[VAL_1:%.*]]: tensor<1x8x8x1024xf32>) -> (tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>) {
-// CHECK:           [[VAL_2:%.*]] = constant dense<0> : tensor<4xi32>
-// CHECK:           [[VAL_3:%.*]] = constant dense<[0, 0, 0, 256]> : tensor<4xi32>
-// CHECK:           [[VAL_4:%.*]] = constant dense<[0, 0, 0, 768]> : tensor<4xi32>
-// CHECK:           [[VAL_5:%.*]] = constant dense<[-1, -1, -1, 256]> : tensor<4xi32>
+// CHECK-DAG:       [[VAL_2:%.*]] = constant dense<0> : tensor<4xi32>
+// CHECK-DAG:       [[VAL_3:%.*]] = constant dense<[0, 0, 0, 256]> : tensor<4xi32>
+// CHECK-DAG:       [[VAL_4:%.*]] = constant dense<[0, 0, 0, 768]> : tensor<4xi32>
+// CHECK-DAG:       [[VAL_5:%.*]] = constant dense<[-1, -1, -1, 256]> : tensor<4xi32>
 // CHECK:           [[VAL_6:%.*]] = "tfl.slice"([[VAL_1]], [[VAL_2]], [[VAL_5]]) : (tensor<1x8x8x1024xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x8x8x256xf32>
 // CHECK:           [[VAL_7:%.*]] = "tfl.slice"([[VAL_1]], [[VAL_3]], [[VAL_5]]) : (tensor<1x8x8x1024xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x8x8x256xf32>
 // CHECK:           [[VAL_8:%.*]] = "tfl.slice"([[VAL_1]], [[VAL_4]], [[VAL_5]]) : (tensor<1x8x8x1024xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x8x8x256xf32>
@@ -91,11 +91,11 @@ func @unrollSplitV(%arg0: tensor<?x13x13x85xf32>) -> (tensor<?x13x13x2xf32>, ten
 }
 
 // CHECK:   func @unrollSplitV(%[[VAL_0:.*]]: tensor<?x13x13x85xf32>) -> (tensor<?x13x13x2xf32>, tensor<?x13x13x2xf32>, tensor<?x13x13x81xf32>) {
-// CHECK:           %[[VAL_1:.*]] = constant dense<0> : tensor<4xi32>
-// CHECK:           %[[VAL_2:.*]] = constant dense<[0, 0, 0, 2]> : tensor<4xi32>
-// CHECK:           %[[VAL_3:.*]] = constant dense<[-1, -1, -1, 2]> : tensor<4xi32>
-// CHECK:           %[[VAL_4:.*]] = constant dense<[0, 0, 0, 4]> : tensor<4xi32>
-// CHECK:           %[[VAL_5:.*]] = constant dense<[-1, -1, -1, 81]> : tensor<4xi32>
+// CHECK-DAG:           %[[VAL_1:.*]] = constant dense<0> : tensor<4xi32>
+// CHECK-DAG:           %[[VAL_2:.*]] = constant dense<[0, 0, 0, 2]> : tensor<4xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = constant dense<[-1, -1, -1, 2]> : tensor<4xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = constant dense<[0, 0, 0, 4]> : tensor<4xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = constant dense<[-1, -1, -1, 81]> : tensor<4xi32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_3]]) : (tensor<?x13x13x85xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x13x13x2xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_2]], %[[VAL_3]]) : (tensor<?x13x13x85xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x13x13x2xf32>
 // CHECK:           %[[VAL_8:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_5]]) : (tensor<?x13x13x85xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x13x13x81xf32>

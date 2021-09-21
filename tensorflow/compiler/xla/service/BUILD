@@ -3349,13 +3349,14 @@ xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
     deps = [
+        ":dynamic_dimension_inference",
+        ":dynamic_dimension_simplifier",
         ":dynamic_padder",
         ":hlo",
         ":hlo_dce",
         ":hlo_matchers",
         ":hlo_parser",
         ":tuple_simplifier",
-        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -3370,6 +3371,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings",
     ],
 )

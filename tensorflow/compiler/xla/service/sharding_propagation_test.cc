@@ -55,9 +55,26 @@ struct MetadataTestParameter {
   bool clear_metadata = false;
 };
 
+struct MetadataTestParameterWithOutput {
+  explicit MetadataTestParameterWithOutput(bool propagate_metadata,
+                                           bool clear_metadata,
+                                           bool allow_root_sharding_propagation)
+      : propagate_metadata(propagate_metadata),
+        clear_metadata(clear_metadata),
+        allow_root_sharding_propagation(allow_root_sharding_propagation) {}
+
+  bool propagate_metadata = false;
+  bool clear_metadata = false;
+  bool allow_root_sharding_propagation = false;
+};
+
 class ParameterizedMetadataTest
     : public HloTestBase,
       public ::testing::WithParamInterface<MetadataTestParameter> {};
+
+class ParameterizedMetadataTestWithOutput
+    : public HloTestBase,
+      public ::testing::WithParamInterface<MetadataTestParameterWithOutput> {};
 
 std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {
   std::vector<std::string> metadata_strings;
@@ -134,6 +151,51 @@ INSTANTIATE_TEST_SUITE_P(
                           "_",
                           info.param.clear_metadata ? "NoMetadataInModule"
                                                     : "MetadataInModule");
+    });
+
+INSTANTIATE_TEST_SUITE_P(
+    ShardingPropagation, ParameterizedMetadataTestWithOutput,
+    ::testing::Values(MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/false),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/false,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/false,
+                          /*allow_root_sharding_propagation=*/true),
+                      MetadataTestParameterWithOutput(
+                          /*propagate_metadata=*/true,
+                          /*clear_metadata=*/true,
+                          /*allow_root_sharding_propagation=*/true)),
+    [](const ::testing::TestParamInfo<MetadataTestParameterWithOutput>& info) {
+      return absl::StrCat(
+          info.param.propagate_metadata ? "MetadataPropagation"
+                                        : "NoMetadataPropagation",
+          "_",
+          info.param.clear_metadata ? "NoMetadataInModule" : "MetadataInModule",
+          "_",
+          info.param.allow_root_sharding_propagation ? "PropagateToRoot"
+                                                     : "NoPropagateToRoot");
     });
 
 TEST_P(ParameterizedMetadataTest, ShardingMetadataFromInstruction) {
@@ -300,7 +362,7 @@ ENTRY %elementwise {
 }
 
 // Regression Test for b/129569657.
-TEST_P(ParameterizedMetadataTest, BroadcastForwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -316,7 +378,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "broadcast");
@@ -327,6 +390,10 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[1,2,2,1]0,1,2,3}"));
   }
 }
 
@@ -360,7 +427,7 @@ ENTRY %broadcast {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, BroadcastForwardPartial) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPartial) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -376,7 +443,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "broadcast");
@@ -389,6 +457,11 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
   }
 }
 
@@ -453,7 +526,7 @@ ENTRY %broadcast {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, BroadcastUserPartial) {
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastUserPartial) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %broadcast {
@@ -469,7 +542,8 @@ ENTRY %broadcast {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "copy");
@@ -482,6 +556,11 @@ ENTRY %broadcast {
                 ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[4,2,1,1]0,1,2,3,4,5,6,7}"));
   }
 }
 
@@ -670,7 +749,8 @@ ENTRY %reduce {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, ShardedTupleReduceForwardAndBackwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput,
+       ShardedTupleReduceForwardAndBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -706,7 +786,8 @@ ENTRY %main {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* reduce = FindInstruction(module.get(), "reduce");
@@ -724,9 +805,13 @@ ENTRY %main {
       EXPECT_THAT(sharding, ShardingMetadata({}));
     }
   }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{{devices=[2]0,1},{devices=[2]0,1}}"));
+  }
 }
 
-TEST_P(ParameterizedMetadataTest, GetTupleElementForwardPass) {
+TEST_P(ParameterizedMetadataTestWithOutput, GetTupleElementForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %gte {
@@ -752,7 +837,8 @@ ENTRY %gte {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* gte = FindInstruction(module.get(), "gte");
@@ -777,6 +863,10 @@ ENTRY %gte {
           gte1->sharding().tuple_elements()[1], gte2->sharding()}) {
       EXPECT_THAT(sharding, ShardingMetadata({}));
     }
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{replicated}"));
   }
 }
 
@@ -3025,7 +3115,7 @@ ENTRY %entry {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, EinsumLHSBatchPartitioned) {
+TEST_P(ParameterizedMetadataTestWithOutput, EinsumLHSBatchPartitioned) {
   const char* hlo_string = R"(
 HloModule module
 
@@ -3046,7 +3136,8 @@ ENTRY entry {
   }
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          GetParam().allow_root_sharding_propagation)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   auto* rhs_copy = FindInstruction(module.get(), "rhs.copy");
@@ -3062,6 +3153,10 @@ ENTRY entry {
     } else {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{devices=[2,1,1]0,1}"));
   }
 }
 
