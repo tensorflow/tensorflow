@@ -38,8 +38,9 @@ def ReshapeSimplifier : FunctionPass<"reshape-simplifier"> {
 }
 
 def CopyRemoval : FunctionPass<"copy-removal"> {
-  let summary = "Removes operations that implements a CopyOpInterface, if the "
-                "userange of the source ends with that operation.";
+  let summary = "Removes redundant operations that implement a "
+                "CopyOpInterface, if the intersection of the useranges from"
+                "copy source and target only contains the CopyOp.";
   let constructor = "createCopyRemovalPass()";
 }
 

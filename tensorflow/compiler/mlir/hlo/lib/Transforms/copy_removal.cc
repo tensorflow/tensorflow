@@ -31,10 +31,26 @@ public:
         dominators(op) {}
 
   void removeCopy(Operation *op) {
-    // A set with the copy Operation to process.
+    // A set with the copy Operations to process.
     llvm::SetVector<Operation *> toProcess;
     fillProcessSet(toProcess);
 
+    DenseMap<Value, UseInterval::Vector> updatedUserange;
+    DenseMap<Value, UserangeAnalysis::UsePositionList> updatedUsepositions;
+
+    // Lambda expression to update the userange interval.
+    auto lambdaUserangeUpdate = [&](Value v,
+                                    DenseMap<Value, UseInterval::Vector> &map)
+        -> UseInterval::Vector & { return insertUserangeInterval(v, map); };
+    // Lambda expression to update the use-position.
+    auto lambdaUsePosUpdate =
+        [&](Value v, DenseMap<Value, UserangeAnalysis::UsePositionList> &map)
+        -> UserangeAnalysis::UsePositionList & {
+      return insertUserangePositions(v, map);
+    };
+
+    // A set containing copy operations that can be erased.
+    SmallPtrSet<Operation *, 16> toErase;
     while (!toProcess.empty()) {
       Operation *currentOp = toProcess.pop_back_val();
 
@@ -45,32 +61,42 @@ public:
 
       // Get the UserangeIntervals.
       UseInterval::Vector sourceInterval =
-          *userange.getUserangeInterval(copySource).getValue();
+          getOrInsert(copySource, updatedUserange, lambdaUserangeUpdate);
       UseInterval::Vector targetInterval =
-          *userange.getUserangeInterval(copyTarget).getValue();
+          getOrInsert(copyTarget, updatedUserange, lambdaUserangeUpdate);
+
+      UseInterval::Vector intersect = sourceInterval;
 
       // Compute the intersection.
-      UseInterval::intervalIntersect(sourceInterval, targetInterval);
+      UseInterval::intervalIntersect(intersect, targetInterval);
 
       // If the sourceInterval contains more than one UseInterval, there are
       // multiple operations that intersect. The sourceInterval must have at
       // least one UseInterval that contains the copyOp.
-      if (sourceInterval.size() > 1)
+      if (intersect.size() != 1)
         continue;
 
       // Check if all Operations inside the intersection are part of the copyOp.
-      if (!checkAncestor(currentOp, *sourceInterval.begin()))
+      if (!checkAncestor(currentOp, *intersect.begin()))
         continue;
+      UserangeAnalysis::UsePositionList targetUsePosList =
+          getOrInsert(copyTarget, updatedUsepositions, lambdaUsePosUpdate);
 
       // Check if the currentOp dominates all uses of the copyTarget.
-      if (!checkDominance(currentOp, copyTarget))
+      if (!checkDominance(currentOp, copyTarget, targetUsePosList, toErase))
         continue;
-
-      // Replace all uses of the target with the source.
-      copyTarget.replaceAllUsesWith(copySource);
 
       // Merge the Useranges.
       UseInterval::intervalMerge(sourceInterval, targetInterval);
+
+      // Merge the UsePositions.
+      UserangeAnalysis::UsePositionList sourceUsePosList =
+          getOrInsert(copySource, updatedUsepositions, lambdaUsePosUpdate);
+
+      userange.mergeUsePositions(sourceUsePosList, targetUsePosList);
+
+      // Replace all uses of the target with the source.
+      copyTarget.replaceAllUsesWith(copySource);
       toErase.insert(currentOp);
     }
     // Erase the copy operations.
@@ -111,7 +137,7 @@ private:
 
         // Iterate over the UseIntervals and check if the last Operation in the
         // UseInterval implements a CopyOpInterface.
-        for (UseInterval interval : *userangeInterval.getValue()) {
+        for (const UseInterval &interval : *userangeInterval.getValue()) {
           Operation *currentLastUse = userange.getOperation(interval.end);
           auto copyOpInterface = dyn_cast<CopyOpInterface>(currentLastUse);
           if (!copyOpInterface)
@@ -127,21 +153,52 @@ private:
     }
   }
 
+  /// Find the given Value in the DenseMap and return the pointer. If the given
+  /// Value is not in the Map, insert a copy of the given original to the
+  /// DenseMap using the pased update function and return a pointer to that
+  /// element.
+  template <typename T, typename TFunc>
+  T &getOrInsert(Value v, DenseMap<Value, T> &updateMap,
+                 const TFunc &updateFunc) {
+    auto iter = updateMap.find(v);
+    if (iter != updateMap.end())
+      return iter->second;
+    return updateFunc(v, updateMap);
+  }
+
+  /// Insert the original userange intervals of the operation in the map.
+  UseInterval::Vector &
+  insertUserangeInterval(Value v,
+                         DenseMap<Value, UseInterval::Vector> &updateMap) {
+    auto original = userange.getUserangeInterval(v).getValue();
+    auto &entry = updateMap[v];
+    entry = *original;
+    return entry;
+  }
+
+  /// Insert the original use positions of the operation in the map.
+  UserangeAnalysis::UsePositionList &insertUserangePositions(
+      Value v, DenseMap<Value, UserangeAnalysis::UsePositionList> &updateMap) {
+    auto original = userange.getUserangePositions(v).getValue();
+    auto &entry = updateMap[v];
+    entry = *original;
+    return entry;
+  }
+
   /// Check if all uses of the target Value are dominated by given Operation.
   /// Note: The target has always at least one use which is the copy operation.
-  bool checkDominance(Operation *useOp, Value target) {
+  bool checkDominance(Operation *useOp, Value v,
+                      const UserangeAnalysis::UsePositionList &usePosList,
+                      SmallPtrSet<Operation *, 16> &ignoreSet) {
     Block *useBlock = useOp->getBlock();
-    const UserangeAnalysis::UsePositionList &targetUsePosList =
-        *userange.getUserangePositions(target).getValue();
     // Check if any use of the target is not dominated by the useOp. Erased
     // operations are ignored as uses.
-    return !llvm::any_of(targetUsePosList,
-                         [=](const UserangeAnalysis::UsePosition targetUsePos) {
-                           Operation *targetUse = targetUsePos.second;
-                           return toErase.find(targetUse) == toErase.end() &&
-                                  !dominators.dominates(useBlock,
-                                                        targetUse->getBlock());
-                         });
+    return llvm::all_of(
+        usePosList, [=](const UserangeAnalysis::UsePosition usePos) {
+          Operation *use = usePos.second;
+          return ignoreSet.count(use) ||
+                 dominators.dominates(useBlock, use->getBlock());
+        });
   }
 
   /// Check if the given Operation is an ancestor of the operations inside the
@@ -157,9 +214,6 @@ private:
     }
     return true;
   }
-
-  /// A set containing copy operations that can be erased.
-  SmallPtrSet<Operation *, 16> toErase;
 
   /// The current userange info.
   UserangeAnalysis userange;

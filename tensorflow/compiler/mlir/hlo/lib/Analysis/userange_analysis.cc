@@ -256,29 +256,29 @@ void UseInterval::intervalSubtract(UseInterval::Vector &a,
       // iterB is strictly before iterA => increment iterB.
     } else if (*iterA > *iterB) {
       ++iterB;
-    } else if (iterA->start >= iterB->start && iterA->end > iterB->end) {
       // iterB overlaps with the start of iterA, but iterA has some values that
       // go beyond those of iterB. We have to set the start of iterA to the end
       // of iterB + 1 and increment iterB. A(3, 100) - B(3, 5) => A(6,100)
+    } else if (iterA->start >= iterB->start && iterA->end > iterB->end) {
       iterA->start = iterB->end + 1;
       ++iterB;
-    } else if (iterA->end <= iterB->end && iterA->start < iterB->start) {
       // iterB overlaps with the end of iterA, but iterA has some values that
       // come before iterB. We have to set the end of iterA to the start of
       // iterB - 1 and increment iterA. A(4, 50) - B(40, 50) => A(4, 39)
+    } else if (iterA->end <= iterB->end && iterA->start < iterB->start) {
       iterA->end = iterB->start - 1;
       ++iterA;
-    } else if (iterA->start < iterB->start && iterA->end > iterB->end) {
       // iterB is in the middle of iterA. We have to split iterA and increment
       // iterB.
       // A(2, 10) - B(5, 7) => (2, 4), (8, 10)
+    } else if (iterA->start < iterB->start && iterA->end > iterB->end) {
       size_t endA = iterA->end;
       iterA->end = iterB->start - 1;
       iterA = a.insert(iterA, UseInterval(iterB->end + 1, endA));
       ++iterB;
-    } else {
       // Both intervals are equal. We have to erase the whole interval.
       // A(5, 5) - B(5, 5) => {}
+    } else {
       iterA = a.erase(iterA);
       ++iterB;
     }
@@ -290,38 +290,26 @@ void UseInterval::intervalIntersect(UseInterval::Vector &a,
                                     const UseInterval::Vector &b) {
   auto iterB = b.begin();
   auto endB = b.end();
-  for (auto iterA = a.begin(); iterA != a.end() && iterB != endB;) {
-    // iterA is strictly before iterB => erase iterA.
-    if (*iterA < *iterB) {
+  for (auto iterA = a.begin(); iterA != a.end();) {
+    // iterB points to the end, therefore the remaining UseIntervals from A must
+    // be erased or iterA is strictly before iterB => erase iterA.
+    if (iterB == endB || *iterA < *iterB) {
       iterA = a.erase(iterA);
       // iterB is strictly before iterA => increment iterB.
     } else if (*iterA > *iterB) {
       ++iterB;
-      // iterA overlaps with the start of iterB. Set the start of iterA to the
-      // start of iterB and increment iterA.
-    } else if (iterA->start < iterB->start && iterA->end <= iterB->end) {
-      iterA->start = iterB->start;
-      ++iterA;
-      // iterA overlaps with the end of iterB.
-    } else if (iterA->end > iterB->end) {
-      // If iterA overlaps with the start of iterB, the start of iterA must be
-      // set to the start of iterB.
-      if (iterA->start < iterB->start)
-        iterA->start = iterB->start;
-      // The end of iterA must be set to the end of iterB. In addition, if iterB
-      // is not the end-pointer, the remaining interval of iterA must be added
-      // to vector A, because the next UseInterval of B can intersect with the
-      // remaining Interval.
+      // iterB overlaps with iterA => reduce the interval to the overlap and
+      // insert the ending split-off to vector A again.
+    } else {
       size_t currentEndA = iterA->end;
-      iterA->end = iterB->end;
-      if (std::next(iterB) != endB)
+      iterA->start = std::max(iterA->start, iterB->start);
+      iterA->end = std::min(currentEndA, iterB->end);
+      if (currentEndA > iterB->end) {
         iterA = a.insert(std::next(iterA),
                          UseInterval(iterB->end + 1, currentEndA));
-      ++iterB;
-      // Both intervals are equal.
-    } else {
-      ++iterA;
-      ++iterB;
+        ++iterB;
+      } else
+        ++iterA;
     }
   }
 }
@@ -400,22 +388,13 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
   // and compute an interval. Add all computed intervals to the useIntervalMap.
   for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
     Value allocValue = std::get<0>(entry);
-    auto allocUses = allocValue.getUses();
+    const Value::use_range &allocUses = allocValue.getUses();
     size_t dist = std::distance(allocUses.begin(), allocUses.end());
     OperationListT useList;
-    UsePositionList usePosList;
     useList.reserve(dist);
-    usePosList.reserve(dist);
-    for (auto &use : allocUses) {
-      Operation *useOwner = use.getOwner();
-      useList.push_back(useOwner);
-      usePosList.emplace_back(computeId(allocValue, useOwner), useOwner);
-    }
-    std::sort(usePosList.begin(), usePosList.end(),
-              [](const UsePosition &a, const UsePosition &b) {
-                return a.first < b.first;
-              });
-    usePositionMap.insert(std::make_pair(allocValue, usePosList));
+    for (auto &use : allocUses)
+      useList.push_back(use.getOwner());
+    computeUsePositions(allocValue);
 
     UserangeInfoBuilder builder(liveness, {allocValue}, useList);
     OperationListT liveOperations = builder.computeUserange();
@@ -458,8 +437,10 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
         aliasUseranges.insert({alias, aliasOperations});
         useIntervalMap.insert(
             {alias, computeInterval(alias, aliasUseranges[alias])});
+        computeUsePositions(alias);
       }
       UseInterval::intervalMerge(allocInterval, useIntervalMap[alias]);
+      mergeUsePositions(usePositionMap[allocValue], usePositionMap[alias]);
     }
     aliasCache.insert(std::make_pair(allocValue, aliasSet));
 
@@ -479,6 +460,49 @@ size_t UserangeAnalysis::computeId(Value v, Operation *op) const {
   auto writes = mapIter->second.second;
   if (reads.contains(v) && !writes.contains(v)) return doubledID - 1;
   return doubledID;
+}
+
+/// Computes the UsePositions of the given Value, sorts and inserts them into
+/// the usePositionMap.
+void UserangeAnalysis::computeUsePositions(Value v) {
+  // Get the uses of v.
+  const Value::use_range &uses = v.getUses();
+
+  // Create a UsePositionList.
+  UsePositionList usePosList;
+  size_t dist = std::distance(uses.begin(), uses.end());
+  usePosList.reserve(dist);
+
+  // Add all ids and Operations to the UsePositionList.
+  for (auto &use : uses) {
+    Operation *useOwner = use.getOwner();
+    usePosList.emplace_back(computeId(v, useOwner), useOwner);
+  }
+
+  // Sort the UsePositions by ascending Ids.
+  std::sort(usePosList.begin(), usePosList.end(),
+            [](const UsePosition &a, const UsePosition &b) {
+              return a.first < b.first;
+            });
+
+  // Insert the UsePositionList into the usePositionMap.
+  usePositionMap.insert(std::make_pair(v, usePosList));
+}
+
+/// Merges listB into listA, sorts the result and removes all duplicates.
+void UserangeAnalysis::mergeUsePositions(UsePositionList &listA,
+                                         const UsePositionList &listB) {
+  // Insert listB into listA.
+  listA.insert(listA.end(), listB.begin(), listB.end());
+
+  // Sort the resulting listA.
+  std::sort(listA.begin(), listA.end(),
+            [](const UsePosition &a, const UsePosition &b) {
+              return a.first < b.first;
+            });
+
+  // Remove duplicates.
+  listA.erase(std::unique(listA.begin(), listA.end()), listA.end());
 }
 
 /// Checks if the use intervals of the given values interfere.

@@ -38,7 +38,8 @@ std::unique_ptr<FunctionPass> createTestUserangePass();
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 
-/// Creates a pass that removes operations that implements a CopyOpInterface.
+/// Creates a pass that removes redundant operations that implement a
+/// CopyOpInterface.
 std::unique_ptr<FunctionPass> createCopyRemovalPass();
 
 }  // namespace mlir
