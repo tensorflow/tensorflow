@@ -49,7 +49,8 @@ cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
 
 #if CUFFT_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cufft_9_0.inc"
-#else
-// All CUDA-10+ implementations use the same API.
+#elif CUFFT_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cufft_10_0.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cufft_11_0.inc"
 #endif
