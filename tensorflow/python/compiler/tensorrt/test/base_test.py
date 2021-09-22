@@ -30,7 +30,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
-# Tamas: this can be disabled
+
 class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
@@ -70,7 +70,7 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
         ]
     }
 
-# Tamas: needed
+
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
@@ -127,7 +127,6 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     self.DisableNonTrtOptimizers()
 
 
-# Tamas: needed
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
@@ -168,7 +167,7 @@ class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
         not (trt_test.IsQuantizationMode(run_params.precision_mode) and
              not run_params.use_calibration)), "test FP32 and non-calibration"
 
-#Tamas: needed
+
 class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
@@ -204,7 +203,7 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["add2", "add3", "mul1"]
     }
 
-# Tamas: needed
+
 class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
@@ -226,7 +225,6 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
     return {"TRTEngineOp_0": ["c", "add", "add1", "mul"]}
 
 
-#nedded for the error
 class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):

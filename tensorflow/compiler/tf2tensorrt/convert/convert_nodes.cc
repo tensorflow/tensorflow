@@ -1419,9 +1419,10 @@ Status Converter::RenameAndMarkOutputTensors(
     // Set type after marking as output. TRT only supports setType for engine
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
-    if (output.trt_dtype == nvinfer1::DataType::kINT32) {
-      network()->markOutputForShapes(*tensor->trt_tensor());
-    }
+    // if (output.trt_dtype == nvinfer1::DataType::kINT32) {
+    //   network()->markOutputForShapes(*tensor->trt_tensor());
+    //   // this is most probably not needed
+    // }
     output_index++;
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
             << " with data type " << DebugString(output.trt_dtype)
@@ -7192,8 +7193,8 @@ Status ConvertSegmentToGraphDef(
     }
   }
   engine_info->engine_name = StrCat(local_scope, engine_info->engine_name);
+  // This does help UNet example
   engine_info->has_int32_input = has_int32_input || has_int32_output;
-  // engine_info->has_int32_output = has_int32_output;
 
   return Status::OK();
 }
