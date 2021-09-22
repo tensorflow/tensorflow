@@ -128,6 +128,12 @@ class InstructionFusion : public HloModulePass {
     return is_expensive_(instruction);
   }
 
+  // Overwrites the originally initialized is_expensive function.
+  void set_is_expensive(
+      std::function<bool(const HloInstruction& instruction)> is_expensive) {
+    is_expensive_ = is_expensive;
+  }
+
   // Whether multi-output fusion would introduce a cycle into the HLO graph.
   bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
                                      HloInstruction* consumer);
