@@ -43,7 +43,10 @@ Status TfgGrapplerOptimizer::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::GraphDef* optimized_graph) {
-  MLIRContext context;
+  // The grappler passes operate on a single graph, there is no point in
+  // having MLIR threading. Also creating and destroying thread on every
+  // Grappler invocation has a non-trivial cost.
+  MLIRContext context(MLIRContext::Threading::DISABLED);
 #ifndef NDEBUG
   if (VLOG_IS_ON(5))
     fprintf(stderr, "Before Graph: %s\n", item.graph.DebugString().c_str());
