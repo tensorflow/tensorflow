@@ -31,25 +31,29 @@ class DefFunctionAutoclusteringTest(xla_test.XLATestCase):
     if 'tpu' in self.device.lower():
       self.skipTest('Autoclustering does not run on TPU')
 
-    v = variables.Variable(random_ops.random_normal([1024, 1024]))
+    v = variables.Variable(random_ops.random_normal([128, 128]))
 
     @def_function.function(jit_compile=False)
     def update_var(a, b, c):
-      v.assign_add(a * b + c * c)
+      # create 4 ops here, which is the required minimum cluster size.
+      x = a * b
+      y = x + c
+      v.assign(y + v)
 
-    arg1 = random_ops.random_normal([1024, 1024])
-    arg2 = random_ops.random_normal([1024, 1024])
-    arg3 = random_ops.random_normal([1024, 1024])
+    arg1 = random_ops.random_normal([1, 1])
+    arg2 = random_ops.random_normal([1, 1])
+    arg3 = random_ops.random_normal([1, 1])
 
-    initial_usage = context.context().get_memory_info(
-        v.device)['current']
     with context.collect_graphs(optimized=True) as graphs:
+      initial_usage = context.context().get_memory_info(
+          v.device)['current']
       update_var(arg1, arg2, arg3)
-    final_usage = context.context().get_memory_info(
-        v.device)['current']
+      final_usage = context.context().get_memory_info(
+          v.device)['current']
 
     self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
     self.assertEqual(initial_usage, final_usage)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
