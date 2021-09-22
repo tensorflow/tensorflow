@@ -495,6 +495,63 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
   EXPECT_EQ(num_events, 3);
 }
 
+TEST(GroupEventsTest, GroupEventsOrderTest) {
+  // This test verifies that user-defined root event should be processed in the first place
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(1);
+  auto root_producer = plane.GetOrCreateLine(0);
+
+  // Creates an user-defined root event
+  CreateXEvent(&plane, &root_producer, HostEventType::kUnknownHostEventType, 200, 100,
+               {{StatType::kIsRoot, (int64)1},
+                {StatType::kStepNum, (int64)3}});
+
+  // Creates another event which will be registered as `tf_loop_root_events_`
+  CreateXEvent(&plane, &root_producer, HostEventType::kExecutorStateProcess, 0, 10,
+               {{StatType::kStepNum, (int64)4}, {StatType::kIterNum, (int64)4}});
+
+  GroupTfEvents(&raw_space);
+  int num_events = 0;
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        num_events += line.NumEvents();
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              absl::optional<int64> is_root;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kIsRoot)) {
+                is_root = stat->IntValue();
+              }
+              absl::optional<int64> step_num;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kStepNum)) {
+                step_num = stat->IntValue();
+              }
+              // user defined root event has group id assigned
+              if (is_root.has_value()) {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+                EXPECT_TRUE(step_num.has_value());
+                EXPECT_EQ(*step_num, 3);
+              }
+              // another event doesn't have group id assigned
+              else {
+                EXPECT_FALSE(group_id.has_value());
+                EXPECT_TRUE(step_num.has_value());
+                EXPECT_EQ(*step_num, 4);
+              }
+            });
+      });
+  EXPECT_EQ(num_events, 2);
+}
+
 TEST(GroupEventsTest, AsyncEventTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kIsAsync = 1;
