@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -151,6 +152,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* merge_op = nullptr;  // reduction only
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
+  bool run_group_initialization = true;
 };
 
 class CollectiveExecutor;
@@ -319,6 +321,14 @@ class CollectiveExecutor : public core::RefCounted {
     done(errors::Internal(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
+  }
+
+  virtual void CompleteGroupAsync(const DeviceAttributes& device,
+                                  CollGroupParams* group_params,
+                                  CancellationManager* cancel_mgr,
+                                  StatusCallback done) {
+    return cem_->GetParamResolver()->CompleteGroupAsync(device, group_params,
+                                                        cancel_mgr, done);
   }
 
   // Runs the potentially-blocking closure/expensive callback.

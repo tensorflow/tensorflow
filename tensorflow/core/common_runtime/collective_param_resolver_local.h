@@ -96,6 +96,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // Cancels the group if it's still pending.
   void CancelGroup(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
+  // Lookup and populate parameters from an already initialized group.
+  Status LookupAndPopulateGroupParams(CollGroupParams* group_params);
+
   // Used to complete/verify CollInstance.
   struct InstanceRec;
 

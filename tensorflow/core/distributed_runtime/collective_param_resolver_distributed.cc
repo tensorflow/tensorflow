@@ -109,18 +109,29 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   VLOG(1) << "CompleteParams distributed " << device.name() << " for " << cp
           << ": " << cp->ToString();
-  CompleteGroupDistributed(
-      device, &cp->group, cancel_mgr,
-      [this, device, cp, cancel_mgr, done](Status s) {
-        if (s.ok()) {
-          s = dev_resolver_->UpdateDeviceAttributes(cp->group.devices);
-        }
-        if (s.ok()) {
-          CompleteInstanceDistributed(device.name(), cp, cancel_mgr, done);
-        } else {
-          done(s);
-        }
-      });
+  if (cp->run_group_initialization) {
+    CompleteGroupDistributed(
+        device, &cp->group, cancel_mgr,
+        [this, device, cp, cancel_mgr, done](Status s) {
+          if (s.ok()) {
+            s = dev_resolver_->UpdateDeviceAttributes(cp->group.devices);
+          }
+          if (s.ok()) {
+            CompleteInstanceDistributed(device.name(), cp, cancel_mgr, done);
+          } else {
+            done(s);
+          }
+        });
+  } else {
+    // For Collective V3 ops, group is already initialized. Fetch attributes
+    // for the already initialized group to pass to Insitance initialization.
+    auto s = LookupAndPopulateGroupParams(&cp->group);
+    if (s.ok()) {
+      CompleteInstanceDistributed(device.name(), cp, cancel_mgr, done);
+    } else {
+      done(s);
+    }
+  }
 }
 
 void CollectiveParamResolverDistributed::CompleteGroupAsync(

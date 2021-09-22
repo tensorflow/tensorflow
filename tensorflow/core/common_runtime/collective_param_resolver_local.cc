@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -589,19 +590,53 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   return irec;
 }
 
+Status CollectiveParamResolverLocal::LookupAndPopulateGroupParams(
+    CollGroupParams* group) {
+  mutex_lock l(group_mu_);
+  auto group_rec = group_table_.find(group->group_key);
+  if (group_rec == group_table_.end()) {
+    return errors::InvalidArgument("Group ", group->group_key,
+                                   " is not "
+                                   "initialized. Please call group "
+                                   "initialization op first before invoking "
+                                   "collective op.");
+  }
+  mutex_lock lock(group_rec->second->mu);
+  if (!group_rec->second->status.ok()) {
+    return errors::FailedPrecondition(
+        "Failed to run collective due to "
+        "unsuccessful group initialization. "
+        "Group initialization failed with error ",
+        group_rec->second->status.ToString());
+  }
+  *group = group_rec->second->group;
+  return Status::OK();
+}
+
 void CollectiveParamResolverLocal::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   VLOG(1) << "CompleteParams local " << device.name() << " for " << cp << ": "
           << cp->ToString();
-  CompleteGroupLocal(device, &cp->group, cancel_mgr,
-                     [this, device, cp, done](const Status& s) {
-                       if (s.ok()) {
-                         CompleteInstanceLocal(device.name(), cp, done);
-                       } else {
-                         done(s);
-                       }
-                     });
+  if (cp->run_group_initialization) {
+    CompleteGroupLocal(device, &cp->group, cancel_mgr,
+                       [this, device, cp, done](const Status& s) {
+                         if (s.ok()) {
+                           CompleteInstanceLocal(device.name(), cp, done);
+                         } else {
+                           done(s);
+                         }
+                       });
+  } else {
+    // For Collective V3 ops, group is already initialized. Fetch attributes
+    // for the already initialized group to pass to Insitance initialization.
+    auto s = LookupAndPopulateGroupParams(&cp->group);
+    if (s.ok()) {
+      CompleteInstanceLocal(device.name(), cp, done);
+    } else {
+      done(s);
+    }
+  }
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(
