@@ -71,6 +71,7 @@ tf_py_test(
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
