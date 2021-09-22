@@ -2293,6 +2293,21 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
       self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
 
+  def testInvalidInput(self):
+    # Test case for GitHub issue 46890.
+    if test_util.is_xla_enabled():
+      # TODO(b/200850176): test fails with XLA.
+      return
+    with self.session():
+      with self.assertRaises(errors_impl.InternalError):
+        v = image_ops.pad_to_bounding_box(
+            image=np.ones((1, 1, 1)),
+            target_height=5191549470,
+            target_width=5191549470,
+            offset_height=1,
+            offset_width=1)
+        self.evaluate(v)
+
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
