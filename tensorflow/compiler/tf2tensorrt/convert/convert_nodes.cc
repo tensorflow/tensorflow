@@ -1419,6 +1419,9 @@ Status Converter::RenameAndMarkOutputTensors(
     // Set type after marking as output. TRT only supports setType for engine
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
+    if (output.trt_dtype == nvinfer1::DataType::kINT32) {
+      network()->markOutputForShapes(*tensor->trt_tensor());
+    }
     output_index++;
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
             << " with data type " << DebugString(output.trt_dtype)

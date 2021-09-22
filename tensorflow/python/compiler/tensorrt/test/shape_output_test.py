@@ -28,6 +28,10 @@ from tensorflow.python.platform import test
 class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   """Test shape value output with TF-TRT."""
 
+  def setUp(self):
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    self.DisableNonTrtOptimizers()
+
   def GraphFn(self, x):
    q = 2 * x + 1
    q = array_ops.shape(q)
@@ -41,7 +45,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
                             [[2, 2, 5, 3]], [[4]],
                             extra_inputs=[], # [[[1, 1, 2, 3]]],
                             extra_outputs=[], #[[[4]]],
-                            input_mask=[[False, False, False, False]],
+                            input_mask=[[False, True, True, True]], #[[False, False, False, False]],
                             output_mask=[[True]])
 
   def ExpectedEnginesToBuild(self, run_params):
