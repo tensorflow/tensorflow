@@ -572,15 +572,6 @@ void SortRootEventList(EventList* event_list) {
 }
 
 void EventForest::CreateEventGroups() {
-  // Create a group for each TF loop iteration in non-JAX profiles.
-  int64_t group_id = 0;
-  if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
-    for (EventNode* root_event : tf_loop_root_events_) {
-      ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
-    }
-    return;
-  }
-
   // Iterate over all events and collect all root events.
   EventList root_events;
   for (const auto& typed_events : event_node_map_) {
@@ -595,15 +586,28 @@ void EventForest::CreateEventGroups() {
     }
   }
 
-  SortRootEventList(&root_events);
+  int64_t group_id = 0;
+  if (!root_events.empty()) {
+    SortRootEventList(&root_events);
+    for (EventNode* root_event : root_events) {
+      if (RootNeedsGrouping(root_event) &&
+          // Ignores legacy TF root events for JAX profiles.
+          (!HasJaxEvent(event_node_map_) ||
+          !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
+        ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
+      }
+    }
+    if (group_id > 0) {
+      return;
+    }
+  }
 
-  for (EventNode* root_event : root_events) {
-    if (RootNeedsGrouping(root_event) &&
-        // Ignores legacy TF root events for JAX profiles.
-        (!HasJaxEvent(event_node_map_) ||
-         !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
+  // Create a group for each TF loop iteration in non-JAX profiles.
+  if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
+    for (EventNode* root_event : tf_loop_root_events_) {
       ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
+    return;
   }
 }
 
