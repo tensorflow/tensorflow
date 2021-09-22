@@ -998,15 +998,15 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     } else {
       VLOG(4) << "Convolution Autotune has been turned off";
     }
-    cudnn_launch_status = stream->ConvolveBackwardFilterWithExecutionPlan(
-        input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-        filter_desc, &filter_backprop_ptr, &scratch_allocator, algorithm_config,
-        nullptr);
+    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
+        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
+        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+        conv_desc, &scratch_allocator, algorithm_config, nullptr);
   } else {
-    cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
-        input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-        filter_desc, &filter_backprop_ptr, &scratch_allocator, algorithm_config,
-        nullptr);
+    cudnn_launch_status = stream->ConvolveWithAlgorithm(
+        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
+        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+        conv_desc, &scratch_allocator, algorithm_config, nullptr);
   }
 
   if (!cudnn_launch_status.ok()) {

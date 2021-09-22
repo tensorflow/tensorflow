@@ -393,15 +393,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     } else {
       VLOG(4) << "Convolution Autotune has been turned off";
     }
-    cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
+    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
+        se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-        input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
-        nullptr);
+        &scratch_allocator, algorithm_config, nullptr);
   } else {
-    cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+    cudnn_launch_status = stream->ConvolveWithAlgorithm(
+        se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-        input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
-        nullptr);
+        &scratch_allocator, algorithm_config, nullptr);
   }
 
   if (!cudnn_launch_status.ok()) {

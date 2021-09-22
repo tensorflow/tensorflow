@@ -515,15 +515,15 @@ struct LaunchConvOp<GPUDevice, T> {
       } else {
         VLOG(4) << "Convolution Autotune has been turned off";
       }
-      cudnn_launch_status = stream->ConvolveForwardWithExecutionPlan(
-          input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-          output_desc, &output_ptr, &scratch_allocator, algorithm_config,
-          nullptr);
+      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
+          se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
+          filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
+          algorithm_config, nullptr);
     } else {
-      cudnn_launch_status = stream->ConvolveForwardWithAlgorithm(
-          input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-          output_desc, &output_ptr, &scratch_allocator, algorithm_config,
-          nullptr);
+      cudnn_launch_status = stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
+          filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
+          algorithm_config, nullptr);
     }
 
     if (!cudnn_launch_status.ok()) {
