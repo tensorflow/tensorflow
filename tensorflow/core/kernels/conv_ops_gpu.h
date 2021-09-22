@@ -94,6 +94,22 @@ typedef Eigen::GpuDevice GPUDevice;
 // autotuning with a cache, or by falling back to a default if
 // 'cudnn_use_autotune' is true and cuDNN is the statically-chosen DNN backend.
 template <typename T>
+StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
+    bool cudnn_use_autotune,
+    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    const ConvParameters& params, OpKernelContext* ctx,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& bias_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::ActivationMode activation_mode, double conv_input_scale,
+    double side_input_scale, se::DeviceMemory<T> input_ptr,
+    se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
+    se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
+    int64_t scratch_size);
+
+template <typename T>
 StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
