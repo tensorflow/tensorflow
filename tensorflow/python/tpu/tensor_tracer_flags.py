@@ -150,7 +150,9 @@ class TTParameters(object):
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
     self.summary_mode = self._get_summary_mode()
-    self._check_flag_errors()
+    # Do not produce errors or warnings if Tensor Tracer is not enabled.
+    if self.is_enabled():
+      self._check_flag_errors()
 
   def _check_flag_errors(self):
     if self.trace_mode in (TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY):
