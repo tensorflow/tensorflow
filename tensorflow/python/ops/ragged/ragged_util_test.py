@@ -194,7 +194,7 @@ class RaggedUtilTest(test_util.TensorFlowTestCase,
           repeats=2,
           axis='foo',
           exception=TypeError,
-          error='axis must be an int'),
+          error='`axis` must be an int'),
   ])
   def testError(self,
                 descr,
