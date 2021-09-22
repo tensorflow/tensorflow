@@ -1392,6 +1392,17 @@ def FusionOp : LHLO_Op<"fusion", [
       }
       return buffers;
     }
+
+    SmallVector<Operation*> getFusionRoots() {
+      SmallVector<Operation*> roots;
+      for (auto value : getFusionResults()) {
+        Operation* op = value.getDefiningOp();
+        if (roots.empty() || roots.back() != op) {
+          roots.push_back(op);
+        }
+      }
+      return roots;
+    }
   }];
 }
 
