@@ -140,6 +140,10 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
           .failed())
     return op;
 
+  // We need to use the element type of the existing result type to generate
+  // the new result shaped type. This is because rescale can include a cast to
+  // different bit-width types and does not have a TypeAttr to define the
+  // target type.
   auto result = op->getResult(0);
   auto predictedShape = returnedShapes[0];
   auto currentKnowledge = ValueKnowledge::getKnowledgeFromType(result_ty);

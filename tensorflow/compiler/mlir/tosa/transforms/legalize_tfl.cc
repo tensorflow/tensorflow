@@ -2935,9 +2935,9 @@ void LegalizeTFL::runOnFunction() {
     bool castAdded = false;
     SmallVector<Value> castedValues;
     for (auto it : llvm::zip(op->getOperands(), resultTys)) {
-      auto operand = std::get<0>(it);
-      auto currentTy = operand.getType();
-      auto castTy = std::get<1>(it);
+      Value operand = std::get<0>(it);
+      Type currentTy = operand.getType();
+      Type castTy = std::get<1>(it);
       if (currentTy == castTy) {
         castedValues.push_back(operand);
         continue;

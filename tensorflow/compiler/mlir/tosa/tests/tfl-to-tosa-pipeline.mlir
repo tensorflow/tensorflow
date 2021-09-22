@@ -1277,6 +1277,7 @@ func @test_fullyconnected_hybrid(%arg0: tensor<14x19xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: @test_conv2d_infer
+// CHECK: -> tensor<*xf32>
 func @test_conv2d_infer(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> tensor<*xf32> {
   %cst = constant dense<0.000000e+00> : tensor<16xf32>
   // CHECK: tosa.add
