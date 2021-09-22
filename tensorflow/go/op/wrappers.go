@@ -4654,6 +4654,68 @@ func KmeansPlusPlusInitialization(scope *Scope, points tf.Output, num_to_sample 
 	return op.Output(0)
 }
 
+// CollectiveAllToAllV3Attr is an optional argument to CollectiveAllToAllV3.
+type CollectiveAllToAllV3Attr func(optionalAttr)
+
+// CollectiveAllToAllV3TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveAllToAllV3TimeoutSeconds(value float32) CollectiveAllToAllV3Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Mutually exchanges multiple tensors of identical type and shape.
+func CollectiveAllToAllV3(scope *Scope, input tf.Output, communicator tf.Output, group_assignment tf.Output, optional ...CollectiveAllToAllV3Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveAllToAllV3",
+		Input: []tf.Input{
+			input, communicator, group_assignment,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CollectiveReduceV3Attr is an optional argument to CollectiveReduceV3.
+type CollectiveReduceV3Attr func(optionalAttr)
+
+// CollectiveReduceV3TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceV3TimeoutSeconds(value float32) CollectiveReduceV3Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Mutually reduces multiple tensors of identical type and shape.
+func CollectiveReduceV3(scope *Scope, input tf.Output, communicator tf.Output, group_assignment tf.Output, reduction string, optional ...CollectiveReduceV3Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"reduction": reduction}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveReduceV3",
+		Input: []tf.Input{
+			input, communicator, group_assignment,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveBcastRecvV2Attr is an optional argument to CollectiveBcastRecvV2.
 type CollectiveBcastRecvV2Attr func(optionalAttr)
 
@@ -23518,6 +23580,30 @@ func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, 
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Wraps the XLA AllReduce operator
+//
+//   documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
+//
+// Arguments:
+//	input: Array or a non-empty tuple of arrays to reduce across replicas.
+//	group_assignment: Groups between which the reductions are performed.
+//	reduce_op: Reduction computation.
+func XlaAllReduce(scope *Scope, input tf.Output, group_assignment tf.Output, reduce_op string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"reduce_op": reduce_op}
+	opspec := tf.OpSpec{
+		Type: "XlaAllReduce",
+		Input: []tf.Input{
+			input, group_assignment,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // A container for a multi device iterator resource.
 //
 // Returns:
@@ -29822,6 +29908,31 @@ func EluGrad(scope *Scope, gradients tf.Output, outputs tf.Output) (backprops tf
 		Input: []tf.Input{
 			gradients, outputs,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA ReduceScatter operator
+//
+//   documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.
+//
+// Arguments:
+//	input: Array or a non-empty tuple of arrays to reduce across replicas.
+//	group_assignment: Groups between which the reductions are performed.
+//	scatter_dimension: Dimension to scatter.
+//	reduce_op: Reduction computation.
+func XlaReduceScatter(scope *Scope, input tf.Output, group_assignment tf.Output, scatter_dimension tf.Output, reduce_op string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"reduce_op": reduce_op}
+	opspec := tf.OpSpec{
+		Type: "XlaReduceScatter",
+		Input: []tf.Input{
+			input, group_assignment, scatter_dimension,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46540,6 +46651,45 @@ func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_ke
 		return
 	}
 	return sparse_indices, sparse_values, sparse_shapes, dense_values
+}
+
+// CollectiveInitializeCommunicatorAttr is an optional argument to CollectiveInitializeCommunicator.
+type CollectiveInitializeCommunicatorAttr func(optionalAttr)
+
+// CollectiveInitializeCommunicatorCommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveInitializeCommunicatorCommunicationHint(value string) CollectiveInitializeCommunicatorAttr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// CollectiveInitializeCommunicatorTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveInitializeCommunicatorTimeoutSeconds(value float32) CollectiveInitializeCommunicatorAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Initializes a group for collective operations.
+func CollectiveInitializeCommunicator(scope *Scope, group_key tf.Output, rank tf.Output, group_size tf.Output, optional ...CollectiveInitializeCommunicatorAttr) (communicator tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveInitializeCommunicator",
+		Input: []tf.Input{
+			group_key, rank, group_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Records the latency of producing `input_dataset` elements in a StatsAggregator.
