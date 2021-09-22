@@ -248,7 +248,7 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
     return Thunk::Kind::kGemm;
   }
   if (mlir::isa<mlir::gpu::MemcpyOp>(op)) {
-    return Thunk::Kind::kMemcpy;
+    return Thunk::Kind::kCopy;
   }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
     return Thunk::Kind::kNcclAllGather;
