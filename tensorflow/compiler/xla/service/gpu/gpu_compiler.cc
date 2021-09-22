@@ -261,6 +261,8 @@ Status GpuCompiler::OptimizeHloModule(
     *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
   }
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -314,7 +316,7 @@ Status GpuCompiler::OptimizeHloModule(
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
     // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-    if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+    if (debug_options.xla_gpu_use_cudnn_batchnorm()) {
       // Since BatchNorm inference is essentially pointwise operations, it is
       // always advantageous to use kernel fusion rather than cudnn.
       pipeline.AddPass<BatchNormExpander>(
@@ -507,15 +509,13 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
         /*combine_threshold_count=*/256);
     pipeline.AddPass<AllReduceCombiner>(
-        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        debug_options.xla_gpu_all_reduce_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<ReduceScatterCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
 
-    if (hlo_module->config()
-            .debug_options()
-            .xla_gpu_enable_async_all_reduce()) {
+    if (debug_options.xla_gpu_enable_async_all_reduce()) {
       pipeline.AddPass<AsyncCollectiveCreator>(
           AsyncCollectiveCreator::CollectiveCreatorConfig{
               /*convert_all_reduce=*/true,
