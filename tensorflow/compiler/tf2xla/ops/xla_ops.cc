@@ -1165,5 +1165,39 @@ dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
 indices_are_sorted: Boolean indicating if the indices are sorted.
 )doc");
 
+REGISTER_OP("XlaAllReduce")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA AllReduce operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+reduce_op: Reduction computation.
+)doc");
+
+REGISTER_OP("XlaReduceScatter")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Input("scatter_dimension: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .SetShapeFn(shape_inference::ReduceScatterShape)
+    .Doc(R"doc(
+Wraps the XLA ReduceScatter operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+scatter_dimension: Dimension to scatter.
+reduce_op: Reduction computation.
+)doc");
+
 }  // namespace
 }  // namespace tensorflow
