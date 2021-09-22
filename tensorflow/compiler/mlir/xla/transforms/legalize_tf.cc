@@ -4619,12 +4619,13 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     int64_t updates_rank = updates_ty.getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(updates_rank - window_dims, updates_rank,
-                                 &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        rewriter.getI64IntegerAttr(indices_rank - 1), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(
+            llvm::seq<int64_t>(updates_rank - window_dims, updates_rank)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        indices_rank - 1);
 
     Location loc = op.getLoc();
     auto scatter = rewriter.create<ScatterOp>(
@@ -5905,11 +5906,10 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
     int64_t index_vector_dim = segment_ids_rank;
 
     // Put all parameters in a StructAttr.
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(segment_ids_rank, data_rank, &rewriter),
-        GetI64ElementsAttr(inserted_window_dims, &rewriter),
-        GetI64ElementsAttr(scatter_dims_to_operand_dims, &rewriter),
-        rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
+        inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
 
     auto scatter =
         rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,

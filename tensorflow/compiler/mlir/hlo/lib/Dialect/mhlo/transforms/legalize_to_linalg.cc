@@ -2715,8 +2715,7 @@ struct ScatterUpdateOnTensorsConversion
     // comparison state. E.g., if the index_depth is 2, like indices = [[0, 1]],
     // we should use the update value only if (i == 0 and j == 1). However, we
     // can not get both indices in one iteration unless we pack them together.
-    auto index_vector_dim =
-        op.scatter_dimension_numbers().index_vector_dim().getInt();
+    auto index_vector_dim = op.scatter_dimension_numbers().getIndexVectorDim();
     if (indices_ty.getDimSize(index_vector_dim) != 1)
       return rewriter.notifyMatchFailure(op, "require index depth to be 1");
     if (index_vector_dim != indices_ty.getRank() - 1) {
@@ -2745,7 +2744,7 @@ struct ScatterUpdateOnTensorsConversion
 
       exprs.pop_back();
       auto update_window_dims =
-          Extract1DVector(op.scatter_dimension_numbers().update_window_dims());
+          op.scatter_dimension_numbers().getUpdateWindowDims();
       for (auto d : update_window_dims)
         exprs.push_back(rewriter.getAffineDimExpr(d));
       indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
@@ -2755,8 +2754,8 @@ struct ScatterUpdateOnTensorsConversion
 
     auto result_ty = this->typeConverter->convertType(op.getResult().getType())
                          .cast<ShapedType>();
-    auto scatter_dims_to_operand_dims = Extract1DVector(
-        op.scatter_dimension_numbers().scatter_dims_to_operand_dims());
+    auto scatter_dims_to_operand_dims =
+        op.scatter_dimension_numbers().getScatterDimsToOperandDims();
     assert(scatter_dims_to_operand_dims.size() == 1);
     // Do not need init_tensor because we'd like to initialize the output as
     // operand.

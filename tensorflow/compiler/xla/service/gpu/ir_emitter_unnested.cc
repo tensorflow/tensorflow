@@ -2490,8 +2490,7 @@ Status IrEmitterUnnested::EmitScatter(
     for (int64_t i = 0, e = index.size(); i != e; ++i) {
       // For window indices also remember the window size, this comes in handy
       // later.
-      if (BinarySearchDenseElementsAttr(desc.dim_numbers.update_window_dims(),
-                                        i)) {
+      if (llvm::is_contained(desc.dim_numbers.getUpdateWindowDims(), i)) {
         raw_window_multidim.push_back(index[i]);
         raw_window_bounds.push_back(desc.updates_shape.dimensions(i));
       } else {
@@ -2499,7 +2498,7 @@ Status IrEmitterUnnested::EmitScatter(
       }
     }
     DCHECK_EQ(raw_window_multidim.size(),
-              desc.dim_numbers.update_window_dims().size());
+              desc.dim_numbers.getUpdateWindowDims().size());
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
@@ -2507,8 +2506,7 @@ Status IrEmitterUnnested::EmitScatter(
     std::vector<int64_t> input_window_bounds;
 
     for (int64_t i = 0, e = desc.operand_shape.rank(); i != e; ++i) {
-      if (BinarySearchDenseElementsAttr(desc.dim_numbers.inserted_window_dims(),
-                                        i)) {
+      if (llvm::is_contained(desc.dim_numbers.getInsertedWindowDims(), i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
       } else {
@@ -2523,35 +2521,33 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Insert a 1 dimension at the end if index_vector_dim requests one.
     Shape scatter_indices_shape_fixed = desc.scatter_indices_shape;
-    if (desc.dim_numbers.index_vector_dim().getInt() ==
+    if (desc.dim_numbers.getIndexVectorDim() ==
         desc.scatter_indices_shape.rank()) {
       scatter_indices_shape_fixed.add_dimensions(1);
       scatter_indices_shape_fixed.mutable_layout()->add_minor_to_major(
-          desc.dim_numbers.index_vector_dim().getInt());
+          desc.dim_numbers.getIndexVectorDim());
     }
 
     // Now load the indices corresponding to the current window from
     // scatter_indices.
     std::vector<llvm::Value*> raw_scatter_index_multidim =
         input_scatter_multidim;
-    raw_scatter_index_multidim.insert(
-        raw_scatter_index_multidim.begin() +
-            desc.dim_numbers.index_vector_dim().getInt(),
-        nullptr);
+    raw_scatter_index_multidim.insert(raw_scatter_index_multidim.begin() +
+                                          desc.dim_numbers.getIndexVectorDim(),
+                                      nullptr);
     llvm::Value* is_in_bounds = b_.getTrue();
     for (int64_t i = 0,
-                 e = desc.dim_numbers.scatter_dims_to_operand_dims().size();
+                 e = desc.dim_numbers.getScatterDimsToOperandDims().size();
          i != e; ++i) {
       // Our index is stored along index_vector_dim, insert that into the lookup
       // index into scatter_indices.
-      raw_scatter_index_multidim[desc.dim_numbers.index_vector_dim().getInt()] =
+      raw_scatter_index_multidim[desc.dim_numbers.getIndexVectorDim()] =
           index.GetConstantWithIndexType(i);
       llvm_ir::IrArray::Index raw_scatter_index_index(
           raw_scatter_index_multidim, scatter_indices_shape_fixed,
           index.GetType());
 
-      int64_t operand_dim =
-          desc.dim_numbers.scatter_dims_to_operand_dims().getValue<int64_t>(i);
+      int64_t operand_dim = desc.dim_numbers.getScatterDimsToOperandDims()[i];
       TF_ASSIGN_OR_RETURN(
           llvm::Value* const loaded_scatter_index,
           desc.scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(

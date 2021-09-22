@@ -4133,7 +4133,14 @@ func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[ADD]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
+  // CHECK: indices_are_sorted = false,
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentSum"(%data, %segment_ids, %num_segments) : (tensor<8x16x64xf32>, tensor<8x16xi32>, tensor<i32>) -> (tensor<4x64xf32>)
   return %0: tensor<4x64xf32>
@@ -4150,7 +4157,14 @@ func @unsorted_segment_prod(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[MUL:%.*]] = mhlo.multiply [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[MUL]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
+  // CHECK: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentProd"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
   return %0: tensor<4x?xf32>
@@ -4429,10 +4443,10 @@ func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4447,10 +4461,10 @@ func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4465,10 +4479,10 @@ func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4483,10 +4497,10 @@ func @tensor_scatter_min(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMin"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4501,10 +4515,10 @@ func @tensor_scatter_max(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMax"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>

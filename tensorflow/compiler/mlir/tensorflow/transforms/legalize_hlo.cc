@@ -1951,6 +1951,16 @@ bool IsIotaAttr(const DenseIntElementsAttr &attr, int64_t size) {
   return true;
 }
 
+bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size) {
+  if (arr.size() != size) return false;
+  int64_t iota = 0;
+  for (auto s : arr) {
+    if (s != iota) return false;
+    ++iota;
+  }
+  return true;
+}
+
 class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -2230,9 +2240,10 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
       return failure();
     }
 
+    auto scatter_dimension_numbers = scatter_op.scatter_dimension_numbers();
+
     // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
-    int64_t index_vector_dim =
-        scatter_op.scatter_dimension_numbers().index_vector_dim().getInt();
+    int64_t index_vector_dim = scatter_dimension_numbers.getIndexVectorDim();
     if (failed(NormalizeIndexVector(scatter_op, indices, indices_type,
                                     index_vector_dim, rewriter))) {
       return failure();
@@ -2242,9 +2253,9 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
     // both an iota with the same number of elements as the last dimension of
     // start_indices.
     auto inserted_window_dims =
-        scatter_op.scatter_dimension_numbers().inserted_window_dims();
+        scatter_dimension_numbers.getInsertedWindowDims();
     auto scatter_dims_to_operand_dims =
-        scatter_op.scatter_dimension_numbers().scatter_dims_to_operand_dims();
+        scatter_dimension_numbers.getScatterDimsToOperandDims();
     if (!IsIotaAttr(inserted_window_dims, indices_type.getShape().back()) ||
         !IsIotaAttr(scatter_dims_to_operand_dims,
                     indices_type.getShape().back())) {
@@ -2258,10 +2269,9 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
 
     // Verify that update window dims are the tailing dimensions in the update
     // tensor.
-    auto update_window_dims =
-        scatter_op.scatter_dimension_numbers().update_window_dims();
+    auto update_window_dims = scatter_dimension_numbers.getUpdateWindowDims();
     int64_t offset = indices_type.getRank() - 1;
-    for (int64_t o : update_window_dims.getValues<int64_t>()) {
+    for (int64_t o : update_window_dims) {
       if (o != offset) {
         return rewriter.notifyMatchFailure(scatter_op,
                                            "unsupported update window dims");

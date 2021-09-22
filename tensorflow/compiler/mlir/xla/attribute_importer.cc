@@ -60,7 +60,7 @@ mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
       builder->getContext());
 }
 
-mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
+mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
@@ -69,12 +69,9 @@ mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
   std::vector<int64_t> scatter_dims_to_operand_dims(
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
-  return mlir::mhlo::ScatterDimensionNumbers::get(
-      Convert(update_window_dims, builder),
-      Convert(inserted_window_dims, builder),
-      Convert(scatter_dims_to_operand_dims, builder),
-      builder->getI64IntegerAttr(dnums.index_vector_dim()),
-      builder->getContext());
+  return mlir::mhlo::ScatterDimensionNumbersAttr::get(
+      builder->getContext(), update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, dnums.index_vector_dim());
 }
 
 mlir::mhlo::DotDimensionNumbers ConvertDotDimensionNumbers(

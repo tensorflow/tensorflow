@@ -912,12 +912,12 @@ func @main(%input_tensor: tensor<200x100x300xf32>, %scatter_indices: tensor<10x2
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
-    scatter_dimension_numbers = {
-      update_window_dims = dense<[1]> : tensor<1xi64>,
-      inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-      scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-      index_vector_dim = 1 : i64
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>

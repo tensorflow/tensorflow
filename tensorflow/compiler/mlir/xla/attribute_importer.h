@@ -35,7 +35,7 @@ mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the scatter dimensions to attributes.
-mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
+mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the dot dimensions to attributes.

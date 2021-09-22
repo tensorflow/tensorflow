@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -66,6 +67,9 @@ limitations under the License.
 namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
+
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
 
 namespace mlir {
 namespace mhlo {
@@ -4107,7 +4111,7 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
   // index_type.rank.
   const int64_t index_vector_dim =
-      scatter_dimension_numbers().index_vector_dim().getInt();
+      scatter_dimension_numbers().getIndexVectorDim();
   if (index_vector_dim == index_type.getRank()) {
     auto index_shape = index_type.getShape().vec();
     index_shape.push_back(1);
@@ -4144,7 +4148,8 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
     index_index.clear();
     if (index_vector_dim == 0) index_index.push_back(0);
     for (int64_t i = 0; i < update_index.size(); ++i) {
-      if (llvm::count(scatter_dimension_numbers().update_window_dims(), i) == 0)
+      if (llvm::count(scatter_dimension_numbers().getUpdateWindowDims(), i) ==
+          0)
         index_index.push_back(update_index[i]);
       if (index_index.size() == index_vector_dim) index_index.push_back(0);
     }
@@ -4153,23 +4158,20 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
     base_index.assign(base_type.getRank(), 0);
     uint64_t index_count = index_type.getShape()[index_vector_dim];
     for (uint64_t i = 0; i < index_count; ++i) {
-      uint64_t operand_dim = scatter_dimension_numbers()
-                                 .scatter_dims_to_operand_dims()
-                                 .getValue<APInt>({i})
-                                 .getSExtValue();
+      uint64_t operand_dim =
+          scatter_dimension_numbers().getScatterDimsToOperandDims()[i];
       index_index[index_vector_dim] = i;
       base_index[operand_dim] +=
           index.getValue<APInt>(index_index).getSExtValue();
     }
     uint64_t update_window_dim_index = 0;
+    auto inserted_window_dims =
+        scatter_dimension_numbers().getInsertedWindowDims();
+    auto update_window_dims = scatter_dimension_numbers().getUpdateWindowDims();
     for (uint64_t i = 0; i < base_index.size(); ++i) {
-      if (llvm::count(scatter_dimension_numbers().inserted_window_dims(), i))
-        continue;
+      if (llvm::count(inserted_window_dims, i)) continue;
       base_index[i] +=
-          update_index[scatter_dimension_numbers()
-                           .update_window_dims()
-                           .getValue<APInt>({update_window_dim_index})
-                           .getSExtValue()];
+          update_index[update_window_dims[update_window_dim_index]];
       update_window_dim_index++;
     }
 
@@ -4253,6 +4255,10 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
+      >();
   context->loadDialect<tensor::TensorDialect>();
 }
 
@@ -4271,6 +4277,116 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
     return;
   }
   os << "<unknown mhlo type>";
+}
+
+// Entry point for Attribute parsing, TableGen generated code will handle the
+// dispatch to the individual classes.
+Attribute MhloDialect::parseAttribute(DialectAsmParser& parser,
+                                      Type type) const {
+  StringRef attr_tag;
+  if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
+  {
+    Attribute attr;
+    auto parse_result =
+        generatedAttributeParser(getContext(), parser, attr_tag, type, attr);
+    if (parse_result.hasValue()) return attr;
+  }
+  parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
+  return Attribute();
+}
+
+// Entry point for Attribute printing, TableGen generated code will handle the
+// dispatch to the individual classes.
+void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
+  LogicalResult result = generatedAttributePrinter(attr, os);
+  (void)result;
+  assert(succeeded(result));
+}
+
+// Custom printer and parser for ScatterDimensionNumbersAttr.
+void ScatterDimensionNumbersAttr::print(
+    ::mlir::DialectAsmPrinter& printer) const {
+  printer << "scatter<";
+  auto update_window_dims = getUpdateWindowDims();
+  if (!update_window_dims.empty()) {
+    printer << "update_window_dims = [";
+    llvm::interleaveComma(update_window_dims, printer);
+    printer << "], ";
+  }
+  auto inserted_window_dims = getInsertedWindowDims();
+  if (!inserted_window_dims.empty()) {
+    printer << "inserted_window_dims = [";
+    llvm::interleaveComma(inserted_window_dims, printer);
+    printer << "], ";
+  }
+  auto scatter_dims_to_operand_dims = getScatterDimsToOperandDims();
+  if (!scatter_dims_to_operand_dims.empty()) {
+    printer << "scatter_dims_to_operand_dims = [";
+    llvm::interleaveComma(scatter_dims_to_operand_dims, printer);
+    printer << "], ";
+  }
+  if (getIndexVectorDim())
+    printer << "index_vector_dim = " << getIndexVectorDim();
+  printer << ">";
+}
+Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
+                                             DialectAsmParser& parser,
+                                             Type type) {
+  if (parser.parseLess()) return {};
+
+  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
+    dims.clear();
+    if (parser.parseLSquare()) return failure();
+    while (failed(parser.parseOptionalRSquare())) {
+      dims.emplace_back();
+      if (parser.parseInteger(dims.back())) return failure();
+      parser.parseOptionalComma();
+    }
+    return success();
+  };
+  auto parse_keyword = [&](StringRef keyword, bool& seen,
+                           auto parse_values) -> ParseResult {
+    auto loc = parser.getCurrentLocation();
+    if (succeeded(parser.parseOptionalKeyword(keyword))) {
+      if (seen) {
+        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
+        return failure();
+      }
+      seen = true;
+      if (parser.parseEqual() || parse_values()) return failure();
+      parser.parseOptionalComma();
+    }
+    return success();
+  };
+
+  bool seen_update_window_dims = false;
+  SmallVector<int64_t> update_window_dims;
+  bool seen_inserted_window_dims = false;
+  SmallVector<int64_t> inserted_window_dims;
+  bool seen_scatter_dims_to_operand_dims = false;
+  SmallVector<int64_t> scatter_dims_to_operand_dims;
+  bool seen_index_vector_dim = false;
+  int64_t index_vector_dim = 0;
+  // Parse the key-value pair in any order, duplicate are errors.
+  while (failed(parser.parseOptionalGreater())) {
+    if (failed(parse_keyword("update_window_dims", seen_update_window_dims,
+                             [&] { return parse_dims(update_window_dims); })))
+      return {};
+    if (failed(parse_keyword("inserted_window_dims", seen_inserted_window_dims,
+                             [&] { return parse_dims(inserted_window_dims); })))
+      return {};
+    if (failed(parse_keyword(
+            "scatter_dims_to_operand_dims", seen_scatter_dims_to_operand_dims,
+            [&]() { return parse_dims(scatter_dims_to_operand_dims); })))
+      return {};
+    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
+          return parser.parseInteger(index_vector_dim);
+        })))
+      return {};
+  }
+  return ScatterDimensionNumbersAttr::get(
+      context, update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, index_vector_dim);
 }
 
 //===----------------------------------------------------------------------===//

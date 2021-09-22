@@ -340,28 +340,26 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
-    mlir::mhlo::ScatterDimensionNumbers input) {
+    mlir::mhlo::ScatterDimensionNumbersAttr input) {
   xla::ScatterDimensionNumbers output;
 
-  auto update_window_dims = ConvertDenseIntAttr(input.update_window_dims());
+  auto update_window_dims = input.getUpdateWindowDims();
   std::copy(update_window_dims.begin(), update_window_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_update_window_dims()));
 
-  auto inserted_window_dims = ConvertDenseIntAttr(input.inserted_window_dims());
+  auto inserted_window_dims = input.getInsertedWindowDims();
   std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_inserted_window_dims()));
 
-  auto scatter_dims_to_operand_dims =
-      ConvertDenseIntAttr(input.scatter_dims_to_operand_dims());
+  auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
             scatter_dims_to_operand_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_dims_to_operand_dims()));
 
-  output.set_index_vector_dim(
-      ConvertAPInt(input.index_vector_dim().getValue()));
+  output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
 }
 
