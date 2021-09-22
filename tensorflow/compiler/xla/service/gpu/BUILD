@@ -894,7 +894,6 @@ cc_library(
             "//tensorflow/stream_executor/cuda:cudnn_stub",
             "//tensorflow/stream_executor/cuda:cufft_stub",
             "//tensorflow/stream_executor/cuda:cusolver_stub",
-            "@tf_runtime//backends/gpu:cublas_compat",
         ],
         "//conditions:default": [],
     }),

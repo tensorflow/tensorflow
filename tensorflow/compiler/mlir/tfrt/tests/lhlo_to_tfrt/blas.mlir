@@ -31,7 +31,7 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[BETA]],
   // CHECK-SAME: %arg4, CUDA_R_32F, [[LDC]],
-  // CHECK-SAME: CUDA_R_32F, [[ALGO]], %arg0
+  // CHECK-SAME: CUBLAS_COMPUTE_32F, [[ALGO]], %arg0
 
   "lmhlo_gpu.gemm"(%lhs, %rhs, %output) { dot_dimension_numbers = {
        lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
@@ -81,7 +81,7 @@ func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]], [[STRIDEA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[STRIDEB]], [[BETA]],
   // CHECK-SAME: %arg4, CUDA_R_32F, [[LDC]], [[STRIDEC]], [[BATCH]],
-  // CHECK-SAME: CUDA_R_32F, [[ALGO]], %arg0
+  // CHECK-SAME: CUBLAS_COMPUTE_32F, [[ALGO]], %arg0
 
   "lmhlo_gpu.gemm"(%lhs, %rhs, %output) { dot_dimension_numbers = {
        lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
@@ -129,7 +129,7 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
   // CHECK-SAME: %arg3, CUDA_R_32F, [[LDA]],
   // CHECK-SAME: %arg2, CUDA_R_32F, [[LDB]], [[BETA]],
   // CHECK-SAME: %arg5, CUDA_R_32F, [[LDC]],
-  // CHECK-SAME: CUDA_R_32F, [[ALGO]], %arg0
+  // CHECK-SAME: CUBLAS_COMPUTE_32F, [[ALGO]], %arg0
 
   "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) { dot_dimension_numbers = {
        lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
