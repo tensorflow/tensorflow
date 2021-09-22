@@ -67,10 +67,9 @@ class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
 
 #define DECL_CONVERT_OP(tfl_op)                                                \
   struct ConvertTFL##tfl_op##Op : public ConversionPattern {                   \
-    explicit ConvertTFL##tfl_op##Op(MLIRContext* context,                      \
-                                    TypeConverter& converter)                  \
-        : ConversionPattern(converter, TFL::tfl_op##Op::getOperationName(), 1, \
-                            context) {}                                        \
+    explicit ConvertTFL##tfl_op##Op(MLIRContext* context)                      \
+        : ConversionPattern(TFL::tfl_op##Op::getOperationName(), 1, context) { \
+    }                                                                          \
     LogicalResult matchAndRewrite(                                             \
         Operation* op, ArrayRef<Value> operands,                               \
         ConversionPatternRewriter& rewriter) const override;                   \
@@ -159,9 +158,8 @@ DECL_CONVERT_OP(FakeQuant);
 // bits. Need to do a customized truncate here instead of tablegen to handle
 // attribute with negative value.
 struct ConvertConstantOp : public ConversionPattern {
-  explicit ConvertConstantOp(MLIRContext* context, TypeConverter& converter)
-      : ConversionPattern(converter, ConstantOp::getOperationName(), 1,
-                          context) {}
+  explicit ConvertConstantOp(MLIRContext* context)
+      : ConversionPattern(ConstantOp::getOperationName(), 1, context) {}
   LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override;
@@ -2766,24 +2764,24 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
     ConversionPatternRewriter& rewriter) const {
   auto tfl_const_op = cast<ConstantOp>(op);
 
-  RankedTensorType output_type =
-      tfl_const_op.getResult().getType().dyn_cast<RankedTensorType>();
+  ShapedType output_type =
+      tfl_const_op.getResult().getType().dyn_cast<ShapedType>();
   // Not a ranked tensor output
   if (!output_type) return failure();
 
   ElementsAttr attr = tfl_const_op.valueAttr().dyn_cast<ElementsAttr>();
 
+  auto e_type = output_type.getElementType();
   // TOSA only support up to 48-bits
   // If source is higher than that, it's not representabble.
   // For data type like 64 bits, we need to truncate them into 48 bits.
-  if (output_type.getElementType().isInteger(64)) {
-    Type new_element_type = rewriter.getIntegerType(48);
-    output_type =
-        RankedTensorType::get(output_type.getShape(), new_element_type);
-    attr = attr.mapValues(new_element_type,
+  if (e_type.isInteger(64)) {
+    e_type = rewriter.getIntegerType(48);
+    attr = attr.mapValues(e_type,
                           [](const APInt& x) -> APInt { return x.trunc(48); });
   }
 
+  output_type = output_type.clone(e_type);
   rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, output_type, attr);
 
   return success();
@@ -2887,98 +2885,15 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   return success();
 }
 
-class QuantTypeConverter : public TypeConverter {
- public:
-  static Type convertType(Type type) {
-    if (auto qType = type.dyn_cast<quant::QuantizedType>()) {
-      if (qType.isSigned() || qType.getStorageTypeIntegralWidth() != 8) {
-        return IntegerType::get(type.getContext(),
-                                qType.getStorageTypeIntegralWidth());
-      }
-
-      return IntegerType::get(type.getContext(),
-                              qType.getStorageTypeIntegralWidth(),
-                              IntegerType::SignednessSemantics::Unsigned);
-    }
-    return type;
-  }
-  static Type convertTensor(RankedTensorType type) {
-    auto newType = RankedTensorType::get(type.getShape(),
-                                         convertType(type.getElementType()));
-    return newType;
-  }
-  explicit QuantTypeConverter() {
-    addConversion([](Type type) { return convertType(type); });
-    addConversion(convertTensor);
-  }
-};
-
-// Handles the type conversion component of the TypeConversion. This updates
-// conversion patterns that used the original Quant types to be updated to
-// the non-quant variants.
-class GenericTypeConvert : public ConversionPattern {
- public:
-  GenericTypeConvert(MLIRContext* context, TypeConverter& converter)
-      : ConversionPattern(converter, MatchAnyOpTypeTag(), 0, context) {}
-  LogicalResult matchAndRewrite(
-      Operation* op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const override {
-    llvm::SmallVector<Type, 4> newResults;
-    if (isa<FuncOp>(op) ||
-        op->getDialect()->getNamespace() ==
-            TFL::TensorFlowLiteDialect::getDialectNamespace()) {
-      return failure();
-    }
-
-    (void)getTypeConverter()->convertTypes(op->getResultTypes(), newResults);
-    OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
-                         newResults, op->getAttrs(), op->getSuccessors());
-    for (Region& r : op->getRegions()) {
-      Region* newRegion = state.addRegion();
-      rewriter.inlineRegionBefore(r, *newRegion, newRegion->begin());
-      TypeConverter::SignatureConversion result(newRegion->getNumArguments());
-      (void)getTypeConverter()->convertSignatureArgs(
-          newRegion->getArgumentTypes(), result);
-      rewriter.applySignatureConversion(newRegion, result);
-    }
-    Operation* newOp = rewriter.createOperation(state);
-    rewriter.replaceOp(op, newOp->getResults());
-    return success();
-  }
-};
-
-static bool isIllegalType(Type type) {
-  if (type.isa<QuantizedType>()) return true;
-  if (auto shapedType = type.dyn_cast<ShapedType>()) {
-    return isIllegalType(shapedType.getElementType());
-  }
-  return false;
-}
-
 void LegalizeTFL::runOnFunction() {
-  QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
   target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
-  target.addIllegalDialect<quant::QuantizationDialect>();
+  target.addIllegalOp<quant::StatisticsOp>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       return constantOp.getType().isa<NoneType>();
-    }
-    if (auto funcOp = dyn_cast<FuncOp>(op)) {
-      for (Type type : funcOp.getType().getInputs()) {
-        if (isIllegalType(type)) return false;
-      }
-      for (Type type : funcOp.getType().getResults()) {
-        if (isIllegalType(type)) return false;
-      }
-    }
-    for (Type type : op->getResultTypes()) {
-      if (type && isIllegalType(type)) return false;
-    }
-    for (Type type : op->getOperandTypes()) {
-      if (type && isIllegalType(type)) return false;
     }
     return true;
   });
@@ -2987,14 +2902,11 @@ void LegalizeTFL::runOnFunction() {
   auto func = getFunction();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<GenericTypeConvert>(ctx, converter);
-  populateFuncOpTypeConversionPattern(patterns, converter);
 
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
 
-#define DEF_PATTERN_INSERT(PAT) \
-  patterns.insert<Convert##PAT##Op>(ctx, converter);
+#define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
 
   DEF_PATTERN_INSERT(TFLRelu);
   DEF_PATTERN_INSERT(TFLRelu6);
