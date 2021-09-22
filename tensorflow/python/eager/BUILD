@@ -966,6 +966,24 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "def_function_auto_jit_test",
+    size = "small",
+    srcs = ["def_function_auto_jit_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    deps = [
+        ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:constant_op",
+    ],
+)
+
+tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
     enable_mlir_bridge = False,
