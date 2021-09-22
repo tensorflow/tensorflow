@@ -241,7 +241,7 @@ Status BestCudnnConvAlgorithm(
     return errors::NotFound("No algorithm worked!");
   }
 
-  if (plans == nullptr) {
+  if (!plans || plans->empty()) {
     VLOG(2) << "fastest algorithm: "
             << proto_utils::FromDurationProto(results[idx].run_time())
             << " with algo " << results[idx].conv().algorithm()

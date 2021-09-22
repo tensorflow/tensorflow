@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -87,8 +88,22 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   std::vector<Tensor> allocated_tensors_;
 };
 
-
 typedef Eigen::GpuDevice GPUDevice;
+
+// Select an algorithm for the given convolution, either by running actual
+// autotuning with a cache, or by falling back to a default if
+// 'cudnn_use_autotune' is true and cuDNN is the statically-chosen DNN backend.
+template <typename T>
+StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
+    bool cudnn_use_autotune,
+    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    const ConvParameters& conv_parameters, OpKernelContext* ctx,
+    se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
+    se::DeviceMemory<T> input_ptr, const se::dnn::FilterDescriptor& filter_desc,
+    se::DeviceMemory<T> filter_ptr,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> output_ptr,
+    int64_t scratch_size_limit);
 
 }  // namespace tensorflow
 
