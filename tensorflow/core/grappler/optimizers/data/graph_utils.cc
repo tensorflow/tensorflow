@@ -445,6 +445,21 @@ bool HasDeterministicAttr(const string& op) {
   return kDeterministicAttrOps->contains(op);
 }
 
+Status SetMetadataName(const std::string& name, NodeDef* node) {
+  data::Metadata metadata;
+  if (node->attr().contains("metadata")) {
+    metadata.ParseFromString(node->attr().at("metadata").s());
+  }
+  if (!metadata.name().empty()) {
+    return errors::InvalidArgument("Node ", node->name(),
+                                   " already has a metadata name \"",
+                                   metadata.name(), "\".");
+  }
+  *metadata.mutable_name() = name;
+  metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
+  return Status::OK();
+}
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow
