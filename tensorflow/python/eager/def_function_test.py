@@ -631,7 +631,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return outputs
 
     with self.assertRaisesRegex(errors.InaccessibleTensorError,
-                                'defined in another function or code block'):
+                                'captured an external symbolic tensor'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testRuntimeErrorNotSticky(self):
@@ -710,8 +710,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         TypeError,
-        re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
+        re.compile('captured an external symbolic tensor.*Const', re.DOTALL)):
       failing_function()
+
+  def testSymbolicTensorCapturedInput(self):
+
+    x = None
+
+    @def_function.function
+    def f1(a):
+      nonlocal x
+      x = a
+      return a
+
+    @def_function.function
+    def f2(b):
+      return b + x
+
+    f1(constant_op.constant(1))
+    with self.assertRaisesRegex(
+        TypeError,
+        re.compile('def_function_test.*captured an external symbolic tensor',
+                   re.DOTALL)):
+      f2(constant_op.constant(2))
 
   def testNonUniqueNamesGetConcreteFunction(self):
     @def_function.function

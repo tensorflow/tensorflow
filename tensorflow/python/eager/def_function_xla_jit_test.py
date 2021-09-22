@@ -819,7 +819,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+      with self.assertRaises(TypeError):
         fn2(inputs, 1)
 
   def testGetCompilerIrKwargs(self):
