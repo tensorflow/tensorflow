@@ -4335,25 +4335,29 @@ void ScatterDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
   printer << "scatter<";
   auto update_window_dims = getUpdateWindowDims();
+  StringRef separator = "";
   if (!update_window_dims.empty()) {
     printer << "update_window_dims = [";
     llvm::interleaveComma(update_window_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto inserted_window_dims = getInsertedWindowDims();
   if (!inserted_window_dims.empty()) {
-    printer << "inserted_window_dims = [";
+    printer << separator << "inserted_window_dims = [";
     llvm::interleaveComma(inserted_window_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto scatter_dims_to_operand_dims = getScatterDimsToOperandDims();
   if (!scatter_dims_to_operand_dims.empty()) {
-    printer << "scatter_dims_to_operand_dims = [";
+    printer << separator << "scatter_dims_to_operand_dims = [";
     llvm::interleaveComma(scatter_dims_to_operand_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   if (getIndexVectorDim())
-    printer << "index_vector_dim = " << getIndexVectorDim();
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
   printer << ">";
 }
 Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
@@ -4399,26 +4403,30 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
 void GatherDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
   printer << "gather<";
+  StringRef separator = "";
   auto offset_dims = getOffsetDims();
   if (!offset_dims.empty()) {
     printer << "offset_dims = [";
     llvm::interleaveComma(offset_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto collapsed_slice_dims = getCollapsedSliceDims();
   if (!collapsed_slice_dims.empty()) {
-    printer << "collapsed_slice_dims = [";
+    printer << separator << "collapsed_slice_dims = [";
     llvm::interleaveComma(collapsed_slice_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto start_index_map = getStartIndexMap();
   if (!start_index_map.empty()) {
-    printer << "start_index_map = [";
+    printer << separator << "start_index_map = [";
     llvm::interleaveComma(start_index_map, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   if (getIndexVectorDim())
-    printer << "index_vector_dim = " << getIndexVectorDim();
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
   printer << ">";
 }
 
@@ -4461,29 +4469,33 @@ Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
 // Custom printer and parser for DotDimensionNumbersAttr.
 void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
   printer << "dot<";
+  StringRef separator = "";
   auto lhs_batching_dimensions = getLhsBatchingDimensions();
   if (!lhs_batching_dimensions.empty()) {
     printer << "lhs_batching_dimensions = [";
     llvm::interleaveComma(lhs_batching_dimensions, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto rhs_batching_dimensions = getRhsBatchingDimensions();
   if (!rhs_batching_dimensions.empty()) {
-    printer << "rhs_batching_dimensions = [";
+    printer << separator << "rhs_batching_dimensions = [";
     llvm::interleaveComma(rhs_batching_dimensions, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto lhs_contracting_dimensions = getLhsContractingDimensions();
   if (!lhs_contracting_dimensions.empty()) {
-    printer << "lhs_contracting_dimensions = [";
+    printer << separator << "lhs_contracting_dimensions = [";
     llvm::interleaveComma(lhs_contracting_dimensions, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto rhs_contracting_dimensions = getRhsContractingDimensions();
   if (!rhs_contracting_dimensions.empty()) {
-    printer << "rhs_contracting_dimensions = [";
+    printer << separator << "rhs_contracting_dimensions = [";
     llvm::interleaveComma(rhs_contracting_dimensions, printer);
-    printer << "], ";
+    printer << "]";
   }
   printer << ">";
 }

@@ -1760,6 +1760,16 @@ module attributes{
 
 // -----
 
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1]>
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  inserted_window_dims = [0, 1],
+  update_window_dims = [1]
+ >} {}
+
+// -----
+
 module attributes{
  mhlo.scatter = #mhlo.scatter<
   index_vector_dim = 1,
