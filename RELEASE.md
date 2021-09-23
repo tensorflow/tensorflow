@@ -226,7 +226,7 @@
         access includes: `tf.data.Dataset.from_tensor_slices`,
         `tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`,
         `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
-         and `tf.data.Dataset.range`.
+        `tf.data.Dataset.range`, `tf.data.Dataset.skip`.
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
