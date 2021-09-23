@@ -1245,6 +1245,7 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(device_combination)
   def testAllToAllV3(self, device, communication):
+    self.skipTest('TODO(b/200953796)')
     group_size = 2
     group_key = 104
 
