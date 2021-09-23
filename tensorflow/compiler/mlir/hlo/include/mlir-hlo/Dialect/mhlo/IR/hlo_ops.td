@@ -1210,7 +1210,7 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
 }
 
 def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
-    [NoSideEffect, SameOperandsAndResultShape]> {
+    [NoSideEffect]> {
   let summary = "BitcastConvert operator";
   let description = [{
     Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast

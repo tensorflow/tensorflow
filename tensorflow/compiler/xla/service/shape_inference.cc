@@ -480,15 +480,39 @@ StatusOr<PrimitiveType> MaybeUpcast(
         ShapeUtil::HumanString(operand_shape),
         PrimitiveType_Name(new_element_type));
   }
-  if (primitive_util::BitWidth(old_element_type) !=
-      primitive_util::BitWidth(new_element_type)) {
+
+  int input_bitwidth = primitive_util::BitWidth(old_element_type);
+  int output_bitwidth = primitive_util::BitWidth(new_element_type);
+  if (std::max(input_bitwidth, output_bitwidth) %
+          std::min(input_bitwidth, output_bitwidth) !=
+      0) {
     return InvalidArgument(
-        "Cannot bitcast types with different bit-widths: %s => %s.",
+        "Cannot bitcast types with undivisible bit-widths: %s => %s.",
         PrimitiveType_Name(old_element_type),
         PrimitiveType_Name(new_element_type));
   }
+  int ratio = std::max(output_bitwidth, input_bitwidth) /
+              std::min(output_bitwidth, input_bitwidth);
 
-  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
+  Shape new_shape = operand_shape;
+  new_shape.set_element_type(new_element_type);
+  if (input_bitwidth > output_bitwidth) {
+    ShapeUtil::AppendMinorDimension(ratio, &new_shape);
+  } else if (input_bitwidth < output_bitwidth) {
+    int last_dimension_idx = operand_shape.dimensions_size() - 1;
+    if (operand_shape.dimensions_size() < 1 ||
+        operand_shape.dimensions(last_dimension_idx) != ratio) {
+      return InvalidArgument(
+          "Last dimension of input shape=%d is not equal to ratio of "
+          "bit-widths=%d "
+          "for bitcast-convert from %s to %s",
+          operand_shape.dimensions(last_dimension_idx), ratio,
+          ShapeUtil::HumanString(operand_shape),
+          PrimitiveType_Name(new_element_type));
+    }
+    new_shape.DeleteDimension(last_dimension_idx);
+  }
+  return new_shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReducePrecisionShape(

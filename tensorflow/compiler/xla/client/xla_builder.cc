@@ -2146,7 +2146,7 @@ XlaOp XlaBuilder::BitcastConvertType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferBitcastConvertShape(
                                          *operand_shape, new_element_type));
     return BitcastConvertTypeInternal(shape, operand);
   });

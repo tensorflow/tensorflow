@@ -27,12 +27,6 @@ namespace xla {
 // rules. Supports broadcasting a dimension of size x to size x*y, i.e., tiling.
 StatusOr<XlaOp> BroadcastTo(XlaOp input, absl::Span<int64_t const> output_dims);
 
-// Both ops are broadcasted to the same dimensions, so that each dimension is
-// the max of the two.
-// An InvalidArgument will be returned if the operations are of different rank
-// or they share a dimension where they are unequal and neither is 1.
-Status BroadcastOpsToSame(XlaOp* lhs, xla::XlaOp* rhs);
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_BROADCAST_H_

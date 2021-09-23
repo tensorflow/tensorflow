@@ -1636,6 +1636,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

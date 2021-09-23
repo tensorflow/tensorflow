@@ -2487,6 +2487,43 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "bitcast_dtypes_expander",
+    srcs = ["bitcast_dtypes_expander.cc"],
+    hdrs = ["bitcast_dtypes_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:broadcast",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "bitcast_dtypes_expander_test",
+    srcs = ["bitcast_dtypes_expander_test.cc"],
+    deps = [
+        ":bitcast_dtypes_expander",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "all_gather_broadcast_reorder_test",
     srcs = ["all_gather_broadcast_reorder_test.cc"],

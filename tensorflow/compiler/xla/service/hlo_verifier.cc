@@ -2163,6 +2163,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleBitcastConvert(HloInstruction* c) override {
+    // Shape verifier will check all we need.
+    return Status::OK();
+  }
+
   Status HandleWhile(HloInstruction* xla_while) override {
     auto* while_cond = xla_while->while_condition();
     auto* while_body = xla_while->while_body();

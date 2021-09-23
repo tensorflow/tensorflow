@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -324,6 +325,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
+    pipeline.AddPass<BitcastDtypesExpander>();
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Comparison total order expander

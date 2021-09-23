@@ -35,7 +35,23 @@ StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
 }
 
 Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
-  return xla::BroadcastOpsToSame(lhs, rhs);
+  TF_ASSIGN_OR_RETURN(auto lhs_xla_shape, lhs->builder()->GetShape(*lhs));
+  TF_ASSIGN_OR_RETURN(auto rhs_xla_shape, rhs->builder()->GetShape(*rhs));
+  tensorflow::TensorShape lhs_tf_shape;
+  tensorflow::TensorShape rhs_tf_shape;
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(lhs_xla_shape, &lhs_tf_shape));
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(rhs_xla_shape, &rhs_tf_shape));
+  if (!lhs_tf_shape.IsSameSize(rhs_tf_shape)) {
+    tensorflow::BCast bcast(tensorflow::BCast::FromShape(lhs_tf_shape),
+                            tensorflow::BCast::FromShape(rhs_tf_shape));
+    if (!bcast.IsValid()) {
+      return tensorflow::errors::InvalidArgument(
+          "Dimensions cannot be made to match through broadcasting");
+    }
+    TF_ASSIGN_OR_RETURN(*lhs, xla::BroadcastTo(*lhs, bcast.output_shape()));
+    TF_ASSIGN_OR_RETURN(*rhs, xla::BroadcastTo(*rhs, bcast.output_shape()));
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow
