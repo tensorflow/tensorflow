@@ -405,7 +405,6 @@ cc_library(
         "mkl_util.h",
     ],
     copts = tf_copts() + ["-fexceptions"],
-    linkstatic = 1,
     visibility = [
         "//tensorflow:internal",
     ],
@@ -417,7 +416,6 @@ cc_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
     ] + mkl_deps(),
-    alwayslink = 1,
 )
 
 cc_library(
