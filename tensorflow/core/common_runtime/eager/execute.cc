@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -79,7 +80,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #include "tensorflow/core/graph/mkl_graph_util.h"
@@ -773,7 +774,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     ndef->set_device(op->DeviceName());
 
 #ifdef INTEL_MKL
-    if (IsMklEnabled() &&
+    if (IsMKLEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
       // All MKL eager ops have `_kernel` private attribute that needs to be set
       // to a fixed label.
@@ -1174,6 +1175,13 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   core::RefCountPtr<KernelAndDevice> kernel;
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
+
+  if (IsMKLEnabled() && kernel != nullptr && !ctx.RunEagerOpAsFunction() &&
+      op->Device() == kVariantDeviceNull) {
+    // oneDNN optimization pass relies on the op's assigned device to determine
+    // whether it can be rewritten.
+    op->SetDevice(kernel->device());
+  }
 
   // Run all the registered rewrite pass after the placement, regardless whether
   // the placement is successful or not. The passes can either create new ops
