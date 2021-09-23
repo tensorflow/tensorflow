@@ -660,6 +660,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",

@@ -1019,11 +1019,9 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
-  auto make_thunk_for_gemm =
-      [&](auto op, absl::optional<BufferAllocation::Slice> bias = absl::nullopt,
-          absl::optional<double> gemm_bias_beta = absl::nullopt,
-          bool implements_whole_instruction =
-              true) -> StatusOr<std::unique_ptr<Thunk>> {
+  auto make_bef_thunk =
+      [&](auto op, absl::optional<BufferAllocation::Slice> bias =
+                       absl::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
@@ -1031,12 +1029,17 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     if (bias.has_value()) {
       inputs.push_back(bias.value());
     }
+    return CreateBefThunk(GetThunkInfo(op), op, inputs,
+                          std::vector<BufferAllocation::Slice>{output});
+  };
 
-    if (IsBefThunkEnabled() && op.lhs_stride() && op.rhs_stride()) {
-      // TODO(loreno): TFRT support for zero-strided gemm calls
-      return CreateBefThunk(GetThunkInfo(op), op, inputs,
-                            std::vector<BufferAllocation::Slice>{output});
-    }
+  auto make_gemm_thunk =
+      [&](auto op, absl::optional<double> gemm_bias_beta = absl::nullopt,
+          bool implements_whole_instruction =
+              true) -> StatusOr<std::unique_ptr<Thunk>> {
+    TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
+    TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
+    TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
 
     GpuGemmConfig config;
     GemmBackendConfig& backend = config.backend_config;
@@ -1078,7 +1081,10 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
     if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op)) {
-      return make_thunk_for_gemm(gemm);
+      // TODO(loreno): TFRT support for zero-strided gemm calls
+      if (IsBefThunkEnabled() && gemm.lhs_stride() && gemm.rhs_stride())
+        return make_bef_thunk(gemm);
+      return make_gemm_thunk(gemm);
     }
 
     if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
@@ -1086,11 +1092,15 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(auto bias, GetAllocationSlice(gemm.bias()));
       TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(gemm.output()));
 
+      // TODO(loreno): TFRT support for zero-strided gemm calls
+      if (IsBefThunkEnabled() && gemm.lhs_stride() && gemm.rhs_stride())
+        return make_bef_thunk(gemm, bias);
+
       // The bias is passed inside the output buffer. If those buffers are
       // shared we can just use it, otherwise copy the bias values into the
       // output buffer first.
       if (bias == output) {
-        return make_thunk_for_gemm(gemm, bias, gemm_bias_beta);
+        return make_gemm_thunk(gemm, gemm_bias_beta);
       }
 
       ThunkSequence thunks;
@@ -1101,9 +1111,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
           /*mem_size=*/
           ShapeUtil::ByteSizeOf(GetShape(gemm.output()))));
       TF_ASSIGN_OR_RETURN(
-          auto thunk,
-          make_thunk_for_gemm(gemm, bias, gemm_bias_beta,
-                              /*implements_whole_instruction=*/false));
+          auto thunk, make_gemm_thunk(gemm, gemm_bias_beta,
+                                      /*implements_whole_instruction=*/false));
       thunks.push_back(std::move(thunk));
       return std::unique_ptr<Thunk>(
           new SequentialThunk(GetThunkInfo(op), std::move(thunks)));

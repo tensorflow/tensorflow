@@ -129,14 +129,35 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
   llvm_unreachable("unsupported type");
 }
 
+mlir::Value MaybeCopyBiasToOutput(lmhlo_gpu::GEMMOp op, mlir::Value chain,
+                                  mlir::Value stream, mlir::OpBuilder& builder,
+                                  mlir::BlockAndValueMapping& mapping) {
+  return chain;
+}
+
+mlir::Value MaybeCopyBiasToOutput(lmhlo_gpu::GEMM_BiasOp op, mlir::Value chain,
+                                  mlir::Value stream, mlir::OpBuilder& builder,
+                                  mlir::BlockAndValueMapping& mapping) {
+  return builder
+      .create<tfrt::gpu::MemCopyOp>(op.getLoc(), mapping.lookup(op.output()),
+                                    mapping.lookup(op.bias()), stream, chain)
+      .getResult();
+}
+
 // Create all the Ops necessary for the GEMM operation, including the GEMM
 // operation itself.
+template <class GemmOpType>
 FailureOr<Value> CreateTfrtOps(
-    mlir::Location loc, mlir::Value chain, mlir::Value stream,
-    int64_t batch_size, mlir::Type element_type, MatrixDescriptor lhs_matrix,
+    GemmOpType srcOp, mlir::Value chain, mlir::Value stream, int64_t batch_size,
+    mlir::Type element_type, MatrixDescriptor lhs_matrix,
     MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix,
     Complex<llvm::APFloat> alpha, Complex<llvm::APFloat> beta,
-    cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder) {
+    cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder,
+    mlir::BlockAndValueMapping& mapping) {
+  chain = MaybeCopyBiasToOutput(srcOp, chain, stream, builder, mapping);
+
+  mlir::Location loc = srcOp.getLoc();
+
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
   // Use mixed precision for fp16 to match GEMM auto-tuning, see
@@ -309,9 +330,9 @@ FailureOr<Value> GemmOpConversionRewrite(
   auto algorithm = static_cast<cublasGemmAlgo_t>(
       srcOp.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
 
-  return CreateTfrtOps(srcOp.getLoc(), chain, stream, batch_size, element_type,
+  return CreateTfrtOps(srcOp, chain, stream, batch_size, element_type,
                        lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
-                       algorithm, builder);
+                       algorithm, builder, mapping);
 }
 
 absl::optional<llvm::APFloat> GetBeta(lmhlo_gpu::GEMMOp op) {
