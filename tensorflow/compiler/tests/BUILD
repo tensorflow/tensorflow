@@ -1747,6 +1747,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -1766,6 +1767,20 @@ cc_library(
 tf_cuda_cc_test(
     name = "randomized_tests",
     size = "medium",
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "manual",
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=true"],
     shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [

@@ -50,6 +50,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -83,6 +84,7 @@ int64_t tf_xla_max_tensor_size = 10000LL;
 string* tf_xla_test_device_ptr;       // initial value set in main()
 string* tf_xla_reference_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
+bool tf_xla_test_use_mlir = false;
 
 string LocalDeviceToFullDeviceName(const string& device) {
   return absl::StrCat("/job:localhost/replica:0/task:0/device:", device);
@@ -3496,6 +3498,7 @@ TEST_F(OpTest, ZerosLike) {
 // Example failing run:
 //   --tf_xla_reference_device=GPU:0
 //   --tf_xla_test_use_jit=true --tf_xla_test_device=GPU:0
+//   --tf_xla_test_use_mlir=true
 //   --tf_xla_test_repetitions=2
 //   --gunit_filter='OpTest.FusedBatchNormTraining'
 //   --tf_xla_random_seed=2838146746
@@ -3549,6 +3552,9 @@ int main(int argc, char** argv) {
                        "Tensorflow device type to use for reference"),
       tensorflow::Flag("tf_xla_test_use_jit", &tensorflow::tf_xla_test_use_jit,
                        "Use JIT compilation for the operator under test"),
+      tensorflow::Flag(
+          "tf_xla_test_use_mlir", &tensorflow::tf_xla_test_use_mlir,
+          "Use MLIR legalization kernels for the operator under test"),
   };
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -3574,5 +3580,8 @@ int main(int argc, char** argv) {
       << "Unknown test device (" << *tensorflow::tf_xla_test_device_ptr
       << "). Did you build in the right configuration (e.g., is CUDA enabled)?";
 
+  if (tensorflow::tf_xla_test_use_mlir)
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge =
+        tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
   return RUN_ALL_TESTS();
 }
