@@ -1722,13 +1722,15 @@ class MaxPoolTest(test_lib.TestCase):
   def testIncorrectSizeInputSmall(self):
     x = array_ops.ones([3, 4])
     with self.assertRaisesRegex(
-        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 2."):
+        ValueError,
+        "`input.shape.rank` must be 3, 4 or 5.*of rank 2."):
       nn_ops.max_pool_v2(x, 2, 2, "SAME")
 
   def testIncorrectSizeInput(self):
     x = array_ops.ones([3, 4, 1, 2, 1, 2])
     with self.assertRaisesRegex(
-        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 6."):
+        ValueError,
+        "`input.shape.rank` must be 3, 4 or 5.*of rank 6."):
       nn_ops.max_pool_v2(x, 2, 2, "SAME")
 
 
@@ -1812,17 +1814,19 @@ class ConvTransposeTest(test_lib.TestCase):
 
   def testIncorrectSizeInputSmall(self):
     with self.assertRaisesRegex(
-        ValueError, "output_shape must be of length 3, 4 or 5 but was 2."):
+        ValueError,
+        "`output_shape` must be of length 3, 4 or 5.*of length 2."):
       nn_ops.conv_transpose(None, 2, [2, 3], "SAME")
 
   def testIncorrectSizeInput(self):
     with self.assertRaisesRegex(
-        ValueError, "output_shape must be of length 3, 4 or 5 but was 6."):
+        ValueError,
+        "`output_shape` must be of length 3, 4 or 5.* of length 6."):
       nn_ops.conv_transpose(None, 2, [2, 3, 4, 2, 5, 1], "SAME")
 
   def testTensorsNoShape(self):
     with self.assertRaisesRegex(
-        ValueError, "output_shape must be a tensor or sized collection."):
+        ValueError, "`output_shape` must be a tensor or sized collection"):
       nn_ops.conv_transpose(None, None, None, None)
 
 
