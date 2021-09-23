@@ -66,18 +66,14 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
       return failure();
     }
 
-    if (dimension_numbers.index_vector_dim().getValue().getSExtValue() != 0) {
+    if (dimension_numbers.getIndexVectorDim() != 0) {
       return failure();
     }
 
     // TODO(suderman): Handle start index map != {0}.
-    if (!dimension_numbers.start_index_map() ||
-        dimension_numbers.start_index_map().getType().getRank() != 1 ||
-        dimension_numbers.start_index_map().getType().getDimSize(0) != 1 ||
-        dimension_numbers.start_index_map()
-                .getValue({0})
-                .cast<IntegerAttr>()
-                .getValue() != 0) {
+    if (dimension_numbers.getStartIndexMap().empty() ||
+        dimension_numbers.getStartIndexMap().size() != 1 ||
+        dimension_numbers.getStartIndexMap()[0] != 0) {
       return failure();
     }
 
@@ -87,11 +83,10 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     if (!result_ty) {
       return failure();
     }
-    if (dimension_numbers.offset_dims().getType().getNumElements() !=
-        result_ty.getRank()) {
+    if (dimension_numbers.getOffsetDims().size() != result_ty.getRank()) {
       return failure();
     }
-    for (auto it : llvm::enumerate(dimension_numbers.offset_dims())) {
+    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if (it.index() != it.value()) {
         return failure();
       }

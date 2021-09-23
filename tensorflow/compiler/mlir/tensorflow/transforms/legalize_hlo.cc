@@ -1991,7 +1991,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
 
     // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
     int64_t index_vector_dim =
-        gather_op.dimension_numbers().index_vector_dim().getInt();
+        gather_op.dimension_numbers().getIndexVectorDim();
     if (failed(NormalizeIndexVector(gather_op, start_indices,
                                     start_indices_type, index_vector_dim,
                                     rewriter))) {
@@ -2000,11 +2000,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
 
     // Verify that start_index_map and collapsed_slice_dims contains the same
     // values.
-    auto start_index_map = gather_op.dimension_numbers().start_index_map();
+    auto start_index_map = gather_op.dimension_numbers().getStartIndexMap();
     auto collapsed_slice_dims =
-        gather_op.dimension_numbers().collapsed_slice_dims();
-    if (start_index_map.getNumElements() !=
-        collapsed_slice_dims.getNumElements()) {
+        gather_op.dimension_numbers().getCollapsedSliceDims();
+    if (start_index_map.size() != collapsed_slice_dims.size()) {
       return rewriter.notifyMatchFailure(
           gather_op,
           "different size for start index map and collapsed slice dims");
@@ -2036,8 +2035,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     }
 
     // Verify that offset_dims are the tailing dimensions in the output tensor.
-    auto offset_dims =
-        gather_op.dimension_numbers().offset_dims().getValues<int64_t>();
+    auto offset_dims = gather_op.dimension_numbers().getOffsetDims();
     SmallVector<int64_t, 4> offset_dims_vector(offset_dims.begin(),
                                                offset_dims.end());
     const TransposeParams &transpose_params =
@@ -2057,8 +2055,8 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     llvm::SmallVector<int64_t, 4> transpose_dimensions;
     llvm::SmallVector<int64_t, 4> transpose_shape;
     for (auto s : start_index_map) {
-      transpose_dimensions.push_back(s.getZExtValue());
-      transpose_shape.push_back(operand_type.getShape()[s.getZExtValue()]);
+      transpose_dimensions.push_back(s);
+      transpose_shape.push_back(operand_type.getShape()[s]);
     }
     for (int64_t i = 0, e = operand_type.getRank(); i < e; ++i) {
       if (llvm::count(start_index_map, i) == 0) {

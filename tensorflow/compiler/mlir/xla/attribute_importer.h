@@ -31,7 +31,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder);
 
 // Converts the gather dimensions to attributes.
-mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the scatter dimensions to attributes.

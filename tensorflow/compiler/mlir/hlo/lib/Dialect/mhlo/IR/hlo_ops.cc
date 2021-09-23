@@ -285,20 +285,19 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
       return failure();
 
     const auto& dnums = gather.dimension_numbers();
-    if (dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+    if (dnums.getIndexVectorDim() != 0 || index.getType().getRank() > 1)
       return failure();
 
     // TODO(tberghammer): Remove when the verifier catches this case what is
     // invalid if all previous condition holds.
-    if (index.getNumElements() != dnums.start_index_map().getNumElements())
+    if (index.getNumElements() != dnums.getStartIndexMap().size())
       return failure();
 
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
-    for (auto it : llvm::zip(dnums.start_index_map().getIntValues(),
-                             index.getIntValues())) {
-      int64_t map_index = std::get<0>(it).getSExtValue();
+    for (auto it : llvm::zip(dnums.getStartIndexMap(), index.getIntValues())) {
+      int64_t map_index = std::get<0>(it);
       int64_t offset = std::get<1>(it).getSExtValue();
       slice_start[map_index] += offset;
       slice_end[map_index] += offset;
@@ -317,10 +316,8 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
         GetI64ElementsAttr(slice_end, &rewriter),
         GetI64ElementsAttr(slice_stride, &rewriter));
 
-    if (dnums.collapsed_slice_dims().getNumElements() > 0) {
-      auto collapsed_slice_dims = llvm::to_vector<8>(llvm::map_range(
-          dnums.collapsed_slice_dims().getIntValues(),
-          [](const llvm::APInt& i) { return i.getSExtValue(); }));
+    auto collapsed_slice_dims = dnums.getCollapsedSliceDims();
+    if (!collapsed_slice_dims.empty()) {
       llvm::SmallVector<int64_t, 8> reshape_shape;
       for (size_t i = 0; i < slice_shape.size(); ++i) {
         if (llvm::count(collapsed_slice_dims, i) == 0) {
@@ -402,12 +399,9 @@ LogicalResult GatherShapeInferImpl(
   };
 
   auto dimension_numbers = op->dimension_numbers();
-  SmallVector<int64_t, 4> collapsed_slice_dims(
-      dimension_numbers.collapsed_slice_dims().template getValues<int64_t>());
-  SmallVector<int64_t, 4> offset_dims(
-      dimension_numbers.offset_dims().template getValues<int64_t>());
-  int64_t index_vector_dim =
-      dimension_numbers.index_vector_dim().getValue().getSExtValue();
+  auto collapsed_slice_dims = dimension_numbers.getCollapsedSliceDims();
+  auto offset_dims = dimension_numbers.getOffsetDims();
+  int64_t index_vector_dim = dimension_numbers.getIndexVectorDim();
 
   SmallVector<Value, 4> slice_sizes;
   GetSliceSizeValues(op, builder, loc, operands, slice_sizes);
@@ -4387,6 +4381,92 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
   return ScatterDimensionNumbersAttr::get(
       context, update_window_dims, inserted_window_dims,
       scatter_dims_to_operand_dims, index_vector_dim);
+}
+
+// Custom printer and parser for GatherDimensionNumbersAttr.
+void GatherDimensionNumbersAttr::print(
+    ::mlir::DialectAsmPrinter& printer) const {
+  printer << "gather<";
+  auto offset_dims = getOffsetDims();
+  if (!offset_dims.empty()) {
+    printer << "offset_dims = [";
+    llvm::interleaveComma(offset_dims, printer);
+    printer << "], ";
+  }
+  auto collapsed_slice_dims = getCollapsedSliceDims();
+  if (!collapsed_slice_dims.empty()) {
+    printer << "collapsed_slice_dims = [";
+    llvm::interleaveComma(collapsed_slice_dims, printer);
+    printer << "], ";
+  }
+  auto start_index_map = getStartIndexMap();
+  if (!start_index_map.empty()) {
+    printer << "start_index_map = [";
+    llvm::interleaveComma(start_index_map, printer);
+    printer << "], ";
+  }
+  if (getIndexVectorDim())
+    printer << "index_vector_dim = " << getIndexVectorDim();
+  printer << ">";
+}
+
+Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
+                                            DialectAsmParser& parser,
+                                            Type type) {
+  if (parser.parseLess()) return {};
+
+  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
+    dims.clear();
+    if (parser.parseLSquare()) return failure();
+    while (failed(parser.parseOptionalRSquare())) {
+      dims.emplace_back();
+      if (parser.parseInteger(dims.back())) return failure();
+      parser.parseOptionalComma();
+    }
+    return success();
+  };
+  auto parse_keyword = [&](StringRef keyword, bool& seen,
+                           auto parse_values) -> ParseResult {
+    auto loc = parser.getCurrentLocation();
+    if (succeeded(parser.parseOptionalKeyword(keyword))) {
+      if (seen) {
+        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
+        return failure();
+      }
+      seen = true;
+      if (parser.parseEqual() || parse_values()) return failure();
+      parser.parseOptionalComma();
+    }
+    return success();
+  };
+
+  bool seen_offset_dims = false;
+  SmallVector<int64_t> offset_dims;
+  bool seen_collapsed_slice_dims = false;
+  SmallVector<int64_t> collapsed_slice_dims;
+  bool seen_start_index_map = false;
+  SmallVector<int64_t> start_index_map;
+  bool seen_index_vector_dim = false;
+  int64_t index_vector_dim = 0;
+  // Parse the key-value pair in any order, duplicate are errors.
+  while (failed(parser.parseOptionalGreater())) {
+    if (failed(parse_keyword("offset_dims", seen_offset_dims,
+                             [&] { return parse_dims(offset_dims); })))
+      return {};
+    if (failed(parse_keyword("collapsed_slice_dims", seen_collapsed_slice_dims,
+                             [&] { return parse_dims(collapsed_slice_dims); })))
+      return {};
+    if (failed(parse_keyword("start_index_map", seen_start_index_map,
+                             [&]() { return parse_dims(start_index_map); })))
+      return {};
+    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
+          return parser.parseInteger(index_vector_dim);
+        })))
+      return {};
+  }
+  return GatherDimensionNumbersAttr::get(context, offset_dims,
+                                         collapsed_slice_dims, start_index_map,
+                                         index_vector_dim);
 }
 
 //===----------------------------------------------------------------------===//

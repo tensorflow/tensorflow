@@ -110,7 +110,14 @@ module {
     %0 = tensor.dim %arg0, %c2 : tensor<?x?x?xi32>
     %1 = index_cast %0 : index to i64
     %2 = tensor.from_elements %c1_i64, %c1_i64_0, %1 : tensor<3xi64>
-    %3 = "mhlo.dynamic_gather"(%arg0, %arg1, %2) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi64>, tensor<3xi64>) -> tensor<?x6x?xi32>
+    %3 = "mhlo.dynamic_gather"(%arg0, %arg1, %2) {
+      dimension_numbers = #mhlo.gather<
+        collapsed_slice_dims = [0, 1],
+        index_vector_dim = 2,
+        offset_dims = [2],
+        start_index_map = [0, 1]
+      >,
+      indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi64>, tensor<3xi64>) -> tensor<?x6x?xi32>
     return %3 : tensor<?x6x?xi32>
   }
 }

@@ -32,4 +32,15 @@ def ScatterDimensionNumbers : AttrDef<HLO_Dialect, "ScatterDimensionNumbers"> {
   );
 }
 
+def GatherDimensionNumbers : AttrDef<HLO_Dialect, "GatherDimensionNumbers"> {
+  let mnemonic = "gather";
+  let summary = "Attribute that models the dimension information for gather";
+  let parameters = (ins
+      HLODim:$offsetDims,
+      HLODim:$collapsedSliceDims,
+      HLODim:$startIndexMap,
+      "int64_t":$indexVectorDim
+  );
+}
+
 #endif // HLO_OPS_BASE_ATTRS

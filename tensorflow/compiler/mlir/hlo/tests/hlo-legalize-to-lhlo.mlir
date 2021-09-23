@@ -193,17 +193,16 @@ func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @gather
 func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
     -> tensor<5x7xf32> {
-  %result =
-    "mhlo.gather"(%operand, %idxs)
-      { dimension_numbers =
-        { collapsed_slice_dims = dense<0> : tensor<1xi64>
-        , index_vector_dim = 1 : i64
-        , offset_dims = dense<1> : tensor<1xi64>
-        , start_index_map = dense<0> : tensor<1xi64> }
-      , indices_are_sorted = false
-      , name = "gather.71"
-      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
-      : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
+  %result = "mhlo.gather"(%operand, %idxs) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 7]> : tensor<2xi64>
+  } : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
   // CHECK: "lmhlo.gather"(%{{.*}}, %{{.*}}, %{{.*}})
   return %result : tensor<5x7xf32>
 }

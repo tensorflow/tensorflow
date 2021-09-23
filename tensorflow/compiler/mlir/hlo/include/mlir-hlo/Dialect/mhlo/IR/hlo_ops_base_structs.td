@@ -43,14 +43,6 @@ def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   let summary = "Structure of dimension information for conv op";
 }
 
-def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
-      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
-      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
-      StructFieldAttr<"start_index_map", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let summary = "Structure of dimension information for gather";
-}
-
 
 // Represents a unique identifier for each Send/Recv instruction pair or
 // optionally for collective instructions (AllReduce, CollectivePermute,

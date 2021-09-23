@@ -1762,3 +1762,33 @@ module attributes{
   // expected-error @+1 {{duplicated `index_vector_dim` entry}}
   index_vector_dim = 1,
  >} {}
+
+// -----
+
+// Test the mhlo.gather attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<>
+module attributes{mhlo.gather = #mhlo.gather<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   index_vector_dim = 1,
+   offset_dims = [1],
+   start_index_map = [0],
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   // expected-error @+1 {{duplicated `collapsed_slice_dims` entry}}
+   collapsed_slice_dims = [0],
+ >} {}

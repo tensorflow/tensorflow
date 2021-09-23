@@ -2145,7 +2145,15 @@ func @convert_floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf3
 // CHECK:            return %[[VAL_0]]
 // CHECK:         }
 func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) -> tensor<192x256xf16> {
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<> : tensor<0xi64>, start_index_map = dense<0> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<1> : tensor<1xi64>} : (tensor<147456xf16>, tensor<192x256x1xi32>) -> tensor<192x256xf16>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<147456xf16>, tensor<192x256x1xi32>) -> tensor<192x256xf16>
   return %0 : tensor<192x256xf16>
 }
 
@@ -2158,7 +2166,16 @@ func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) ->
 // CHECK:           return %[[VAL_4]]
 // CHECK:         }
 func @convert_gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>) -> tensor<4x64x128xf32> {
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<0> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<[1, 128]> : tensor<2xi64>} : (tensor<98x128xf32>, tensor<4x64xi32>) -> tensor<4x64x128xf32>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+			offset_dims = [2],
+			start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 128]> : tensor<2xi64>
+  } : (tensor<98x128xf32>, tensor<4x64xi32>) -> tensor<4x64x128xf32>
   return %0 : tensor<4x64x128xf32>
 }
 
@@ -2173,7 +2190,16 @@ func @convert_gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>) -> t
 // Test the case when start_index_map isn't an iota what requires a transpose to
 // convert it to tf.GatherNd.
 func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32>) -> tensor<4x128xf32> {
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<1> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>, start_index_map = dense<1> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<[128, 1]> : tensor<2xi64>} : (tensor<128x256xf32>, tensor<4x1xi32>) -> tensor<4x128xf32>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1],
+      index_vector_dim = 1,
+			offset_dims = [1],
+			start_index_map = [1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[128, 1]> : tensor<2xi64>
+  } : (tensor<128x256xf32>, tensor<4x1xi32>) -> tensor<4x128xf32>
   return %0 : tensor<4x128xf32>
 }
 
@@ -2188,7 +2214,16 @@ func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32
 // CHECK:           return %[[VAL_6]] : tensor<1x1xi32>
 // CHECK:         }
 func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> tensor<1x1xi32> {
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<1> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<0> : tensor<1xi64>, start_index_map = dense<1> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<1> : tensor<2xi64>} : (tensor<1x20xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1],
+      index_vector_dim = 1,
+			offset_dims = [0],
+			start_index_map = [1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<1> : tensor<2xi64>
+  } : (tensor<1x20xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
   return %0 : tensor<1x1xi32>
 }
 

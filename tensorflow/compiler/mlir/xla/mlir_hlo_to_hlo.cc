@@ -316,26 +316,25 @@ static xla::ComparisonDirection Convert_comparison_direction(
 }
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::GatherDimensionNumbers input) {
+    mlir::mhlo::GatherDimensionNumbersAttr input) {
   xla::GatherDimensionNumbers output;
 
-  auto offset_dims = ConvertDenseIntAttr(input.offset_dims());
+  auto offset_dims = input.getOffsetDims();
   std::copy(offset_dims.begin(), offset_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_offset_dims()));
 
-  auto collapsed_slice_dims = ConvertDenseIntAttr(input.collapsed_slice_dims());
+  auto collapsed_slice_dims = input.getCollapsedSliceDims();
   std::copy(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_collapsed_slice_dims()));
 
-  auto start_index_map = ConvertDenseIntAttr(input.start_index_map());
+  auto start_index_map = input.getStartIndexMap();
   std::copy(start_index_map.begin(), start_index_map.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_start_index_map()));
 
-  output.set_index_vector_dim(
-      ConvertAPInt(input.index_vector_dim().getValue()));
+  output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
 }
 
