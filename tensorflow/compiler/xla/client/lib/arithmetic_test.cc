@@ -57,19 +57,11 @@ class ArithmeticTest : public ClientLibraryTestBase {
           input, expected_output, [=](XlaOp op, PrimitiveType type) {
             return ArgMin(op, type, axis, /*stable=*/true, tie_low);
           });
-      TestArgMinMaxImpl(input, expected_output,
-                        [=](XlaOp op, PrimitiveType type) {
-                          return ArgMinTwoPass(op, type, axis, tie_low);
-                        });
     } else {
       TestArgMinMaxImpl(
           input, expected_output, [=](XlaOp op, PrimitiveType type) {
             return ArgMax(op, type, axis, /*stable=*/true, tie_low);
           });
-      TestArgMinMaxImpl(input, expected_output,
-                        [=](XlaOp op, PrimitiveType type) {
-                          return ArgMaxTwoPass(op, type, axis, tie_low);
-                        });
     }
   }
 
