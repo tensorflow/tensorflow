@@ -6165,6 +6165,8 @@ py_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
     python_version = "PY3",
+    # TODO(b/200806426): Test fails in OSS.
+    tags = ["no_oss"],
     deps = [
         ":generate_test_hlo_checks",
         "@absl_py//absl/testing:absltest",
