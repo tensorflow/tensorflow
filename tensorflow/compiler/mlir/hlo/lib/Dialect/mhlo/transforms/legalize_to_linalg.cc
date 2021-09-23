@@ -1546,9 +1546,10 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     }
 
     // First fill the output buffer with the init value.
-    Value init_value =
-        rewriter.create<memref::LoadOp>(loc, adaptor.init_values()[0]);
-    rewriter.create<linalg::FillOp>(loc, init_value, adaptor.out()[0]);
+    for (auto it : llvm::zip(adaptor.init_values(), adaptor.out())) {
+      Value init_value = rewriter.create<memref::LoadOp>(loc, std::get<0>(it));
+      rewriter.create<linalg::FillOp>(loc, init_value, std::get<1>(it));
+    }
 
     DenseIntElementsAttr dimensions_attr = reduce_op.dimensions();
     SmallVector<int, 4> reduction_dims;
@@ -1569,8 +1570,10 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         dst_exprs.push_back(mlir::getAffineDimExpr(i, rewriter.getContext()));
       }
     }
-
-    auto maps = AffineMap::inferFromExprList({src_exprs, dst_exprs});
+    SmallVector<ArrayRef<AffineExpr>, 4> affine_maps;
+    affine_maps.append(adaptor.inputs().size(), makeArrayRef(src_exprs));
+    affine_maps.append(adaptor.out().size(), makeArrayRef(dst_exprs));
+    auto maps = AffineMap::inferFromExprList(affine_maps);
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
@@ -1586,36 +1589,49 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       // The incoming region is operating on buffers, while linalg.generic
       // expects scalar SSA values. Add some allocs around the original op to
       // make it compatible.
-      auto arg_type = block->getArgument(0).getType().cast<MemRefType>();
-      Value alloc_a = rewriter.create<memref::AllocaOp>(loc, arg_type);
-      Value alloc_b = rewriter.create<memref::AllocaOp>(loc, arg_type);
-      Value alloc_res = rewriter.create<memref::AllocaOp>(loc, arg_type);
+      SmallVector<MemRefType, 4> mem_argv_tys;
+      SmallVector<Value, 4> alloc_values;
+      for (auto ty : block->getArgumentTypes()) {
+        mem_argv_tys.push_back(ty.cast<MemRefType>());
+        alloc_values.push_back(
+            rewriter.create<memref::AllocaOp>(loc, mem_argv_tys.back()));
+      }
+      size_t num_inputs =
+          adaptor.inputs().size() + adaptor.init_values().size();
 
       // Now turn the existing signature
       //   (memref<X>, memref<X>, memref<X>) -> ()
       // into
       //   (X, X) -> X
-      TypeConverter::SignatureConversion signature_converter(3);
-      signature_converter.remapInput(0, alloc_a);
-      signature_converter.remapInput(1, alloc_b);
-      signature_converter.remapInput(2, alloc_res);
-      signature_converter.addInputs(
-          {arg_type.getElementType(), arg_type.getElementType()});
+      TypeConverter::SignatureConversion signature_converter(
+          alloc_values.size());
+      for (auto it : llvm::enumerate(alloc_values)) {
+        signature_converter.remapInput(it.index(), it.value());
+      }
+      for (auto ty : makeArrayRef(mem_argv_tys).take_front(num_inputs)) {
+        signature_converter.addInputs(ty.getElementType());
+      }
+
       Block* entry_block = rewriter.applySignatureConversion(
           &linalg_op.region(), signature_converter);
 
       // Store the arguments into the newly allocated buffers.
-      rewriter.setInsertionPointAfter(alloc_res.getDefiningOp());
-      rewriter.create<memref::StoreOp>(loc, entry_block->getArgument(0),
-                                       alloc_a);
-      rewriter.create<memref::StoreOp>(loc, entry_block->getArgument(1),
-                                       alloc_b);
+      rewriter.setInsertionPointAfter(alloc_values.back().getDefiningOp());
+      for (auto it :
+           enumerate(makeArrayRef(alloc_values).take_front(num_inputs))) {
+        rewriter.create<memref::StoreOp>(
+            loc, entry_block->getArgument(it.index()), it.value());
+      }
       rewriter.replaceOp(entry_block->getTerminator(), {});
 
       // Load & yield the result.
       rewriter.setInsertionPointToEnd(entry_block);
-      auto load_res = rewriter.create<memref::LoadOp>(loc, alloc_res);
-      rewriter.create<linalg::YieldOp>(loc, ValueRange{load_res});
+      auto output_values = makeArrayRef(alloc_values).slice(num_inputs);
+      SmallVector<Value, 4> load_results;
+      for (auto it : output_values) {
+        load_results.push_back(rewriter.create<memref::LoadOp>(loc, it));
+      }
+      rewriter.create<linalg::YieldOp>(loc, load_results);
     }
 
     rewriter.replaceOp(reduce_op, linalg_op.getOperation()->getResults());

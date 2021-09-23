@@ -526,6 +526,36 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
 
 // -----
 
+// CHECK-LABEL: func @reduce_multiple_operand
+func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
+  (tensor<1xf32>, tensor<1xi32>) {
+  // CHECK: %[[OUT_F:.*]] = memref.alloc() : memref<1xf32>
+  // CHECK: %[[OUT_I:.*]] = memref.alloc() : memref<1xi32>
+  // CHECK: "lmhlo.reduce"(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}, %[[OUT_F]], %[[OUT_I]]) ( {
+  // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<i32>, %[[ARG3:.*]]: memref<f32>, %[[ARG4:.*]]: memref<i32>,
+  // CHECK-SAME:  %[[ARG5:.*]]: memref<f32>, %[[ARG6:.*]]: memref<i32>):
+  // CHECK:    %[[TMP_OUT0:.*]] = memref.alloc() : memref<f32>
+  // CHECK:    "lmhlo.add"(%[[ARG1]], %[[ARG3]], %[[TMP_OUT0]])
+  // CHECK:    %[[TMP_OUT1:.*]] = memref.alloc() : memref<i32>
+  // CHECK:    "lmhlo.add"(%[[ARG2]], %[[ARG4]], %[[TMP_OUT1]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT0]], %[[ARG5]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT1]], %[[ARG6]])
+  // CHECK:    "lmhlo.terminator"() : () -> ()
+  // CHECK:  }) {dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-SAME: : (memref<1x8xf32>, memref<1x8xi32>, memref<f32>, memref<i32>, memref<1xf32>, memref<1xi32>) -> ()
+  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+  ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
+    %1 = mhlo.add %arg4, %arg6 : tensor<f32>
+    %2 = mhlo.add %arg5, %arg7 : tensor<i32>
+    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} 
+    : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+  return %0#0, %0#1 : tensor<1xf32>, tensor<1xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @transpose
 func @transpose(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.transpose"(%operand) {permutation = dense<[1, 0]> : tensor<2xi64>}

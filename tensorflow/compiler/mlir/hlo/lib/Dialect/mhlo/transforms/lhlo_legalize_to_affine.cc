@@ -508,7 +508,6 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
     ArrayRef<int64_t> shape = inputType.getShape();
 
     SmallVector<Value, 4> induction_vars;
-    Location loc = op.getLoc();
 
     LogicalResult map_status = success();
     auto body_builder = [&](OpBuilder& builder, Location loc,
