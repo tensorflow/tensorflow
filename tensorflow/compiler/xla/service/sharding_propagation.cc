@@ -147,6 +147,18 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
   return true;
 }
 
+bool IsPassthroughCustomOps(const HloInstruction* hlo) {
+  if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
+      !hlo->operand(0)->shape().IsArray() ||
+      hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
+    return false;
+  }
+  return hlo->IsCustomCall("ResizeNearest") ||
+         hlo->IsCustomCall("ResizeBilinear") ||
+         hlo->IsCustomCall("ResizeNearestGrad") ||
+         hlo->IsCustomCall("ResizeBilinearGrad");
+}
+
 // Return the operand which is the most suitable for determining the sharding
 // for the specified instruction or nullptr if there isn't any suitable operand.
 const HloInstruction* PickRepresentativeOperand(
@@ -231,7 +243,12 @@ const HloInstruction* PickRepresentativeOperand(
       }
       return best_operand;
     }
-
+    case HloOpcode::kCustomCall: {
+      if (IsPassthroughCustomOps(instruction)) {
+        return instruction->operand(0);
+      }
+      return nullptr;
+    }
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
@@ -253,7 +270,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
-    case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kDynamicSlice:
@@ -346,6 +362,8 @@ bool SupportSpatialPartitioning(
              computation_map.end();
     case HloOpcode::kReverse:
       return is_spmd;
+    case HloOpcode::kCustomCall:
+      return is_spmd && IsPassthroughCustomOps(instruction);
     default:
       return false;
   }
