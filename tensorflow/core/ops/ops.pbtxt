@@ -26176,6 +26176,9 @@ op {
   output_arg {
     name: "mutex_lock"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_MUTEX_LOCK
+    }
   }
   is_stateful: true
 }
