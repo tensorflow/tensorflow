@@ -263,13 +263,6 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_KERNEL_BUILDER(
-    Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
-    ReadVariableOp);
-REGISTER_KERNEL_BUILDER(
-    Name("_ReadVariablesOp").Device(DEVICE_GPU).HostMemory("resources"),
-    ReadVariablesOp);
-
 #define REGISTER_GPU_KERNELS(type)                             \
   namespace functor {                                          \
   template <>                                                  \
@@ -277,26 +270,13 @@ REGISTER_KERNEL_BUILDER(
       const GPUDevice& d, typename TTypes<type>::Flat lhs,     \
       typename TTypes<type>::ConstFlat rhs);                   \
   extern template struct DenseUpdate<GPUDevice, type, ASSIGN>; \
-  }                                                            \
-  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                  \
-                              .Device(DEVICE_GPU)              \
-                              .HostMemory("resource")          \
-                              .TypeConstraint<type>("dtype"),  \
-                          VarHandleOp)
+  }
+
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
-
-REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("resources")
-                            .TypeConstraint("dtypes",
-                                            {DT_INT64, DT_COMPLEX64,
-                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
-                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
-                        ResourceHandlesOp<Var>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -329,22 +309,18 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .TypeConstraint<int64_t>("out_type"),
                         VariableShapeOp<int64>);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("out_type")
                             .HostMemory("output")
                             .HostMemory("input"),
                         VariableShapeOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("output")
                             .HostMemory("input"),
                         VariableShapeOp<int64>);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
@@ -364,7 +340,7 @@ void DestroyResourceOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
 REGISTER_KERNEL_BUILDER(
-    Name("DestroyResourceOp").Device(DEVICE_GPU).HostMemory("resource"),
+    Name("DestroyResourceOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
     DestroyResourceOp);
 
 template <typename Device, typename T>
@@ -624,14 +600,6 @@ class VarIsInitializedOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
                         VarIsInitializedOp);
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("resource")
-                            .HostMemory("is_initialized"),
-                        IsResourceInitialized<Var>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
                             .Device(DEVICE_DEFAULT)
