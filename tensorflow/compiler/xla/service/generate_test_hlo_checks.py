@@ -33,7 +33,7 @@ class FileCheckVarReplacer:
   _counter: int
   _replacement_cache: Dict[str, str]
   _check_instruction_matcher: re.Pattern = re.compile(r"^[^:]*CHECK[^:]*:.*=")
-  _instr_name_matcher: re.Pattern = re.compile(r"%\w+(\.\d+)?")
+  _instr_name_matcher: re.Pattern = re.compile(r"%[\w-]+(\.\d+)?")
 
   def __init__(self):
     self._counter = -1

@@ -29,6 +29,11 @@ class GenerateTestHloChecksTest(absltest.TestCase):
 // CHECK: %param_1 = parameter(1)
 // CHECK-NEXT: %add.1 = add(%param.0, %param_1) # Replace for any CHECK-directive
 // CHECK-NEXT: ROOT %reduce = reduce(%add.1)
+// CHECK-NEXT: }
+// CHECK: %computation.2 { # New computation resets the counter.
+// CHECK-NEXT: %parameter.0 = parameter(0)
+// CHECK-NEXT: %get-tuple-element.1 = get-tuple-element(%parameter.0)
+// CHECK-NEXT: ROOT %bitcast-convert = bitcast-convert(%get-tuple-element.1)
 """
     self.assertEqual(
         generate_test_hlo_checks.replace_instruction_names(input_hlo), """
@@ -38,6 +43,11 @@ class GenerateTestHloChecksTest(absltest.TestCase):
 // CHECK: [[INSTR_1:%[^ ]+]] = parameter(1)
 // CHECK-NEXT: [[INSTR_2:%[^ ]+]] = add([[INSTR_0]], [[INSTR_1]]) # Replace for any CHECK-directive
 // CHECK-NEXT: ROOT [[INSTR_3:%[^ ]+]] = reduce([[INSTR_2]])
+// CHECK-NEXT: }
+// CHECK: %computation.2 { # New computation resets the counter.
+// CHECK-NEXT: [[INSTR_0:%[^ ]+]] = parameter(0)
+// CHECK-NEXT: [[INSTR_1:%[^ ]+]] = get-tuple-element([[INSTR_0]])
+// CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = bitcast-convert([[INSTR_1]])
 """)
 
 
