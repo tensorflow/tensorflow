@@ -148,12 +148,16 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         dataset_ops.get_structure(input_dataset))
     # pylint: enable=protected-access
 
+    # auto_shard rewrite assumes that there's normalize_to_dense before
+    # rebatch_dataset.
+    # LINT.IfChange
     input_dataset = dataset_ops.normalize_to_dense(input_dataset)
     variant_tensor = ged_ops.rebatch_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         batch_sizes=batch_sizes,
         drop_remainder=drop_remainder,
         **self._flat_structure)
+    # LINT.ThenChange(//tensorflow/core/grappler/optimizers/data/auto_shard.cc)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   def _compute_static_batch_dim(self):
@@ -295,11 +299,16 @@ class _LegacyRebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = nest.map_structure(
         rebatch, dataset_ops.get_structure(input_dataset))
+
+    # auto_shard rewrite assumes that there's normalize_to_dense before
+    # rebatch_dataset.
+    # LINT.IfChange
     input_dataset = dataset_ops.normalize_to_dense(input_dataset)
     variant_tensor = ged_ops.rebatch_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_replicas=num_replicas,
         **self._flat_structure)
+    # LINT.ThenChange(//tensorflow/core/grappler/optimizers/data/auto_shard.cc)
     super(_LegacyRebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
