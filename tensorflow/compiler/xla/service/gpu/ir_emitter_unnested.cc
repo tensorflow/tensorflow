@@ -1060,7 +1060,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     auto mlir_dims = op.dot_dimension_numbers();
 
     auto fill_dims = [](mlir::DenseElementsAttr mlir_dim, auto* config_attrs) {
-      for (llvm::APInt e : mlir_dim.getIntValues())
+      for (llvm::APInt e : mlir_dim.getValues<llvm::APInt>())
         config_attrs->Add(e.getSExtValue());
     };
     fill_dims(mlir_dims.lhs_batching_dimensions(),

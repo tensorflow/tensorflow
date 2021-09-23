@@ -355,7 +355,7 @@ static LogicalResult Verify(BatchToSpaceOp op) {
     assert(crops_attr.getNumElements() == 4 &&
            "tf.BatchToSpace crops must have 4 elements");
 
-    auto crops_range = crops_attr.getIntValues();
+    auto crops_range = crops_attr.getValues<APInt>();
     for (const auto &crops_value : crops_range) {
       int64_t crops_value_int = crops_value.getSExtValue();
       if (crops_value_int < 0)
@@ -627,8 +627,8 @@ bool ExtractInputConstShape(BroadcastGradientArgsOp op,
   if (!matchPattern(op.s0(), m_Constant(&s0))) return false;
   if (!matchPattern(op.s1(), m_Constant(&s1))) return false;
 
-  for (auto s : s0.getIntValues()) s0_shape.push_back(s.getSExtValue());
-  for (auto s : s1.getIntValues()) s1_shape.push_back(s.getSExtValue());
+  for (auto s : s0.getValues<APInt>()) s0_shape.push_back(s.getSExtValue());
+  for (auto s : s1.getValues<APInt>()) s1_shape.push_back(s.getSExtValue());
 
   return true;
 }
@@ -3044,7 +3044,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Prepare new reduction indices according to operand permutation.
   SmallVector<int32_t, 4> shuffled_reduction;
-  llvm::transform(reductions_value.getIntValues(),
+  llvm::transform(reductions_value.getValues<APInt>(),
                   std::back_inserter(shuffled_reduction),
                   [&](APInt idx) { return permutation[idx.getSExtValue()]; });
 

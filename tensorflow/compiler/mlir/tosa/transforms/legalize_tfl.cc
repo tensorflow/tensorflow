@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -2777,8 +2778,8 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   // For data type like 64 bits, we need to truncate them into 48 bits.
   if (e_type.isInteger(64)) {
     e_type = rewriter.getIntegerType(48);
-    attr = attr.mapValues(e_type,
-                          [](const APInt& x) -> APInt { return x.trunc(48); });
+    attr = attr.cast<DenseIntOrFPElementsAttr>().mapValues(
+        e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
   }
 
   output_type = output_type.clone(e_type);

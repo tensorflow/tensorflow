@@ -156,7 +156,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     }
 
     SmallVector<int64_t, 5> sliceShape;
-    for (auto shapeValue : gather.slice_sizes().getIntValues()) {
+    for (auto shapeValue : gather.slice_sizes().getValues<APInt>()) {
       sliceShape.push_back(shapeValue.getSExtValue());
     }
 

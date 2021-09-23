@@ -763,14 +763,14 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
 
     llvm::SmallVector<Attribute, 4> strides;
     if (auto window_strides = op.window_strides()) {
-      auto range = window_strides->getAttributeValues();
+      auto range = window_strides->getValues<Attribute>();
       strides.assign(range.begin(), range.end());
     }
     auto strides_arg = ArrayAttr::get(op.getContext(), strides);
 
     llvm::SmallVector<Attribute, 2> dilation;
     if (auto rhs_dilation = op.rhs_dilation()) {
-      auto range = rhs_dilation->getAttributeValues();
+      auto range = rhs_dilation->getValues<Attribute>();
       dilation.assign(range.begin(), range.end());
     } else {
       // Default dilation of 1.
@@ -907,7 +907,7 @@ class HloBroadcastInDimConverter
 
     if (broadcast_op.broadcast_dimensions()) {
       for (const auto& broadcastDim :
-           enumerate(broadcast_op.broadcast_dimensions().getIntValues())) {
+           enumerate(broadcast_op.broadcast_dimensions().getValues<APInt>())) {
         int size = broadcastDim.value().getSExtValue();
         bool expansion_needed = operand_shape[broadcastDim.index()] == 1 &&
                                 result_type.getShape()[size] != 1;
@@ -974,7 +974,7 @@ class HloDynamicBroadcastInDimConverter
 
     if (op.broadcast_dimensions()) {
       for (const auto& broadcast_dim :
-           enumerate(op.broadcast_dimensions().getIntValues())) {
+           enumerate(op.broadcast_dimensions().getValues<APInt>())) {
         int64_t size = broadcast_dim.value().getSExtValue();
         bool expansion_needed = operand_shape[broadcast_dim.index()] == 1;
         dim_exprs.push_back(expansion_needed ? rewriter.getAffineConstantExpr(0)
@@ -1081,7 +1081,7 @@ class LhloBroadcastInDimConverter
     SmallVector<ReassociationIndices, 4> collapsed_dims_list;
     ReassociationIndices collapsed_dims;
     for (const auto& item :
-         enumerate(op.broadcast_dimensions().getIntValues())) {
+         enumerate(op.broadcast_dimensions().getValues<APInt>())) {
       size_t index = item.index();
       int dim = item.value().getSExtValue();
 
@@ -1553,7 +1553,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     DenseIntElementsAttr dimensions_attr = reduce_op.dimensions();
     SmallVector<int, 4> reduction_dims;
-    for (const auto& dim : dimensions_attr.getIntValues()) {
+    for (const auto& dim : dimensions_attr.getValues<APInt>()) {
       reduction_dims.push_back(dim.getSExtValue());
     }
 

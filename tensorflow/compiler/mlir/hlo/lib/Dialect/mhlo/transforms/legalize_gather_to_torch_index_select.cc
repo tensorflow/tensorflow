@@ -82,7 +82,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
       }
     }
 
-    for (auto it : llvm::enumerate(gather.slice_sizes().getIntValues())) {
+    for (auto it : llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {

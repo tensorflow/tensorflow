@@ -746,7 +746,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getIntValues())) {
+  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -6531,7 +6531,7 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
         op.getLoc(),
         RankedTensorType::get({input_ty.getRank()}, rewriter.getIndexType()),
         input);
-    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getIntValues());
+    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getValues<APInt>());
 
     llvm::SmallVector<Value, 4> dims;
     dims.resize(result_ty.getRank());

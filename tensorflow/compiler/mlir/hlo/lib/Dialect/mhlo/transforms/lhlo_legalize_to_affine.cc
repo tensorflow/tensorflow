@@ -273,7 +273,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // Slice_sizes.
     DenseIntElementsAttr slice_sizes_attr = op.slice_sizesAttr();
     SmallVector<int64_t, 4> slice_sizes;
-    for (const APInt& dim : slice_sizes_attr.getIntValues())
+    for (const APInt& dim : slice_sizes_attr.getValues<APInt>())
       slice_sizes.push_back(dim.getSExtValue());
 
     // Creating constants with 0 value. We need the Integer type constant value

@@ -78,8 +78,8 @@ template <typename T>
 tensorflow::StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                                      ShapedType type) {
   auto arr = input_tensor.flat<T>();
-  return DenseElementsAttr::get(type,
-                                llvm::makeArrayRef(arr.data(), arr.size()));
+  return ElementsAttr(
+      DenseElementsAttr::get(type, llvm::makeArrayRef(arr.data(), arr.size())));
 }
 
 ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
@@ -110,7 +110,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
     string_refs.push_back({val.data(), val.size()});
   }
 
-  return DenseStringElementsAttr::get(type, string_refs);
+  return ElementsAttr(DenseStringElementsAttr::get(type, string_refs));
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
@@ -157,8 +157,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
-      return OpaqueElementsAttr::get(tfgDialect, type,
-                                     MangleTensor(input_tensor));
+      return ElementsAttr(OpaqueElementsAttr::get(tfgDialect, type,
+                                                  MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
@@ -229,9 +229,9 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return SplatElementsAttr::get(
-        single_attr.getType().clone(original_dimensions),
-        single_attr.getValue({0}));
+    return ElementsAttr(
+        SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
+                               single_attr.getValue({0})));
   }
 
   Tensor t;

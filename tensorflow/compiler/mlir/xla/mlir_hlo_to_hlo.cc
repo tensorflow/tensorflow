@@ -1284,7 +1284,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
   case xla_type: {                                                           \
     xla::Array<cpp_type> source_data(shape.dimensions());                    \
-    source_data.SetValues(attr.getValues<cpp_type>());                       \
+    source_data.SetValues(                                                   \
+        attr.cast<DenseElementsAttr>().getValues<cpp_type>());               \
     return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
   }
 

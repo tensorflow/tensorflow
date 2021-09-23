@@ -1111,7 +1111,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     // Compute the product of the block_shape values.
     int64_t block_num_elems = 1;
 
-    for (auto val : block_shape.getIntValues()) {
+    for (auto val : block_shape.getValues<APInt>()) {
       block_num_elems *= val.getSExtValue();
     }
 
@@ -1179,7 +1179,8 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       ...,
     //       input_shape[N-1]]
     std::vector<int64_t> reshaped_permuted_shape(input_rank);
-    auto block_shape_values = llvm::to_vector<4>(block_shape.getIntValues());
+    auto block_shape_values =
+        llvm::to_vector<4>(block_shape.getValues<APInt>());
     reshaped_permuted_shape[0] = batch_size / block_num_elems;
     for (int i = 0; i < block_rank; ++i) {
       reshaped_permuted_shape[1 + i] =
@@ -1207,7 +1208,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     std::vector<int64_t> start_indices(input_rank, 0);
     std::vector<int64_t> slice_sizes = reshaped_permuted_shape;
     std::vector<int64_t> strides(input_rank, 1);
-    auto crop_values = llvm::to_vector<4>(crops.getIntValues());
+    auto crop_values = llvm::to_vector<4>(crops.getValues<APInt>());
     for (int i = 0; i < block_rank; ++i) {
       int64_t crop_start = crop_values[i * 2].getSExtValue();
       int64_t crop_end = crop_values[i * 2 + 1].getSExtValue();
@@ -1371,7 +1372,7 @@ class LowerResizeNearestNeighbor : public RewritePattern {
     DenseIntElementsAttr out_size_cst;
     if (matchPattern(out_size, m_Constant(&out_size_cst))) {
       llvm::SmallVector<int64_t, 2> cst_size;
-      for (auto val : out_size_cst.getIntValues()) {
+      for (auto val : out_size_cst.getValues<APInt>()) {
         cst_size.push_back(val.getSExtValue());
       }
 

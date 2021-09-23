@@ -348,7 +348,7 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   if (shape_attr.getNumElements() != type.getRank()) return false;
 
   llvm::SmallSet<uint64_t, 4> axes_set;
-  for (auto a : axes_attr.getIntValues()) {
+  for (auto a : axes_attr.getValues<APInt>()) {
     axes_set.insert(a.getZExtValue());
   }
 
@@ -370,7 +370,7 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   if (fp_attr.isSplat()) {
     return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
   }
-  return llvm::all_of(fp_attr.getFloatValues(), [value](const APFloat &f) {
+  return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat &f) {
     return f.isExactlyValue(value);
   });
 }
@@ -399,7 +399,7 @@ bool IsLastElementEqualsOne(Attribute attr) {
   if (!ints) return false;
   if (ints.empty()) return false;
   const auto last_element_index = ints.getNumElements() - 1;
-  const auto iterator = ints.getIntValues().begin();
+  const auto iterator = ints.value_begin<APInt>();
   const APInt last_element = iterator[last_element_index];
   return last_element == 1;
 }
@@ -421,7 +421,7 @@ bool IsOneHotIndexAttribute(Attribute attr) {
   if (index_type.getRank() != 1) {
     return false;
   }
-  const auto elems = dense_attr.getIntValues().begin();
+  const auto elems = dense_attr.value_begin<APInt>();
   for (int i = 0; i < dense_attr.getNumElements(); ++i) {
     if (i != elems[i]) {
       return false;
@@ -443,7 +443,7 @@ Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
   OpBuilder builder(attr.getContext());
 
   const auto dense_int_attr = attr.dyn_cast<DenseIntElementsAttr>();
-  const auto int_values = dense_int_attr.getIntValues();
+  const auto int_values = dense_int_attr.getValues<APInt>();
   float float_val = 0.0f;
   if (!int_values.empty()) {
     const APInt apint_val = *int_values.begin();
@@ -920,7 +920,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!matchPattern(binary_op->getOperand(1), m_Constant(&cst)))
       return failure();
     if (cst.getNumElements() != 1) return failure();
-    APFloat cst_value = *cst.float_value_begin();
+    APFloat cst_value = *cst.value_begin<APFloat>();
 
     // Affine op.
     Value filter = fc_op.filter();
@@ -971,18 +971,18 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
         new_bias_values.resize(bias_size,
                                APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
-        new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
+        new_bias_values.resize(bias_size, *bias_cst.value_begin<APFloat>());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
         new_bias_values.insert(new_bias_values.begin(),
-                               bias_cst.float_value_begin(),
-                               bias_cst.float_value_end());
+                               bias_cst.value_begin<APFloat>(),
+                               bias_cst.value_end<APFloat>());
       } else {
         return failure();
       }
 
       int64_t flatten_index = 0;
-      for (auto fp_it = filter_cst.float_value_begin(),
-                fp_end = filter_cst.float_value_end();
+      for (auto fp_it = filter_cst.value_begin<APFloat>(),
+                fp_end = filter_cst.value_end<APFloat>();
            fp_it != fp_end; ++fp_it) {
         int bias_index = (flatten_index++ / slice_size) % bias_size;
 
@@ -1199,7 +1199,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     auto input_shape = input_type.getShape();
     SmallVector<int64_t, 8> perm_values;
-    for (const auto &dim : perm_values_attr.getIntValues())
+    for (const auto &dim : perm_values_attr.getValues<APInt>())
       perm_values.push_back(dim.getSExtValue());
 
     // This should never happen unless the input graph is malformed.
@@ -1440,7 +1440,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
       return llvm::None;
 
     // Check if "begin" is a zero tensor.
-    for (auto begin_idx : begin.getIntValues())
+    for (auto begin_idx : begin.getValues<APInt>())
       if (begin_idx != 0) return llvm::None;
 
     // Check if "size" is equal to slice_op.input.shape except
@@ -1457,7 +1457,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
     int input_last_dim = input_ty.getShape().back();
     if (input_last_dim < 1) return llvm::None;
     int num_result = result_ty.getNumElements();
-    auto size_last = *(--size.getIntValues().end());
+    auto size_last = *(--size.value_end<APInt>());
     int32_t k = size_last.getSExtValue();
     if (num_input / input_last_dim * k != num_result) return llvm::None;
     // We don't match sliceOp with last dim size = 0.

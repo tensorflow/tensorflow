@@ -844,7 +844,7 @@ class ConvertDynamicUpdateSliceOp
 bool MatchSingleIota(DenseIntElementsAttr dimensions, Value iota) {
   auto iota_op = dyn_cast_or_null<mhlo::IotaOp>(iota.getDefiningOp());
   if (!iota_op || dimensions.getNumElements() != 1) return false;
-  auto dim = *dimensions.getIntValues().begin();
+  auto dim = *dimensions.value_begin<APInt>();
   return dim == iota_op.iota_dimension();
 }
 
@@ -884,7 +884,7 @@ bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
   if (!matchPattern(iota_broadcast.operand(), m_Constant(&range_const)))
     return false;
   int index = 0;
-  for (auto value : range_const.getIntValues()) {
+  for (auto value : range_const.getValues<APInt>()) {
     if (value != index++) return false;
   }
   return true;
@@ -906,7 +906,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   if (matchPattern(iota, m_Constant(&iota_const_attr))) {
     // The inner most dimension must match the reduce dimension.
     auto iota_type = iota_const_attr.getType();
-    auto reduce_dim = *dimensions.getIntValues().begin();
+    auto reduce_dim = *dimensions.value_begin<APInt>();
     if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
     if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
         (iota_type.getRank() - 1) != reduce_dim) {
@@ -925,7 +925,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
     //  ....                             outer_loop
     //  ....                                 |
     // 0 1 2 ... n - 1                    ---------
-    for (auto value : iota_const_attr.getIntValues()) {
+    for (auto value : iota_const_attr.getValues<APInt>()) {
       if (value != index) return false;
       index = (index + 1) % inner_dim;
     }
@@ -1371,7 +1371,7 @@ class ConvertReduceOpToTfArgMinMax
     DenseElementsAttr iota_init;
     if (!matchPattern(reduce_op.init_values().back(), m_Constant(&iota_init)))
       return failure();
-    if (*iota_init.getIntValues().begin() != 0) return failure();
+    if (*iota_init.getValues<APInt>().begin() != 0) return failure();
 
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
@@ -1500,7 +1500,7 @@ class ConvertReduceOpToTfArgmax
     if (attr.getNumElements() != 1 ||
         !attr.getType().getElementType().isa<FloatType>())
       return false;
-    auto value = *attr.getFloatValues().begin();
+    auto value = *attr.value_begin<APFloat>();
     return value.isNegative() && value.isInfinity();
   }
 };
@@ -1515,7 +1515,7 @@ class ConvertReduceOpToTfArgmin
     if (attr.getNumElements() != 1 ||
         !attr.getType().getElementType().isa<FloatType>())
       return false;
-    auto value = *attr.getFloatValues().begin();
+    auto value = *attr.value_begin<APFloat>();
     return !value.isNegative() && value.isInfinity();
   }
 };
@@ -1903,10 +1903,9 @@ bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
     return IsSign(floatv_spl, sgn_cst_spl);
   } else if (floatv.isa<DenseElementsAttr>()) {
     auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
-    return llvm::all_of(floatv_dns.getAttributeValues(), [&](Attribute value) {
-      FloatAttr value_f = value.cast<FloatAttr>();
-      return IsSign(value_f.getValue(), sgn_cst_spl);
-    });
+    return llvm::all_of(
+        floatv_dns.getValues<FloatAttr>(),
+        [&](FloatAttr value) { return IsSign(value.getValue(), sgn_cst_spl); });
   }
   return false;
 }
@@ -1944,7 +1943,7 @@ bool IsIotaAttr(const DenseIntElementsAttr &attr, int64_t size) {
   if (attr.getType().getRank() != 1) return false;
   if (attr.getNumElements() != size) return false;
   int64_t iota = 0;
-  for (auto s : attr.getIntValues()) {
+  for (auto s : attr.getValues<APInt>()) {
     if (s != iota) return false;
     ++iota;
   }
