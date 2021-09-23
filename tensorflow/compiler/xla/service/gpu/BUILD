@@ -691,6 +691,7 @@ cc_library(
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":xlir_opdefs",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_detail",
@@ -837,6 +838,7 @@ cc_library(
             ":virtual_nccl_utils",
             ":virtual_rccl",
             ":xlir_kernels",
+            ":xlir_opdefs",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
