@@ -116,10 +116,9 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
     double side_input_scale, se::DeviceMemory<T> input_ptr,
     se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
     se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
-    int64_t scratch_size_limit) {
+    int64_t scratch_size) {
 #if GOOGLE_CUDA
   se::dnn::AlgorithmConfig algorithm_config;
-  auto* stream = ctx->op_device_context()->stream();
 
   if (cudnn_use_autotune) {
     // Check if we already have an algorithm selected for the given parameters.
@@ -127,6 +126,8 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
       return algorithm_config;
     }
     profiler::ScopedAnnotation trace("cudnn_autotuning");
+
+    auto* stream = ctx->op_device_context()->stream();
 
     // Find all candidate algorithms or execution plans (for CuDNN frontend
     // APIs).
@@ -199,9 +200,9 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
       }
     };
 
-    SE_ASSIGN_OR_RETURN(auto results,
-                        AutotuneConvImpl(ctx, configs, launch_func,
-                                         scratch_size_limit, rz_allocator));
+    SE_ASSIGN_OR_RETURN(
+        auto results, AutotuneConvImpl(ctx, configs, launch_func, scratch_size,
+                                       rz_allocator));
 
     // Only log on an AutotuneConv cache miss.
     LogFusedConvForwardAutotuneResults(
@@ -212,30 +213,6 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
     TF_RETURN_IF_ERROR(
         BestCudnnConvAlgorithm(results, &plans, &algorithm_config));
     autotune_map->Insert(params, algorithm_config);
-  } else if (CudnnUseFrontend()) {
-    // FusedConvolveWithExecutionPlan does not fall back to a default algorithm
-    // if unspecified; we have to choose one.  Since autotuning is disabled,
-    // choose arbitrarily the first one we find that fits in the memory limit.
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-    TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveExecutionPlans(
-        se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
-        conv_scale, side_input_scale, stream, input_desc, filter_desc,
-        bias_desc, output_desc, conv_desc, activation_mode, &plans));
-    for (auto& plan : plans) {
-      if (plan->getWorkspaceSize() <= scratch_size_limit) {
-        algorithm_config = se::dnn::AlgorithmConfig(
-            se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-            plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
-        break;
-      }
-    }
-    if (!algorithm_config.algorithm()) {
-      return errors::Internal(
-          absl::StrFormat("No available convolution algorithm fit in the "
-                          "scratch space limit of %d bytes",
-                          scratch_size_limit));
-    }
   }
   return algorithm_config;
 #else
@@ -257,7 +234,7 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<double>(
     double side_input_scale, se::DeviceMemory<double> input_ptr,
     se::DeviceMemory<double> filter_ptr, se::DeviceMemory<double> output_ptr,
     se::DeviceMemory<double> bias_ptr, se::DeviceMemory<double> side_input_ptr,
-    int64_t scratch_size_limit);
+    int64_t scratch_size);
 
 template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
@@ -272,7 +249,7 @@ template StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv<float>(
     double side_input_scale, se::DeviceMemory<float> input_ptr,
     se::DeviceMemory<float> filter_ptr, se::DeviceMemory<float> output_ptr,
     se::DeviceMemory<float> bias_ptr, se::DeviceMemory<float> side_input_ptr,
-    int64_t scratch_size_limit);
+    int64_t scratch_size);
 
 template <typename T>
 StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
@@ -287,8 +264,6 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
     int64_t scratch_size_limit) {
   se::dnn::AlgorithmConfig algorithm_config;
 
-  auto* stream = ctx->op_device_context()->stream();
-
   // cudnn_use_autotune is applicable only the CUDA flow
   // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
   // if we do not have a cached algorithm_config for this conv_parameters
@@ -299,6 +274,8 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
       cudnn_use_autotune;
   if (do_autotune && !autotune_map->Find(conv_parameters, &algorithm_config)) {
     profiler::ScopedAnnotation annotation("cudnn_autotuning");
+
+    auto* stream = ctx->op_device_context()->stream();
 
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
@@ -433,37 +410,6 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
         BestCudnnConvAlgorithm(results, &plans, &algorithm_config));
 
     autotune_map->Insert(conv_parameters, algorithm_config);
-#if GOOGLE_CUDA
-  } else if (CudnnUseFrontend()) {
-    // Convolve.*WithExecutionPlan does not fall back to a default algorithm if
-    // unspecified; we have to choose one.  Since autotuning is disabled, choose
-    // arbitrarily the first one we find that fits in the memory limit.
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-    if (!stream->parent()->GetConvolveExecutionPlans(
-            kind, se::dnn::ToDataType<T>::value, stream, input_desc,
-            filter_desc, output_desc, conv_desc, &plans)) {
-      return errors::Unknown(
-          "Failed to get convolution algorithm. This is "
-          "probably because cuDNN failed to initialize, so try "
-          "looking to see if a warning log message was printed "
-          "above.");
-    }
-    for (auto& plan : plans) {
-      if (plan->getWorkspaceSize() <= scratch_size_limit) {
-        algorithm_config = se::dnn::AlgorithmConfig(
-            se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-            plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
-        break;
-      }
-    }
-    if (!algorithm_config.algorithm()) {
-      return errors::Internal(
-          absl::StrFormat("No available convolution algorithm fit in the "
-                          "scratch space limit of %d bytes",
-                          scratch_size_limit));
-    }
-#endif
   }
   return algorithm_config;
 }
