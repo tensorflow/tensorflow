@@ -834,9 +834,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
-            ":virtual_nccl",
-            ":virtual_nccl_utils",
-            ":virtual_rccl",
             ":xlir_kernels",
             ":xlir_opdefs",
             "@llvm-project//llvm:Support",
