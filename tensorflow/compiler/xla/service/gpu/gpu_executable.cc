@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -615,6 +616,13 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Lock the GPU with a shared lock so that we don't interfere with autotuning
+  // that may be running during JIT compilation while allowing multiple XLA
+  // computations to use the same GPU simultaneously.
+  auto gpu_lock = LockGpuShared(executor);
+
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -623,8 +631,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
     TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
-
-  se::StreamExecutor* executor = run_options->stream()->parent();
 
   auto device_ordinal = executor->device_ordinal();
   ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
