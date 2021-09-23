@@ -1711,14 +1711,14 @@ floormod = gen_math_ops.floor_mod
 def _add_dispatch(x, y, name=None):
   """The operation invoked by the `Tensor.__add__` operator.
 
-    Purpose in the API:
+  Purpose in the API:
 
-      This method is exposed in TensorFlow's API so that library developers
-      can register dispatching for `Tensor.__add__` to allow it to handle
-      custom composite tensors & other custom objects.
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__add__` to allow it to handle
+    custom composite tensors & other custom objects.
 
-      The API symbol is not intended to be called by users directly and does
-      appear in TensorFlow's generated documentation.
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     x: The left-hand side of the `+` operator.
