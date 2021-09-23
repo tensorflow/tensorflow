@@ -1958,20 +1958,16 @@ class DotGeneralOpOnTensorsConversion
       return failure();
     }
 
-    mhlo::DotDimensionNumbers dim_numbers = op.dot_dimension_numbers();
-    auto lhs_bathcing_dims =
-        Extract1DVector(dim_numbers.lhs_batching_dimensions());
-    auto rhs_bathcing_dims =
-        Extract1DVector(dim_numbers.rhs_batching_dimensions());
-    auto lhs_contracting_dims =
-        Extract1DVector(dim_numbers.lhs_contracting_dimensions());
-    auto rhs_contracting_dims =
-        Extract1DVector(dim_numbers.rhs_contracting_dimensions());
-    if (lhs_bathcing_dims.size() != 1 || lhs_bathcing_dims[0] != 0) {
+    mhlo::DotDimensionNumbersAttr dim_numbers = op.dot_dimension_numbers();
+    auto lhs_batching_dims = dim_numbers.getLhsBatchingDimensions();
+    auto rhs_batching_dims = dim_numbers.getRhsBatchingDimensions();
+    auto lhs_contracting_dims = dim_numbers.getLhsContractingDimensions();
+    auto rhs_contracting_dims = dim_numbers.getRhsContractingDimensions();
+    if (lhs_batching_dims.size() != 1 || lhs_batching_dims[0] != 0) {
       return rewriter.notifyMatchFailure(
           op, "expected lhs batching dimensions exactly {0}");
     }
-    if (rhs_bathcing_dims.size() != 1 || rhs_bathcing_dims[0] != 0) {
+    if (rhs_batching_dims.size() != 1 || rhs_batching_dims[0] != 0) {
       return rewriter.notifyMatchFailure(
           op, "expected rhs batching dimensions exactly {0}");
     }

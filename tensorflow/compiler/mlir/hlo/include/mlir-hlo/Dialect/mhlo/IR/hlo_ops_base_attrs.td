@@ -43,4 +43,15 @@ def GatherDimensionNumbers : AttrDef<HLO_Dialect, "GatherDimensionNumbers"> {
   );
 }
 
+def DotDimensionNumbers : AttrDef<HLO_Dialect, "DotDimensionNumbers"> {
+  let mnemonic = "dot";
+  let summary = "Attribute that models the dimension information for dot.";
+  let parameters = (ins
+      HLODim:$lhsBatchingDimensions,
+      HLODim:$rhsBatchingDimensions,
+      HLODim:$lhsContractingDimensions,
+      HLODim:$rhsContractingDimensions
+  );
+}
+
 #endif // HLO_OPS_BASE_ATTRS

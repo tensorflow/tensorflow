@@ -9,11 +9,7 @@ func @einsum_diag(%arg0: tensor<6x6xf32>) -> tensor<6xf32> {
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
 // CHECK:         %[[CST:.+]] = mhlo.constant dense<{{.*}} : tensor<f32>
 // CHECK:         %{{.+}} = "mhlo.dot_general"(%[[CST]], %[[ARG0]])
-// CHECK-SAME:      dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        lhs_contracting_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        rhs_contracting_dimensions = dense<> : tensor<0xi64>}
+// CHECK-SAME:          dot_dimension_numbers = #mhlo.dot<>
 // CHECK-SAME:    : (tensor<f32>, tensor<6x6xf32>) -> tensor<6xf32>
 
 func @einsum_batched_matrix_high_rank_vector_mul(%arg0: tensor<8x2x6xf32>, %arg1: tensor<8x5x3x6xf32>) -> tensor<8x5x3x2xf32> {
@@ -24,11 +20,11 @@ func @einsum_batched_matrix_high_rank_vector_mul(%arg0: tensor<8x2x6xf32>, %arg1
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]
 // CHECK:         %{{.+}} = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
-// CHECK-SAME:      dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:        lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:        rhs_contracting_dimensions = dense<3> : tensor<1xi64>}
+// CHECK-SAME:      dot_dimension_numbers =
+// CHECK-SAME:        lhs_batching_dimensions = [0]
+// CHECK-SAME:        rhs_batching_dimensions = [0]
+// CHECK-SAME:        lhs_contracting_dimensions = [2]
+// CHECK-SAME:        rhs_contracting_dimensions = [3]
 // CHECK-SAME:    : (tensor<8x2x6xf32>, tensor<8x5x3x6xf32>) -> tensor<8x5x3x2xf32>
 
 func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -39,11 +35,9 @@ func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> 
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]
 // CHECK:         %{{.+}} = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
-// CHECK-SAME:      dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        rhs_contracting_dimensions = dense<0> : tensor<1xi64>}
+// CHECK-SAME:      dot_dimension_numbers =
+// CHECK-SAME:        lhs_contracting_dimensions = [1]
+// CHECK-SAME:        rhs_contracting_dimensions = [0]
 // CHECK-SAME:    : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
 
 func @matvec(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
@@ -54,11 +48,9 @@ func @matvec(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]
 // CHECK:         %{{.+}} = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
-// CHECK-SAME:      dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        rhs_contracting_dimensions = dense<0> : tensor<1xi64>}
+// CHECK-SAME:      dot_dimension_numbers =
+// CHECK-SAME:        lhs_contracting_dimensions = [1]
+// CHECK-SAME:        rhs_contracting_dimensions = [0]
 // CHECK-SAME:    : (tensor<?x?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
 func @dot(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<f32> {
@@ -69,10 +61,8 @@ func @dot(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<f32> {
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]
 // CHECK:         %{{.+}} = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
-// CHECK-SAME:      dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        lhs_contracting_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-// CHECK-SAME:        rhs_contracting_dimensions = dense<0> : tensor<1xi64>}
+// CHECK-SAME:      dot_dimension_numbers =
+// CHECK-SAME:        lhs_contracting_dimensions = [0]
+// CHECK-SAME:        rhs_contracting_dimensions = [0]
 // CHECK-SAME:    : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
 

@@ -1422,12 +1422,14 @@ func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
 
 func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
   // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
-  %0 = "mhlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
-    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-    rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   return
 }
 
@@ -1435,12 +1437,14 @@ func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 
 func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
   // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
-  %0 = "mhlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
-    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    lhs_contracting_dimensions = dense<[]> : tensor<0xi64>,
-    rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   return
 }
 

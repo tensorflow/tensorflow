@@ -168,14 +168,12 @@ func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
     // CHECK-NEXT:      affine.store %[[ADD]], %{{.*}}[%[[I]], %[[J]]] : memref<7x4xf32>
     // CHECK: return
   "lmhlo.dot"(%lhs, %rhs, %result) {
-      dot_dimension_numbers = {
-        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-        rhs_contracting_dimensions = dense<0> : tensor<1xi64>
-      }
-    } :
-    (memref<7x3xf32>, memref<3x4xf32>, memref<7x4xf32>) -> ()
+      dot_dimension_numbers = #mhlo.dot<
+         lhs_batching_dimensions = [],
+         rhs_batching_dimensions = [],
+         lhs_contracting_dimensions = [1],
+         rhs_contracting_dimensions = [0]
+      >} : (memref<7x3xf32>, memref<3x4xf32>, memref<7x4xf32>) -> ()
   return
 }
 // CHECK-LABEL: func @int_dot_op
@@ -192,14 +190,10 @@ func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
     // CHECK-NEXT:      affine.store %[[ADD]], %{{.*}}[%[[I]], %[[J]]] : memref<7x4xi32>
     // CHECK: return
   "lmhlo.dot"(%lhs, %rhs, %result) {
-      dot_dimension_numbers = {
-        lhs_batching_dimensions = dense<> : tensor<0xi64>,
-        rhs_batching_dimensions = dense<> : tensor<0xi64>,
-        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-        rhs_contracting_dimensions = dense<0> : tensor<1xi64>
-      }
-     } :
-    (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >} : (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
   return
 }
 

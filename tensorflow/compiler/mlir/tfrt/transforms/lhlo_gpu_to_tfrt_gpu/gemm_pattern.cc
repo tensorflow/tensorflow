@@ -223,18 +223,18 @@ FailureOr<Value> GemmOpConversionRewrite(
   if (element_type !=
       srcOp.rhs().getType().template cast<mlir::MemRefType>().getElementType())
     return mlir::failure();
-  const mlir::mhlo::DotDimensionNumbers dim_nums =
+  const mlir::mhlo::DotDimensionNumbersAttr dim_nums =
       srcOp.dot_dimension_numbers();
 
   // The row and column dimensions are the last two dimensions. All the
   // dimensions before them are batching dimensions.
-  int64_t row_dim = dim_nums.lhs_batching_dimensions().size();
-  int64_t col_dim = dim_nums.lhs_batching_dimensions().size() + 1;
+  int64_t row_dim = dim_nums.getLhsBatchingDimensions().size();
+  int64_t col_dim = dim_nums.getLhsBatchingDimensions().size() + 1;
 
   int64_t batch_size = srcOp.batch_size();
 
   // Check that the batch dims don't cover the last two dims.
-  for (auto batch_dim : dim_nums.lhs_batching_dimensions()) {
+  for (auto batch_dim : dim_nums.getLhsBatchingDimensions()) {
     if (row_dim == batch_dim) return mlir::failure();
     if (col_dim == batch_dim) return mlir::failure();
   }
@@ -282,12 +282,12 @@ FailureOr<Value> GemmOpConversionRewrite(
         shape.dimensions(row_dim + static_cast<int64_t>(!is_row_major))};
   };
 
-  MatrixDescriptor lhs_matrix = make_descriptor(
-      lhs_shape, mapping.lookup(srcOp.lhs()),
-      dim_nums.lhs_contracting_dimensions().getValue<int64_t>({0}) == row_dim);
-  MatrixDescriptor rhs_matrix = make_descriptor(
-      rhs_shape, mapping.lookup(srcOp.rhs()),
-      dim_nums.rhs_contracting_dimensions().getValue<int64_t>({0}) == col_dim);
+  MatrixDescriptor lhs_matrix =
+      make_descriptor(lhs_shape, mapping.lookup(srcOp.lhs()),
+                      dim_nums.getLhsContractingDimensions()[0] == row_dim);
+  MatrixDescriptor rhs_matrix =
+      make_descriptor(rhs_shape, mapping.lookup(srcOp.rhs()),
+                      dim_nums.getRhsContractingDimensions()[0] == col_dim);
   MatrixDescriptor output_matrix = MatrixDescriptor{
       mapping.lookup(srcOp.output()), /*transpose=*/false,
       output_shape.dimensions(row_dim), output_shape.dimensions(col_dim)};

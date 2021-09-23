@@ -250,18 +250,18 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
 
 static LogicalResult Verify(DotGeneralOp op) {
   auto dot_dimension_numbers = op.dot_dimension_numbers();
-  int64_t lhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
-  int64_t rhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  int64_t lhs_batching_dimensions_size =
+      dot_dimension_numbers.getLhsBatchingDimensions().size();
+  int64_t rhs_batching_dimensions_size =
+      dot_dimension_numbers.getRhsBatchingDimensions().size();
   if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
     return op.emitError()
            << "lhs and rhs should have the same number of batching dimensions";
   }
-  int64_t lhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
-  int64_t rhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  int64_t lhs_contracting_dimensions_size =
+      dot_dimension_numbers.getLhsContractingDimensions().size();
+  int64_t rhs_contracting_dimensions_size =
+      dot_dimension_numbers.getRhsContractingDimensions().size();
   if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
     return op.emitError() << "lhs and rhs should have the same number of "
                              "contracting dimensions";
@@ -4300,6 +4300,36 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
   assert(succeeded(result));
 }
 
+/// Helpers for attributes parsing.
+
+static ParseResult parseDims(DialectAsmParser& parser,
+                             SmallVector<int64_t>& dims) {
+  dims.clear();
+  if (parser.parseLSquare()) return failure();
+  while (failed(parser.parseOptionalRSquare())) {
+    dims.emplace_back();
+    if (parser.parseInteger(dims.back())) return failure();
+    parser.parseOptionalComma();
+  }
+  return success();
+}
+
+static ParseResult parseKeyword(
+    DialectAsmParser& parser, StringRef keyword, bool& seen,
+    llvm::function_ref<ParseResult()> parse_values) {
+  auto loc = parser.getCurrentLocation();
+  if (succeeded(parser.parseOptionalKeyword(keyword))) {
+    if (seen) {
+      parser.emitError(loc) << "duplicated `" << keyword << "` entry";
+      return failure();
+    }
+    seen = true;
+    if (parser.parseEqual() || parse_values()) return failure();
+    parser.parseOptionalComma();
+  }
+  return success();
+}
+
 // Custom printer and parser for ScatterDimensionNumbersAttr.
 void ScatterDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
@@ -4331,31 +4361,6 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
                                              Type type) {
   if (parser.parseLess()) return {};
 
-  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
-    dims.clear();
-    if (parser.parseLSquare()) return failure();
-    while (failed(parser.parseOptionalRSquare())) {
-      dims.emplace_back();
-      if (parser.parseInteger(dims.back())) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-  auto parse_keyword = [&](StringRef keyword, bool& seen,
-                           auto parse_values) -> ParseResult {
-    auto loc = parser.getCurrentLocation();
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      if (seen) {
-        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
-        return failure();
-      }
-      seen = true;
-      if (parser.parseEqual() || parse_values()) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-
   bool seen_update_window_dims = false;
   SmallVector<int64_t> update_window_dims;
   bool seen_inserted_window_dims = false;
@@ -4366,19 +4371,23 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
   int64_t index_vector_dim = 0;
   // Parse the key-value pair in any order, duplicate are errors.
   while (failed(parser.parseOptionalGreater())) {
-    if (failed(parse_keyword("update_window_dims", seen_update_window_dims,
-                             [&] { return parse_dims(update_window_dims); })))
+    if (failed(parseKeyword(
+            parser, "update_window_dims", seen_update_window_dims,
+            [&] { return parseDims(parser, update_window_dims); })))
       return {};
-    if (failed(parse_keyword("inserted_window_dims", seen_inserted_window_dims,
-                             [&] { return parse_dims(inserted_window_dims); })))
+    if (failed(parseKeyword(
+            parser, "inserted_window_dims", seen_inserted_window_dims,
+            [&] { return parseDims(parser, inserted_window_dims); })))
       return {};
-    if (failed(parse_keyword(
-            "scatter_dims_to_operand_dims", seen_scatter_dims_to_operand_dims,
-            [&]() { return parse_dims(scatter_dims_to_operand_dims); })))
+    if (failed(parseKeyword(parser, "scatter_dims_to_operand_dims",
+                            seen_scatter_dims_to_operand_dims, [&]() {
+                              return parseDims(parser,
+                                               scatter_dims_to_operand_dims);
+                            })))
       return {};
-    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
-          return parser.parseInteger(index_vector_dim);
-        })))
+    if (failed(parseKeyword(
+            parser, "index_vector_dim", seen_index_vector_dim,
+            [&]() { return parser.parseInteger(index_vector_dim); })))
       return {};
   }
   return ScatterDimensionNumbersAttr::get(
@@ -4418,31 +4427,6 @@ Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
                                             Type type) {
   if (parser.parseLess()) return {};
 
-  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
-    dims.clear();
-    if (parser.parseLSquare()) return failure();
-    while (failed(parser.parseOptionalRSquare())) {
-      dims.emplace_back();
-      if (parser.parseInteger(dims.back())) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-  auto parse_keyword = [&](StringRef keyword, bool& seen,
-                           auto parse_values) -> ParseResult {
-    auto loc = parser.getCurrentLocation();
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      if (seen) {
-        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
-        return failure();
-      }
-      seen = true;
-      if (parser.parseEqual() || parse_values()) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-
   bool seen_offset_dims = false;
   SmallVector<int64_t> offset_dims;
   bool seen_collapsed_slice_dims = false;
@@ -4453,23 +4437,95 @@ Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
   int64_t index_vector_dim = 0;
   // Parse the key-value pair in any order, duplicate are errors.
   while (failed(parser.parseOptionalGreater())) {
-    if (failed(parse_keyword("offset_dims", seen_offset_dims,
-                             [&] { return parse_dims(offset_dims); })))
+    if (failed(parseKeyword(parser, "offset_dims", seen_offset_dims,
+                            [&] { return parseDims(parser, offset_dims); })))
       return {};
-    if (failed(parse_keyword("collapsed_slice_dims", seen_collapsed_slice_dims,
-                             [&] { return parse_dims(collapsed_slice_dims); })))
+    if (failed(parseKeyword(
+            parser, "collapsed_slice_dims", seen_collapsed_slice_dims,
+            [&] { return parseDims(parser, collapsed_slice_dims); })))
       return {};
-    if (failed(parse_keyword("start_index_map", seen_start_index_map,
-                             [&]() { return parse_dims(start_index_map); })))
+    if (failed(
+            parseKeyword(parser, "start_index_map", seen_start_index_map,
+                         [&]() { return parseDims(parser, start_index_map); })))
       return {};
-    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
-          return parser.parseInteger(index_vector_dim);
-        })))
+    if (failed(parseKeyword(
+            parser, "index_vector_dim", seen_index_vector_dim,
+            [&]() { return parser.parseInteger(index_vector_dim); })))
       return {};
   }
   return GatherDimensionNumbersAttr::get(context, offset_dims,
                                          collapsed_slice_dims, start_index_map,
                                          index_vector_dim);
+}
+
+// Custom printer and parser for DotDimensionNumbersAttr.
+void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+  printer << "dot<";
+  auto lhs_batching_dimensions = getLhsBatchingDimensions();
+  if (!lhs_batching_dimensions.empty()) {
+    printer << "lhs_batching_dimensions = [";
+    llvm::interleaveComma(lhs_batching_dimensions, printer);
+    printer << "], ";
+  }
+  auto rhs_batching_dimensions = getRhsBatchingDimensions();
+  if (!rhs_batching_dimensions.empty()) {
+    printer << "rhs_batching_dimensions = [";
+    llvm::interleaveComma(rhs_batching_dimensions, printer);
+    printer << "], ";
+  }
+  auto lhs_contracting_dimensions = getLhsContractingDimensions();
+  if (!lhs_contracting_dimensions.empty()) {
+    printer << "lhs_contracting_dimensions = [";
+    llvm::interleaveComma(lhs_contracting_dimensions, printer);
+    printer << "], ";
+  }
+  auto rhs_contracting_dimensions = getRhsContractingDimensions();
+  if (!rhs_contracting_dimensions.empty()) {
+    printer << "rhs_contracting_dimensions = [";
+    llvm::interleaveComma(rhs_contracting_dimensions, printer);
+    printer << "], ";
+  }
+  printer << ">";
+}
+
+Attribute DotDimensionNumbersAttr::parse(MLIRContext* context,
+                                         DialectAsmParser& parser, Type type) {
+  if (parser.parseLess()) return {};
+
+  bool seen_lhs_batching_dimensions = false;
+  SmallVector<int64_t> lhs_batching_dimensions;
+  bool seen_rhs_batching_dimensions = false;
+  SmallVector<int64_t> rhs_batching_dimensions;
+  bool seen_lhs_contracting_dimensions = false;
+  SmallVector<int64_t> lhs_contracting_dimensions;
+  bool seen_rhs_contracting_dimensions = false;
+  SmallVector<int64_t> rhs_contracting_dimensions;
+  // Parse the key-value pair in any order, duplicate are errors.
+  while (failed(parser.parseOptionalGreater())) {
+    if (failed(parseKeyword(
+            parser, "lhs_batching_dimensions", seen_lhs_batching_dimensions,
+            [&] { return parseDims(parser, lhs_batching_dimensions); })))
+      return {};
+    if (failed(parseKeyword(
+            parser, "rhs_batching_dimensions", seen_rhs_batching_dimensions,
+            [&] { return parseDims(parser, rhs_batching_dimensions); })))
+      return {};
+    if (failed(parseKeyword(parser, "lhs_contracting_dimensions",
+                            seen_lhs_contracting_dimensions, [&]() {
+                              return parseDims(parser,
+                                               lhs_contracting_dimensions);
+                            })))
+      return {};
+    if (failed(parseKeyword(parser, "rhs_contracting_dimensions",
+                            seen_rhs_contracting_dimensions, [&]() {
+                              return parseDims(parser,
+                                               rhs_contracting_dimensions);
+                            })))
+      return {};
+  }
+  return DotDimensionNumbersAttr::get(
+      context, lhs_batching_dimensions, rhs_batching_dimensions,
+      lhs_contracting_dimensions, rhs_contracting_dimensions);
 }
 
 //===----------------------------------------------------------------------===//

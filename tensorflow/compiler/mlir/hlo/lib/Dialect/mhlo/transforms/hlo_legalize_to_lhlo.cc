@@ -168,18 +168,13 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
     SmallVector<Value, 2> buffer_args(operands.begin(), operands.end());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
 
-    // TODO(silvasean): Move this helper to MLIR core.
-    auto make_elements_attr = [&rewriter](ArrayRef<int64_t> integers) {
-      auto type = RankedTensorType::get({static_cast<int64_t>(integers.size())},
-                                        rewriter.getIntegerType(64));
-      return DenseIntElementsAttr::get(type, integers);
-    };
     auto dotOp = rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None,
                                                buffer_args, op->getAttrs());
     // MHLO's Dot uses rank-2 operands, of the form ([N, M], [M, O]) -> [N, O].
-    auto dimension_numbers = mhlo::DotDimensionNumbers::get(
-        make_elements_attr({}), make_elements_attr({}), make_elements_attr({1}),
-        make_elements_attr({0}), rewriter.getContext());
+    auto dimension_numbers = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), /*lhsBatchingDimensions=*/{},
+        /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
+        /*rhsContractingDimensions=*/{0});
     dotOp.dot_dimension_numbersAttr(dimension_numbers);
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return success();

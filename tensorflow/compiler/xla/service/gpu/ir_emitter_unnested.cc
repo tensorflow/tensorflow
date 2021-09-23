@@ -1059,17 +1059,16 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();
 
-    auto fill_dims = [](mlir::DenseElementsAttr mlir_dim, auto* config_attrs) {
-      for (llvm::APInt e : mlir_dim.getValues<llvm::APInt>())
-        config_attrs->Add(e.getSExtValue());
+    auto fill_dims = [](llvm::ArrayRef<int64_t> mlir_dim, auto* config_attrs) {
+      for (int64_t e : mlir_dim) config_attrs->Add(e);
     };
-    fill_dims(mlir_dims.lhs_batching_dimensions(),
+    fill_dims(mlir_dims.getLhsBatchingDimensions(),
               dims.mutable_lhs_batch_dimensions());
-    fill_dims(mlir_dims.rhs_batching_dimensions(),
+    fill_dims(mlir_dims.getRhsBatchingDimensions(),
               dims.mutable_rhs_batch_dimensions());
-    fill_dims(mlir_dims.lhs_contracting_dimensions(),
+    fill_dims(mlir_dims.getLhsContractingDimensions(),
               dims.mutable_lhs_contracting_dimensions());
-    fill_dims(mlir_dims.rhs_contracting_dimensions(),
+    fill_dims(mlir_dims.getRhsContractingDimensions(),
               dims.mutable_rhs_contracting_dimensions());
 
     return std::unique_ptr<Thunk>(
