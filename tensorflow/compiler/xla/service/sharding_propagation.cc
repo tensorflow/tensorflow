@@ -1638,12 +1638,16 @@ bool ShardingPropagation::InferShardingFromOperands(
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
-       instruction->opcode() == HloOpcode::kReduceWindow) &&
-      !(aggressiveness == 0 &&
-        (instruction->opcode() == HloOpcode::kConcatenate ||
-         instruction->opcode() == HloOpcode::kDynamicSlice))) {
+       instruction->opcode() == HloOpcode::kReduceWindow)) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
+      // Do not pass through manual sharding to concat or dynamic slice when
+      // aggressiveneess is 0.
+      if (aggressiveness == 0 &&
+          (instruction->opcode() == HloOpcode::kConcatenate ||
+           instruction->opcode() == HloOpcode::kDynamicSlice)) {
+        return false;
+      }
       instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
       return true;
     }
@@ -1868,18 +1872,13 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
 
       // Do not pass through sharding annotation at the first iteration
-      // if concat dim is sharded or operand sharding is manual.
-      if (aggressiveness == 0) {
-        if (operand->sharding().IsManual()) {
-          return false;
-        }
-        if (operand->sharding().NumTiles() > 1) {
-          const auto& tile_assignment = operand->sharding().tile_assignment();
-          for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
-            if (absl::c_linear_search(instruction->dimensions(), i) &&
-                tile_assignment.dim(i) > 1) {
-              return false;
-            }
+      // if concat dim is sharded.
+      if (aggressiveness == 0 && operand->sharding().NumTiles() > 1) {
+        const auto& tile_assignment = operand->sharding().tile_assignment();
+        for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
+          if (absl::c_linear_search(instruction->dimensions(), i) &&
+              tile_assignment.dim(i) > 1) {
+            return false;
           }
         }
       }
