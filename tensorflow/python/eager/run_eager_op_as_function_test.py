@@ -23,6 +23,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -167,6 +168,9 @@ class RunEagerOpAsFunctionTest(test.TestCase):
     array_ops.concat([[1], [2]], axis=-1)
     array_ops.concat([[1], [2], [3]], axis=-1)
 
+  def testCreateCriticalSection(self):
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
+    cs.execute(lambda: 1.0)
 
 if __name__ == "__main__":
   context.enable_run_eager_op_as_function()

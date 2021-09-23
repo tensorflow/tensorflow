@@ -8,8 +8,8 @@ func @init_all_tables() {
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = -1 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
   return
   // CHECK-LABEL: func @init_all_tables
-  // CHECK: [[CST:%.*]]  = constant dense<["apple", "banana", "grape"]> : tensor<3x!tf_type.string>
-  // CHECK: [[CST_0:%.*]]  = constant dense<[0, 1, 2]> : tensor<3xi64>
+  // CHECK-DAG: [[CST:%.*]]  = constant dense<["apple", "banana", "grape"]> : tensor<3x!tf_type.string>
+  // CHECK-DAG: [[CST_0:%.*]]  = constant dense<[0, 1, 2]> : tensor<3xi64>
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
   // CHECK: "tf.LookupTableImportV2"([[VAL]], [[CST]], [[CST_0]])
 }
@@ -22,8 +22,8 @@ func @init_all_tables_with_explicit_vocab_size() {
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = 2 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
   return
   // CHECK-LABEL: func @init_all_tables_with_explicit_vocab_size
-  // CHECK: [[CST:%.*]]  = constant dense<["apple", "banana"]> : tensor<2x!tf_type.string>
-  // CHECK: [[CST_0:%.*]]  = constant dense<[0, 1]> : tensor<2xi64>
+  // CHECK-DAG: [[CST:%.*]]  = constant dense<["apple", "banana"]> : tensor<2x!tf_type.string>
+  // CHECK-DAG: [[CST_0:%.*]]  = constant dense<[0, 1]> : tensor<2xi64>
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
   // CHECK: "tf.LookupTableImportV2"([[VAL]], [[CST]], [[CST_0]])
 }

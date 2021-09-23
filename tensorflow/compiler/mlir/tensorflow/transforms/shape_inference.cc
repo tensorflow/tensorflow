@@ -810,6 +810,9 @@ void ShapeInference::EnqueueCallers(FuncOp fn) {
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
                                                              Value result) {
+  // No changes needed if the new type is unchanged.
+  if (new_type == result.getType()) return false;
+
   Operation* cast_op = nullptr;
   // First insert cast back for uses that need a cast and then
   // update the type.

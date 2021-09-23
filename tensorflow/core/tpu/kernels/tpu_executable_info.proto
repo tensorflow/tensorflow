@@ -88,6 +88,7 @@ message TPUHostTransferProto {
   bool is_lower_bits = 8;
   // The name of host side command handler.
   string host_handler_name = 9;
+  reserved 10;
 }
 
 message TPUHostTransferInfoProto {

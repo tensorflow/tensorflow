@@ -134,6 +134,20 @@ auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
 
+auto* tf_data_auto_shard_rewrite_batch_size_eligible =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/eligible",
+        "Whether tf.data pipelines that are eligible for autoshard "
+        "to rewrite the batch size.",
+        "eligible");
+
+auto* tf_data_auto_shard_rewrite_batch_size_reason =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/reason",
+        "The reasons that tf.data pipelines are ineligible for autoshard "
+        "to rewrite the batch size.",
+        "reason");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -261,6 +275,17 @@ void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
   tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
+}
+
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason) {
+  tf_data_auto_shard_rewrite_batch_size_eligible
+      ->GetCell(eligible ? "true" : "false")
+      ->IncrementBy(1);
+  for (const string& reason : ineligible_reason) {
+    tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
+        1);
+  }
 }
 
 void RecordParseDenseFeature(int64 num_features) {

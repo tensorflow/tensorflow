@@ -522,6 +522,7 @@ cc_library(
         "transforms/get_arithmetic_count.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
+        "transforms/legalize_jax_random.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/legalize_variables.cc",

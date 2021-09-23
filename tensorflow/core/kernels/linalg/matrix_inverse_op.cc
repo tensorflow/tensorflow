@@ -259,7 +259,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       done();
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+                                                   std::move(info_checker));
   }
 
  private:

@@ -40,6 +40,10 @@
     [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
     and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
     for the migration.
+  * Deprecate tflite::OpResolver::GetDelegates and the list returned by TfLite's
+    BuiltinOpResolver::GetDelegates is now always empty. Instead, recommend
+    using new method tflite::OpResolver::GetDelegateCreators in order to achieve
+    lazy initialization on TfLite delegate instances.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -172,6 +176,26 @@
   * Support uint32 data type for cast op.
   * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
 
+* Extension Types
+  * Add experimental API to define new Python classes that can be handled by
+    TensorFlow APIs.  To create an extension type, simply define a Python class
+    with `tf.experimental.ExtensionType` as its base, and use type annotations
+    to specify the type for each field.  E.g.:
+    ```
+    class MaskedTensor(tf.experimental.ExtensionType):
+      values: tf.Tensor
+      mask: tf.Tensor
+    ```
+    The `tf.ExtensionType` base class works similarly to
+    [`typing.NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple)
+    and [`@dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass)
+    from the standard Python library.
+  * Extension types are supported by Keras, tf.data, TF-hub, SavedModel,
+    tf.function, control flow ops, py_function, and distribution strategy.
+  * Add "dispatch decorators" that can be used to override the default behavior
+    of TensorFlow ops (such as `tf.add` or `tf.concat`) when they are applied to
+    ExtensionType values.
+
 ## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -187,6 +211,11 @@
       functional control flow op lowering optimization. This is useful when
       executing within a portable runtime where control flow op kernels may not 
       be loaded due to selective registration.
+    * Added a new experimental argument `experimental_is_anonymous` to
+      `tf.lookup.StaticHashTable.__init__` to create the table in anonymous
+      mode. In this mode, the table resource can only be accessed via resource
+      handles (not resource names) and will be deleted automatically when all
+      resource handles pointing to it are gone.
 *   `tf.data`:
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental

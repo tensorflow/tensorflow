@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import copy
 import threading
 import weakref
@@ -41,6 +42,12 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+load_context = LazyLoader(
+    "load_context", globals(),
+    "tensorflow.python.keras.saving.saved_model.load_context"
+)
 
 
 # Variable used in PSStrategy TF 1, TF2 and CentralStorageStrategy.
@@ -642,3 +649,142 @@ class DistributedTable(lookup_ops.StaticHashTable):
           closure,
           spec,
           default_value=self._coordinator_instance.resource_handle)
+
+
+_local_resource_restore_context = threading.local()
+
+
+def get_current_local_resource_restore_context():
+  try:
+    return _local_resource_restore_context.current
+  except AttributeError:
+    return None
+
+
+@contextlib.contextmanager
+def with_local_resource_restore_context(instance):
+  previous_context = getattr(_local_resource_restore_context, "current", None)
+  _local_resource_restore_context.current = LocalResourcRestoreContext(instance)
+  yield
+  _local_resource_restore_context.current = previous_context
+
+
+class LocalResourcRestoreContext(object):
+  """Class holding information of a distributed instance, e.g. StaticHashTable.
+
+  Pairing use with context manager `with_local_resource_restore_context` allows
+  operations under this context manager to conveniently gets information of a
+  component of the `RestoredDistributedTable` (and other restored distributed
+  `CapturableResource` if we're supporting their distribution in the future),
+  instead of looking it up from the mapping of the worker-to-resource handle.
+  This is especially useful when we know which instance the operations should
+  execute with and the mapping is not available yet.
+  """
+
+  def __init__(self, instance):
+    self.instance = instance
+
+
+class RestoredDistributedTable(DistributedTable):
+  """A restored and distributed StaticHashTable for ParameterServerStrategy."""
+
+  def resource_handle_call_time_value(self):
+    """Returns a closure to run for a resource handle at call time and its spec.
+
+    This function is called in self.resource_handle to create a placeholder
+    which returns a resource handle on some worker or on the coordinator.
+    """
+
+    def closure():
+      # function to be evaluated at function call time, returning a nest of
+      # tensors compatible with `spec`.
+      dispatch_context = coordinator_context.get_current_dispatch_context()
+      if dispatch_context:
+        local_resource_restore_context = (
+            get_current_local_resource_restore_context())
+
+        # A LocalResourcRestoreContext is entered in the process of remote table
+        # creation and initialization if we're in the process of loading from a
+        # SavedModel. A LocalResourcRestoreContext carries the information
+        # regarding which table is being created and initialized. In order to
+        # initialize a table, we need the restored `_initialize` function,
+        # which captures this closure as table resource. And when this closure
+        # is executed, we will read the table info from the
+        # LocalResourcRestoreContext and return its handle, rather than
+        # following the normal procedure of fetching from
+        # `self._distributed_table`, because we're still in the middle of
+        # building `self._distributed_table`.
+        if local_resource_restore_context:
+          remote_value = local_resource_restore_context.instance.resource_handle
+
+        else:
+          remote_value = self._distributed_table._values[  # pylint: disable=protected-access
+              dispatch_context.worker_index]
+
+        dispatch_context.maybe_rebuild_remote_values(remote_value)
+        ret = dispatch_context.maybe_get_remote_value(remote_value)
+        return ret
+
+      else:
+
+        return self._coordinator_instance.resource_handle
+
+    return closure, tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource)
+
+  def __setattr__(self, name, value):
+    if name in ["_create_resource", "_initialize", "_destroy_resource"]:
+      # When a StaticHashTable is loaded with `tf.saved_model.load`, it becomes
+      # a RestoredResource with dummy `_create_resource`, `_initialize`, and
+      # `_destroy_resource" methods. Similarly, when loaded with
+      # `tf.keras.models.load_model`, its initializer becomes a dummy one. In
+      # both cases, these methods needs to be set to some RestoredFunctions
+      # through `__setattr__`. Thus we need to store and set these methods for
+      # the distributed tables (a.k.a. `self._distributed_table`) on the
+      # workers too, besides setting for the coordinator instance. However, we
+      # cannot set them at this point, since the distributed tables have not
+      # been created. We store them in '_restored_function' and set them to the
+      # distributed tables when they're created in
+      # `self._maybe_build_distributed_table.create_copy`.
+      if load_context.in_load_context or ("RestoredStaticHashtable"
+                                          in self._wrapped.__class__.__name__):
+
+        if not hasattr(self, "_restored_function"):
+          self._restored_function = {}
+        self._restored_function[name] = value
+      return self._coordinator_instance.__setattr__(name, value)
+    else:
+      return super(RestoredDistributedTable, self).__setattr__(name, value)
+
+  def _create_resource(self):
+    """A function that creates a resource handle for a table on coordinator."""
+    return self._coordinator_instance._create_resource()  # pylint: disable=protected-access
+
+  def _initialize(self):
+    """A function that initializes the resource."""
+    return self._coordinator_instance._initialize()  # pylint: disable=protected-access
+
+  def _destroy_resource(self):
+    """A function that destroys the resource."""
+    return self._coordinator_instance._destroy_resource()  # pylint: disable=protected-access
+
+  def _maybe_build_distributed_table(self):
+    """Create table objects and resources on each worker if hasn't been created."""
+    with self._distributed_table_creation_lock:
+      if not self._distributed_table:
+
+        def create_copy():
+          new_table = self._wrapped_creator()
+
+          if hasattr(self, "_restored_function"):
+            with with_local_resource_restore_context(new_table):
+              for name, tf_function in self._restored_function.items():
+                setattr(new_table, name, tf_function)
+              init_op = new_table._initialize()  # pylint: disable=protected-access
+              if not context.executing_eagerly():
+                ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+
+          ret = new_table.resource_handle
+          return ret
+
+        self._distributed_table = (
+            self._coordinator._create_per_worker_resources(create_copy))  # pylint: disable=protected-access

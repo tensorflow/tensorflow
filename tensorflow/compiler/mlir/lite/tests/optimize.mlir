@@ -2218,9 +2218,9 @@ func @replaceReshapeEqualWithOneHot(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
   %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
   return %result : tensor<2x3xi1>
 
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<true> : tensor<i1>
-  // CHECK: %[[CST3:.*]] = constant dense<false> : tensor<i1>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<true> : tensor<i1>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<false> : tensor<i1>
   // CHECK: %[[RES:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<i1>, tensor<i1>) -> tensor<2x3xi1>
 }
 
@@ -2233,8 +2233,8 @@ func @noReplaceReshapeEqualWithOneHotBadShape(%arg: tensor<6xi32>) -> tensor<2x3
   %result = "tfl.equal"(%tmp, %cst) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
   return %result : tensor<2x3xi1>
 
-  // CHECK: %[[CST1:.*]] = constant dense<[2, 3]> : tensor<2xi32>
-  // CHECK: %[[CST2:.*]] = constant dense<[0, 1, 2]> : tensor<3xi32>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<[2, 3]> : tensor<2xi32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<[0, 1, 2]> : tensor<3xi32>
   // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<6xi32>, tensor<2xi32>) -> tensor<2x3xi32>
   // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
 }
@@ -2248,8 +2248,8 @@ func @noReplaceReshapeEqualWithOneHotBadIndex(%arg: tensor<2xi32>) -> tensor<2x3
   %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
   return %result : tensor<2x3xi1>
 
-  // CHECK: %[[CST1:.*]] = constant dense<[2, 1]> : tensor<2xi32>
-  // CHECK: %[[CST2:.*]] = constant dense<[1, 2, 3]> : tensor<3xi32>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<[2, 1]> : tensor<2xi32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<[1, 2, 3]> : tensor<3xi32>
   // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
   // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
 }
@@ -2270,11 +2270,11 @@ func @fuseOneHotCast(%arg: tensor<2xi32>) -> (tensor<2x3xf32>, tensor<2x3xf32>) 
 
   return %result_bool, %result_int : tensor<2x3xf32>, tensor<2x3xf32>
 
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<5.000000e+00> : tensor<f32>
-  // CHECK: %[[CST5:.*]] = constant dense<7.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<5.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST5:.*]] = constant dense<7.000000e+00> : tensor<f32>
   // CHECK: %[[RES1:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: %[[RES2:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST4]], %[[CST5]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
 }
@@ -2311,11 +2311,11 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadIndexType(%arg: tensor<2xi64>)
   return %result : tensor<2x5xf32>
 
   // CHECK-NOT: "tfl.embedding_lookup"
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
-  // CHECK: %[[CST5:.*]] = constant unit
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
+  // CHECK-DAG: %[[CST5:.*]] = constant unit
   // CHECK: %[[TMP:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi64>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x3xf32>, tensor<5x3xf32>, none) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
@@ -2335,11 +2335,11 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadIndexRank(%arg: tensor<11x2xi3
   return %result : tensor<11x2x5xf32>
 
   // CHECK-NOT: "tfl.embedding_lookup"
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
-  // CHECK: %[[CST5:.*]] = constant unit
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
+  // CHECK-DAG: %[[CST5:.*]] = constant unit
   // CHECK: %[[TMP:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<11x2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<11x2x3xf32>
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<11x2x3xf32>, tensor<5x3xf32>, none) -> tensor<11x2x5xf32>
   // CHECK: return %[[RES]] : tensor<11x2x5xf32>
@@ -2359,11 +2359,11 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadOn(%arg: tensor<2xi32>) -> ten
   return %result : tensor<2x5xf32>
 
   // CHECK-NOT: "tfl.embedding_lookup"
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
-  // CHECK: %[[CST5:.*]] = constant unit
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<2.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
+  // CHECK-DAG: %[[CST5:.*]] = constant unit
   // CHECK: %[[TMP:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x3xf32>, tensor<5x3xf32>, none) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
@@ -2383,11 +2383,11 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadOff(%arg: tensor<2xi32>) -> te
   return %result : tensor<2x5xf32>
 
   // CHECK-NOT: "tfl.embedding_lookup"
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<-1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
-  // CHECK: %[[CST5:.*]] = constant unit
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<-1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
+  // CHECK-DAG: %[[CST5:.*]] = constant unit
   // CHECK: %[[TMP:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x3xf32>, tensor<5x3xf32>, none) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
@@ -2407,12 +2407,100 @@ func @dontReplaceOneHotFullyConnectedWithLookupBadBias(%arg: tensor<2xi32>) -> t
   return %result : tensor<2x5xf32>
 
   // CHECK-NOT: "tfl.embedding_lookup"
-  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
-  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
-  // CHECK: %[[CST5:.*]] = constant dense<1.100000e+01> : tensor<f32>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[CST4:.*]] = constant dense<7.000000e+00> : tensor<5x3xf32>
+  // CHECK-DAG: %[[CST5:.*]] = constant dense<1.100000e+01> : tensor<f32>
   // CHECK: %[[TMP:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
   // CHECK: %[[RES:.*]] = "tfl.fully_connected"(%[[TMP]], %[[CST4]], %[[CST5]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x3xf32>, tensor<5x3xf32>, tensor<f32>) -> tensor<2x5xf32>
   // CHECK: return %[[RES]] : tensor<2x5xf32>
 }
+
+// CHECK-LABEL:   func @optimizeTopK(
+// CHECK-SAME:                        %[[ARG:.*]]: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[VALUES]], %[[INDICES]] : tensor<3x5xf32>, tensor<3x5xi32>
+// CHECK:         }
+func @optimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0, %1 : tensor<3x5xf32>, tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @optimizeTopKOnlyValues(
+// CHECK-SAME:                                 %[[ARG:.*]]: tensor<3x10xf32>) -> tensor<3x5xf32> {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[VALUES]] : tensor<3x5xf32>
+// CHECK:         }
+func @optimizeTopKOnlyValues(%arg: tensor<3x10xf32>) -> tensor<3x5xf32>{
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  return %0 : tensor<3x5xf32>
+}
+
+// CHECK-LABEL:   func @optimizeTopKOnlyIndices(
+// CHECK-SAME:                                  %[[ARG:.*]]: tensor<3x10xf32>) -> tensor<3x5xi32> {
+// CHECK:           %[[K:.*]] = constant dense<5> : tensor<i32>
+// CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tfl.topk_v2"(%[[ARG]], %[[K]]) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x5xf32>, tensor<3x5xi32>)
+// CHECK:           return %[[INDICES]] : tensor<3x5xi32>
+// CHECK:         }
+func @optimizeTopKOnlyIndices(%arg: tensor<3x10xf32>) -> tensor<3x5xi32>{
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  %0 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0 : tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @nonZeroBeginDontOptimizeTopK
+func @nonZeroBeginDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  return %0, %1 : tensor<3x5xf32>, tensor<3x5xi32>
+}
+
+// CHECK-LABEL:   func @invalidSliceSizeDontOptimizeTopK
+func @invalidSliceSizeDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<2x5xf32>, tensor<2x5xi32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<[0, 0]> : tensor<2xi32>
+  %cst_1 = constant dense<[2, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x5xi32>
+  return %0, %1 : tensor<2x5xf32>, tensor<2x5xi32>
+}
+
+// CHECK-LABEL:   func @multiUsesDontOptimizeTopK
+func @multiUsesDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>, tensor<3x10xf32>) {
+  %K = constant dense<10> : tensor<i32>
+  %values, %indices = "tfl.topk_v2"(%arg, %K) : (tensor<3x10xf32>, tensor<i32>) -> (tensor<3x10xf32>, tensor<3x10xi32>)
+  %cst_0 = constant dense<0> : tensor<2xi32>
+  %cst_1 = constant dense<[3, 5]> : tensor<2xi32>
+  // CHECK: "tfl.slice"
+  %0 = "tfl.slice"(%values, %cst_0, %cst_1) : (tensor<3x10xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xf32>
+  // CHECK: "tfl.slice"
+  %1 = "tfl.slice"(%indices, %cst_0, %cst_1) : (tensor<3x10xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x5xi32>
+  %2 = "tfl.add"(%values, %values) {fused_activation_function = "NONE"} : (tensor<3x10xf32>, tensor<3x10xf32>) -> tensor<3x10xf32>
+  return %0, %1, %2 : tensor<3x5xf32>, tensor<3x5xi32>, tensor<3x10xf32>
+}
+
+

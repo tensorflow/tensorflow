@@ -8,6 +8,7 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/tfrt/tpu/tpu_resources.h
+tensorflow/core/tfrt/utils/bridge_graph_analysis.h
 tensorflow/go/README.md
 tensorflow/go/op/wrappers.go
 tensorflow/java/README.md
@@ -183,6 +184,7 @@ third_party/gpus/rocm/BUILD.tpl
 third_party/gpus/rocm/build_defs.bzl.tpl
 third_party/gpus/rocm/rocm_config.h.tpl
 third_party/gpus/rocm_configure.bzl
+third_party/grpc/BUILD
 third_party/icu/udata.patch
 third_party/jsoncpp.BUILD
 third_party/libxsmm.BUILD
@@ -203,7 +205,6 @@ third_party/mkl_dnn/mkldnn.BUILD
 third_party/mkl_dnn/mkldnn_acl.BUILD
 third_party/mkl_dnn/mkldnn_v1.BUILD
 third_party/mpi/.gitignore
-third_party/nanopb.BUILD
 third_party/nccl/BUILD
 third_party/nccl/LICENSE
 third_party/nccl/archive.BUILD
@@ -216,6 +217,7 @@ third_party/opt_einsum.BUILD
 third_party/png.BUILD
 third_party/png_fix_rpi.patch
 third_party/pprof.BUILD
+third_party/protobuf/BUILD
 third_party/py/BUILD
 third_party/py/BUILD.tpl
 third_party/py/numpy/BUILD

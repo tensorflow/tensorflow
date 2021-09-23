@@ -15,8 +15,8 @@ func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
 
-// CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK-DAG: %[[C0:.*]] = constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = constant 1 : index
 // CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
 // CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
 // CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
@@ -60,8 +60,8 @@ func @dyn_broadcast_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
 // CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 
-// CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK-DAG: %[[C0:.*]] = constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = constant 1 : index
 // CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[COPERAND]], %[[C1]] : memref<?x?xi32>
 // CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
 // CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[COPERAND]], %[[C0]] : memref<?x?xi32>

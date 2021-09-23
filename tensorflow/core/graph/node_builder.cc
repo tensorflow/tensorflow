@@ -135,6 +135,27 @@ StatusOr<FullTypeDef> run_type_constructor(
   return full_type::SpecializeType(AttrSlice(node_def), op_reg_data.op_def);
 }
 
+StatusOr<FullTypeDef> run_forward_type_inference(
+    const tensorflow::OpRegistrationData& op_reg_data, const NodeDef& node,
+    const std::vector<NodeBuilder::NodeOut>& inputs) {
+  static FullTypeDef no_type;
+
+  if (op_reg_data.fwd_type_fn == nullptr) {
+    return no_type;
+  }
+
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (const auto& input : inputs) {
+    if (input.node && input.node->def().has_experimental_type()) {
+      input_types.emplace_back(input.node->def().experimental_type());
+    } else {
+      input_types.emplace_back(no_type);
+    }
+  }
+
+  return op_reg_data.fwd_type_fn(input_types);
+}
+
 }  // namespace
 
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
@@ -159,6 +180,15 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
   if (ctor_typedef.type_id() != TFT_UNSET) {
     *(node_def.mutable_experimental_type()) = ctor_typedef;
+  }
+
+  const auto infer_type =
+      run_forward_type_inference(*op_reg_data, node_def, inputs_);
+  TF_RETURN_IF_ERROR(infer_type.status());
+
+  const auto infer_typedef = infer_type.ValueOrDie();
+  if (infer_typedef.type_id() != TFT_UNSET) {
+    *(node_def.mutable_experimental_type()) = infer_typedef;
   }
 
   Status status;

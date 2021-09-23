@@ -179,8 +179,8 @@ tf_cc_test(
     srcs = ["data_service_test.cc"],
     deps = [
         ":common_proto_cc",
-        ":dispatcher_proto_cc",
         ":dispatcher_client",
+        ":dispatcher_proto_cc",
         ":test_cluster",
         ":test_util",
         "//tensorflow/core:lib",
@@ -283,6 +283,7 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -301,6 +302,7 @@ cc_library(
         ":dispatcher_state",
         ":grpc_util",
         ":journal",
+        ":journal_proto_cc",
         ":task_remover",
         ":worker_cc_grpc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -619,6 +621,7 @@ cc_library(
         ":dispatcher_client",
         ":dispatcher_proto_cc",
         ":server_lib",
+        ":test_util",
         ":worker_client",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
@@ -847,6 +850,7 @@ cc_library(
         ":task_runner",
         ":utils",
         ":worker_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",

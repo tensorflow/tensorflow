@@ -1,5 +1,4 @@
-// RUN: tf-tfrt-opt %s --tf-cpurt-pad-tiled-ops 
-// | FileCheck %s
+// RUN: tf-tfrt-opt %s --tf-cpurt-pad-tiled-ops | FileCheck %s
 
 func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %c0 = constant 0 : index

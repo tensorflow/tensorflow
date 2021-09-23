@@ -259,6 +259,7 @@ add_dispatch_list = add_fallback_dispatch_list
 ################################################################################
 
 
+@tf_export("experimental.dispatch_for_api")
 def dispatch_for_api(api, *signatures):
   """Decorator that overrides the default implementation for a TensorFlow API.
 
@@ -477,15 +478,63 @@ def _add_name_scope_wrapper(func, api_signature):
   return wrapped_func
 
 
-def unregister_dispatch_target(api, dispatch_target):
-  """Unregisters a dispatch target that was registered with `dispatch_for_api`."""
-  dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR, None)
-  if dispatcher is None:
-    raise ValueError(f"{api} does not support dispatch.")
-  if dispatch_target not in _TYPE_BASED_DISPATCH_SIGNATURES[api]:
-    raise ValueError(f"{dispatch_target} was not registered for {api}")
-  del _TYPE_BASED_DISPATCH_SIGNATURES[api][dispatch_target]
-  dispatcher.Unregister(dispatch_target)
+@tf_export("experimental.unregister_dispatch_for")
+def unregister_dispatch_for(dispatch_target):
+  """Unregisters a function that was registered with `@dispatch_for_*`.
+
+  This is primarily intended for testing purposes.
+
+  Example:
+
+  >>> # Define a type and register a dispatcher to override `tf.abs`:
+  >>> class MyTensor(extension_type.ExtensionType):
+  ...   value: tf.Tensor
+  >>> @dispatch_for_api(tf.abs)
+  ... def my_abs(x: MyTensor):
+  ...   return MyTensor(tf.abs(x.value))
+  >>> tf.abs(MyTensor(5))
+  MyTensor(value=<tf.Tensor: shape=(), dtype=int32, numpy=5>)
+
+  >>> # Unregister the dispatcher, so `tf.abs` no longer calls `my_abs`.
+  >>> unregister_dispatch_for(my_abs)
+  >>> tf.abs(MyTensor(5))
+  Traceback (most recent call last):
+  ...
+  ValueError: Attempt to convert a value ... to a Tensor.
+
+  Args:
+    dispatch_target: The function to unregister.
+
+  Raises:
+    ValueError: If `dispatch_target` was not registered using `@dispatch_for`,
+      `@dispatch_for_unary_elementwise_apis`, or
+      `@dispatch_for_binary_elementwise_apis`.
+  """
+  found = False
+
+  # Check if dispatch_target registered by `@dispatch_for_api`
+  for api, signatures in _TYPE_BASED_DISPATCH_SIGNATURES.items():
+    if dispatch_target in signatures:
+      dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR)
+      dispatcher.Unregister(dispatch_target)
+      del signatures[dispatch_target]
+      found = True
+
+  # Check if dispatch_target registered by `@dispatch_for_*_elementwise_apis`
+  elementwise_keys_to_delete = [
+      key for (key, handler) in _ELEMENTWISE_API_HANDLERS.items()
+      if handler is dispatch_target
+  ]
+  for key in set(elementwise_keys_to_delete):
+    for _, target in _ELEMENTWISE_API_TARGETS[key]:
+      unregister_dispatch_for(target)
+    del _ELEMENTWISE_API_HANDLERS[key]
+    del _ELEMENTWISE_API_TARGETS[key]
+    found = True
+
+  if not found:
+    raise ValueError(f"Function {dispatch_target} was not registered using "
+                     "a `@dispatch_for_*` decorator.")
 
 
 def register_dispatchable_type(cls):
@@ -612,6 +661,20 @@ def make_type_checker(annotation):
   """Builds a PyTypeChecker for the given type annotation."""
   if type_annotations.is_generic_union(annotation):
     type_args = type_annotations.get_generic_type_args(annotation)
+
+    # If the union contains two or more simple types, then use a single
+    # InstanceChecker to check them.
+    simple_types = [t for t in type_args if isinstance(t, type)]
+    simple_types = tuple(sorted(simple_types, key=id))
+    if len(simple_types) > 1:
+      if simple_types not in _is_instance_checker_cache:
+        checker = _api_dispatcher.MakeInstanceChecker(*simple_types)
+        _is_instance_checker_cache[simple_types] = checker
+      options = ([_is_instance_checker_cache[simple_types]] +
+                 [make_type_checker(t) for t in type_args
+                  if not isinstance(t, type)])
+      return _api_dispatcher.MakeUnionChecker(options)
+
     options = [make_type_checker(t) for t in type_args]
     return _api_dispatcher.MakeUnionChecker(options)
 
@@ -670,6 +733,7 @@ _ELEMENTWISE_API_HANDLERS = {}
 _ELEMENTWISE_API_TARGETS = {}
 
 
+@tf_export("experimental.dispatch_for_unary_elementwise_apis")
 def dispatch_for_unary_elementwise_apis(x_type):
   """Decorator to override default implementation for unary elementwise APIs.
 
@@ -737,6 +801,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
   return decorator
 
 
+@tf_export("experimental.dispatch_for_binary_elementwise_apis")
 def dispatch_for_binary_elementwise_apis(x_type, y_type):
   """Decorator to override default implementation for binary elementwise APIs.
 
@@ -918,23 +983,6 @@ def _extract_name_arg(args, kwargs, name_index):
   else:
     name_value = kwargs.pop("name", None)
   return args, kwargs, name_value
-
-
-def unregister_elementwise_api_handler(api_handler):
-  """Unregisters api handlers registered with `dispatch_for_*_elementwise_apis`.
-
-  Args:
-    api_handler: The handler to unregister.
-  """
-  keys_to_delete = [
-      key for (key, handler) in _ELEMENTWISE_API_HANDLERS.items()
-      if handler is api_handler
-  ]
-  for key in set(keys_to_delete):
-    for api, target in _ELEMENTWISE_API_TARGETS[key]:
-      unregister_dispatch_target(api, target)
-    del _ELEMENTWISE_API_HANDLERS[key]
-    del _ELEMENTWISE_API_TARGETS[key]
 
 
 def update_docstrings_with_api_lists():

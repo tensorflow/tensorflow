@@ -73,8 +73,11 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_ops.Dataset.from_tensor_slices([0.0, 1.0, 2.0])
         .map(lambda x: x + var))
     with self.assertRaisesRegex(
-        ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
-        "datasets that capture stateful objects.+myvar"):
+        ValueError, r"A likely cause of this error is that the dataset for "
+        r"which you are calling `make_one_shot_iterator\(\)` captures a "
+        r"stateful object, such as a `tf.Variable` or "
+        r"`tf.lookup.StaticHashTable`, which is not supported. Use "
+        r"`make_initializable_iterator\(\)` instead."):
       dataset_ops.make_one_shot_iterator(dataset)
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -235,6 +238,13 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       for t in threads:
         t.join()
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testOneShotIteratorEmptyDataset(self):
+    dataset = dataset_ops.Dataset.range(0)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(iterator.get_next())
+
   @combinations.generate(test_base.graph_only_combinations())
   def testSimpleSharedResource(self):
     components = (np.array(1, dtype=np.int64),
@@ -381,14 +391,18 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                      dtypes.float64))
 
     # Incompatible structure.
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(
+        ValueError, "The two structures don't have the same nested structure."):
       iterator.make_initializer(
           dataset_ops.Dataset.from_tensors(((constant_op.constant(
               [1, 2, 3], dtype=dtypes.int64),), (constant_op.constant(
                   [4., 5., 6., 7.], dtype=dtypes.float64),))))
 
     # Incompatible types.
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"Expected output types \(tf.int64, tf.float64\) but got dataset with "
+        r"output types \(tf.int32, tf.float32\)."):
       iterator.make_initializer(
           dataset_ops.Dataset.from_tensors(
               (constant_op.constant([1, 2, 3], dtype=dtypes.int32),
@@ -397,11 +411,26 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Incompatible shapes.
     iterator = iterator_ops.Iterator.from_structure(
         (dtypes.int64, dtypes.float64), ([None], []))
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"Expected output shapes compatible with .* but got dataset with "
+        r"output shapes.*"):
       iterator.make_initializer(
           dataset_ops.Dataset.from_tensors(
               (constant_op.constant([1, 2, 3], dtype=dtypes.int64),
                constant_op.constant([4., 5., 6., 7.], dtype=dtypes.float64))))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReinitializableIteratorEmptyDataset(self):
+    dataset = dataset_ops.Dataset.range(0)
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(dataset), [])
+    init_op = iterator.make_initializer(dataset)
+
+    with self.cached_session() as sess:
+      sess.run(init_op)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(iterator.get_next())
 
   @combinations.generate(test_base.graph_only_combinations())
   def testIteratorStringHandle(self):
@@ -544,7 +573,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
                   structure_iterator.string_handle())
 
     # Assert that getting the (default) string handle creates no ops.
-    self.assertEqual(created_ops, len(ops.get_default_graph().get_operations()))
+    self.assertLen(ops.get_default_graph().get_operations(), created_ops)
 
     # Specifying an explicit name will create a new op.
     handle_with_name = one_shot_iterator.string_handle(name="foo")
@@ -772,7 +801,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     with warnings.catch_warnings(record=True) as w:
       for _ in range(100):
         iterator.get_next()
-    self.assertEqual(100 - iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD, len(w))
+    self.assertLen(w, 100 - iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD)
     for warning in w:
       self.assertIn(
           iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE, str(warning.message))
@@ -956,6 +985,33 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn()
 
     self.assertEqual(queue.size().numpy(), 2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoInitializer(self):
+    dataset = dataset_ops.Dataset.range(10)
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(dataset), [])
+    with self.assertRaisesRegex(
+        ValueError, "The iterator does not have an initializer."):
+      _ = iterator.initializer
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testtestMissingInput(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "When `dataset` is not provided, both `components` and `element_spec` "
+        "must be specified."):
+      iterator_ops.OwnedIterator(dataset=None)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testExtraElementSpecInput(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaisesRegex(
+        ValueError,
+        "When `dataset` is provided, `element_spec` and `components` must "
+        "not be specified."):
+      iterator_ops.OwnedIterator(
+          dataset, element_spec=dataset.element_spec)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testLimitedRetracing(self):

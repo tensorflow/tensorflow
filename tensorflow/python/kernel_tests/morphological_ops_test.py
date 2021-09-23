@@ -244,7 +244,7 @@ class DilationTest(test.TestCase):
   def _testDilationGradDeterminismError(self, use_gpu):
     if use_gpu and test.is_gpu_available(cuda_only=True):
       try:
-        config.enable_deterministic_ops(True)
+        config.enable_op_determinism()
         with self.assertRaisesRegexp(
             errors_impl.UnimplementedError, "Determinism is not yet supported "
             "for Dilation2DBackpropInput."):
@@ -256,10 +256,10 @@ class DilationTest(test.TestCase):
               padding="VALID",
               use_gpu=use_gpu)
       finally:
-        config.enable_deterministic_ops(False)
+        config.disable_op_determinism()
     else:
       try:
-        config.enable_deterministic_ops(True)
+        config.enable_op_determinism()
         self._ConstructAndTestGradient(
             image_shape=[1, 3, 3, 1],
             kernel_shape=[1, 1, 1],
@@ -268,7 +268,7 @@ class DilationTest(test.TestCase):
             padding="VALID",
             use_gpu=use_gpu)
       finally:
-        config.enable_deterministic_ops(False)
+        config.disable_op_determinism()
 
   def _testDilationGradSamePadding_1x1x1(self, use_gpu):
     self._ConstructAndTestGradient(

@@ -211,7 +211,9 @@ def _ctc_loss_impl(labels,
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
-    raise TypeError("Expected labels (first argument) to be a SparseTensor")
+    raise TypeError("Expected argument `labels` to be a SparseTensor. "
+                    f"Received labels={labels} of type: "
+                    f"{type(labels).__name__}")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
   inputs = deprecation.deprecated_argument_lookup("logits", logits, "inputs",
@@ -827,7 +829,8 @@ def ctc_loss_v2(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -922,7 +925,8 @@ def ctc_loss_v3(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -1284,8 +1288,9 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     perm = [0, 2, 1]
   else:
     raise ValueError(
-        "state_trans_log_probs rank must be known and == 2 or 3, is: %s" %
-        state_trans_log_probs.shape.ndims)
+        "Rank of argument `state_trans_log_probs` must be known and equal to "
+        f"2 or 3. Received state_trans_log_probs={state_trans_log_probs} of "
+        f"rank {state_trans_log_probs.shape.ndims}")
 
   bwd_state_trans_log_probs = array_ops.transpose(state_trans_log_probs, perm)
   batch_size = _get_dim(observed_log_probs, 1)

@@ -255,6 +255,12 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  // Save proto state before optimizations if we want a snapshot.
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    hlo_proto_ = absl::make_unique<HloProto>();
+    *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
+  }
+
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -1161,8 +1167,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // Dump computation proto state and buffer assignment for debug and test, if
   // dump is enabled.
   if (DumpingEnabledForHloModule(gpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    auto hlo_proto = absl::make_unique<HloProto>(*hlo_proto_);
     *hlo_proto->mutable_buffer_assignment() =
         compile_module_results.buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));

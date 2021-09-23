@@ -1095,6 +1095,113 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def enable_eager_op_as_function(fn):
+  """Decorator for enabling eager_op_as_function on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will enable run_eager_op_as_function,
+  reset the context, execute the test, then reset the context to the state
+  it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_eager_op_as_function
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `run_eager_op_as_function` is already enabled do nothing.
+    if context.run_eager_op_as_function_enabled():
+      return fn(*args, **kwargs)
+
+    context.enable_run_eager_op_as_function()
+    context._reset_context()
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      context.disable_run_eager_op_as_function()
+      context._reset_context()
+
+  return wrapper
+
+
+def with_eager_op_as_function(cls):
+  """Adds methods that call original methods with eager_op_as_function enabled.
+
+  Example:
+
+  @test_util.with_eager_op_as_function
+  class SessionTest(test.TestCase):
+
+    def testEnabledForEagerOpAsFunction(self):
+      ...
+
+    @disable_eager_op_as_function("b/xyzabc")
+    def testDisabledForEagerOpAsFunction(self):
+      ...
+
+  Generated class:
+  class SessionTest(test.TestCase):
+
+    def testEnabledForEagerOpAsFunction(self):
+      ...
+
+    def testEnabledForEagerOpAsFunctionWithEagerOpAsFunctionEnabled(self):
+      // Enable run_eager_op_as_function
+      // Reset context
+      testEnabledForEagerOpAsFunction(self)
+      // Disable run_eager_op_as_function
+      // Reset context
+
+    def testDisabledForEagerOpAsFunction(self):
+      ...
+
+  Args:
+    cls: class to decorate.
+
+  Returns:
+    cls with new test methods added.
+  """
+  if context.run_eager_op_as_function_enabled():
+    return cls
+
+  for name, value in cls.__dict__.copy().items():
+    if (callable(value) and
+        name.startswith(unittest.TestLoader.testMethodPrefix) and
+        not getattr(value, "_disable_eager_op_as_function", False)):
+      setattr(cls, name + "WithEagerOpAsFunctionEnabled",
+              enable_eager_op_as_function(value))
+  return cls
+
+
+def disable_eager_op_as_function(unused_msg):
+  """Decorator for a function in a with_eager_op_as_function enabled test class.
+
+  Blocks the function from being run with eager_op_as_function enabled.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_eager_op_as_function attr set to True.
+  """
+
+  def wrapper(func):
+    func._disable_eager_op_as_function = True
+    return func
+
+  return wrapper
+
+
 def build_as_function_and_v1_graph(func=None):
   """Run a test case in v1 graph mode and inside tf.function in eager mode.
 
@@ -1714,10 +1821,10 @@ def force_cpu():
 def deterministic_ops():
   """Enables deterministic ops."""
   try:
-    config.enable_deterministic_ops(True)
+    config.enable_op_determinism()
     yield
   finally:
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
 
 
 class CapturedWrites(object):

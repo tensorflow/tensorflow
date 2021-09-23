@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -343,8 +342,8 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     trans = adjoint ? rocblas_operation_conjugate_transpose
                     : rocblas_operation_none;
 #endif
-    auto solver = absl::make_unique<GpuSolver>(context);
 
+    auto solver = absl::make_unique<GpuSolver>(context);
     const uint64 leading_dim_matrix = m;
     const uint64 leading_dim_output = n;
     const uint64 colmajor_rows = n;

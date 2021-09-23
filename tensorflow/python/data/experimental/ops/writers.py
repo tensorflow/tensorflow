@@ -112,14 +112,17 @@ class TFRecordWriter(object):
       TypeError: if the elements produced by the dataset are not scalar strings.
     """
     if not isinstance(dataset, dataset_ops.DatasetV2):
-      raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+      raise TypeError(
+          f"Invalid `dataset.` Expected a `tf.data.Dataset` object but got "
+          f"{type(dataset)}."
+      )
     if not dataset_ops.get_structure(dataset).is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.string)):
       raise TypeError(
-          "`dataset` must produce scalar `DT_STRING` tensors whereas it "
-          "produces shape {0} and types {1}".format(
-              dataset_ops.get_legacy_output_shapes(dataset),
-              dataset_ops.get_legacy_output_types(dataset)))
+          f"Invalid `dataset`. Expected a`dataset` that produces scalar "
+          f"`tf.string` elements, but got a dataset which produces elements "
+          f"with shapes {dataset_ops.get_legacy_output_shapes(dataset)} and "
+          f"types {dataset_ops.get_legacy_output_types(dataset)}.")
     # pylint: disable=protected-access
     dataset = dataset._apply_debug_options()
     return gen_experimental_dataset_ops.dataset_to_tf_record(

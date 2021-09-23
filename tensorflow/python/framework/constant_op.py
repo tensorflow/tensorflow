@@ -94,8 +94,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
   """
   if isinstance(value, ops.EagerTensor):
     if dtype is not None and value.dtype != dtype:
-      raise TypeError("Expected tensor with type %r not %r" % (
-          dtype, value.dtype))
+      raise TypeError(f"Expected tensor {value} with dtype {dtype!r}, but got "
+                      f"dtype {value.dtype!r}.")
     return value
   if dtype is not None:
     try:
@@ -312,8 +312,8 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
   if shape == t.shape:
     return t
   if verify_shape:
-    raise TypeError("Expected Tensor's shape: %s, got %s." %
-                    (tuple(shape), tuple(t.shape)))
+    raise TypeError(f"Expected Tensor {t} (converted from {value}) with shape "
+                    f"{tuple(shape)}, but got shape {tuple(t.shape)}.")
   num_t = t.shape.num_elements()
   # TODO(josh11b): Implement shape -> eager tensor conversion.
   if num_t == shape.num_elements():
@@ -327,9 +327,10 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
       return _eager_identity(x, ctx)
     else:
       return _eager_fill(shape.as_list(), t, ctx)
-  raise TypeError("Eager execution of tf.constant with unsupported shape "
-                  "(value has %d elements, shape is %s with %d elements)." %
-                  (num_t, shape, shape.num_elements()))
+  raise TypeError("Eager execution of tf.constant with unsupported shape. "
+                  f"Tensor {t} (converted from {value}) has {num_t:d} "
+                  f"elements, but got `shape` {shape} with "
+                  f"{shape.num_elements()} elements).")
 
 
 def is_constant(tensor_or_op):
@@ -360,7 +361,7 @@ def _tensor_shape_tensor_conversion_function(s,
   _ = as_ref
   if not s.is_fully_defined():
     raise ValueError(
-        "Cannot convert a partially known TensorShape to a Tensor: %s" % s)
+        f"Cannot convert a partially known TensorShape {s} to a Tensor.")
   s_list = s.as_list()
   int64_value = 0
   for dim in s_list:
@@ -370,10 +371,11 @@ def _tensor_shape_tensor_conversion_function(s,
 
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
-      raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
+      raise TypeError(f"Cannot convert TensorShape {s} to dtype {dtype}. "
+                      "Allowed dtypes are tf.int32 and tf.int64.")
     if dtype == dtypes.int32 and int64_value:
-      raise ValueError("Cannot convert a TensorShape to dtype int32; "
-                       "a dimension is too large (%s)" % int64_value)
+      raise ValueError(f"Cannot convert TensorShape {s} to dtype int32; "
+                       f"a dimension is too large. Consider using tf.int64.")
   else:
     dtype = dtypes.int64 if int64_value else dtypes.int32
   if name is None:
@@ -392,10 +394,11 @@ def _dimension_tensor_conversion_function(d,
   """Function to convert Dimension to Tensor."""
   _ = as_ref
   if d.value is None:
-    raise ValueError("Cannot convert an unknown Dimension to a Tensor: %s" % d)
+    raise ValueError(f"Cannot convert unknown Dimension {d} to a Tensor.")
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
-      raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
+      raise TypeError(f"Cannot convert Dimension {d} to dtype {dtype}. "
+                      "Allowed dtypes are tf.int32 and tf.int64.")
   else:
     dtype = dtypes.int32
   if name is None:

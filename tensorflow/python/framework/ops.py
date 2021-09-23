@@ -521,23 +521,32 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     raise ValueError(
         "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
+  def _disallow_when_autograph_unavailable(self, task):
+    raise errors.OperatorNotAllowedInGraphError(
+        f"{task} is not allowed: AutoGraph is unavailable in this runtime. See"
+        " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
+        " for more information.")
+
   def _disallow_when_autograph_disabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph is disabled in this function."
-        " Try decorating it directly with @tf.function.".format(task))
+        f"{task} is not allowed: AutoGraph is disabled in this function."
+        " Try decorating it directly with @tf.function.")
 
   def _disallow_when_autograph_enabled(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed: AutoGraph did convert this function. This might"
-        " indicate you are trying to use an unsupported feature.".format(task))
+        f"{task} is not allowed: AutoGraph did convert this function. This"
+        " might indicate you are trying to use an unsupported feature.")
 
   def _disallow_in_graph_mode(self, task):
     raise errors.OperatorNotAllowedInGraphError(
-        "{} is not allowed in Graph execution. Use Eager execution or decorate"
-        " this function with @tf.function.".format(task))
+        f"{task} is not allowed in Graph execution. Use Eager execution or"
+        " decorate this function with @tf.function.")
 
   def _disallow_bool_casting(self):
-    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
+      self._disallow_when_autograph_unavailable(
+          "using a `tf.Tensor` as a Python `bool`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
       self._disallow_when_autograph_disabled(
           "using a `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
@@ -548,7 +557,9 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       self._disallow_in_graph_mode("using a `tf.Tensor` as a Python `bool`")
 
   def _disallow_iteration(self):
-    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    if not ag_ctx.INSPECT_SOURCE_SUPPORTED:
+      self._disallow_when_autograph_unavailable("iterating over `tf.Tensor`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
       self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")

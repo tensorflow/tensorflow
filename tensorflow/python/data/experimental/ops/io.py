@@ -123,7 +123,9 @@ def save(dataset,
 
     if "checkpoint" in checkpoint_args:
       raise ValueError(
-          "'checkpoint_args' are not allowed to include 'checkpoint'")
+          "'Invalid `checkpoint_args`. `checkpoint_args` are not allowed "
+          "to include 'checkpoint'."
+      )
     checkpoint = tracking.util.Checkpoint(iterator=save_iterator)
     checkpoint_args["checkpoint"] = checkpoint
     manager = checkpoint_management.CheckpointManager(**checkpoint_args)

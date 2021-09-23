@@ -492,15 +492,19 @@ def _QrGrad(op, dq, dr):
 
   # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
   # QR and LQ Decomposition Matrix Backpropagation Algorithms for
-  # Square, Wide, and Deep, Real and Complex, Matrices and Their Software Implementation
+  # Square, Wide, and Deep, Real and Complex, Matrices and Their Software
+  # Implementation
   q, r = op.outputs
   if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
       r.shape.as_list()[-1] is None):
-    raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
+    raise NotImplementedError("QrGrad not implemented with dynamic shapes. "
+                              f"Received r.shape: {r.shape}")
   if (r.shape.dims[-2].value > r.shape.dims[-1].value and
       q.shape.dims[-2].value == q.shape.dims[-1].value):
     raise NotImplementedError("QrGrad not implemented when nrows > ncols "
-                              "and full_matrices is true.")
+                              "and full_matrices is true. Received r.shape="
+                              f"{r.shape} with nrows={r.shape.dims[-2]}"
+                              f"and ncols={r.shape.dims[-1]}.")
 
   def _TriangularSolve(x, r):
     """Equiv to matmul(x, adjoint(matrix_inverse(r))) if r is upper-tri."""
@@ -868,7 +872,8 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     if full_matrices and abs(m - n) > 1:
       raise NotImplementedError(
           "svd gradient is not implemented for abs(m - n) > 1 "
-          "when full_matrices is True")
+          f"when full_matrices is True. Received: m={m} and n={n} from "
+          f"op input={a} with shape={a_shape}.")
     s_mat = array_ops.matrix_diag(s)
     s2 = math_ops.square(s)
 

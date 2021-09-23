@@ -745,8 +745,8 @@ func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 
 // CHECK-LABEL:   func @relu6(
 // CHECK-SAME:                %[[VAL_0:.*]]: tensor<1xi32>) -> tensor<1xi32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Minimum"(%[[VAL_0]], %[[VAL_2]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Maximum"(%[[VAL_3]], %[[VAL_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:           return %[[VAL_4]] : tensor<1xi32>
@@ -761,8 +761,8 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL:   func @relu6_unranked(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<?xi32>) -> tensor<?xi32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Minimum"(%[[VAL_0]], %[[VAL_2]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Maximum"(%[[VAL_3]], %[[VAL_1]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:           return %[[VAL_4]] : tensor<?xi32>
@@ -854,9 +854,9 @@ func @selectv2_pred_scalar(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: tenso
 
 // CHECK-LABEL:   func @transpose_2d(
 // CHECK-SAME:                       %[[VAL_0:.*]]: tensor<2x3xf32>) -> tensor<3x2xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<2x3xf32>, tensor<2xi64>) -> tensor<3x2xf32>
 // CHECK:           return %[[VAL_4]] : tensor<3x2xf32>
 // CHECK:         }
@@ -869,9 +869,9 @@ func @transpose_2d(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // CHECK-LABEL:   func @transpose_3d_int32(
 // CHECK-SAME:                             %[[VAL_0:.*]]: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<1x2x3xf32>, tensor<3xi64>) -> tensor<3x2x1xf32>
 // CHECK:           return %[[VAL_4]] : tensor<3x2x1xf32>
 // CHECK:         }
@@ -884,9 +884,9 @@ func @transpose_3d_int32(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
 
 // CHECK-LABEL:   func @transpose_3d(
 // CHECK-SAME:                       %[[VAL_0:.*]]: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<1x2x3xf32>, tensor<3xi64>) -> tensor<3x2x1xf32>
 // CHECK:           return %[[VAL_4]] : tensor<3x2x1xf32>
 // CHECK:         }
@@ -899,9 +899,9 @@ func @transpose_3d(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
 
 // CHECK-LABEL:   func @transpose_dynamic_2d(
 // CHECK-SAME:                               %[[VAL_0:.*]]: tensor<?x4xf32>) -> tensor<4x?xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<?x4xf32>, tensor<2xi64>) -> tensor<4x?xf32>
 // CHECK:           return %[[VAL_4]] : tensor<4x?xf32>
 // CHECK:         }
@@ -914,9 +914,9 @@ func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 
 // CHECK-LABEL:   func @transpose_unranked_2d(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
 // CHECK:           return %[[VAL_4]] : tensor<*xf32>
 // CHECK:         }
@@ -1209,9 +1209,9 @@ func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL:   func @sigmoid(
 // CHECK-SAME:                  %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<2xf32>} : () -> tensor<2xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Mul"(%[[VAL_0]], %[[VAL_3]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 // CHECK:           %[[VAL_5:.*]] = "tf.Tanh"(%[[VAL_4]]) : (tensor<2xf32>) -> tensor<2xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.Mul"(%[[VAL_5]], %[[VAL_3]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -1455,8 +1455,8 @@ func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 
 // CHECK-LABEL:   func @convert_slice(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x4672xf32>) -> tensor<1x519xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<[0, 4153]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 519]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[0, 4153]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 519]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1x4672xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x519xf32>
 // CHECK:           return %[[VAL_3]] : tensor<1x519xf32>
 // CHECK:         }
@@ -1682,8 +1682,8 @@ func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1
 // CHECK-LABEL:   func @convert_conv2d_back_prop_input(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x4x4x32xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[8, 8, 8, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[8, 8, 8, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.ReverseV2"(%[[VAL_1]], %[[VAL_3]]) : (tensor<3x3x64x32xf32>, tensor<2xi64>) -> tensor<3x3x64x32xf32>
 // CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_2]], %[[VAL_4]], %[[VAL_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
 // CHECK:           return %[[VAL_5]] : tensor<8x8x8x64xf32>
@@ -1715,8 +1715,8 @@ func @convert_conv2d_valid_padding(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3
 
 // CHECK-LABEL:   func @convert_reduce_to_sum(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Sum"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_3]] : tensor<1xf32>
 // CHECK:         }
@@ -1732,8 +1732,8 @@ func @convert_reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 
 // CHECK-LABEL:   func @convert_reduce_to_max(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_3]] : tensor<1xf32>
 // CHECK:         }
@@ -1750,8 +1750,8 @@ func @convert_reduce_to_max(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 
 // CHECK-LABEL:   func @convert_reduce_to_min(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_3]] : tensor<1xf32>
 // CHECK:         }
@@ -1767,9 +1767,9 @@ func @convert_reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK-LABEL:   func @convert_iota_1d() -> tensor<123xf32> {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<1.230000e+02> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<1.230000e+02> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Range"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
 // CHECK:           return %[[VAL_3]] : tensor<123xf32>
 // CHECK:         }
@@ -1779,9 +1779,9 @@ func @convert_iota_1d() -> tensor<123xf32> {
 }
 
 // CHECK-LABEL:   func @convert_iota_3d() -> tensor<5x7x9xi32> {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<7> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<7> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Range"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<7xi32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<[1, 7, 1]> : tensor<3xi64>} : () -> tensor<3xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Reshape"(%[[VAL_3]], %[[VAL_4]]) : (tensor<7xi32>, tensor<3xi64>) -> tensor<1x7x1xi32>
@@ -2024,8 +2024,8 @@ func @convert_floor_mod(%arg0: tensor<192x8xbf16>, %arg1: tensor<192x8xbf16>) ->
 }
 
 // CHECK-LABEL: func @convert_floor_mod_cst
-// CHECK: %[[CST1:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
-// CHECK: %[[CST2:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
+// CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
+// CHECK-DAG: %[[CST2:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
 // CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %[[CST2]]) : (tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
 // CHECK: return %[[RESULT]] : tensor<192x8xbf16>
 // CHECK: }
@@ -2385,10 +2385,10 @@ func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
 
 // CHECK-LABEL: func @convert_argmax_constant(
 // CHECK-SAME:                                        %[[VAL_0:.*]]: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>} : () -> tensor<2x2x4xi32>
-// CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>} : () -> tensor<2x2x4xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_4]]) {keep_dims = false} : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xi32>
 // CHECK:           return %[[VAL_5]], %[[VAL_6]] : tensor<2x2xf32>, tensor<2x2xi32>
@@ -2445,10 +2445,10 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
 
 // CHECK-LABEL: func @convert_argmin_constant(
 // CHECK-SAME:                                        %[[VAL_0:.*]]: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>} : () -> tensor<2x2x4xi32>
-// CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>} : () -> tensor<2x2x4xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_4]]) {keep_dims = false} : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xi32>
 // CHECK:           return %[[VAL_5]], %[[VAL_6]] : tensor<2x2xf32>, tensor<2x2xi32>
@@ -2487,9 +2487,9 @@ func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
 // -----
 
 // CHECK-LABEL:  func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-// CHECK:          %[[CST_0:.*]] = constant dense<1> : tensor<i32>
-// CHECK:          %[[CST_1:.*]] = constant dense<0> : tensor<i32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<1> : tensor<i32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
 // CHECK:          %[[WHILEREGION_0:.*]]:3 = "tf.WhileRegion"(%[[CST_1]], %[[CST_0]], %[[CST_2]]) ( {
 // CHECK:          ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
 // CHECK:            %[[LESS_0:.*]] = "tf.Less"(%arg0, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2568,9 +2568,9 @@ func @invalid_while_with_tuple(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tupl
 // -----
 
 // CHECK-LABEL:  func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>) {
-// CHECK:          %[[CST_0:.*]] = constant dense<1> : tensor<i32>
-// CHECK:          %[[CST_1:.*]] = constant dense<0> : tensor<i32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<1> : tensor<i32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
 // CHECK:          %[[WHILEREGION_0:.*]]:5 = "tf.WhileRegion"(%[[CST_1]], %[[CST_0]], %[[CST_2]], %arg0, %arg1) ( {
 // CHECK:          ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):  // no predecessors
 // CHECK:            %[[LESS_0:.*]] = "tf.Less"(%arg2, %arg4) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2578,8 +2578,8 @@ func @invalid_while_with_tuple(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tupl
 // CHECK:          },  {
 // CHECK:          ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):  // no predecessors
 // CHECK:            %[[ADDV2_0:.*]] = "tf.AddV2"(%arg2, %arg3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:            %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK:            %[[CONST_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK-DAG:        %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:        %[[CONST_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
 // CHECK:            %[[SUM_0:.*]] = "tf.Sum"(%arg5, %[[CONST_1]]) {keep_dims = false} : (tensor<1x256xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:            %[[ADDV2_1:.*]] = "tf.AddV2"(%[[SUM_0]], %arg6) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:            "tf.Yield"(%[[ADDV2_0]], %arg3, %arg4, %arg5, %[[ADDV2_1]]) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> ()
@@ -2615,11 +2615,11 @@ func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tens
 // CHECK-SAME:                                       %[[VAL_2:[a-z0-9]*]]: tensor<i32>,
 // CHECK-SAME:                                       %[[VAL_3:[a-z0-9]*]]: tensor<i32>,
 // CHECK-SAME:                                       %[[VAL_4:[a-z0-9]*]]: tensor<i32>) -> tensor<28x1x100xf32> {
-// CHECK:           %[[CST_0:[_a-z0-9]*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[CST_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[CST_0:[_a-z0-9]*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[CST_1:[_a-z0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[START_IND:[_a-z0-9]*]] = "tf.Pack"(%[[VAL_2]], %[[VAL_3]], %[[VAL_4]]) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
-// CHECK:           %[[OP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[28, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
-// CHECK:           %[[UP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[1, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %[[OP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[28, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %[[UP_SHAPE:[_a-z0-9]*]] = "tf.Const"() {value = dense<[1, 1, 100]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK:           %[[MAX_START:[_a-z0-9]*]] = "tf.Sub"(%[[OP_SHAPE]], %[[UP_SHAPE]]) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
 // CHECK:           %[[START_1:[_a-z0-9]*]] = "tf.Minimum"(%[[START_IND]], %[[MAX_START]]) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
 // CHECK:           %[[CLAMP_START:[_a-z0-9]*]] = "tf.Maximum"(%[[START_1]], %[[CST_0]]) : (tensor<3xi32>, tensor<i32>) -> tensor<3xi32>
@@ -2647,8 +2647,8 @@ func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x
 // CHECK-LABEL:   func @convert_reduce_to_all(
 // CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x2x3x4x5xi1>,
 // CHECK-SAME:                                %[[ARG_1:.*]]: tensor<2xi64>) -> tensor<2x4x5xi1> {
-// CHECK:           %[[TRUE_CST:.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-// CHECK:           %[[DIMENSIONS:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[TRUE_CST:.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+// CHECK-DAG:       %[[DIMENSIONS:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
 // CHECK:           %[[VAL_0:.*]] = "tf.All"(%[[ARG_0]], %[[DIMENSIONS]]) {keep_dims = false} : (tensor<1x2x3x4x5xi1>, tensor<2xi64>) -> tensor<2x4x5xi1>
 // CHECK:           return %[[VAL_0:.*]] : tensor<2x4x5xi1>
 // CHECK:         }
@@ -2664,9 +2664,9 @@ func @convert_reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
 
 // CHECK-LABEL:   func @convert_sort_to_topk_iota_broadcast(
 // CHECK-SAME:                                              %[[ARG_0:.*]]: tensor<3x6xf32>) -> (tensor<3x6xf32>, tensor<3x6xi32>) {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Range"(%cst, %cst_0, %cst_1) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<6xi32>
 // CHECK:           %[[VAL_4:.*]] = constant dense<[3, 6]> : tensor<2xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.BroadcastTo"(%0, %cst_2) : (tensor<6xi32>, tensor<2xi64>) -> tensor<3x6xi32>
@@ -2687,8 +2687,8 @@ func @convert_sort_to_topk_iota_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x6
 
 // CHECK-LABEL:   func @convert_sort_to_topk_iotacst_broadcast(
 // CHECK-SAME:                                                 %[[ARG_0:.*]]: tensor<3x6xf32>) -> (tensor<3x6xf32>, tensor<3x6xi32>) {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4, 5]> : tensor<6xi32>} : () -> tensor<6xi32>
-// CHECK:           %[[VAL_1:.*]] = constant dense<[3, 6]> : tensor<2xi64>
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4, 5]> : tensor<6xi32>} : () -> tensor<6xi32>
+// CHECK-DAG:       %[[VAL_1:.*]] = constant dense<[3, 6]> : tensor<2xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.BroadcastTo"(%cst, %cst_0) : (tensor<6xi32>, tensor<2xi64>) -> tensor<3x6xi32>
 // CHECK:           %[[K:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tf.TopKV2"(%[[ARG_0]], %[[K]]) {sorted = true} : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
@@ -2707,8 +2707,8 @@ func @convert_sort_to_topk_iotacst_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<
 
 // CHECK-LABEL:   func @convert_sort_to_topk_const(
 // CHECK-SAME:                                     %[[ARG_0:.*]]: tensor<3x6xf32>) -> (tensor<3x6xf32>, tensor<3x6xi32>) {
-// CHECK:           %[[VAL_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<3x6xi32>} : () -> tensor<3x6xi32>
-// CHECK:           %[[K:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<3x6xi32>} : () -> tensor<3x6xi32>
+// CHECK-DAG:       %[[K:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tf.TopKV2"(%[[ARG_0]], %[[K]]) {sorted = true} : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
 // CHECK:           return %[[VALUES]], %[[INDICES]] : tensor<3x6xf32>, tensor<3x6xi32>
 // CHECK:         }

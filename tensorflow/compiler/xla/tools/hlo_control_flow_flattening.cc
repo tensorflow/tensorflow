@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
 namespace xla {
@@ -60,6 +62,25 @@ const HloInstruction* ExtractInstruction(
     }
   }
   return nullptr;
+}
+
+// Returns true if instruction is a collective op.
+bool IsCollective(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace
@@ -149,6 +170,8 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   return Status::OK();
 }
 
+constexpr char kAllocateBuffer[] = "AllocateBuffer";
+
 Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
@@ -156,14 +179,42 @@ Status HloControlFlowFlattening::RemoveInfeed(
   CHECK_EQ(infeed_hlo->shape().tuple_shapes_size(), 2);
   const Shape& infeed_shape = ShapeUtil::GetSubshape(infeed_hlo->shape(), {0});
 
-  HloInstruction* constant = CreateConstant(infeed_shape, computation);
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(infeed_shape, {}, kAllocateBuffer));
 
   // Create a new tuple consisting op the constant and the token that was
   // originally the operand of infeed, and replace the infeed operation.
-  auto new_tuple =
-      HloInstruction::CreateTuple({constant, infeed_hlo->mutable_operand(0)});
+  auto new_tuple = HloInstruction::CreateTuple(
+      {custom_call, infeed_hlo->mutable_operand(0)});
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
+
+  return Status::OK();
+}
+
+Status HloControlFlowFlattening::RemoveRecvDone(
+    HloInstruction* recv_done,
+    absl::flat_hash_set<HloInstruction*>* additional_removed) const {
+  CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
+  CHECK_EQ(recv_done->operand_count(), 1);
+  HloInstruction* recv = recv_done->mutable_operand(0);
+  CHECK_EQ(recv->opcode(), HloOpcode::kRecv);
+
+  HloComputation* computation = recv_done->parent();
+  CHECK_EQ(recv_done->shape().tuple_shapes_size(), 2);
+  const Shape& recv_shape = ShapeUtil::GetSubshape(recv_done->shape(), {0});
+
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(recv_shape, {}, kAllocateBuffer));
+
+  // Create a new tuple consisting op the constant and the token that was
+  // originally the operand of recv, and replace the recv operation.
+  auto new_tuple =
+      HloInstruction::CreateTuple({custom_call, recv->mutable_operand(0)});
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceWithNewInstruction(recv_done, std::move(new_tuple)));
+  additional_removed->insert(recv);
+  TF_RETURN_IF_ERROR(computation->RemoveInstruction(recv));
 
   return Status::OK();
 }
@@ -174,54 +225,99 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   HloComputation* computation = outfeed_hlo->parent();
   // Replace the outfeed with a no-op custom call with side effect to ensure the
   // operands aren't DCE'd.
-  auto custom_call = HloInstruction::CreateCustomCall(
-      outfeed_hlo->shape(), outfeed_hlo->operands(), "NopReturnToken");
-  Cast<HloCustomCallInstruction>(custom_call.get())
+  HloInstruction* custom_call =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          outfeed_hlo->shape(), outfeed_hlo->operands(), "NopReturnToken"));
+  Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-      outfeed_hlo, std::move(custom_call)));
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
 
   return Status::OK();
 }
 
-Status HloControlFlowFlattening::RemoveAllReduce(HloInstruction* hlo) const {
-  HloComputation* computation = hlo->parent();
+Status HloControlFlowFlattening::RemoveSendDone(
+    HloInstruction* send_done,
+    absl::flat_hash_set<HloInstruction*>* additional_removed) const {
+  CHECK_EQ(send_done->opcode(), HloOpcode::kSendDone);
+  CHECK_EQ(send_done->operand_count(), 1);
+  HloInstruction* send = send_done->mutable_operand(0);
+  CHECK_EQ(send->opcode(), HloOpcode::kSend);
+
+  HloComputation* computation = send_done->parent();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeTokenShape(), hlo->operands(), "NopReturnToken"));
+          send_done->shape(), send_done->operand(0)->operands(),
+          "NopReturnToken"));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
 
-  HloInstruction* constant = CreateConstant(hlo->shape(), computation);
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, constant));
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send_done, custom_call));
+  additional_removed->insert(send);
+  TF_RETURN_IF_ERROR(computation->RemoveInstruction(send));
+
+  return Status::OK();
+}
+
+Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
+  HloComputation* computation = hlo->parent();
+  HloInstruction* custom_call =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          hlo->shape(), hlo->operands(), kAllocateBuffer));
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
+  return Status::OK();
+}
+
+Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
+    HloInstruction* hlo) const {
+  HloComputation* computation = hlo->parent();
+  HloInstruction* zero = CreateConstant(hlo->shape(), computation);
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
   return Status::OK();
 }
 
 StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  absl::flat_hash_set<HloInstruction*> removed;
+  for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
+      if (removed.contains(instruction)) {
+        // Skip the instruction if it is already removed.
+        continue;
+      }
       if (flatten_while_loop_ && instruction->opcode() == HloOpcode::kWhile) {
+        VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(FlattenWhileLoop(instruction));
         changed = true;
       } else if (remove_infeed_outfeed_ &&
                  instruction->opcode() == HloOpcode::kInfeed) {
+        VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveInfeed(instruction));
         changed = true;
       } else if (remove_infeed_outfeed_ &&
                  instruction->opcode() == HloOpcode::kOutfeed) {
+        VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveOutfeed(instruction));
         changed = true;
-      } else if (remove_all_reduce_ &&
-                 (instruction->opcode() == HloOpcode::kAllReduce ||
-                  (instruction->opcode() == HloOpcode::kFusion &&
-                   ExtractInstruction(
-                       instruction, [](const HloInstruction* hlo) {
-                         return hlo->opcode() == HloOpcode::kAllReduce;
-                       }) != nullptr))) {
-        TF_RETURN_IF_ERROR(RemoveAllReduce(instruction));
+      } else if (remove_comm_ &&
+                 instruction->opcode() == HloOpcode::kSendDone) {
+        VLOG(1) << "Remove " << instruction->name();
+        TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
         changed = true;
+      } else if (remove_comm_ &&
+                 instruction->opcode() == HloOpcode::kRecvDone) {
+        VLOG(1) << "Remove " << instruction->name();
+        TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
+        changed = true;
+      } else if (remove_comm_ && IsCollective(instruction)) {
+        VLOG(1) << "Remove " << instruction->name();
+        TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+        changed = true;
+      } else if (remove_comm_ &&
+                 (instruction->opcode() == HloOpcode::kPartitionId ||
+                  instruction->opcode() == HloOpcode::kReplicaId)) {
+        VLOG(1) << "Remove " << instruction->name();
+        TF_RETURN_IF_ERROR(RemovePartitionOrReplicaId(instruction));
       }
     }
   }

@@ -165,6 +165,9 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
 StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
     ExecutionProfile* profile) {
+  UpdateEntryComputationLayout(&executable->module(),
+                               device_shape_representation_fn_);
+
   // Get service run options.
   se::Stream stream(backend().default_stream_executor());
   stream.Init();

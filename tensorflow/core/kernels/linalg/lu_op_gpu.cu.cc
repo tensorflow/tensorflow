@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/gpu_solvers.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -259,7 +259,7 @@ class LuOpGpu : public AsyncOpKernel {
     };
 
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+                                                   std::move(info_checker));
   }
 };
 

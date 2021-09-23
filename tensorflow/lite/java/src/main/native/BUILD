@@ -55,6 +55,7 @@ filegroup(
         "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
+        "xnnpackdelegate_jni.cc",
     ],
 )
 

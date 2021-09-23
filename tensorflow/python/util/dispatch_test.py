@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import typing
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -31,11 +32,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -366,7 +369,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchSignatureWithUnspecifiedParameter(self):
 
@@ -393,7 +396,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForMultipleSignatures(self):
 
@@ -416,7 +419,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForList(self):
 
@@ -437,7 +440,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
+      dispatch.unregister_dispatch_for(masked_concat)
 
   def testDispatchForUnion(self):
     MaybeMasked = typing.Union[MaskedTensor, ops.Tensor]
@@ -463,7 +466,36 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
+
+  def testDispatchForTensorLike(self):
+    MaskedOrTensorLike = typing.Union[MaskedTensor, core_tf_types.TensorLike]
+
+    @dispatch.dispatch_for_api(math_ops.add)
+    def masked_add(x: MaskedOrTensorLike, y: MaskedOrTensorLike, name=None):
+      with ops.name_scope(name):
+        x_values = x.values if isinstance(x, MaskedTensor) else x
+        x_mask = x.mask if isinstance(x, MaskedTensor) else True
+        y_values = y.values if isinstance(y, MaskedTensor) else y
+        y_mask = y.mask if isinstance(y, MaskedTensor) else True
+        return MaskedTensor(x_values + y_values, x_mask & y_mask)
+
+    try:
+      x = MaskedTensor([1, 2, 3, 4, 5], [1, 0, 1, 1, 1])
+      y1 = [10, 20, 30, 40, 50]
+      y2 = np.array([10, 20, 30, 40, 50])
+      y3 = constant_op.constant([10, 20, 30, 40, 50])
+      y4 = variables.Variable([5, 4, 3, 2, 1])
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+      for y in [y1, y2, y3, y4]:
+        z = math_ops.add(x, y)
+        self.assertAllEqual(z.values, x.values + y)
+        self.assertAllEqual(z.mask, x.mask)
+
+    finally:
+      # Clean up dispatch table.
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForOptional(self):
     # Note: typing.Optional[X] == typing.Union[X, NoneType].
@@ -485,7 +517,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(array_ops.where_v2, masked_where)
+      dispatch.unregister_dispatch_for(masked_where)
 
   def testDispatchForSignatureFromAnnotations(self):
 
@@ -503,7 +535,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForPositionalSignature(self):
 
@@ -521,7 +553,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchWithVarargs(self):
 
@@ -542,7 +574,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchWithKwargs(self):
 
@@ -563,7 +595,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchErrorForBadAPI(self):
 
@@ -675,7 +707,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, add_car)
+      dispatch.unregister_dispatch_for(add_car)
 
   def testTypeCheckersAreCached(self):
     checker1 = dispatch.make_type_checker(int)
@@ -715,7 +747,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchApiWithNoNameArg(self):
     # Note: The "tensor_equals" API has no "name" argument.
@@ -725,8 +757,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     def masked_tensor_equals(self, other):
       del self, other
 
-    dispatch.unregister_dispatch_target(math_ops.tensor_equals,
-                                        masked_tensor_equals)  # clean up.
+    dispatch.unregister_dispatch_for(masked_tensor_equals)  # clean up.
 
     with self.assertRaisesRegexp(
         ValueError, r"Dispatch function's signature \(self, other, name=None\) "
@@ -757,7 +788,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add_n, masked_add_n)
+      dispatch.unregister_dispatch_for(masked_add_n)
 
   def testBadIterableParametersError(self):
     fn = lambda x: [t + 1 for t in x]
@@ -767,13 +798,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
   def testUnregisterDispatchTargetBadTargetError(self):
     fn = lambda x: x + 1
-    with self.assertRaisesRegex(ValueError, ".* does not support dispatch"):
-      dispatch.unregister_dispatch_target(fn, fn)
-
-  def testUnregisterDispatchTargetBadDispatchTargetError(self):
-    fn = lambda x: x + 1
-    with self.assertRaisesRegex(ValueError, ".* was not registered for .*"):
-      dispatch.unregister_dispatch_target(math_ops.add, fn)
+    with self.assertRaisesRegex(ValueError, "Function .* was not registered"):
+      dispatch.unregister_dispatch_for(fn)
 
   def testAddDuplicateApiDisptacherError(self):
     some_op = lambda x: x
@@ -815,10 +841,10 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
-      dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
-      dispatch.unregister_dispatch_target(math_ops.add, silly_add)
-      dispatch.unregister_dispatch_target(math_ops.abs, silly_abs)
+      dispatch.unregister_dispatch_for(masked_add)
+      dispatch.unregister_dispatch_for(masked_concat)
+      dispatch.unregister_dispatch_for(silly_add)
+      dispatch.unregister_dispatch_for(silly_abs)
 
   def testDispatchForUnaryElementwiseAPIs(self):
 
@@ -854,7 +880,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
                          r"^ones_like_x_float/.*")
 
     finally:
-      dispatch.unregister_elementwise_api_handler(unary_elementwise_api_handler)
+      dispatch.unregister_dispatch_for(unary_elementwise_api_handler)
 
   def testDispatchForBinaryElementwiseAPIs(self):
 
@@ -893,8 +919,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         self.assertRegex(y_minus_x.values.name, r"^y_minus_x/.*")
 
     finally:
-      dispatch.unregister_elementwise_api_handler(
-          binary_elementwise_api_handler)
+      dispatch.unregister_dispatch_for(binary_elementwise_api_handler)
 
   def testDuplicateDispatchForUnaryElementwiseAPIsError(self):
 
@@ -914,7 +939,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         del another_handler
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testDuplicateDispatchForBinaryElementwiseAPIsError(self):
 
@@ -935,7 +960,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         del another_handler
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testRegisterUnaryElementwiseApiAfterHandler(self):
     # Test that it's ok to call register_unary_elementwise_api after
@@ -958,7 +983,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(y.mask, [True, False, True])
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testRegisterBinaryElementwiseApiAfterHandler(self):
     # Test that it's ok to call register_binary_elementwise_api after
@@ -982,7 +1007,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(z.mask, [True, False, False])
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testElementwiseApiLists(self):
     self.assertIn(math_ops.abs, dispatch.unary_elementwise_apis())

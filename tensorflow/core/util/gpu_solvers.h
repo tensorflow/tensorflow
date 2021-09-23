@@ -18,8 +18,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
 
 // This header declares the class GpuSolver, which contains wrappers of linear
-// algebra solvers in the cuBlas/cuSolverDN or rocmSolver libraries for use in TensorFlow
-// kernels.
+// algebra solvers in the cuBlas/cuSolverDN or rocmSolver libraries for use in
+// TensorFlow kernels.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -30,7 +30,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
-#else 
+#else
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
 #include "tensorflow/stream_executor/blas.h"
@@ -74,7 +74,7 @@ template <typename T>
 cublasOperation_t CublasAdjointOp() {
   return Eigen::NumTraits<T>::IsComplex ? CUBLAS_OP_C : CUBLAS_OP_T;
 }
-#else //TENSORFLOW_USE_ROCM
+#else  // TENSORFLOW_USE_ROCM
 // Type traits to get ROCm complex types from std::complex<T>.
 template <typename T>
 struct ROCmComplexT {
@@ -220,7 +220,6 @@ class GpuSolver {
 
   OpKernelContext* context() { return context_; }
 
-
 #if TENSORFLOW_USE_ROCM
   // ====================================================================
   // Wrappers for ROCSolver start here
@@ -231,25 +230,30 @@ class GpuSolver {
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
-  template <typename Scalar>                                      
-  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots, int* info);
 
-  // Uses LU factorization to solve A * X = B. 
   template <typename Scalar>
-  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A, 
+  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+               int* info);
+
+  // Uses LU factorization to solve A * X = B.
+  template <typename Scalar>
+  Status Getrs(const rocblas_operation trans, int n, int nrhs, Scalar* A,
                int lda, const int* dev_pivots, Scalar* B, int ldb,
-               int* dev_lapack_info);    
+               int* dev_lapack_info);
 
   template <typename Scalar>
-  Status
-  GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
-               DeviceLapackInfo* info, const int batch_count);
+  Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
+                      DeviceLapackInfo* info, const int batch_count);
 
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
-                      Scalar** A, int lda, int* dev_pivots,
-                      Scalar** B, const int ldb, int* lapack_info,
-                      const int batch_count);
+                      Scalar** A, int lda, int* dev_pivots, Scalar** B,
+                      const int ldb, int* lapack_info, const int batch_count);
+
+  template <typename Scalar>
+  Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
+              rocblas_diagonal diag, int m, int n, const Scalar* alpha,
+              const Scalar* A, int lda, Scalar* B, int ldb);
 
   // Cholesky factorization
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
@@ -263,14 +267,7 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size);
-
-
-  template <typename Scalar>
-  Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
-              rocblas_diagonal diag, int m, int n, const Scalar* alpha,
-              const Scalar* A, int lda, Scalar* B, int ldb);
-  
-#else //GOOGLE_CUDA
+#else  // GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
   //
@@ -447,10 +444,10 @@ class GpuSolver {
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
-#else //TENSORLFOW_USE_ROCM
+#else  // TENSORLFOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
-#endif 
+#endif
 
   std::vector<TensorReference> scratch_tensor_refs_;
 
@@ -548,8 +545,8 @@ class DeviceLapackInfo : public ScratchSpace<int> {
 
 template <typename Scalar>
 ScratchSpace<Scalar> GpuSolver::GetScratchSpace(const TensorShape& shape,
-                                                 const std::string& debug_info,
-                                                 bool on_host) {
+                                                const std::string& debug_info,
+                                                bool on_host) {
   ScratchSpace<Scalar> new_scratch_space(context_, shape, debug_info, on_host);
   scratch_tensor_refs_.emplace_back(new_scratch_space.tensor());
   return std::move(new_scratch_space);
@@ -557,8 +554,8 @@ ScratchSpace<Scalar> GpuSolver::GetScratchSpace(const TensorShape& shape,
 
 template <typename Scalar>
 ScratchSpace<Scalar> GpuSolver::GetScratchSpace(int64_t size,
-                                                 const std::string& debug_info,
-                                                 bool on_host) {
+                                                const std::string& debug_info,
+                                                bool on_host) {
   return GetScratchSpace<Scalar>(TensorShape({size}), debug_info, on_host);
 }
 

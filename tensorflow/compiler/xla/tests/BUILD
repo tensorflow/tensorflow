@@ -2038,6 +2038,7 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
+            "tfrt_befthunk",
         ],
         "cpu": [
             "notsan",

@@ -8,8 +8,11 @@ ARG CUDA
 ARG CUDNN=8.1.0.77-1
 ARG CUDNN_MAJOR_VERSION=8
 ARG LIB_DIR_PREFIX=x86_64
-ARG LIBNVINFER=7.2.2-1
-ARG LIBNVINFER_MAJOR_VERSION=7
+ARG LIBNVINFER=8.0.0-1
+ARG LIBNVINFER_MAJOR_VERSION=8
+
+# Let us install tzdata painlessly
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
@@ -35,8 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install TensorRT if not building for PowerPC
 # NOTE: libnvinfer uses cuda11.1 versions
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
-        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
+        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.0 \
+        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.0 \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 

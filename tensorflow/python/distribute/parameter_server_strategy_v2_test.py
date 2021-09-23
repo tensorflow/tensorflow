@@ -47,6 +47,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
@@ -57,7 +58,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
-from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import load as tf_load
+from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
@@ -85,8 +87,12 @@ def get_cluster_def(num_workers, num_ps):
   }
 
 
-@combinations.generate(
-    combinations.combine(source=["textfile", "keyvaluetensor"]))
+source_combination = combinations.combine(source=["textfile", "keyvaluetensor"])
+
+source_and_load_combination = combinations.combine(
+    source=["textfile", "keyvaluetensor"], load=["tf_load", "keras_load"])
+
+
 class DistributedTableTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -139,6 +145,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
     return dataset
 
+  @combinations.generate(source_combination)
   def testCreateDistributedTableInScope(self, source):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
@@ -158,6 +165,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([0, 1, -2], output)
     self.assertEqual(lookuptable.size(), 3)
 
+  @combinations.generate(source_combination)
   def testCopyDistributedTable(self, source):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
@@ -172,6 +180,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     # No new coordinator instance or distributed tables are created.
     self.assertDictEqual(lookuptable.__dict__, new_table.__dict__)
 
+  @combinations.generate(source_combination)
   def testCreateLookupInDatasetFnUnderScope(self, source):
     # TODO(wxinyi): Warn the user of the inefficiency of this workflow (i.e.
     # creating `StaticHashTable` inside a `@tf.function`-wrapped `dataset_fn` to
@@ -217,6 +226,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
         returned_input = r.fetch()
         self.assertAllClose(-48, returned_input)
 
+  @combinations.generate(source_combination)
   def testAccessingResourceHandleInDatasetFnWithoutMap(self, source):
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -259,6 +269,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
       returned_input = r.fetch()
       self.assertAllClose(-48, returned_input)
 
+  @combinations.generate(source_combination)
   def testAccessingResourceHandleInDatasetFnWithMapFnDefinedInside(
       self, source):
 
@@ -300,6 +311,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
       returned_input = r.fetch()
       self.assertAllClose(-24, returned_input)
 
+  @combinations.generate(source_combination)
   def testAccessingResourceHandleInDatasetFnWithMapFnDefinedOutside(
       self, source):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -370,6 +382,19 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     def use_table(self, x):
       return self.table.lookup(x)
 
+  def verifyWorkerLocalInstance(self, coordinator, model):
+    # assert capturing a worker-local resource on each worker
+    for worker in coordinator._cluster.workers:
+      with coordinator_context.with_dispatch_context(worker):
+        captures = model.use_table.get_concrete_function().captured_inputs
+        resource_capture = [t for t in captures if t.dtype == dtypes.resource]
+        self.assertNotEmpty(resource_capture)
+        for capture in resource_capture:
+          self.assertEqual(
+              capture.device,
+              device_util.canonicalize("/CPU:0", default=worker.device_name))
+
+  @combinations.generate(source_combination)
   def testInModelAndCapture(self, source):
 
     file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
@@ -400,18 +425,76 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     ).graph.deferred_external_captures
     self.assertNotEmpty(deferred_captures)
 
-    # assert capturing a worker-local resource on each worker
-    for worker in coordinator._cluster.workers:
-      with coordinator_context.with_dispatch_context(worker):
-        for capture in [
-            t for t in
-            distributed_model.use_table.get_concrete_function().captured_inputs
-            if t.dtype == dtypes.resource
-        ]:
-          if capture.dtype == dtypes.resource:
-            self.assertEqual(
-                capture.device,
-                device_util.canonicalize("/CPU:0", default=worker.device_name))
+    self.verifyWorkerLocalInstance(coordinator, distributed_model)
+
+  @combinations.generate(source_and_load_combination)
+  def testDistributeTableSaveAndServe(self, load, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with strategy.scope():
+      model = self.Model(source, file_path)
+
+    model_dir = self.get_temp_dir()
+    tf_save.save(model, model_dir)
+
+    if load == "tf_load":
+      load_fn = tf_load.load
+    else:
+      load_fn = keras_save.load_model
+
+    loaded_without_strategy = load_fn(model_dir)
+    loaded_func_captures_without_strategy = (
+        loaded_without_strategy.use_table.get_concrete_function().graph
+        .external_captures)
+    loaded_func_deferred_captures_without_strategy = (
+        loaded_without_strategy.use_table.get_concrete_function().graph
+        .deferred_external_captures)
+    self.assertLen(loaded_func_captures_without_strategy, 2)
+    self.assertEmpty(loaded_func_deferred_captures_without_strategy)
+
+    self.assertAllEqual(
+        loaded_without_strategy.use_table(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64)), [0, 1, -2])
+
+  @combinations.generate(source_and_load_combination)
+  def testDistributeTableSaveAndLoadUnderStrategy(self, load, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy)
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with strategy.scope():
+      model = self.Model(source, file_path)
+    model_dir = self.get_temp_dir()
+    tf_save.save(model, model_dir)
+
+    if load == "tf_load":
+      load_fn = tf_load.load
+    else:
+      load_fn = keras_save.load_model
+
+    with strategy.scope():
+      loaded = load_fn(model_dir)
+
+    loaded_func_captures = (
+        loaded.use_table.get_concrete_function().graph.external_captures)
+    loaded_func_deferred_captures = (
+        loaded.use_table.get_concrete_function().graph
+        .deferred_external_captures)
+    # Compared with loading without strategy, there is one less
+    # external_capture, since the captured table handle has been swapped to a
+    # closure in the deferred_external_capture
+    self.assertLen(loaded_func_captures, 1)
+    self.assertNotEmpty(loaded_func_deferred_captures)
+
+    self.assertIsInstance(loaded.table, ps_values.DistributedTable)
+
+    self.assertLen([
+        t for t in loaded.use_table.get_concrete_function().captured_inputs
+        if t.dtype == dtypes.resource
+    ], 1)
+
+    self.verifyWorkerLocalInstance(coordinator, loaded)
 
 
 class ParameterServerStrategyV2Test(test.TestCase):
@@ -621,7 +704,7 @@ class ParameterServerStrategyV2Test(test.TestCase):
     found_gather = False
 
     tmp_dir = self.get_temp_dir()
-    save.save(model, tmp_dir, signatures=model.func)
+    tf_save.save(model, tmp_dir, signatures=model.func)
 
     with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
       saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())

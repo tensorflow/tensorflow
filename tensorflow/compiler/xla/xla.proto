@@ -343,7 +343,11 @@ message DebugOptions {
   // enables dumping in all pipelines.
   string xla_dump_hlo_pipeline_re = 154;
 
-  // Next id: 156
+  // If true, abort immediately when conv algorithm picker fails, rather than
+  // logging a warning and proceeding with fallback.
+  bool xla_gpu_strict_conv_algorithm_picker = 156;
+
+  // Next id: 157
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

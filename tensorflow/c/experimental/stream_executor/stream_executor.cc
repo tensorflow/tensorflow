@@ -23,11 +23,13 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -43,150 +45,116 @@ using tensorflow::StatusFromTF_Status;
 
 namespace stream_executor {
 using tensorflow::StringPiece;
-using OwnedTFStatus = std::unique_ptr<TF_Status, TFStatusDeleter>;
+
+// TODO(penporn): Remove OwnedTFStatus.
+using OwnedTFStatus = tensorflow::TF_StatusPtr;
 
 namespace {
-
-#define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME) \
-  do {                                                                 \
-    if (STRUCT_OBJ.struct_size == 0) {                                 \
-      return port::FailedPreconditionError(                            \
-          "struct_size field in " #STRUCT_NAME                         \
-          " must be set to " #SIZE_VALUE_NAME ".");                    \
-    }                                                                  \
-  } while (0)
-
-#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)           \
-  do {                                                           \
-    if (STRUCT_OBJ.NAME == 0) {                                  \
-      return port::FailedPreconditionError(                      \
-          "'" #NAME "' field in " #STRUCT_NAME " must be set."); \
-    }                                                            \
-  } while (0)
-
-port::Status ValidateDeviceType(StringPiece type) {
-  // Validate device type. Device type must start with a capital letter and
-  // consist of capital letters and underscores. Reasoning behind this decision:
-  // * At the minimum we want to disallow '/' and ':' since
-  //   these characters are used in device spec, for e.g.
-  //   /job:foo/replica:12/device:GPU:1.
-  // * Underscores seem useful, for e.g. XLA_GPU uses underscores.
-  // * Allowing lowercase might get confusing. For example, say someone
-  //   registers a new type called "Gpu". It might be confusing for users that
-  //   "Gpu" is not the same device type as "GPU".
-  //   Note that lowercase "cpu" and "gpu" are currently supported only for
-  //   legacy reasons:
-  //   https://cs.opensource.google/tensorflow/tensorflow/+/master:tensorflow/python/framework/device_spec.py;l=46;drc=d3a378f9665d8eee827c74cb9ecbee81e4c288dd
-  static const LazyRE2 kTfDeviceTypeRegEx = {"[A-Z][A-Z_]*"};
-  bool matches = RE2::FullMatch(type, *kTfDeviceTypeRegEx);
-  if (!matches) {
-    return port::FailedPreconditionError(
-        tensorflow::strings::StrCat("Device name/type '", type, "' must match ",
-                                    kTfDeviceTypeRegEx->pattern(), "."));
-  }
-  return port::Status::OK();
-}
-
 port::Status ValidateSPPlatform(const SP_Platform& platform) {
-  VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
-  VALIDATE_MEMBER(SP_Platform, platform, name);
-  VALIDATE_MEMBER(SP_Platform, platform, type);
-  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.name));
-  TF_RETURN_IF_ERROR(ValidateDeviceType(platform.type));
+  TF_VALIDATE_STRUCT_SIZE(SP_Platform, platform, SP_PLATFORM_STRUCT_SIZE);
+  TF_VALIDATE_NOT_NULL(SP_Platform, platform, name);
+  TF_VALIDATE_NOT_NULL(SP_Platform, platform, type);
+  TF_RETURN_IF_ERROR(
+      tensorflow::device_utils::ValidateDeviceType(platform.name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::device_utils::ValidateDeviceType(platform.type));
   // `visible_device_count` could be 0 at initialization time.
   return port::Status::OK();
 }
 
 port::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
-  VALIDATE_STRUCT_SIZE(SP_PlatformFns, platform_fns,
-                       SP_PLATFORM_FNS_STRUCT_SIZE);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_device);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_device);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_stream_executor);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_stream_executor);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_timer_fns);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_timer_fns);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_device_fns);
-  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_device_fns);
+  TF_VALIDATE_STRUCT_SIZE(SP_PlatformFns, platform_fns,
+                          SP_PLATFORM_FNS_STRUCT_SIZE);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_device);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_stream_executor);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_stream_executor);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_timer_fns);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_timer_fns);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_device_fns);
+  TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device_fns);
   return port::Status::OK();
 }
 
 port::Status ValidateSPTimerFns(const SP_TimerFns& timer_fns) {
-  VALIDATE_STRUCT_SIZE(SP_TimerFns, timer_fns, SP_TIMER_FNS_STRUCT_SIZE);
-  VALIDATE_MEMBER(SP_TimerFns, timer_fns, nanoseconds);
+  TF_VALIDATE_STRUCT_SIZE(SP_TimerFns, timer_fns, SP_TIMER_FNS_STRUCT_SIZE);
+  TF_VALIDATE_NOT_NULL(SP_TimerFns, timer_fns, nanoseconds);
   return port::Status::OK();
 }
 
 port::Status ValidateSPAllocatorStats(const SP_AllocatorStats& stats) {
-  VALIDATE_STRUCT_SIZE(SP_AllocatorStats, stats, SP_ALLOCATORSTATS_STRUCT_SIZE);
+  TF_VALIDATE_STRUCT_SIZE(SP_AllocatorStats, stats,
+                          SP_ALLOCATORSTATS_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
   return port::Status::OK();
 }
 
 port::Status ValidateSPDeviceMemoryBase(const SP_DeviceMemoryBase& mem) {
-  VALIDATE_STRUCT_SIZE(SP_DeviceMemoryBase, mem,
-                       SP_DEVICE_MEMORY_BASE_STRUCT_SIZE);
+  TF_VALIDATE_STRUCT_SIZE(SP_DeviceMemoryBase, mem,
+                          SP_DEVICE_MEMORY_BASE_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
   return port::Status::OK();
 }
 
 port::Status ValidateSPDevice(const SP_Device& device) {
-  VALIDATE_STRUCT_SIZE(SP_Device, device, SP_DEVICE_STRUCT_SIZE);
+  TF_VALIDATE_STRUCT_SIZE(SP_Device, device, SP_DEVICE_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
   return port::Status::OK();
 }
 
 port::Status ValidateSPDeviceFns(const SP_DeviceFns& device_fns) {
-  VALIDATE_STRUCT_SIZE(SP_DeviceFns, device_fns, SP_DEVICE_FNS_STRUCT_SIZE);
+  TF_VALIDATE_STRUCT_SIZE(SP_DeviceFns, device_fns, SP_DEVICE_FNS_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
   return port::Status::OK();
 }
 
 port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
                                       const SP_Platform& platform) {
-  VALIDATE_STRUCT_SIZE(SP_StreamExecutor, se, SP_STREAM_EXECUTOR_STRUCT_SIZE);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, allocate);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, deallocate);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, get_allocator_stats);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, host_memory_allocate);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, host_memory_deallocate);
+  TF_VALIDATE_STRUCT_SIZE(SP_StreamExecutor, se,
+                          SP_STREAM_EXECUTOR_STRUCT_SIZE);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, allocate);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, deallocate);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, get_allocator_stats);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, host_memory_allocate);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, host_memory_deallocate);
   if (platform.supports_unified_memory) {
-    VALIDATE_MEMBER(SP_StreamExecutor, se, unified_memory_allocate);
-    VALIDATE_MEMBER(SP_StreamExecutor, se, unified_memory_deallocate);
+    TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, unified_memory_allocate);
+    TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, unified_memory_deallocate);
   }
-  VALIDATE_MEMBER(SP_StreamExecutor, se, device_memory_usage);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, create_stream);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, destroy_stream);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, create_stream_dependency);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, get_stream_status);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, create_event);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, destroy_event);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, get_event_status);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, record_event);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, wait_for_event);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, create_timer);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, destroy_timer);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, start_timer);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, stop_timer);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, memcpy_dtoh);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, memcpy_htod);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, sync_memcpy_dtoh);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, sync_memcpy_htod);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, block_host_for_event);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, synchronize_all_activity);
-  VALIDATE_MEMBER(SP_StreamExecutor, se, host_callback);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, device_memory_usage);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_stream);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, destroy_stream);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_stream_dependency);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, get_stream_status);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_event);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, destroy_event);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, get_event_status);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, record_event);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, wait_for_event);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, create_timer);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, destroy_timer);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, start_timer);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, stop_timer);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_dtoh);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memcpy_htod);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, sync_memcpy_dtoh);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, sync_memcpy_htod);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, block_host_for_event);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, synchronize_all_activity);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, host_callback);
   return port::Status::OK();
 }
 
 port::Status ValidateSEPlatformRegistrationParams(
     const SE_PlatformRegistrationParams& params) {
-  VALIDATE_STRUCT_SIZE(SE_PlatformRegistrationParams, params,
-                       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE);
-  VALIDATE_MEMBER(SE_PlatformRegistrationParams, params, destroy_platform);
-  VALIDATE_MEMBER(SE_PlatformRegistrationParams, params, destroy_platform_fns);
+  TF_VALIDATE_STRUCT_SIZE(SE_PlatformRegistrationParams, params,
+                          SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE);
+  TF_VALIDATE_NOT_NULL(SE_PlatformRegistrationParams, params, destroy_platform);
+  TF_VALIDATE_NOT_NULL(SE_PlatformRegistrationParams, params,
+                       destroy_platform_fns);
   return port::Status::OK();
 }
-#undef VALIDATE_MEMBER
+#undef TF_VALIDATE_NOT_NULL
 
 // Converts SE_EventStatus to Event::Status.
 Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {

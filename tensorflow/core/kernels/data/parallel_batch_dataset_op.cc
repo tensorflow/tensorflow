@@ -337,7 +337,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       const int64_t uid = -1;
     };
 
-    void CallCompleted(BatchResult* result) TF_LOCKS_EXCLUDED(*mu_) {
+    void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                       const std::shared_ptr<BatchResult>& result)
+        TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
       result->call_finished = true;
@@ -347,7 +349,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // The function fetches elements from input dataset sequentially and then
     // executes the batching for different batches in parallel using the context
     // runner.
-    void CallBatching(std::shared_ptr<IteratorContext> ctx, BatchResult* result)
+    void CallBatching(std::shared_ptr<IteratorContext> ctx,
+                      const std::shared_ptr<BatchResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelBatchProduce",
@@ -355,7 +358,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       });
 
       if (!input_impl_) {
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return;
       }
 
@@ -386,7 +389,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       }
 
       if (batch_elements->empty()) {
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return;
       }
 
@@ -406,7 +409,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                              std::move(allocation_callback), &result->output);
           result->status.Update(status);
         }
-        CallCompleted(result);
+        CallCompleted(ctx, result);
         return status;
       };
 
@@ -427,15 +430,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     void EnsureRunnerThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         runner_thread_ = ctx->StartThread(
-            "tf_data_parallel_batch",
-            [this, ctx = std::make_shared<IteratorContext>(*ctx)]() {
-              RunnerThread(ctx);
-            });
+            kTFDataParallelBatch,
+            std::bind(&Iterator::RunnerThread, this, ctx_copy));
       }
     }
 
-    void RunnerThread(std::shared_ptr<IteratorContext> ctx)
+    void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
         TF_LOCKS_EXCLUDED(*mu_) {
       std::vector<std::shared_ptr<BatchResult>> new_calls;
       RecordStart(ctx.get());
@@ -470,7 +472,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
         for (const auto& call : new_calls) {
-          CallBatching(ctx, call.get());
+          CallBatching(ctx, call);
         }
         new_calls.clear();
       }

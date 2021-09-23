@@ -160,7 +160,8 @@ def check_per_example_loss_rank(per_example_loss):
     if loss_rank == 0:
       raise ValueError(
           "Invalid value passed for `per_example_loss`. Expected a tensor with "
-          "at least rank 1, received: {}".format(per_example_loss))
+          f"at least rank 1. Received per_example_loss={per_example_loss} with "
+          f"rank {loss_rank}")
     yield
   else:
     # Handle dynamic rank.

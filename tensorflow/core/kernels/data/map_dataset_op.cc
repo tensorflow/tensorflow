@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -88,6 +89,19 @@ class MapDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    std::vector<Tensor> args;
+    TF_RETURN_IF_ERROR(input_->Get(ctx, index, &args));
+    if (!instantiated_captured_func_) {
+      TF_RETURN_IF_ERROR(
+          captured_func_->Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                      &instantiated_captured_func_));
+    }
+    return instantiated_captured_func_->RunInstantiated(args, out_tensors);
   }
 
  protected:
@@ -209,6 +223,9 @@ class MapDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  // This is used for random access provided by Get().
+  mutable std::unique_ptr<InstantiatedCapturedFunction>
+      instantiated_captured_func_;
 };
 
 MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)

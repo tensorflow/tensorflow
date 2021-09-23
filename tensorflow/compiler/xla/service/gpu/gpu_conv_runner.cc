@@ -85,7 +85,7 @@ Status RunGpuConvForward(GpuConvParams params,
         "StreamExecutor doesn't support scaled convolution: %lf.",
         params.config.conv_result_scale);
   }
-  return stream->ConvolveWithAlgorithm(
+  return stream->ConvolveForwardWithAlgorithm(
       params.config.input_descriptor, input_buf,
       params.config.filter_descriptor, filter_buf, params.config.conv_desc,
       params.config.output_descriptor, &output_buf, scratch_allocator,

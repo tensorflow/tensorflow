@@ -429,8 +429,16 @@ class _CurrentDistributionContext(object):
 
     if self._resource_creator_scope:
       try:
-        self._resource_creator_scope.__exit__(exception_type, exception_value,
-                                              traceback)
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
       except RuntimeError as e:
         six.raise_from(
             RuntimeError("Resource creator scope nesting error: move call "
@@ -2106,7 +2114,7 @@ class StrategyExtendedV2(object):
     self._require_static_shapes = False
 
   def _resource_creator_scope(self):
-    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
     return None
 
   def _container_strategy(self):

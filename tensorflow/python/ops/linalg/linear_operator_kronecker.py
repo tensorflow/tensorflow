@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -35,10 +35,30 @@ from tensorflow.python.util.tf_export import tf_export
 __all__ = ["LinearOperatorKronecker"]
 
 
-def _shape(x):
+def _prefer_static_shape(x):
   if x.shape.is_fully_defined():
     return x.shape
   return array_ops.shape(x)
+
+
+def _prefer_static_concat_shape(first_shape, second_shape_int_list):
+  """Concatenate a shape with a list of integers as statically as possible.
+
+  Args:
+    first_shape: `TensorShape` or `Tensor` instance. If a `TensorShape`,
+      `first_shape.is_fully_defined()` must return `True`.
+    second_shape_int_list: `list` of scalar integer `Tensor`s.
+
+  Returns:
+    `Tensor` representing concatenating `first_shape` and
+      `second_shape_int_list` as statically as possible.
+  """
+  second_shape_int_list_static = [
+      tensor_util.constant_value(s) for s in second_shape_int_list]
+  if (isinstance(first_shape, tensor_shape.TensorShape) and
+      all(s is not None for s in second_shape_int_list_static)):
+    return first_shape.concatenate(second_shape_int_list_static)
+  return array_ops.concat([first_shape, second_shape_int_list], axis=0)
 
 
 @tf_export("linalg.LinearOperatorKronecker")
@@ -294,14 +314,25 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       output = linalg.transpose(output)
 
     for o in reversed(self.operators):
+      # Statically compute the reshape.
       if adjoint:
         operator_dimension = o.range_dimension_tensor()
       else:
         operator_dimension = o.domain_dimension_tensor()
+      output_shape = _prefer_static_shape(output)
 
-      output = array_ops.reshape(output, array_ops.concat(
-          [_shape(output)[:-2],
-           [-1, operator_dimension]], axis=0))
+      if tensor_util.constant_value(operator_dimension) is not None:
+        operator_dimension = tensor_util.constant_value(operator_dimension)
+        if output.shape[-2] is not None and output.shape[-1] is not None:
+          dim = int(output.shape[-2] * output_shape[-1] // operator_dimension)
+      else:
+        dim = math_ops.cast(
+            output_shape[-2] * output_shape[-1] // operator_dimension,
+            dtype=dtypes.int32)
+
+      output_shape = _prefer_static_concat_shape(
+          output_shape[:-2], [dim, operator_dimension])
+      output = array_ops.reshape(output, shape=output_shape)
 
       # Conjugate because we are trying to compute A @ B^T, but
       # `LinearOperator` only supports `adjoint_arg`.
@@ -312,9 +343,9 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
           o, output, adjoint=adjoint, adjoint_arg=True)
 
     if adjoint_arg:
-      col_dim = _shape(x)[-2]
+      col_dim = _prefer_static_shape(x)[-2]
     else:
-      col_dim = _shape(x)[-1]
+      col_dim = _prefer_static_shape(x)[-1]
 
     if adjoint:
       row_dim = self.domain_dimension_tensor()
@@ -325,8 +356,8 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
 
     output = array_ops.reshape(
         output,
-        array_ops.concat([
-            _shape(output)[:-2], matrix_shape], axis=0))
+        _prefer_static_concat_shape(
+            _prefer_static_shape(output)[:-2], matrix_shape))
 
     if x.shape.is_fully_defined():
       if adjoint_arg:
@@ -428,13 +459,13 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       # This is now [B, R1, R2, C1, C2].
       product = product * op_to_mul
       # Now merge together dimensions to get [B, R1 * R2, C1 * C2].
-      product = array_ops.reshape(
-          product,
-          shape=array_ops.concat(
-              [array_ops.shape(product)[:-4],
-               [array_ops.shape(product)[-4] * array_ops.shape(product)[-3],
-                array_ops.shape(product)[-2] * array_ops.shape(product)[-1]]
-              ], axis=0))
+      product_shape = _prefer_static_shape(product)
+      shape = _prefer_static_concat_shape(
+          product_shape[:-4],
+          [product_shape[-4] * product_shape[-3],
+           product_shape[-2] * product_shape[-1]])
+
+      product = array_ops.reshape(product, shape=shape)
     product.set_shape(self.shape)
     return product
 
@@ -484,10 +515,3 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
-
-  def _compute_ones_matrix_shape(self):
-    if self.batch_shape.is_fully_defined():
-      batch_shape = self.batch_shape.concatenate([1, 1])
-      return np.ones_like(batch_shape, dtype=np.int32)
-    return array_ops.concat(
-        [array_ops.ones_like(self.batch_shape_tensor()), [1, 1]], 0)

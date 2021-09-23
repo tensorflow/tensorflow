@@ -68,7 +68,7 @@ typedef enum TfLiteStatus {
 
   // Generally referring to data-reading issues in delegate serialization.
   // See tflite::delegates::Serialization.
-  kTfLiteDelegateDataReadError = 5,
+  kTfLiteDelegateDataReadError = 6,
 } TfLiteStatus;
 
 // Types supported by tensor

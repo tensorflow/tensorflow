@@ -19,7 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -115,7 +117,8 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
 
 std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
                          const DepthwiseConvolution2DAttributes& dw_attr,
-                         int result_depth, GPUOperation* result) {
+                         ReLUAttributes* relu_attr_ptr, int result_depth,
+                         GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   result->AddSrcTensor("src_tensor", src_desc);
@@ -208,6 +211,17 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
       }
     }
   }
+  if (relu_attr_ptr) {
+    std::string elementwise_code;
+    CreateReLU(*relu_attr_ptr, op_def.precision, &result->args_,
+               &elementwise_code);
+    for (int d = 0; d < intermediate_depth; ++d) {
+      const std::string var_name = "dw_res_" + std::to_string(d);
+      const std::string elementwise_new_code =
+          absl::StrReplaceAll(elementwise_code, {{"in_out_value", var_name}});
+      c += "  {  " + elementwise_new_code + "  }\n";
+    }
+  }
   for (int d = 0; d < result_depth; ++d) {
     c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
          std::to_string(weights_counter++) + "];\n";
@@ -295,10 +309,10 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr) {
+    const Convolution2DAttributes& conv_attr, ReLUAttributes* relu_attr_ptr) {
   GPUOperation result(definition);
   result.code_ =
-      GenerateCode(definition, gpu_info, dw_attr,
+      GenerateCode(definition, gpu_info, dw_attr, relu_attr_ptr,
                    DivideRoundUp(conv_attr.weights.shape.o, 4), &result);
   result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
   UploadWeights(dw_attr, conv_attr, gpu_info, definition.precision, &result);

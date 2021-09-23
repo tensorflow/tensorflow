@@ -96,20 +96,49 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(merged_options.opts.y, 0.0)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testMergeOptionsInvalid(self):
-    with self.assertRaises(TypeError):
-      options.merge_options(0)
-    options1, options2 = _TestOptions(), _NestedTestOptions()
-    with self.assertRaises(TypeError):
-      options.merge_options(options1, options2)
+  def testImmutable(self):
+    test_options = _TestOptions()
+    test_options._set_mutable(False)
+
+    with self.assertRaisesRegex(
+        ValueError, r"Mutating `tf.data.Options\(\)` returned by "
+        r"`tf.data.Dataset.options\(\)` has no effect. Use "
+        r"`tf.data.Dataset.with_options\(options\)` to set or "
+        "update dataset options."):
+      test_options.test = 100
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoSpuriousAttrs(self):
     test_options = _TestOptions()
-    with self.assertRaises(AttributeError):
+
+    with self.assertRaisesRegex(
+        AttributeError, "Cannot set the property wrong_attr on _TestOptions."):
       test_options.wrong_attr = True
     with self.assertRaises(AttributeError):
       _ = test_options.wrong_attr
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeNoOptions(self):
+    with self.assertRaisesRegex(ValueError,
+                                "At least one options should be provided"):
+      options.merge_options()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeOptionsDifferentType(self):
+    options1, options2 = _TestOptions(), _NestedTestOptions()
+    with self.assertRaisesRegex(
+        TypeError, r"Could not merge incompatible options of type "
+        r"\<class \'__main__._NestedTestOptions\'\> and "
+        r"\<class \'__main__._TestOptions\'\>."):
+      options.merge_options(options1, options2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeOptionsWrongType(self):
+    with self.assertRaisesRegex(
+        TypeError, "All options to be merged should inherit from "
+        r"\`OptionsBase\` but found option of type \<class \'int\'\> which "
+        "does not."):
+      options.merge_options(1, 2, 3)
 
 
 if __name__ == "__main__":

@@ -1611,6 +1611,11 @@ def div_no_nan(x, y, name=None):
   >>> tf.math.divide_no_nan(3.0, 0.0)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
+  Note that 0 is returned if `y` is 0 even if `x` is nonfinite:
+
+  >>> tf.math.divide_no_nan(np.nan, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     y: A `Tensor` whose dtype is compatible with `x`.
@@ -1631,6 +1636,9 @@ def div_no_nan(x, y, name=None):
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+
+  Note this is noncommutative: if y is NaN or infinite and x is 0, the result
+  will be NaN.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -5580,4 +5588,3 @@ dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
 dispatch.register_unary_elementwise_api(gen_math_ops.square)
 dispatch.register_unary_elementwise_api(gen_math_ops.tan)
 dispatch.register_unary_elementwise_api(gen_math_ops.tanh)
-

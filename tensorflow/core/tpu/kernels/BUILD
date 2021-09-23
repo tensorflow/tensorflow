@@ -117,6 +117,7 @@ tf_kernel_library(
         ":tpu_compilation_cache_lookup",
         ":tpu_compilation_cache_rpc_lookup",
         ":tpu_mesh_state_interface",
+        ":tpu_embedding_engine_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
         ":tpu_fingerprint_lookup",
@@ -260,6 +261,18 @@ cc_library(
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
         "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_engine_state_interface",
+    srcs = [],
+    hdrs = ["tpu_embedding_engine_state_interface.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
     ],
 )
 

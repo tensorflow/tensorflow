@@ -226,11 +226,11 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
         n <= kMaxMatrixSizeToBatchSizeRatio * batch_size;
     if (use_batched_solver) {
       // For small matrices or large batch sizes, we use the batched interface
-      // from cuBlas/rocSolver.
+      // from cuBlas/rocmSolver.
 #if GOOGLE_CUDA
       const Scalar** input_copy_ptrs_base =
           reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
-#else // TENSORFLOW_USE_ROCM
+#else  // TENSORFLOW_USE_ROCM
       Scalar** input_copy_ptrs_base =
           reinterpret_cast<Scalar**>(input_copy_ptrs.mutable_data());
 #endif
@@ -258,8 +258,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     }
 
     // 2. Make a transposed copy of the right-hand sides. This is necessary
-    // because cuBLAS/rocBlas assumes column-major storage while TensorFlow TF uses
-    // row-major.
+    // because cuBLAS/rocSolver assumes column-major storage while TensorFlow TF
+    // uses row-major.
     TensorShape transposed_rhs_shape(rhs.shape());
     transposed_rhs_shape.RemoveLastDims(2);
     transposed_rhs_shape.AddDim(nrhs);
@@ -280,9 +280,9 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     }
 #if GOOGLE_CUDA
     auto op_t = adjoint_ ? CUBLAS_OP_C : CUBLAS_OP_T;
-#else //TENSORFLOW_USE_ROCM
-    auto op_t = adjoint_ ? rocblas_operation_conjugate_transpose :
-                           rocblas_operation_transpose;
+#else  // TENSORFLOW_USE_ROCM
+    auto op_t = adjoint_ ? rocblas_operation_conjugate_transpose
+                         : rocblas_operation_transpose;
 #endif
 
     // 3. Solve op(A) X = B (in column major form).
@@ -308,12 +308,11 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       const Scalar** transposed_rhs_ptrs_base =
           reinterpret_cast<const Scalar**>(
               transposed_rhs_ptr_array.mutable_data());
-#else //TENSORFLOW_USE_ROCM
-       Scalar** input_copy_ptrs_base =
-          reinterpret_cast< Scalar**>(input_copy_ptr_array.mutable_data());
-       Scalar** transposed_rhs_ptrs_base =
-          reinterpret_cast< Scalar**>(
-              transposed_rhs_ptr_array.mutable_data());
+#else  // TENSORFLOW_USE_ROCM
+      Scalar** input_copy_ptrs_base =
+          reinterpret_cast<Scalar**>(input_copy_ptr_array.mutable_data());
+      Scalar** transposed_rhs_ptrs_base =
+          reinterpret_cast<Scalar**>(transposed_rhs_ptr_array.mutable_data());
 #endif
       for (int batch = 0; batch < batch_size; ++batch) {
         input_copy_ptrs_base[batch] = &input_copy_reshaped(batch, 0, 0);
@@ -322,10 +321,9 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       int host_info = 0;
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver->GetrsBatched(op_t, n, nrhs,
-                               input_copy_ptrs_base, n, pivots_mat.data(),
-                               transposed_rhs_ptrs_base, n, &host_info,
-                               batch_size),
+          solver->GetrsBatched(op_t, n, nrhs, input_copy_ptrs_base, n,
+                               pivots_mat.data(), transposed_rhs_ptrs_base, n,
+                               &host_info, batch_size),
           done);
 
       OP_REQUIRES_ASYNC(
@@ -339,8 +337,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver->Getrs(op_t, n, nrhs,
-                          &input_copy_reshaped(batch, 0, 0), n,
+            solver->Getrs(op_t, n, nrhs, &input_copy_reshaped(batch, 0, 0), n,
                           &pivots_mat(batch, 0),
                           &transposed_rhs_reshaped(batch, 0, 0), n,
                           &dev_info.back()(batch)),
@@ -378,7 +375,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       done();
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+                                                   std::move(info_checker));
   }
 
  private:

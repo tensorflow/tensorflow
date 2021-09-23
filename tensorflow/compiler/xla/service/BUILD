@@ -4211,6 +4211,7 @@ cc_library(
         ":hlo_cost_analysis",
         ":memory_space_assignment_repacking",
         ":memory_space_assignment_utils",
+        ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
     ],
@@ -5820,7 +5821,10 @@ cc_library(
     hdrs = [
         "custom_call_status_internal.h",
     ],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow/compiler/tf2xla:__pkg__",
+    ],
     deps = [
         ":custom_call_status",
         "@com_google_absl//absl/strings",

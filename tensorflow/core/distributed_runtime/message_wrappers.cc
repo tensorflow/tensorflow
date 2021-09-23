@@ -638,6 +638,8 @@ CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
   return &cost_graph_;
 }
 
+Status InMemoryRunGraphResponse::status() const { return status_; }
+
 errors::Code InMemoryRunGraphResponse::status_code() const {
   return status_.code();
 }
@@ -704,6 +706,10 @@ StepStats* OwnedProtoRunGraphResponse::mutable_step_stats() {
 
 CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_.mutable_cost_graph();
+}
+
+Status OwnedProtoRunGraphResponse::status() const {
+  return Status(response_.status_code(), response_.status_error_message());
 }
 
 errors::Code OwnedProtoRunGraphResponse::status_code() const {
@@ -777,6 +783,10 @@ CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_->mutable_cost_graph();
 }
 
+Status NonOwnedProtoRunGraphResponse::status() const {
+  return Status(response_->status_code(), response_->status_error_message());
+}
+
 errors::Code NonOwnedProtoRunGraphResponse::status_code() const {
   return response_->status_code();
 }
@@ -836,6 +846,8 @@ Status InMemoryRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
+Status InMemoryRunStepResponse::status() const { return status_; }
+
 errors::Code InMemoryRunStepResponse::status_code() const {
   return status_.code();
 }
@@ -884,6 +896,10 @@ Status OwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
   return response_.mutable_metadata();
+}
+
+Status OwnedProtoRunStepResponse::status() const {
+  return Status(response_.status_code(), response_.status_error_message());
 }
 
 errors::Code OwnedProtoRunStepResponse::status_code() const {
@@ -936,6 +952,10 @@ Status NonOwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
   return response_->mutable_metadata();
+}
+
+Status NonOwnedProtoRunStepResponse::status() const {
+  return Status(response_->status_code(), response_->status_error_message());
 }
 
 errors::Code NonOwnedProtoRunStepResponse::status_code() const {

@@ -824,7 +824,7 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
     }
   } else {
     auto result_tensor = MakeIndirectAsyncValue(host);
-    tensor_av.AndThen([host, result_tensor = result_tensor.CopyRef(),
+    tensor_av.AndThen([host, result_tensor = result_tensor,
                        tensor_av = tensor_av.CopyRef()]() {
       if (auto* dht =
               llvm::dyn_cast<DenseHostTensor>(&tensor_av.get<Tensor>())) {
@@ -890,8 +890,8 @@ ContextInterface::TFTensorHandleFromInterface(
 
   if (auto* dht = llvm::dyn_cast<tfrt::DenseHostTensor>(&tensor)) {
     return tensorflow::TensorHandle::CreateLocalHandle(
-        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer().CopyRef(),
-                                                  dht->dtype(), dht->shape()));
+        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer(), dht->dtype(),
+                                                  dht->shape()));
   }
 
   if (auto* sht = llvm::dyn_cast<tfrt::StringHostTensor>(&tensor)) {
@@ -1375,8 +1375,8 @@ tensorflow::Status OperationInterface::Execute(
       auto dst_device_ref = op_->GetDeviceRef();
 
       for (auto& th_arg : th_args) {
-        th_arg = th_arg.TransferTo(exec_ctx, dst_device_ref.CopyRef(),
-                                   op_->GetTensorType());
+        th_arg =
+            th_arg.TransferTo(exec_ctx, dst_device_ref, op_->GetTensorType());
       }
     }
 

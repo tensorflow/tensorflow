@@ -750,9 +750,9 @@ func @matrix_diag_v2_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 
 // CHECK-LABEL:   func @matrix_diag_v2_no_match(
 // CHECK-SAME:                                  [[VAL_0:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
-// CHECK:           [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
-// CHECK:           [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
-// CHECK:           [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
+// CHECK-DAG:       [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK-DAG:       [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
+// CHECK-DAG:       [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
 // CHECK:           [[VAL_4:%.*]] = "tf.MatrixDiagV2"([[VAL_0]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_3]]) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
 // CHECK:           return [[VAL_4]] : tensor<8x16x16xf32>
 }
@@ -783,9 +783,9 @@ func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 
 // CHECK-LABEL:   func @matrix_diag_v3_no_match(
 // CHECK-SAME:      [[VAL_0:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
-// CHECK:           [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
-// CHECK:           [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
-// CHECK:           [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
+// CHECK-DAG:       [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK-DAG:       [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
+// CHECK-DAG:       [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
 // CHECK:           [[VAL_4:%.*]] = "tf.MatrixDiagV3"([[VAL_0]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_3]]) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
 // CHECK:           return [[VAL_4]] : tensor<8x16x16xf32>
 }
@@ -1673,11 +1673,11 @@ func @LstmWithoutProjection(%arg: tensor<28x1x28xf32>) -> (tensor<28x1x16xf32>) 
 }
 
 // CHECK:       func @LstmWithoutProjection([[VAL_0:%.*]]: tensor<28x1x28xf32>) -> tensor<28x1x16xf32> {
-// CHECK:           [[VAL_1:%.*]] = constant dense<0.000000e+00> : tensor<16x28xf32>
-// CHECK:           [[VAL_2:%.*]] = constant dense<0.000000e+00> : tensor<16x16xf32>
-// CHECK:           [[VAL_3:%.*]] = constant dense<0.000000e+00> : tensor<16xf32>
-// CHECK:           [[VAL_4:%.*]] = constant dense<0.000000e+00> : tensor<1x16xf32>
-// CHECK:           [[VAL_5:%.*]] = constant unit
+// CHECK-DAG:       [[VAL_1:%.*]] = constant dense<0.000000e+00> : tensor<16x28xf32>
+// CHECK-DAG:       [[VAL_2:%.*]] = constant dense<0.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG:       [[VAL_3:%.*]] = constant dense<0.000000e+00> : tensor<16xf32>
+// CHECK-DAG:       [[VAL_4:%.*]] = constant dense<0.000000e+00> : tensor<1x16xf32>
+// CHECK-DAG:       [[VAL_5:%.*]] = constant unit
 // CHECK:           [[VAL_6:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_1]], [[VAL_1]], [[VAL_1]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_2]], [[VAL_2]], [[VAL_3]], [[VAL_3]], [[VAL_3]], [[VAL_3]], [[VAL_3]], [[VAL_3]], [[VAL_3]], [[VAL_5]], [[VAL_5]], [[VAL_4]], [[VAL_4]], [[VAL_5]], [[VAL_5]], [[VAL_5]], [[VAL_5]]) {cell_clip = 0.000000e+00 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<28x1x28xf32>, tensor<16x28xf32>, tensor<16x28xf32>, tensor<16x28xf32>, tensor<16x28xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, none, none, tensor<1x16xf32>, tensor<1x16xf32>, none, none, none, none) -> tensor<28x1x16xf32>
 // CHECK:           return [[VAL_6]] : tensor<28x1x16xf32>
 // CHECK:         }
@@ -1696,13 +1696,13 @@ func @LstmWithProjection(%arg: tensor<28x1x16xf32>) -> (tensor<28x1x8xf32>) {
 
 // CHECK-LABEL:   func @LstmWithProjection(
 // CHECK-SAME:                             [[VAL_7:%.*]]: tensor<28x1x16xf32>) -> tensor<28x1x8xf32> {
-// CHECK:           [[VAL_8:%.*]] = constant dense<0.000000e+00> : tensor<16x16xf32>
-// CHECK:           [[VAL_9:%.*]] = constant dense<0.000000e+00> : tensor<16x8xf32>
-// CHECK:           [[VAL_10:%.*]] = constant dense<0.000000e+00> : tensor<16xf32>
-// CHECK:           [[VAL_11:%.*]] = constant dense<0.000000e+00> : tensor<1x16xf32>
-// CHECK:           [[VAL_12:%.*]] = constant dense<0.000000e+00> : tensor<8x16xf32>
-// CHECK:           [[VAL_13:%.*]] = constant dense<0.000000e+00> : tensor<1x8xf32>
-// CHECK:           [[VAL_14:%.*]] = constant unit
+// CHECK-DAG:       [[VAL_8:%.*]] = constant dense<0.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG:       [[VAL_9:%.*]] = constant dense<0.000000e+00> : tensor<16x8xf32>
+// CHECK-DAG:       [[VAL_10:%.*]] = constant dense<0.000000e+00> : tensor<16xf32>
+// CHECK-DAG:       [[VAL_11:%.*]] = constant dense<0.000000e+00> : tensor<1x16xf32>
+// CHECK-DAG:       [[VAL_12:%.*]] = constant dense<0.000000e+00> : tensor<8x16xf32>
+// CHECK-DAG:       [[VAL_13:%.*]] = constant dense<0.000000e+00> : tensor<1x8xf32>
+// CHECK-DAG:       [[VAL_14:%.*]] = constant unit
 // CHECK:           [[VAL_15:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_7]], [[VAL_8]], [[VAL_8]], [[VAL_8]], [[VAL_8]], [[VAL_9]], [[VAL_9]], [[VAL_9]], [[VAL_9]], [[VAL_14]], [[VAL_14]], [[VAL_14]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_12]], [[VAL_14]], [[VAL_13]], [[VAL_11]], [[VAL_14]], [[VAL_14]], [[VAL_14]], [[VAL_14]]) {cell_clip = 0.000000e+00 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<28x1x16xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16x16xf32>, tensor<16x8xf32>, tensor<16x8xf32>, tensor<16x8xf32>, tensor<16x8xf32>, none, none, none, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<8x16xf32>, none, tensor<1x8xf32>, tensor<1x16xf32>, none, none, none, none) -> tensor<28x1x8xf32>
 // CHECK:           return [[VAL_15]] : tensor<28x1x8xf32>
 // CHECK:         }
@@ -1716,9 +1716,9 @@ func @UnidirectionalRnn(%arg: tensor<28x1x28xf32>) -> (tensor<28x1x28xf32>) {
 }
 
 // CHECK:       func @UnidirectionalRnn([[VAL_0:%.*]]: tensor<28x1x28xf32>) -> tensor<28x1x28xf32> {
-// CHECK:           [[VAL_1:%.*]] = constant dense<0.000000e+00> : tensor<28x28xf32>
-// CHECK:           [[VAL_2:%.*]] = constant dense<0.000000e+00> : tensor<28xf32>
-// CHECK:           [[VAL_3:%.*]] = constant dense<0.000000e+00> : tensor<1x28xf32>
+// CHECK-DAG:       [[VAL_1:%.*]] = constant dense<0.000000e+00> : tensor<28x28xf32>
+// CHECK-DAG:       [[VAL_2:%.*]] = constant dense<0.000000e+00> : tensor<28xf32>
+// CHECK-DAG:       [[VAL_3:%.*]] = constant dense<0.000000e+00> : tensor<1x28xf32>
 // CHECK:           [[VAL_4:%.*]] = "tfl.unidirectional_sequence_rnn"([[VAL_0]], [[VAL_1]], [[VAL_1]], [[VAL_2]], [[VAL_3]]) {fused_activation_function = "TANH", time_major = true} : (tensor<28x1x28xf32>, tensor<28x28xf32>, tensor<28x28xf32>, tensor<28xf32>, tensor<1x28xf32>) -> tensor<28x1x28xf32>
 // CHECK:           return [[VAL_4]] : tensor<28x1x28xf32>
 // CHECK:         }

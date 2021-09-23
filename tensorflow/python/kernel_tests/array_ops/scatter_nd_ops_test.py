@@ -25,10 +25,10 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -462,23 +462,29 @@ class StatefulScatterNdTest(test.TestCase):
         indices = np.array([2, 0, 6])
         op(ref, indices, updates).eval()
 
-  def testScatterNdDeterminismThrowsError(self):
-    if test_util.is_xla_enabled():
-      self.skipTest("XLA implementation does not raise exception")
-    indices = constant_op.constant([[1]], dtype=dtypes.int32)
-    updates = constant_op.constant([[11., 12.]], dtype=dtypes.float32)
-    ref = variables.Variable(
-        [[0., 0.], [0., 0.], [0., 0.]], dtype=dtypes.float32)
 
-    with test_util.deterministic_ops():
-      if test_util.is_gpu_available(cuda_only=True):
-        with self.assertRaisesRegex(errors_impl.UnimplementedError,
-                                    "Determinism is not yet supported for "
-                                    "ScatterNdUpdate."):
-          scatter = state_ops.scatter_nd_update(ref, indices, updates)
-          init = variables.global_variables_initializer()
-          self.evaluate(init)
-          self.evaluate(scatter)
+class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    ref = variables.Variable(array_ops.zeros([1]))
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    self.evaluate(variables.global_variables_initializer())
+    val = self.evaluate(state_ops.scatter_nd_update(ref, indices, values))
+    for _ in range(5):
+      ref2 = variables.Variable(array_ops.zeros([1]))
+      self.evaluate(variables.global_variables_initializer())
+      val2 = self.evaluate(state_ops.scatter_nd_update(ref2, indices, values))
+      self.assertAllEqual(val, val2)
 
 
 class ScatterNdTest(test.TestCase, parameterized.TestCase):
@@ -757,19 +763,6 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     val = self.evaluate(self.scatter_nd(indices, values, shape))
     self.assertAllClose([np.sum(values)], val)
 
-  def testScatterNdDeterminismThrowError(self):
-    if test_util.is_xla_enabled():
-      self.skipTest("XLA implementation does not raise exception")
-    indices = array_ops.zeros([100000, 1], dtypes.int32)
-    values = np.random.randn(100000)
-    shape = [1]
-    with test_util.deterministic_ops():
-      if test_util.is_gpu_available(cuda_only=True):
-        with self.assertRaisesRegex(
-            errors_impl.UnimplementedError, "Determinism is not yet supported "
-            "for ScatterNd."):
-          self.evaluate(self.scatter_nd(indices, values, shape))
-
   def testSmokeScatterNdBatch2DSliceDim2(self):
     indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
     values = array_ops.zeros([3, 5, 7])
@@ -806,6 +799,32 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
   def testString(self):
     # Not supported yet.
     pass
+
+
+class ScatterNdDeterminismTest(ScatterNdTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    shape = [1]
+    val = self.evaluate(self.scatter_nd(indices, values, shape))
+    for _ in range(5):
+      val2 = self.evaluate(self.scatter_nd(indices, values, shape))
+      self.assertAllEqual(val, val2)
+
+
+class ScatterNdNonAliasingAddDeterminismTest(ScatterNdDeterminismTest,
+                                             ScatterNdNonAliasingAddTest):
+  pass
 
 
 class ScatterNdTensorTest(test.TestCase):
@@ -954,19 +973,6 @@ class ScatterNdTensorTest(test.TestCase):
                               [0.], [0.]]))
 
   @test_util.run_in_graph_and_eager_modes
-  def testUpdateThrowDeterminismError(self):
-    if test_util.is_xla_enabled():
-      self.skipTest("XLA implementation does not raise exception")
-    a = array_ops.zeros([10, 1])
-    with test_util.deterministic_ops():
-      if test_util.is_gpu_available(cuda_only=True):
-        with self.assertRaisesRegex(
-            errors_impl.UnimplementedError, "Determinism is not yet supported "
-            "for TensorScatter."):
-          self.evaluate(array_ops.tensor_scatter_update(
-              a, [[5], [5]], [[4], [8]]))
-
-  @test_util.run_in_graph_and_eager_modes
   def testUpdateRepeatedIndices2D(self):
     if test_util.is_gpu_available():
       self.skipTest("Duplicate indices scatter is non-deterministic on GPU")
@@ -980,6 +986,27 @@ class ScatterNdTensorTest(test.TestCase):
         b[6],
         constant_op.constant(
             [10., 11., 12., 13., 14., 15., 16., 17., 18., 19.]))
+
+
+class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    a = array_ops.zeros([1])
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    val = self.evaluate(array_ops.tensor_scatter_update(a, indices, values))
+    for _ in range(5):
+      val2 = self.evaluate(array_ops.tensor_scatter_update(a, indices, values))
+      self.assertAllEqual(val, val2)
 
 
 if __name__ == "__main__":

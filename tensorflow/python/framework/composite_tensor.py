@@ -53,7 +53,7 @@ class CompositeTensor(object):
   @abc.abstractproperty
   def _type_spec(self):
     """A `TypeSpec` describing the type of this value."""
-    raise NotImplementedError("%s._type_spec()" % type(self).__name__)
+    raise NotImplementedError(f"{type(self).__name__}._type_spec()")
 
   def _shape_invariant_to_type_spec(self, shape):
     """Returns a TypeSpec given a shape invariant (used by `tf.while_loop`).
@@ -70,8 +70,8 @@ class CompositeTensor(object):
     # New TypeSpec subclasses generally do not need to implement this --
     # this method is used for backwards compatibility.  Users of tf.while_loop
     # can specify a type by passing in TypeSpec instead.
-    raise NotImplementedError("%s._shape_invariant_to_type_spec" %
-                              type(self).__name__)
+    raise NotImplementedError(
+        f"{type(self).__name__}._shape_invariant_to_type_spec")
 
   def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.

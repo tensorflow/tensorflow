@@ -119,6 +119,8 @@ extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
 extern const char* const kPrintfToStderrSymbolName =
     "__xla_cpu_runtime_PrintfToStderr";
+extern const char* const kStatusIsSuccessSymbolName =
+    "__xla_cpu_runtime_StatusIsSuccess";
 extern const char* const kKeyValueSortSymbolName =
     "__xla_cpu_runtime_KeyValueSort";
 extern const char* const kTopKF32SymbolName = "__xla_cpu_runtime_TopKF32";

@@ -270,6 +270,14 @@ class HloModuleConfig {
     return allow_spmd_sharding_propagation_to_output_;
   }
 
+  const std::vector<uint64_t>& memory_space_assignment_config() const {
+    return memory_space_assignment_config_;
+  }
+
+  std::vector<uint64_t>* mutable_memory_space_assignment_config() {
+    return &memory_space_assignment_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -333,6 +341,11 @@ class HloModuleConfig {
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
   std::vector<std::vector<std::vector<int64_t>>> layout_config_;
+
+  // Memory Space Assignment configuration, where
+  // memory_space_assignment_config_ controls the order of buffer intervals
+  // of this hlo module.
+  std::vector<uint64_t> memory_space_assignment_config_;
 
   // Phase ordering configuration, where phase_ordering_config[v][i] controls
   // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is

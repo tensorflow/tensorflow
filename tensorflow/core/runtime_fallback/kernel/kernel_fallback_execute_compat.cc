@@ -82,7 +82,7 @@ void KernelFallbackEmitError(
                      tfrt::StrCat("error running kernel fallback kernel ",
                                   op_name, ": ", status.error_message()),
                      tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
-  for (auto& result : results) result = error.CopyRef();
+  std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
 

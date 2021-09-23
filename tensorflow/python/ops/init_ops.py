@@ -373,8 +373,9 @@ class Constant(Initializer):
   def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
     if not (np.isscalar(value) or isinstance(value, (list, tuple, np.ndarray))):
       raise TypeError(
-          "Invalid type for initial value: %s (expected Python scalar, list or "
-          "tuple of values, or numpy.ndarray)." % type(value))
+          f"Invalid type for initial value={value} of type: "
+          f"{type(value).__name__}. Expected Python scalar, list or tuple of "
+          "values, or numpy.ndarray.")
 
     self.value = value
     self.dtype = dtypes.as_dtype(dtype)
@@ -786,14 +787,18 @@ class VarianceScaling(Initializer):
                seed=None,
                dtype=dtypes.float32):
     if scale <= 0.:
-      raise ValueError("`scale` must be positive float.")
+      raise ValueError("Argument `scale` must be a positive float. Received: "
+                       f"{scale}")
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
-      raise ValueError("Invalid `mode` argument:", mode)
+      raise ValueError("Argument `mode` should be one of ('fan_in', 'fan_out', "
+                       f"'fan_avg'). Received: {mode}")
     distribution = distribution.lower()
     if distribution not in {
         "normal", "uniform", "truncated_normal", "untruncated_normal"
     }:
-      raise ValueError("Invalid `distribution` argument:", distribution)
+      raise ValueError("Argument `distribution` should be one of ('normal', "
+                       "uniform', 'truncated_normal', 'untruncated_normal'). "
+                       f"Received: {distribution}")
     self.scale = scale
     self.mode = mode
     self.distribution = distribution
@@ -878,8 +883,9 @@ class Orthogonal(Initializer):
       dtype = self.dtype
     # Check the shape
     if len(shape) < 2:
-      raise ValueError("The tensor to initialize must be "
-                       "at least two-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     # Flatten the input shape with the last dimension remaining
     # its original shape so it works for conv2d
     num_rows = 1
@@ -941,11 +947,14 @@ class ConvolutionDeltaOrthogonal(Initializer):
       dtype = self.dtype
     # Check the shape
     if len(shape) < 3 or len(shape) > 5:
-      raise ValueError("The tensor to initialize must be at least "
-                       "three-dimensional and at most five-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least three-dimensional and at most "
+                       f"five-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     # Generate a random matrix
     a = random_ops.random_normal([shape[-1], shape[-1]],
@@ -1067,13 +1076,17 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 4:
-      raise ValueError("The tensor to initialize must be four-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be four-dimensional. Received: {shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     if shape[0] != shape[1]:
-      raise ValueError("Kernel sizes must be equal.")
+      raise ValueError(f"Kernel sizes, specified by shape[0]={shape[0]} and "
+                       f"shape[1]={shape[1]} must be equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[2], shape[3])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -1110,7 +1123,8 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       ValueError: If the dimensions of p1 and p2 are different.
     """
     if p1.shape.as_list() != p2.shape.as_list():
-      raise ValueError("The dimension of the matrices must be the same.")
+      raise ValueError("The dimension of the matrices must be the same. "
+                       f"Received p1.shape={p1.shape} and p2.shape={p2.shape}.")
     n = p1.shape.as_list()[0]
     kernel2x2 = {}
     eye = linalg_ops_impl.eye(n, dtype=self.dtype)
@@ -1136,8 +1150,9 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
 
     n = (m1[0, 0]).shape.as_list()[0]
     if n != (m2[0, 0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       f"dimensions. Received m1[0, 0].shape={m1[0, 0].shape} "
+                       f"and m2[0, 0].shape={m2[0, 0].shape}.")
     k = int(np.sqrt(len(m1)))
     l = int(np.sqrt(len(m2)))
     result = {}
@@ -1167,8 +1182,8 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(array_ops.expand_dims(orth, 0), 0)
@@ -1212,10 +1227,13 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 3:
-      raise ValueError("The tensor to initialize must be three-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be three-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -1267,8 +1285,9 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
 
     n = (m1[0]).shape.as_list()[0]
     if n != (m2[0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       f"dimensions. Received m1[0].shape={m1[0].shape} "
+                       f"and m2[0].shape={m2[0].shape}.")
     k = len(m1)
     l = len(m2)
     result = {}
@@ -1295,8 +1314,8 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(orth, 0)
@@ -1337,13 +1356,18 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     if dtype is None:
       dtype = self.dtype
     if len(shape) != 5:
-      raise ValueError("The tensor to initialize must be five-dimensional")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       f" must be five-dimensional. Received shape={shape}")
 
     if shape[-2] > shape[-1]:
-      raise ValueError("In_filters cannot be greater than out_filters.")
+      raise ValueError(f"In_filters, specified by shape[-2]={shape[-2]} cannot "
+                       "be greater than out_filters, specified by "
+                       f"shape[-1]={shape[-1]}.")
 
     if shape[0] != shape[1] or shape[0] != shape[2]:
-      raise ValueError("Kernel sizes must be equal.")
+      raise ValueError(f"Kernel sizes, specified by shape[0]={shape[0]},  "
+                       f"shape[1]={shape[1]} and shape[2]={shape[2]} must be "
+                       "equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
     kernel *= math_ops.cast(self.gain, dtype=dtype)
@@ -1383,7 +1407,9 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     """
     p1_shape = p1.shape.as_list()
     if p1_shape != p2.shape.as_list() or p1_shape != p3.shape.as_list():
-      raise ValueError("The dimension of the matrices must be the same.")
+      raise ValueError("The dimension of the matrices must be the same. "
+                       f"Received p1.shape={p1.shape}, p2.shape={p2.shape} and"
+                       f" p3.shape={p3.shape}.")
     n = p1_shape[0]
     eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2x2 = {}
@@ -1417,8 +1443,10 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
 
     n = (m1[0, 0, 0]).shape.as_list()[0]
     if n != (m2[0, 0, 0]).shape.as_list()[0]:
-      raise ValueError("The entries in matrices m1 and m2 "
-                       "must have the same dimensions!")
+      raise ValueError("The entries in matrices m1 and m2 must have the same "
+                       "dimensions. Received m1[0, 0, 0].shape="
+                       f"{m1[0, 0, 0].shape} and m2[0, 0, 0].shape="
+                       f"{m2[0, 0, 0].shape}.")
     k = int(np.cbrt(len(m1)))
     l = int(np.cbrt(len(m2)))
     result = {}
@@ -1451,8 +1479,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       ValueError: If cin > cout.
     """
     if cin > cout:
-      raise ValueError("The number of input channels cannot exceed "
-                       "the number of output channels.")
+      raise ValueError(f"The number of input channels (cin={cin}) cannot exceed"
+                       f" the number of output channels (cout={cout}).")
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(
@@ -1497,8 +1525,9 @@ class Identity(Initializer):
   def __call__(self, shape, dtype=None, partition_info=None):
     full_shape = shape if partition_info is None else partition_info.full_shape
     if len(full_shape) != 2:
-      raise ValueError(
-          "Identity matrix initializer can only be used for 2D matrices.")
+      raise ValueError("The tensor to initialize, specified by argument `shape`"
+                       " must be at least two-dimensional. Received shape="
+                       f"{shape}")
     if dtype is None:
       dtype = self.dtype
     if isinstance(full_shape, tensor_shape.TensorShape):
@@ -1749,5 +1778,6 @@ def _assert_float_dtype(dtype):
     ValueError: if `dtype` is not a floating point type.
   """
   if not dtype.is_floating:
-    raise ValueError("Expected floating point type, got %s." % dtype)
+    raise ValueError("Argument `dtype` is expected to be floating point. "
+                     f"Received: {dtype}.")
   return dtype

@@ -123,6 +123,11 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
+#ifdef DNNL_AARCH64_USE_ACL
+    // Specifics of ACL: a primitive per constant weights ptr
+    matmul_params.weight_address = const_cast<void*>(
+        static_cast<const void*>(weight_tensor.flat<T>().data()));
+#endif
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 

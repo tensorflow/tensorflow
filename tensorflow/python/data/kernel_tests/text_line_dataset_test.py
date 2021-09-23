@@ -29,6 +29,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -191,6 +192,45 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
     ds = readers.TextLineDataset(files, name="text_line_dataset")
     self.assertDatasetProduces(
         ds, expected_output=expected_output, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyFileList(self):
+    dataset = readers.TextLineDataset(filenames=[])
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileDoesNotExist(self):
+    dataset = readers.TextLineDataset(filenames=["File not exist"])
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "No such file or directory"):
+      self.getDatasetOutput(dataset)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesMustBeStrings(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got "
+        "`tf.int32` elements."):
+      readers.TextLineDataset(filenames=0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesDatasetMustContainStrings(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got a "
+        "dataset of `tf.int32` elements."):
+      filenames = dataset_ops.Dataset.from_tensors(0)
+      readers.TextLineDataset(filenames)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesMustBeScalars(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements of shape "
+        r"\[\] \(i.e. scalars\)."):
+      filenames = dataset_ops.Dataset.from_tensors([["File 1", "File 2"],
+                                                    ["File 3", "File 4"]])
+      readers.TextLineDataset(filenames)
 
 
 class TextLineDatasetCheckpointTest(TextLineDatasetTestBase,

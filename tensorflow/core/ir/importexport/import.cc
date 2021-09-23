@@ -920,13 +920,13 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
     const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
   // Two entries: a type and a shape.
   SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle_data : handle_data) {
+  for (const auto& handle : handle_data) {
     Type dtype;
-    if (handle_data.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle_data.dtype(), builder, &dtype));
+    if (handle.dtype() != tensorflow::DT_INVALID)
+      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
     TF_ASSIGN_OR_RETURN(
         Attribute shape,
-        ConvertTensorShapeProto(handle_data.shape(), builder.getContext()));
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
 
     dtype_and_shape.push_back(
         builder.getArrayAttr({TypeAttr::get(dtype), shape}));

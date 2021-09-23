@@ -270,6 +270,11 @@ message OptimizerOptions {
     ON_2 = 2;
   }
   GlobalJitLevel global_jit_level = 5;
+
+  // CPU code will be autoclustered only if global_jit_level >= ON_1 and either:
+  //  - this flag is true, or
+  //  - TF_XLA_FLAGS contains --tf_xla_cpu_global_jit=true.
+  bool cpu_global_jit = 7;
 }
 
 message GraphOptions {

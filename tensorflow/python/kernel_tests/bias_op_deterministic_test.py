@@ -148,5 +148,5 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
 
 if __name__ == '__main__':
   # TODO(reedwm): Merge this file with bias_op_base.py and bias_op_test.py
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

@@ -150,7 +150,9 @@ int main(int argc, char** argv) {
           : xla::PlatformUtil::GetPlatform(reference_platform_name)
                 .ValueOrDie();
   xla::HloRunner test_runner(test_platform);
-  xla::HloRunner reference_runner(reference_platform);
+  auto reference_runner =
+      reference_platform ? absl::make_unique<xla::HloRunner>(reference_platform)
+                         : nullptr;
 
   std::string hlo_filename;
   if (!opts.input_module.empty()) {
@@ -167,8 +169,8 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status matched = xla::RunAndCompare(hlo_filename, &test_runner,
-                                             &reference_runner, &engine, opts);
+    xla::Status matched = xla::RunAndCompare(
+        hlo_filename, &test_runner, reference_runner.get(), &engine, opts);
 
     // The AssertionResult is only meaningful when the reference is
     // used. Without a reference, the test just verifies that nothing blew up

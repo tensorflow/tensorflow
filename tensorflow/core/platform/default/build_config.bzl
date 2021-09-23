@@ -630,9 +630,6 @@ def tf_additional_device_tracer_srcs():
         "device_tracer_rocm.cc",
     ]
 
-def tf_additional_cupti_utils_cuda_deps():
-    return []
-
 def tf_additional_test_deps():
     return []
 

@@ -836,6 +836,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/coordinator:coordinator_context",
+        "//tensorflow/python/keras/saving/saved_model:load_context",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
     ],
@@ -1644,6 +1645,9 @@ cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # TODO(b/197981388): Re-enable this.
+    ],
     deps = [
         ":combinations",
         ":distribute_lib",

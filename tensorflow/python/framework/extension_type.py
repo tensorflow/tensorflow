@@ -33,6 +33,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Attribute used to keep track of when we're inside a user-defined constructor
 # (in which case the fields of `self` may be modified).
@@ -89,6 +90,7 @@ class ExtensionTypeMetaclass(abc.ABCMeta):
 # ==============================================================================
 # Base class for user-defined types
 # ==============================================================================
+@tf_export('experimental.ExtensionType')
 class ExtensionType(
     composite_tensor.CompositeTensor, metaclass=ExtensionTypeMetaclass):
   """Base class for TensorFlow `ExtensionType` classes.
@@ -119,16 +121,9 @@ class ExtensionType(
   Tuples               | `params: typing.Tuple[int, float, int, int]`
   Tuples w/ Ellipsis   | `lengths: typing.Tuple[int, ...]`
   Mappings             | `tags: typing.Mapping[str, str]`
-  TensorSpec instances | `t2: tf.TensorSpec(shape=[8, None], dtype=tf.int32)`
-  TypeSpec instances   | `rt2: tf.RaggedTensorSpec(ragged_rank=2)`
 
   Fields annotated with `typing.Mapping` will be stored using an immutable
   mapping type.
-
-  Due to technical limitations of Python's `typing` module, `TensorSpec`
-  and `TypeSpec` instances may not currently be nested inside generic types
-  (such as `typing.Union` or `typing.Tuple`).  TODO(b/184564088) Define
-  tf generic types to avoid this limitation.
 
   ExtensionType values are immutable -- i.e., once constructed, you can not
   modify or delete any of their instance members.
@@ -137,12 +132,12 @@ class ExtensionType(
 
   >>> class MaskedTensor(ExtensionType):
   ...   values: tf.Tensor
-  ...   mask: tf.TensorSpec(shape=None, dtype=tf.bool)
+  ...   mask: tf.Tensor
 
   >>> class Toy(ExtensionType):
   ...   name: str
   ...   price: ops.Tensor
-  ...   features: typing.Mapping[str, ops.Tensor]
+  ...   features: typing.Mapping[str, tf.Tensor]
 
   >>> class ToyStore(ExtensionType):
   ...   name: str
@@ -362,10 +357,6 @@ def is_packed(value):
 # ==============================================================================
 # Base class for the tf.ExtensionType TypeSpecs
 # ==============================================================================
-# TODO(b/184565242) Support custom TypeSpec constructors.
-# TODO(b/184565242) Support custom TypeSpec methods & properties.
-# TODO(b/184565242) Support custom TypeSpec validation.
-# TODO(b/184565242) Support custom TypeSpec repr.
 # TODO(b/184565242) Support customizing type relaxation for tracing.
 # TODO(b/184565242) Support conversion to/from FullType.
 # TODO(b/195884675) Support batch and unbatch.

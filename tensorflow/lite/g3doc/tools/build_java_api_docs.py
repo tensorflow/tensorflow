@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Generate TensorFlow Lite Java reference docs for TensorFlow.org."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pathlib
 import shutil
 import tempfile
@@ -44,21 +40,60 @@ flags.DEFINE_bool(
     'search_hints', True,
     '[UNUSED] Include metadata search hints in the generated files')
 
-# __file__ is the path to this file
-DOCS_TOOLS_DIR = pathlib.Path(__file__).resolve().parent
-TENSORFLOW_ROOT = DOCS_TOOLS_DIR.parents[3]
-SOURCE_PATH = TENSORFLOW_ROOT / 'tensorflow/lite/java/src/main/java/'
+# This tool expects to live within a directory structure that hosts multiple
+# repositories, like so:
+# /root (name not important)
+#   /tensorflow (github.com/tensorflow/tensorflow - home of this script)
+#   /tensorflow_lite_support (github.com/tensorflow/tflite-support)
+#   /android/sdk (android.googlesource.com/platform/prebuilts/sdk
+#     - Note that this needs a branch with an api/ dir, such as *-release)
+# Internally, both the monorepo and the external build system do this for you.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
+SOURCE_PATH_CORE = REPO_ROOT / 'tensorflow/lite/java/src/main/java'
+SOURCE_PATH_SUPPORT = REPO_ROOT / 'tensorflow_lite_support/java/src/java'
+SOURCE_PATH_ODML = REPO_ROOT / 'tensorflow_lite_support/odml/java/image/src'
+
+# This (key) ordering is preserved in the TOC output.
+SECTION_LABELS = {
+    'org.tensorflow.lite': 'Core',
+    'org.tensorflow.lite.support': 'Support Library',
+    'org.tensorflow.lite.task': 'Task Library',
+    # If we ever need other ODML packages, drop the `.image` here.
+    'com.google.android.odml.image': 'ODML',
+}
+
+EXTERNAL_APIS = {
+    'https://developer.android.com': REPO_ROOT / 'android/sdk/api/26.txt'
+}
+
+
+def overlay(from_root: pathlib.Path, to_root: pathlib.Path):
+  """Recursively copy from_root/* into to_root/."""
+  # When Python3.8 lands, replace with shutil.copytree(..., dirs_exist_ok=True)
+  for from_path in from_root.rglob('*'):
+    to_path = to_root / from_path.relative_to(from_root)
+    if from_path.is_file():
+      assert not to_path.exists(), f'{to_path} exists!'
+      shutil.copyfile(from_path, to_path)
+    else:
+      to_path.mkdir(exist_ok=True)
 
 
 def main(unused_argv):
-  merged_source = pathlib.Path(tempfile.mkdtemp())
-  shutil.copytree(SOURCE_PATH, merged_source / 'java')
+  with tempfile.TemporaryDirectory() as merge_tmp_dir:
+    # Merge the combined API sources into a single location.
+    merged_temp_dir = pathlib.Path(merge_tmp_dir)
+    overlay(SOURCE_PATH_CORE, merged_temp_dir)
+    overlay(SOURCE_PATH_SUPPORT, merged_temp_dir)
+    overlay(SOURCE_PATH_ODML, merged_temp_dir)
 
-  gen_java.gen_java_docs(
-      package='org.tensorflow.lite',
-      source_path=merged_source / 'java',
-      output_dir=pathlib.Path(FLAGS.output_dir),
-      site_path=pathlib.Path(FLAGS.site_path))
+    gen_java.gen_java_docs(
+        package=['org.tensorflow.lite', 'com.google.android.odml'],
+        source_path=merged_temp_dir,
+        output_dir=pathlib.Path(FLAGS.output_dir),
+        site_path=pathlib.Path(FLAGS.site_path),
+        section_labels=SECTION_LABELS,
+        federated_docs=EXTERNAL_APIS)
 
 
 if __name__ == '__main__':

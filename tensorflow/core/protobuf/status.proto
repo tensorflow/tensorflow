@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package tensorflow;
+
+// If included as a payload, this message flags the Status to be a "derived"
+// Status. Used by StatusGroup to ignore certain Statuses when reporting
+// errors to end users.
+message DerivedStatus {}
