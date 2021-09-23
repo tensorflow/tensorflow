@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -424,6 +425,9 @@ class SavedModelLoader(object):
           `tf.import_graph_def` (may be `None`).
     """
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     with graph.as_default():
       return tf_saver._import_meta_graph_with_return_elements(  # pylint: disable=protected-access
           meta_graph_def, import_scope=import_scope, **saver_kwargs)
