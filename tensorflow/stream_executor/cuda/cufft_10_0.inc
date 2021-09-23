@@ -296,4 +296,66 @@ cufftResult CUFFTAPI cufftGetProperty(libraryPropertyType type, int *value) {
   return func_ptr(type, value);
 }
 
+// The cufftXt API functions below are not currently used, they are merely here
+// to allow replacing TFRT's cuda_stubs with cuda_runtime_for_xlir.
+
+cufftResult CUFFTAPI cufftXtMakePlanMany(
+    cufftHandle plan, int rank, long long int* n, long long int* inembed,
+    long long int istride, long long int idist, cudaDataType inputtype,
+    long long int* onembed, long long int ostride, long long int odist,
+    cudaDataType outputtype, long long int batch, size_t* workSize,
+    cudaDataType executiontype) {
+  using FuncPtr = cufftResult(CUFFTAPI*)(
+      cufftHandle, int, long long int*, long long int*, long long int,
+      long long int, cudaDataType, long long int*, long long int, long long int,
+      cudaDataType, long long int, size_t*, cudaDataType);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftXtMakePlanMany");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, rank, n, inembed, istride, idist, inputtype, onembed,
+                  ostride, odist, outputtype, batch, workSize, executiontype);
+}
+
+cufftResult CUFFTAPI cufftXtGetSizeMany(
+    cufftHandle plan, int rank, long long int* n, long long int* inembed,
+    long long int istride, long long int idist, cudaDataType inputtype,
+    long long int* onembed, long long int ostride, long long int odist,
+    cudaDataType outputtype, long long int batch, size_t* workSize,
+    cudaDataType executiontype) {
+  using FuncPtr = cufftResult(CUFFTAPI*)(
+      cufftHandle, int, long long int*, long long int*, long long int,
+      long long int, cudaDataType, long long int*, long long int, long long int,
+      cudaDataType, long long int, size_t*, cudaDataType);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftXtGetSizeMany");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, rank, n, inembed, istride, idist, inputtype, onembed,
+                  ostride, odist, outputtype, batch, workSize, executiontype);
+}
+
+cufftResult CUFFTAPI cufftXtSetWorkAreaPolicy(cufftHandle plan,
+                                              cufftXtWorkAreaPolicy policy,
+                                              size_t* workSize) {
+  using FuncPtr =
+      cufftResult(CUFFTAPI*)(cufftHandle, cufftXtWorkAreaPolicy, size_t*);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftXtGetSizeMany");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, policy, workSize);
+}
+
+cufftResult CUFFTAPI cufftXtExec(cufftHandle plan, void* input, void* output,
+                                 int direction) {
+  using FuncPtr = cufftResult(CUFFTAPI*)(cufftHandle, void*, void*, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftXtGetSizeMany");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, input, output, direction);
+}
+
+cufftResult CUFFTAPI cufftXtMemcpy(cufftHandle plan, void* dstPointer,
+                                   void* srcPointer, cufftXtCopyType type) {
+  using FuncPtr =
+      cufftResult(CUFFTAPI*)(cufftHandle, void*, void*, cufftXtCopyType);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftXtGetSizeMany");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, dstPointer, srcPointer, type);
+}
+
 }  // extern "C"

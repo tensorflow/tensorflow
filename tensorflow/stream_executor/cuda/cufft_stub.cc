@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cufft.h"
+#include "third_party/gpus/cuda/include/cufftXt.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 
@@ -49,8 +50,7 @@ cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
 
 #if CUFFT_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cufft_9_0.inc"
-#elif CUFFT_VERSION < 11000
-#include "tensorflow/stream_executor/cuda/cufft_10_0.inc"
 #else
-#include "tensorflow/stream_executor/cuda/cufft_11_0.inc"
+// All CUDA-10+ implementations use the same API.
+#include "tensorflow/stream_executor/cuda/cufft_10_0.inc"
 #endif
