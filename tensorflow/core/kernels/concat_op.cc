@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -241,7 +241,6 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 class ConcatOffsetOp : public OpKernel {
  public:
   explicit ConcatOffsetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -320,9 +319,8 @@ class ConcatOffsetOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset").Device(DEVICE_CPU),
                         ConcatOffsetOp);
-
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),

@@ -528,6 +528,12 @@ REGISTER_KERNEL_BUILDER(Name("BatchFunction")
                             .HostMemory("captured_tensors")
                             .HostMemory("out_tensors"),
                         BatchFunctionKernel);
+REGISTER_KERNEL_BUILDER(Name("BatchFunction")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("in_tensors")
+                            .HostMemory("captured_tensors")
+                            .HostMemory("out_tensors"),
+                        BatchFunctionKernel);
 
 class BatchKernel : public AsyncOpKernel {
  public:

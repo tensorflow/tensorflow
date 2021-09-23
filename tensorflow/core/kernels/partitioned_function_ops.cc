@@ -281,13 +281,12 @@ REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_DEFAULT),
                         PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_DEFAULT),
                         PartitionedCallOp);
 
 REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
 REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
-
 
 }  // namespace tensorflow
