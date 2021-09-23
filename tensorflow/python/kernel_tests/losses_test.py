@@ -488,9 +488,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 1], [2, 3]])
       weights = constant_op.constant(1.2)
 
-      with self.assertRaisesRegex(
-          ValueError,
-          '`labels.shape.rank` must equal `logits.shape.rank - 1`'):
+      with self.assertRaisesRegex(ValueError, 'mismatch'):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
