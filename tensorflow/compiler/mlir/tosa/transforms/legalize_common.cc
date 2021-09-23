@@ -2250,8 +2250,7 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // return a3;
-  ShapedType output_type =
-      result_value.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = result_value.getType().dyn_cast<ShapedType>();
   // Not a shaped tensor output
   if (!output_type) return llvm::None;
 
@@ -2880,8 +2879,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        ShapedType output_type,
+                                        Operation* op, ShapedType output_type,
                                         Value input_value, double scale,
                                         int64_t zeropoint) {
   RankedTensorType input_type =
@@ -2897,8 +2895,7 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  ShapedType output_fp_type = output_type.clone(
-      rewriter.getF32Type());
+  ShapedType output_fp_type = output_type.clone(rewriter.getF32Type());
 
   Value zp_val =
       getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
@@ -2917,10 +2914,12 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
-llvm::Optional<Value> convertDequantizeOp(
-    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
-    Value input_value, ArrayRef<float> scale, ArrayRef<float> zeropoint,
-    int64_t dim) {
+llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input_value,
+                                          ArrayRef<float> scale,
+                                          ArrayRef<float> zeropoint,
+                                          int64_t dim) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2968,8 +2967,7 @@ llvm::Optional<Value> convertDequantizeOp(
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         ShapedType output_type,
+                                         Operation* op, ShapedType output_type,
                                          Value input_value, double min,
                                          double max, int64_t num_bits,
                                          bool narrow_range) {

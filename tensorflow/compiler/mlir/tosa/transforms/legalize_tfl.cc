@@ -2256,8 +2256,7 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
   }
 
   if (input_is_qtype) {
-    ShapedType int32_type = output_type.clone(
-        rewriter.getIntegerType(32));
+    ShapedType int32_type = output_type.clone(rewriter.getIntegerType(32));
     mlir::quant::UniformQuantizedType input_qtype =
         input_type.getElementType()
             .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
@@ -2329,8 +2328,7 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
   }
 
   if (input_is_qtype) {
-    ShapedType int32_type = output_type.clone(
-      rewriter.getIntegerType(32));
+    ShapedType int32_type = output_type.clone(rewriter.getIntegerType(32));
     mlir::quant::UniformQuantizedType input_qtype =
         input_type.getElementType()
             .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
@@ -2458,8 +2456,7 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
 
     Value const_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
     auto op2_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
-        rewriter, op->getLoc(),
-        rescale_type.clone(rewriter.getI1Type()),
+        rewriter, op->getLoc(), rescale_type.clone(rewriter.getI1Type()),
         op1_rescale_in, const_zero);
 
     Value op3_rescale_alpha_in = buildRescale(
@@ -2484,8 +2481,7 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
         getTosaConstTensorSingleF32(rewriter, op, alpha), 0);
 
     auto op2_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
-        rewriter, op->getLoc(),
-        output_type.clone(rewriter.getIntegerType(1)),
+        rewriter, op->getLoc(), output_type.clone(rewriter.getIntegerType(1)),
         tfl_leakyrelu_op.input(), const_zero);
 
     CreateReplaceOpAndInfer<tosa::SelectOp>(rewriter, op, output_type, op2_ge,
