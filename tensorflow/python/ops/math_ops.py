@@ -4107,8 +4107,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
     raise TypeError(
         f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of "
-        f"type {inputs[0].dtype}. These must be equal. Try casting the input to "
-        f"the desired type.")
+        f"type {inputs[0].dtype}. These must be equal. Try casting the input "
+        f"to the desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
