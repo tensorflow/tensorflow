@@ -1544,29 +1544,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "cast_ops_test",
-    size = "small",
-    srcs = ["cast_ops_test.py"],
-    disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
-    python_version = "PY3",
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    use_xla_device = False,  # Uses tf.function(jit_compile=True)
-    deps = [
-        ":xla_test",
-        "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:image_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
-    ],
-)
-
-tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
