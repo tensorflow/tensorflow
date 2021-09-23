@@ -111,7 +111,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
   // immediately.
   bool CanProceedWithCompute(OpKernelContext* c, CollectiveExecutor* col_exec,
                              const DoneCallback& done) {
-    if (col_params_->group.group_size > col_params_->group.devices.size()) {
+    if (col_params_->group.group_size > col_params_->group.members.size()) {
       // This is the first invocation: Finish initializing col_params_.
       // Schedule the `CompleteParamsAsync` call on a work queue that can handle
       // blocking work because it's not guaranteed that this call cannot block.

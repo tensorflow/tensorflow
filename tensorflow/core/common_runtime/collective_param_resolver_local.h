@@ -172,10 +172,6 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   Status GetLocalDeviceLocalities(const CollectiveParams& cp,
                                   std::vector<DeviceLocality>* localities);
 
-  // Sets CollTaskParams.is_local and CollectiveParams.default_rank.
-  // Precondition: cp->device_names is fully populated and in final order.
-  void CompleteTaskIsLocal(const string& task_name, CollectiveParams* cp);
-
   // Sets cp->instance_default_rank according to location of device in
   // current ordering of cp->instance.device_names.
   void SetDefaultRank(const string& device, CollectiveParams* cp);

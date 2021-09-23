@@ -58,6 +58,12 @@ struct CollGroupRuntimeDetails {
   string ToString() const;
 };
 
+struct CollGroupMember {
+  DeviceAttributes device;
+  string task;
+  bool is_local;
+};
+
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
@@ -65,10 +71,8 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
-  // Devices in this group, in default rank order.
-  std::vector<DeviceAttributes> devices;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
+  // Members in this group, in default rank order.
+  std::vector<CollGroupMember> members;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
   // Task -> number of devices on that task.
@@ -130,18 +134,10 @@ struct CollInstanceParams {
   std::vector<int> permutation;
 };
 
-// Data common to all instance members in the same task.
-struct CollTaskParams {
-  // True for devices that are local to the process, i.e. no RPC needed.
-  std::vector<bool> is_local;
-  string ToString() const;
-};
-
 // Unique to a single CollectiveOp node.
 struct CollectiveParams : public core::RefCounted {
   CollGroupParams group;
   CollInstanceParams instance;
-  CollTaskParams task;
 
   string name = "";        // node name used only for log or error messages
   int default_rank = -1;   // index of this op within device_names

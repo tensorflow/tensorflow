@@ -114,7 +114,12 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
         device, &cp->group, cancel_mgr,
         [this, device, cp, cancel_mgr, done](Status s) {
           if (s.ok()) {
-            s = dev_resolver_->UpdateDeviceAttributes(cp->group.devices);
+            std::vector<DeviceAttributes> devices;
+            devices.reserve(cp->group.group_size);
+            for (const CollGroupMember& m : cp->group.members) {
+              devices.push_back(m.device);
+            }
+            s = dev_resolver_->UpdateDeviceAttributes(devices);
           }
           if (s.ok()) {
             CompleteInstanceDistributed(device.name(), cp, cancel_mgr, done);
@@ -156,7 +161,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
     if (!gr->status.ok()) {
       done(gr->status);
       return;
-    } else if (gr->group.devices.size() != gr->group.group_size) {
+    } else if (gr->group.members.size() != gr->group.group_size) {
       done(errors::FailedPrecondition(
           "group ", request->group_key(),
           " failed to resolve. This normally means the server has restarted"));
@@ -226,9 +231,11 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
       return errors::Internal(
           "CompleteGroupResponse group_size doesn't match device_name list");
     }
-    gr->group.devices.reserve(resp.device_attributes().size());
+    gr->group.members.reserve(resp.device_attributes().size());
     for (const DeviceAttributes& device : resp.device_attributes()) {
-      gr->group.devices.push_back(device);
+      CollGroupMember member;
+      member.device = device;
+      gr->group.members.push_back(std::move(member));
       gr->incarnations_by_device_name[device.name()] = device.incarnation();
     }
     gr->group.runtime_details.communicator_key = resp.communicator_key();

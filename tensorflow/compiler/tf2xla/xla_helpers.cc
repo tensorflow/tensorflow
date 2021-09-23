@@ -272,7 +272,7 @@ Status ResolveDeviceAssignment(
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
   for (int device_idx = 0; device_idx < params->group.group_size;
        device_idx++) {
-    const DeviceAttributes& device = params->group.devices[device_idx];
+    const DeviceAttributes& device = params->group.members[device_idx].device;
     if (device.xla_global_id() == -1) {
       if (params->group.device_type == DEVICE_TPU) {
         return errors::InvalidArgument(
@@ -309,7 +309,7 @@ Status ResolveDeviceAssignment(
     for (int device_idx = 0; device_idx < params->group.group_size;
          device_idx++) {
       const DeviceAttributes& device_attributes =
-          params->group.devices[device_idx];
+          params->group.members[device_idx].device;
       Device* resolved_device = nullptr;
       Status lookup_status =
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
