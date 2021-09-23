@@ -1117,6 +1117,17 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "per_channel_quantize_test",
+    srcs = ["per_channel_quantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 filegroup(
     name = "optimized_op_headers",
     srcs = glob([
