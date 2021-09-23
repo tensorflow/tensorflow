@@ -294,17 +294,20 @@ TEST_F(TestKernelAttr, StringList) {
 }
 
 TEST_F(TestKernelAttr, Tensor) {
-  struct TensorProtoData : public ::tensorflow::TensorProto {
-    TensorProtoData() {
-      this->mutable_tensor_shape()->add_dim()->set_size(2);
-      this->mutable_tensor_shape()->add_dim()->set_size(3);
-      this->set_dtype(DT_INT32);
-      this->add_int_val(1);
-      this->add_int_val(2);
-      this->add_int_val(3);
-      this->add_int_val(4);
-      this->add_int_val(5);
-      this->add_int_val(6);
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      tensor_proto.add_int_val(5);
+      tensor_proto.add_int_val(6);
+      return tensor_proto;
     }
   };
 
@@ -321,7 +324,8 @@ TEST_F(TestKernelAttr, Tensor) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     ::tensorflow::Tensor expected_tensor;
-    EXPECT_TRUE(expected_tensor.FromProto(TensorProtoData()));
+    EXPECT_TRUE(
+        expected_tensor.FromProto(TensorProtoHelpers::GenerateTensorProto()));
 
     ::tensorflow::Tensor actual_tensor;
     EXPECT_TRUE(TF_TensorToTensor(val, &actual_tensor).ok());
@@ -337,35 +341,38 @@ TEST_F(TestKernelAttr, Tensor) {
 
   AttrValue v;
   ::tensorflow::TensorProto* tensor_proto = v.mutable_tensor();
-  *tensor_proto = TensorProtoData();
+  *tensor_proto = TensorProtoHelpers::GenerateTensorProto();
 
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensor", v);
 }
 
 TEST_F(TestKernelAttr, TensorList) {
-  struct TensorProtoData1 : public ::tensorflow::TensorProto {
-    TensorProtoData1() {
-      this->mutable_tensor_shape()->add_dim()->set_size(2);
-      this->mutable_tensor_shape()->add_dim()->set_size(2);
-      this->set_dtype(DT_INT32);
-      this->add_int_val(1);
-      this->add_int_val(2);
-      this->add_int_val(3);
-      this->add_int_val(4);
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto1() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      return tensor_proto;
     }
-  };
 
-  struct TensorProtoData2 : public ::tensorflow::TensorProto {
-    TensorProtoData2() {
-      this->mutable_tensor_shape()->add_dim()->set_size(2);
-      this->mutable_tensor_shape()->add_dim()->set_size(3);
-      this->set_dtype(DT_FLOAT);
-      this->add_float_val(5.0f);
-      this->add_float_val(6.0f);
-      this->add_float_val(7.0f);
-      this->add_float_val(8.0f);
-      this->add_float_val(9.0f);
-      this->add_float_val(10.0f);
+    static ::tensorflow::TensorProto GenerateTensorProto2() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_FLOAT);
+      tensor_proto.add_float_val(5.0f);
+      tensor_proto.add_float_val(6.0f);
+      tensor_proto.add_float_val(7.0f);
+      tensor_proto.add_float_val(8.0f);
+      tensor_proto.add_float_val(9.0f);
+      tensor_proto.add_float_val(10.0f);
+      return tensor_proto;
     }
   };
 
@@ -385,7 +392,8 @@ TEST_F(TestKernelAttr, TensorList) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     ::tensorflow::Tensor expected_tensor1;
-    EXPECT_TRUE(expected_tensor1.FromProto(TensorProtoData1()));
+    EXPECT_TRUE(
+        expected_tensor1.FromProto(TensorProtoHelpers::GenerateTensorProto1()));
 
     ::tensorflow::Tensor actual_tensor1;
     EXPECT_TRUE(TF_TensorToTensor(values[0], &actual_tensor1).ok());
@@ -395,7 +403,8 @@ TEST_F(TestKernelAttr, TensorList) {
     EXPECT_EQ(actual_tensor1.dtype(), expected_tensor1.dtype());
 
     ::tensorflow::Tensor expected_tensor2;
-    EXPECT_TRUE(expected_tensor2.FromProto(TensorProtoData2()));
+    EXPECT_TRUE(
+        expected_tensor2.FromProto(TensorProtoHelpers::GenerateTensorProto2()));
 
     ::tensorflow::Tensor actual_tensor2;
     EXPECT_TRUE(TF_TensorToTensor(values[1], &actual_tensor2).ok());
@@ -412,10 +421,10 @@ TEST_F(TestKernelAttr, TensorList) {
 
   AttrValue v;
   ::tensorflow::TensorProto* tensor_proto1 = v.mutable_list()->add_tensor();
-  *tensor_proto1 = TensorProtoData1();
+  *tensor_proto1 = TensorProtoHelpers::GenerateTensorProto1();
 
   ::tensorflow::TensorProto* tensor_proto2 = v.mutable_list()->add_tensor();
-  *tensor_proto2 = TensorProtoData2();
+  *tensor_proto2 = TensorProtoHelpers::GenerateTensorProto2();
 
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensorList", v);
 }
