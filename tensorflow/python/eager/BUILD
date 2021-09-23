@@ -976,6 +976,12 @@ tf_xla_py_test(
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_pip",
+        "no_tfrt",
+        "no_windows",
+    ],
     deps = [
         ":def_function",
         "//tensorflow/compiler/tests:xla_test",
