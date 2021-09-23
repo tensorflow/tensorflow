@@ -102,6 +102,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
+      verbose_buffer_assignment_string_(
+          params.verbose_buffer_assignment_string),
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
@@ -366,10 +368,13 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
-          memory_allocator->Allocate(device_ordinal, buffer_size));
-      buffer_address = buffer.Release();
+      StatusOr<se::OwningDeviceMemory> buffer =
+          memory_allocator->Allocate(device_ordinal, buffer_size);
+      if (!buffer.ok()) {
+        return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
+                                 verbose_buffer_assignment_string_);
+      }
+      buffer_address = buffer->Release();
     }
     return buffer_address;
   }
@@ -719,10 +724,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
-        TF_ASSIGN_OR_RETURN(
-            se::OwningDeviceMemory allocated_buffer,
-            memory_allocator->Allocate(device_ordinal, allocation_size));
-        result_buffer = allocated_buffer.Release();
+        StatusOr<se::OwningDeviceMemory> allocated_buffer =
+            memory_allocator->Allocate(device_ordinal, allocation_size);
+        if (!allocated_buffer.ok()) {
+          return ResourceExhausted("%s\n%s\n",
+                                   allocated_buffer.status().error_message(),
+                                   verbose_buffer_assignment_string_);
+        }
+        result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);

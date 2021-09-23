@@ -1181,8 +1181,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
        std::move(compile_module_results.output_info),
        compile_module_results.module_name, compile_module_results.output_shape,
        std::move(compile_module_results.allocations),
-       std::move(buffer_assignment_proto), std::move(module), profile_index,
-       std::move(profile_printer), std::move(profile_index_map)});
+       std::move(buffer_assignment_proto),
+       compile_module_results.buffer_assignment->ToVerboseString(),
+       std::move(module), profile_index, std::move(profile_printer),
+       std::move(profile_index_map)});
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
