@@ -282,16 +282,16 @@ void PluggableDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     if (sync_every_op_) {
       context->SetStatus(PluggableDeviceUtil::Sync(this));
       if (vlog_1) {
-        VLOG(1) << "PluggableDevice::ComputeHelper finished"
+        VLOG(1) << "PluggableDevice::ComputeHelper finished "
                 << ComputeOpKernelDebugString(*op_kernel, stream_id);
       }
     } else if (vlog_1) {
-      VLOG(1) << "PluggableDevice::ComputeHelper scheduled"
+      VLOG(1) << "PluggableDevice::ComputeHelper scheduled "
               << ComputeOpKernelDebugString(*op_kernel, stream_id);
     }
   } else {
     if (vlog_1) {
-      VLOG(1) << "PluggableDevice::ComputeHelper failed to schedule"
+      VLOG(1) << "PluggableDevice::ComputeHelper failed to schedule "
               << ComputeOpKernelDebugString(*op_kernel, stream_id);
     }
   }

@@ -83,6 +83,12 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
+  // Use "pluggable_device_host_bfc" allocator for host memory
+  if (parsed.dst.type == "CPU" &&
+      DeviceFactory::IsPluggableDevice(parsed.src.type)) {
+    attr.set_on_host(true);
+    out_allocator = src_device->GetAllocator(attr);
+  }
   bool sync_dst_compute = true;
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
