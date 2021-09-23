@@ -604,11 +604,13 @@ class SqlDatasetCheckpointTest(SqlDatasetTestBase,
     return readers.SqlDataset(driver_name, data_source_name, query,
                               output_types).repeat(num_repeats)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_repeats = 4
     num_outputs = num_repeats * 2
-    self.run_core_tests(lambda: self._build_dataset(num_repeats), num_outputs)
+    verify_fn(self, lambda: self._build_dataset(num_repeats), num_outputs)
 
 
 if __name__ == "__main__":

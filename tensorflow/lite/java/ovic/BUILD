@@ -71,9 +71,9 @@ java_library(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/lite/java:libtensorflowlite_jni.so",
-        "//tensorflow/lite/java:tensorflowlite_java",
+        "//tensorflow/lite/java:tensorflowlite_javalib",
         "//tensorflow/lite/java/src/main/native",
-        "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
+        "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper_javalib",
     ],
 )
 
@@ -125,8 +125,8 @@ java_library(
     javacopts = JAVACOPTS,
     deps = [
         "//tensorflow/lite/java:libtensorflowlite_jni.so",
-        "//tensorflow/lite/java:tensorflowlite_java",
+        "//tensorflow/lite/java:tensorflowlite_javalib",
         "//tensorflow/lite/java/src/main/native",
-        "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
+        "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper_javalib",
     ],
 )

@@ -48,7 +48,7 @@ class CompilationCache {
  protected:
   mutable tensorflow::mutex mutex_;
 
-  using CacheKey = int64;
+  using CacheKey = int64_t;
 
   absl::flat_hash_map<CacheKey, std::shared_ptr<Executable>> cache_
       TF_GUARDED_BY(mutex_);

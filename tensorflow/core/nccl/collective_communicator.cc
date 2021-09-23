@@ -28,6 +28,10 @@ namespace tensorflow {
 
 class NcclCommunicator : public NcclCommunicatorInterface {
  public:
+  string GenerateCommunicatorKey() override {
+    return nccl_manager_.GenerateCommunicatorKey();
+  }
+
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override;
 
@@ -63,7 +67,14 @@ string NcclCollectiveKey(const string& exec_key, int step_id) {
 }
 }  // namespace
 
-std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator() {
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
+    const ConfigProto& config) {
+  // Skip creating a NcclCommunicator if there are 0 GPUs configured.
+  const auto& device_count = config.device_count();
+  auto item = device_count.find("GPU");
+  if (item != device_count.end() && item->second == 0) {
+    return nullptr;
+  }
   return absl::make_unique<NcclCommunicator>();
 }
 
@@ -72,7 +83,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   const CollectiveParams* col_params = col_ctx->col_params;
   const int num_global_devices = col_params->group.group_size;
   const int num_local_devices = col_params->group.num_devices_per_task.at(
-      col_params->group.task_names[col_params->default_rank]);
+      col_params->group.members[col_params->default_rank].task);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
@@ -109,7 +120,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       col_params->source_rank);
   VLOG(1) << "NcclCommunicator::Enqueue type " << col_params->instance.type
           << " num_tasks " << col_params->group.num_tasks << " current task "
-          << col_params->group.task_names[col_params->default_rank]
+          << col_params->group.members[col_params->default_rank].task
           << " num local devices " << num_local_devices
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "
@@ -206,7 +217,8 @@ void NcclCommunicator::StartAbort(const Status& s) {
 
 #else
 namespace tensorflow {
-std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator() {
+std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
+    const ConfigProto& config) {
   return nullptr;
 }
 }  // namespace tensorflow

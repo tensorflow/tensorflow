@@ -377,7 +377,7 @@ void TestFP16Delegation::SetUp() {
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});
 
-  float16_const_ = Eigen::half_impl::float_to_half_rtne(2.f);
+  float16_const_ = Eigen::half(2.f);
 
   // TENSORS.
   TfLiteQuantizationParams quant;

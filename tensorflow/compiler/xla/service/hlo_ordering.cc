@@ -37,7 +37,8 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   switch (GetExecutionConstraint(a, b)) {
     case ExecutionConstraint::kIsSame:  // a and b are the same instruction;
       return false;
-    case ExecutionConstraint::kRunBefore:
+    case ExecutionConstraint::kRunBeforeStart:
+    case ExecutionConstraint::kRunBeforeEnd:
     case ExecutionConstraint::kRunExclusiveBefore:
       return true;
     case ExecutionConstraint::kRunExclusiveAfter:
@@ -81,7 +82,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
     const HloComputation* condition = a_ancestor->while_condition();
     if (call_graph_->InstructionIsNestedIn(a, condition) &&
         call_graph_->InstructionIsNestedIn(b, body)) {
-      return ExecutionConstraint::kRunBefore;
+      return ExecutionConstraint::kRunBeforeEnd;
     }
   }
 
@@ -115,7 +116,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
     // computation, 'a' executes before 'b'.
     if (b_branch == -1) {
       CHECK_EQ(b, a_ancestor);
-      return ExecutionConstraint::kRunBefore;
+      return ExecutionConstraint::kRunBeforeEnd;
     }
     if (a_branch == -1) {
       CHECK_EQ(a, a_ancestor);
@@ -130,7 +131,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
   }
 
   if (ExecutesBeforeInSameComputation(a_ancestor, b_ancestor)) {
-    return ExecutionConstraint::kRunBefore;
+    return ExecutionConstraint::kRunBeforeStart;
   }
   if (ExecutesBeforeInSameComputation(b_ancestor, a_ancestor)) {
     return ExecutionConstraint::kRunAfter;
@@ -211,7 +212,8 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 /* static */
 bool HloOrdering::UsesBeforeValueDefinition(
     absl::Span<const HloUse* const> uses, const HloValue& value,
-    const HloDataflowAnalysis& dataflow) const {
+    const HloDataflowAnalysis& dataflow,
+    bool use_is_always_before_def_in_same_instr) const {
   bool has_use_in_exclusive_branches = false;
   bool has_escaped_use_in_conditional = false;
   auto UseIsBeforeValueDefinition = [&](const HloUse& use) {
@@ -223,7 +225,8 @@ bool HloOrdering::UsesBeforeValueDefinition(
         // If the use is at the instruction where the value is defined, then the
         // use is before the def if the instruction allows buffer sharing (in
         // place computation).
-        if (dataflow.CanShareOperandBufferWithUser(
+        if (use_is_always_before_def_in_same_instr ||
+            dataflow.CanShareOperandBufferWithUser(
                 use.instruction->mutable_operand(use.operand_number),
                 use.operand_index, value.defining_instruction(),
                 value.defining_index())) {
@@ -254,11 +257,20 @@ bool HloOrdering::UsesBeforeValueDefinition(
         VLOG(4) << "value def has escaped use in conditional. \n";
         break;
       case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
-      case HloOrdering::ExecutionConstraint::kRunBefore:
+      case HloOrdering::ExecutionConstraint::kRunBeforeStart:
+      case HloOrdering::ExecutionConstraint::kRunBeforeEnd:
         VLOG(4)
             << "  use instruction executes before value-defining instruction";
         return true;
       case HloOrdering::ExecutionConstraint::kRunAfter:
+        // Treat CollectivePermuteDone as a special case as it shares the buffer
+        // from its operand (CollectivePermuteStart).
+        if (use_is_always_before_def_in_same_instr &&
+            use.instruction->opcode() == HloOpcode::kCollectivePermuteDone &&
+            use.instruction->operand(0) == value.instruction()) {
+          return true;
+        }
+        break;
       case HloOrdering::ExecutionConstraint::kUnordered:
         break;
     }
@@ -375,8 +387,8 @@ bool HloOrdering::UsesBeforeValueDefinition(
 }
 
 bool HloOrdering::LiveRangeStrictlyBefore(
-    const HloValue& a, const HloValue& b,
-    const HloDataflowAnalysis& dataflow) const {
+    const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+    bool use_is_always_before_def_in_same_instr) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   VLOG(4) << "Parent:" << a.instruction()->parent()->ToString() << "\n";
@@ -412,7 +424,8 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     }
     uses.push_back(&use);
   }
-  if (!UsesBeforeValueDefinition(uses, b, dataflow)) {
+  if (!UsesBeforeValueDefinition(uses, b, dataflow,
+                                 use_is_always_before_def_in_same_instr)) {
     VLOG(4) << "uses of " << a << "not before " << b << " is defined";
     return false;
   }
@@ -509,6 +522,11 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
   CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
   if (!order_position_.contains(a) || !order_position_.contains(b)) {
+    return false;
+  }
+  if (a->parent()->root_instruction() == a) {
+    // 'a' is the root instruction of the computation, which lives out. So
+    // 'a' cannot execute before 'b'.
     return false;
   }
   return order_position_.at(a) < order_position_.at(b);

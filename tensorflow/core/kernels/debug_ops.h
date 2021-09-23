@@ -23,6 +23,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/util/determinism.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -130,7 +131,7 @@ class BaseDebugOp : public OpKernel {
 
     std::vector<string> name_items = str_util::Split(tensor_name, ':');
     string node_name;
-    int32 output_slot = 0;
+    int32_t output_slot = 0;
     OP_REQUIRES(context, name_items.size() == 1 || name_items.size() == 2,
                 errors::InvalidArgument("Failed to parse tensor name: \"",
                                         tensor_name, "\""));
@@ -236,7 +237,7 @@ class DebugNanCountOp : public BaseDebugOp {
     const Tensor& input = context->input(0);
 
     // Use DT_INT64/int64 to be consistent with TensorShape::num_elements().
-    int64 nan_count = 0;
+    int64_t nan_count = 0;
 
     // If the input is an uninitialized tensor, let nan_count be 0.
     if (input.IsInitialized()) {
@@ -244,7 +245,7 @@ class DebugNanCountOp : public BaseDebugOp {
       const TensorShape& input_shape = input.shape();
       const T* input_flat = input.template flat<T>().data();
 
-      for (int64 i = 0; i < input_shape.num_elements(); ++i) {
+      for (int64_t i = 0; i < input_shape.num_elements(); ++i) {
         if (Eigen::numext::isnan(static_cast<double>(input_flat[i]))) {
           nan_count++;
         }
@@ -253,7 +254,7 @@ class DebugNanCountOp : public BaseDebugOp {
 
     TensorShape shape({1});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
-    output_tensor->vec<int64>()(0) = nan_count;
+    output_tensor->vec<int64_t>()(0) = nan_count;
     OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
   }
 };
@@ -278,14 +279,14 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     Tensor* output_tensor;
     const Tensor& input = context->input(0);
 
-    int64 is_initialized = 0;
-    int64 element_count = 0;
-    int64 negative_inf_count = 0;
-    int64 negative_count = 0;
-    int64 zero_count = 0;
-    int64 positive_count = 0;
-    int64 positive_inf_count = 0;
-    int64 nan_count = 0;
+    int64_t is_initialized = 0;
+    int64_t element_count = 0;
+    int64_t negative_inf_count = 0;
+    int64_t negative_count = 0;
+    int64_t zero_count = 0;
+    int64_t positive_count = 0;
+    int64_t positive_inf_count = 0;
+    int64_t nan_count = 0;
     double min = std::numeric_limits<double>::infinity();
     double max = -std::numeric_limits<double>::infinity();
     double sum = 0.0;
@@ -293,7 +294,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     double variance = std::numeric_limits<double>::quiet_NaN();
 
     // Equal to negative_count + zero_count + positive_count.
-    int64 non_inf_nan_count = 0;
+    int64_t non_inf_nan_count = 0;
 
     const TensorShape& input_shape = input.shape();
     if (input.IsInitialized()) {
@@ -304,7 +305,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
       const bool is_lower_bound_custom = !Eigen::numext::isinf(lower_bound_);
       const bool is_upper_bound_custom = !Eigen::numext::isinf(upper_bound_);
 
-      for (int64 i = 0; i < element_count; ++i) {
+      for (int64_t i = 0; i < element_count; ++i) {
         const double x = static_cast<double>(input_flat[i]);
         if (Eigen::numext::isnan(x)) {
           nan_count++;
@@ -344,7 +345,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
 
         // Do a second pass to compute variance.
         variance = 0.0;
-        for (int64 i = 0; i < element_count; ++i) {
+        for (int64_t i = 0; i < element_count; ++i) {
           const double x = static_cast<double>(input_flat[i]);
           if (!Eigen::numext::isnan(x) && !Eigen::numext::isinf(x)) {
             variance += (x - mean) * (x - mean);
@@ -447,7 +448,7 @@ class DebugIdentityV2Op : public OpKernel {
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;
-  int64 circular_buffer_size_;
+  int64_t circular_buffer_size_;
   string tfdbg_run_id_;
 };
 
@@ -523,7 +524,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
     const Tensor& tensor = context->input(0);
     auto in = tensor.flat<Tin>();
     const Tin* data = in.data();
-    const int64 size = in.size();
+    const int64_t size = in.size();
     Tensor* output_tensor;
     Tout tensor_id = static_cast<Tout>(tensor_id_);
     const Tout num_elem = static_cast<Tout>(context->input(0).NumElements());
@@ -681,13 +682,13 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
+  int64_t tensor_id_;
   static constexpr int kShapeDims = 6;
   static constexpr int kNegInfBit = 0x01;
   static constexpr int kPosInfBit = 0x02;
   static constexpr int kNaNBit = 0x04;
-  static constexpr int64 kMaxTensorId = 1LL
-                                        << std::numeric_limits<Tout>::digits;
+  static constexpr int64_t kMaxTensorId = 1LL
+                                          << std::numeric_limits<Tout>::digits;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -756,6 +757,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       TensorShape shape({5});
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "CONCISE_HEALTH."),
+                        done);
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
@@ -787,6 +794,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
                         errors::Internal("No GPU stream available."), done);
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "FULL_HEALTH."),
+                        done);
 
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -880,8 +893,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
-  static constexpr int64 kMaxTensorId = 1L << std::numeric_limits<Tout>::digits;
+  int64_t tensor_id_;
+  static constexpr int64_t kMaxTensorId = 1L
+                                          << std::numeric_limits<Tout>::digits;
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

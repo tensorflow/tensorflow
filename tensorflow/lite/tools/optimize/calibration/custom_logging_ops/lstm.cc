@@ -66,7 +66,7 @@ inline void LstmStepWithAuxInput(
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr, Logger* logger,
     const std::vector<int>& intemediate_tensor_indexes,
-    ErrorReporter* error_reporter) {
+    const int subgraph_index, ErrorReporter* error_reporter) {
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -115,15 +115,18 @@ inline void LstmStepWithAuxInput(
   {
     // calibration.
     if (!use_cifg) {
-      logger->LogTensorValue(intemediate_tensor_indexes[1], input_gate_scratch,
-                             n_cell * n_batch, error_reporter);
+      logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[1],
+                             input_gate_scratch, n_cell * n_batch,
+                             error_reporter);
     }
-    logger->LogTensorValue(intemediate_tensor_indexes[4], forget_gate_scratch,
-                           n_cell * n_batch, error_reporter);
-    logger->LogTensorValue(intemediate_tensor_indexes[7], cell_scratch,
-                           n_cell * n_batch, error_reporter);
-    logger->LogTensorValue(intemediate_tensor_indexes[10], output_gate_scratch,
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[4],
+                           forget_gate_scratch, n_cell * n_batch,
+                           error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[7],
+                           cell_scratch, n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[10],
+                           output_gate_scratch, n_cell * n_batch,
+                           error_reporter);
   }
 
   // If auxiliary input is available then compute aux_input_weight * aux_input
@@ -167,30 +170,33 @@ inline void LstmStepWithAuxInput(
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           recurrent_to_input_weights_ptr, n_cell, n_output, output_state_ptr,
           n_batch, temp_input.data());
-      logger->LogTensorValue(intemediate_tensor_indexes[2], temp_input.data(),
-                             n_cell * n_batch, error_reporter);
+      logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[2],
+                             temp_input.data(), n_cell * n_batch,
+                             error_reporter);
     }
     std::vector<float> temp_forget(n_batch * n_cell);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_forget_weights_ptr, n_cell, n_output, output_state_ptr,
         n_batch, temp_forget.data());
-    logger->LogTensorValue(intemediate_tensor_indexes[5], temp_forget.data(),
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[5],
+                           temp_forget.data(), n_cell * n_batch,
+                           error_reporter);
 
     std::vector<float> temp_cell(n_batch * n_cell);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_cell_weights_ptr, n_cell, n_output, output_state_ptr,
         n_batch, temp_cell.data());
 
-    logger->LogTensorValue(intemediate_tensor_indexes[8], temp_cell.data(),
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[8],
+                           temp_cell.data(), n_cell * n_batch, error_reporter);
 
     std::vector<float> temp_output(n_batch * n_cell);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_output_weights_ptr, n_cell, n_output, output_state_ptr,
         n_batch, temp_output.data());
-    logger->LogTensorValue(intemediate_tensor_indexes[11], temp_output.data(),
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[11],
+                           temp_output.data(), n_cell * n_batch,
+                           error_reporter);
   }
 
   // For each batch and cell: update input gate.
@@ -201,8 +207,9 @@ inline void LstmStepWithAuxInput(
           input_gate_scratch);
     }
     if (use_layer_norm) {
-      logger->LogTensorValue(intemediate_tensor_indexes[0], input_gate_scratch,
-                             n_cell * n_batch, error_reporter);
+      logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[0],
+                             input_gate_scratch, n_cell * n_batch,
+                             error_reporter);
       tensor_utils::MeanStddevNormalization(
           input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
@@ -222,8 +229,9 @@ inline void LstmStepWithAuxInput(
         forget_gate_scratch);
   }
   if (use_layer_norm) {
-    logger->LogTensorValue(intemediate_tensor_indexes[3], forget_gate_scratch,
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[3],
+                           forget_gate_scratch, n_cell * n_batch,
+                           error_reporter);
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
                                           forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -239,8 +247,8 @@ inline void LstmStepWithAuxInput(
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
                                          n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm) {
-    logger->LogTensorValue(intemediate_tensor_indexes[6], cell_scratch,
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[6],
+                           cell_scratch, n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -272,8 +280,9 @@ inline void LstmStepWithAuxInput(
         output_gate_scratch);
   }
   if (use_layer_norm) {
-    logger->LogTensorValue(intemediate_tensor_indexes[9], output_gate_scratch,
-                           n_cell * n_batch, error_reporter);
+    logger->LogTensorValue(subgraph_index, intemediate_tensor_indexes[9],
+                           output_gate_scratch, n_cell * n_batch,
+                           error_reporter);
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
                                           output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -357,7 +366,7 @@ TfLiteStatus EvalFloat(
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, Logger* logger,
     const std::vector<int>& intemediate_tensor_indexes,
-    ErrorReporter* error_reporter) {
+    const int subgraph_index, ErrorReporter* error_reporter) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   int max_time, n_batch;
   if (input->dims->size == 3) {
@@ -444,7 +453,8 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(activation_state),
           GetTensorData<float>(cell_state), input_gate_scratch,
           forget_gate_scratch, cell_scratch, output_gate_scratch,
-          output_ptr_time, logger, intemediate_tensor_indexes, error_reporter);
+          output_ptr_time, logger, intemediate_tensor_indexes, subgraph_index,
+          error_reporter);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -505,7 +515,8 @@ TfLiteStatus EvalFloat(
             n_cell, n_input, aux_input_size, n_output, output_batch_leading_dim,
             activation_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_scratch_ptr, output_gate_scratch_ptr,
-            output_ptr, logger, intemediate_tensor_indexes, error_reporter);
+            output_ptr, logger, intemediate_tensor_indexes, subgraph_index,
+            error_reporter);
       }
     }
   }
@@ -529,7 +540,8 @@ struct OpData {
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
-TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
+TfLiteStatus lstm_eval(TfLiteContext* context, const int subgraph_index,
+                       TfLiteNode* node, Logger* logger,
                        ErrorReporter* error_reporter) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
@@ -625,7 +637,8 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
           projection_bias, params, /*forward_sequence=*/true,
           /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
-          output, logger, intemediate_tensor_indexes, error_reporter);
+          output, logger, intemediate_tensor_indexes, subgraph_index,
+          error_reporter);
     }
     case kTfLiteUInt8:
     case kTfLiteInt8:
@@ -637,10 +650,11 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
 }
 }  // namespace
 
-TfLiteStatus lstm_logging_kernel(TfLiteContext* context, TfLiteNode* node,
+TfLiteStatus lstm_logging_kernel(TfLiteContext* context,
+                                 const int subgraph_index, TfLiteNode* node,
                                  Logger* logger,
                                  ErrorReporter* error_reporter) {
-  return lstm_eval(context, node, logger, error_reporter);
+  return lstm_eval(context, subgraph_index, node, logger, error_reporter);
 }
 
 }  // namespace custom

@@ -45,7 +45,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
 }
 
 // Converts the gather dimensions to attributes.
-mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
                                    dnums.offset_dims().end());
@@ -53,14 +53,12 @@ mlir::mhlo::GatherDimensionNumbers ConvertGatherDimensionNumbers(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
   std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
                                        dnums.start_index_map().end());
-  return mlir::mhlo::GatherDimensionNumbers::get(
-      Convert(offset_dims, builder), Convert(collapsed_slice_dims, builder),
-      Convert(start_index_map, builder),
-      builder->getI64IntegerAttr(dnums.index_vector_dim()),
-      builder->getContext());
+  return mlir::mhlo::GatherDimensionNumbersAttr::get(
+      builder->getContext(), offset_dims, collapsed_slice_dims, start_index_map,
+      dnums.index_vector_dim());
 }
 
-mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
+mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
@@ -69,12 +67,9 @@ mlir::mhlo::ScatterDimensionNumbers ConvertScatterDimensionNumbers(
   std::vector<int64_t> scatter_dims_to_operand_dims(
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
-  return mlir::mhlo::ScatterDimensionNumbers::get(
-      Convert(update_window_dims, builder),
-      Convert(inserted_window_dims, builder),
-      Convert(scatter_dims_to_operand_dims, builder),
-      builder->getI64IntegerAttr(dnums.index_vector_dim()),
-      builder->getContext());
+  return mlir::mhlo::ScatterDimensionNumbersAttr::get(
+      builder->getContext(), update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, dnums.index_vector_dim());
 }
 
 mlir::mhlo::DotDimensionNumbers ConvertDotDimensionNumbers(
@@ -152,6 +147,22 @@ StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
       return mlir::mhlo::Transpose::TRANSPOSE_INVALID;
     default:
       return InvalidArgument("Unknown transpose enum value #%d", transpose);
+  }
+}
+
+StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    xla::CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
+      return mlir::mhlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
+    case xla::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      return mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL;
+    case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      return mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    default:
+      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d (%s)",
+                             api_version,
+                             xla::CustomCallApiVersion_Name(api_version));
   }
 }
 

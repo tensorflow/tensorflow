@@ -39,7 +39,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
@@ -58,21 +58,21 @@ namespace functor {
 
 namespace {
 template <typename T>
-int64 CountAccumulator(const T* begin, const T* end) {
-  return std::accumulate(begin, end, 0LL, [](int64 accum, const T& val) {
+int64_t CountAccumulator(const T* begin, const T* end) {
+  return std::accumulate(begin, end, 0LL, [](int64_t accum, const T& val) {
     return accum + (val != T(0));
   });
 }
 
 template <>
-int64 CountAccumulator<bool>(const bool* begin, const bool* end) {
+int64_t CountAccumulator<bool>(const bool* begin, const bool* end) {
   return std::accumulate(begin, end, 0LL);
 }
 
 }  // namespace
 
 template <typename T>
-struct NumTrue<CPUDevice, T, int64> {
+struct NumTrue<CPUDevice, T, int64_t> {
   static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
                         typename TTypes<T>::ConstFlat input,
                         TTypes<int64>::UnalignedScalar num_true) {
@@ -140,10 +140,10 @@ class WhereCPUOp : public OpKernel {
 
     const int input_dims = input.dims();
 
-    int64 num_true;
+    int64_t num_true;
     TTypes<int64>::UnalignedScalar num_true_t(&num_true);
 
-    Status s = functor::NumTrue<CPUDevice, T, int64>::Compute(
+    Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
         num_true_t);
     OP_REQUIRES_OK(context, s);
@@ -154,13 +154,13 @@ class WhereCPUOp : public OpKernel {
     // TODO(ebrevdo): Replace single-threaded copy with a multithreaded block
     // copy by getting block counts above instead of a global NumTrue, then
     // having each block filled in separate threads below.
-    int64 found_true = 0;
+    int64_t found_true = 0;
 
 #define HANDLE_DIM(NDIM)                                                      \
   case NDIM: {                                                                \
-    Status s = functor::Where<CPUDevice, NDIM, T, int64>::Compute(            \
+    Status s = functor::Where<CPUDevice, NDIM, T, int64_t>::Compute(          \
         context, context->eigen_device<CPUDevice>(), input.tensor<T, NDIM>(), \
-        output->matrix<int64>(), &found_true);                                \
+        output->matrix<int64_t>(), &found_true);                              \
     OP_REQUIRES_OK(context, s);                                               \
   } break;
 
@@ -216,7 +216,7 @@ namespace functor {
 
 #define DECLARE_GPU_NUMTRUE_TYPE(T) \
   DECLARE_GPU_NUMTRUE(T, int32);    \
-  DECLARE_GPU_NUMTRUE(T, int64);
+  DECLARE_GPU_NUMTRUE(T, int64_t);
 
 TF_CALL_NUMBER_TYPES(DECLARE_GPU_NUMTRUE_TYPE);
 TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
@@ -224,16 +224,16 @@ TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
 #undef DECLARE_GPU_NUMTRUE_TYPE
 #undef DECLARE_GPU_NUMTRUE
 
-#define DECLARE_GPU_WHERE_INDEX(Dims, T, Tindex)                  \
-  template <>                                                     \
-  Status Where<GPUDevice, Dims, T, Tindex>::Compute(              \
-      OpKernelContext* ctx, const GPUDevice& d,                   \
-      typename TTypes<T, Dims>::ConstTensor input,                \
-      typename TTypes<int64>::Matrix output, Tindex* found_true); \
+#define DECLARE_GPU_WHERE_INDEX(Dims, T, Tindex)                    \
+  template <>                                                       \
+  Status Where<GPUDevice, Dims, T, Tindex>::Compute(                \
+      OpKernelContext* ctx, const GPUDevice& d,                     \
+      typename TTypes<T, Dims>::ConstTensor input,                  \
+      typename TTypes<int64_t>::Matrix output, Tindex* found_true); \
   extern template struct Where<GPUDevice, Dims, T, Tindex>;
 #define DECLARE_GPU_WHERE(Dims, T)         \
   DECLARE_GPU_WHERE_INDEX(Dims, T, int32); \
-  DECLARE_GPU_WHERE_INDEX(Dims, T, int64);
+  DECLARE_GPU_WHERE_INDEX(Dims, T, int64_t);
 
 #define DECLARE_GPU_WHERE_TYPES(T) \
   DECLARE_GPU_WHERE(1, T);         \
@@ -265,7 +265,7 @@ class WhereGPUOp : public AsyncOpKernel {
     if (input.NumElements() < std::numeric_limits<int32>::max()) {
       ComputeAsyncType<int32>(input, input_dims, context, done);
     } else {
-      ComputeAsyncType<int64>(input, input_dims, context, done);
+      ComputeAsyncType<int64_t>(input, input_dims, context, done);
     }
   }
 

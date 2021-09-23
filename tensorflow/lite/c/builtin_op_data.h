@@ -97,6 +97,8 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteConv3DParams;
 
+typedef TfLiteConv3DParams TfLiteConv3DTransposeParams;
+
 typedef struct {
   TfLitePadding padding;
   int stride_width;
@@ -494,6 +496,16 @@ typedef struct {
   TfLiteType key_dtype;
   TfLiteType value_dtype;
 } TfLiteHashtableParams;
+
+typedef struct {
+  const char* container;
+  const char* shared_name;
+} TfLiteVarHandleParams;
+
+typedef struct {
+  int seed;
+  int seed2;
+} TfLiteRandomParams;
 
 #ifdef __cplusplus
 }  // extern "C"

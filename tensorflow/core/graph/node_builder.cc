@@ -18,15 +18,18 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32_t i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
@@ -35,7 +38,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
 
 NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32_t i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
@@ -118,60 +121,39 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
 
 namespace {
 
-Status run_type_constructor(Graph* graph, NodeDef* node_def, FullTypeDef* ft) {
+StatusOr<FullTypeDef> run_type_constructor(
+    const tensorflow::OpRegistrationData& op_reg_data,
+    const NodeDef& node_def) {
+  static FullTypeDef no_type;
+
   // TODO(mdan): Decouple this from graph building, or run again after.
-  // TODO(mdan): Also run in eager.
-  // TODO(mdan): Merge with shape inference.
-  const auto* op_registry = graph->op_registry();
-  const tensorflow::OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def->op(), &op_reg_data));
-  if (op_reg_data->type_ctor == nullptr) {
-    return Status::OK();
+  if (op_reg_data.type_ctor == nullptr) {
+    return no_type;
   }
 
-  ft->set_type_id(TFT_PRODUCT);
+  // TODO(mdan): Do we still need to save this info in the Graph object?
+  return full_type::SpecializeType(AttrSlice(node_def), op_reg_data.op_def);
+}
 
-  for (int i = 0; i < op_reg_data->op_def.output_arg_size(); i++) {
-    auto* t = ft->add_args();
+StatusOr<FullTypeDef> run_forward_type_inference(
+    const tensorflow::OpRegistrationData& op_reg_data, const NodeDef& node,
+    const std::vector<NodeBuilder::NodeOut>& inputs) {
+  static FullTypeDef no_type;
 
-    t->CopyFrom(op_reg_data->op_def.output_arg(i).experimental_full_type());
+  if (op_reg_data.fwd_type_fn == nullptr) {
+    return no_type;
+  }
 
-    // Resolve dependent types. The convention for op registrations is to use
-    // attributes as type variables.
-    // See https://www.tensorflow.org/guide/create_op#type_polymorphism.
-    // Once the op signature can be defined entirely in FullType, this
-    // convention can be deprecated.
-    //
-    // Note: While this code performs some basic verifications, it generally
-    // assumes consistent op defs and attributes. If more complete
-    // verifications are needed, they should be done by separately, and in a
-    // way that can be reused for type inference.
-    for (int j = 0; j < t->args_size(); j++) {
-      auto* arg = t->mutable_args(i);
-      if (arg->type_id() == TFT_VAR) {
-        const auto& attr_val = node_def->attr().at(arg->s());
-        if (attr_val.value_case() == AttrValue::kList) {
-          const auto& attr_list = attr_val.list();
-          arg->set_type_id(TFT_PRODUCT);
-          for (int i = 0; i < attr_list.type_size(); i++) {
-            map_dtype_to_tensor(attr_list.type(i), arg->add_args());
-          }
-
-        } else if (attr_val.value_case() == AttrValue::kType) {
-          map_dtype_to_tensor(attr_val.type(), arg);
-
-        } else {
-          return Status(error::UNIMPLEMENTED,
-                        absl::StrCat("unknown attribute type",
-                                     node_def->DebugString().c_str()));
-        }
-
-        arg->clear_s();
-      }
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (const auto& input : inputs) {
+    if (input.node && input.node->def().has_experimental_type()) {
+      input_types.emplace_back(input.node->def().experimental_type());
+    } else {
+      input_types.emplace_back(no_type);
     }
   }
 
-  return Status::OK();
+  return op_reg_data.fwd_type_fn(input_types);
 }
 
 }  // namespace
@@ -189,16 +171,29 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
 
-  FullTypeDef ft;
-  Status status = run_type_constructor(graph, &node_def, &ft);
-  if (!status.ok()) return status;
+  const auto* op_registry = graph->op_registry();
+  const tensorflow::OpRegistrationData* op_reg_data;
+  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def.op(), &op_reg_data));
 
-  Node* node = graph->AddNode(std::move(node_def), &status);
-  if (!status.ok()) return status;
-
-  if (ft.type_id() != TFT_UNSET) {
-    graph->SetNodeType(node->name(), ft);
+  const auto ctor_type = run_type_constructor(*op_reg_data, node_def);
+  TF_RETURN_IF_ERROR(ctor_type.status());
+  const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
+  if (ctor_typedef.type_id() != TFT_UNSET) {
+    *(node_def.mutable_experimental_type()) = ctor_typedef;
   }
+
+  const auto infer_type =
+      run_forward_type_inference(*op_reg_data, node_def, inputs_);
+  TF_RETURN_IF_ERROR(infer_type.status());
+
+  const auto infer_typedef = infer_type.ValueOrDie();
+  if (infer_typedef.type_id() != TFT_UNSET) {
+    *(node_def.mutable_experimental_type()) = infer_typedef;
+  }
+
+  Status status;
+  Node* node = graph->AddNode(std::move(node_def), &status);
+  TF_RETURN_IF_ERROR(status);
 
   node->set_assigned_device_name(assigned_device_);
 
@@ -210,7 +205,9 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   for (Node* control_input : control_inputs_) {
     graph->AddControlEdge(control_input, node);
   }
+
   if (created_node != nullptr) *created_node = node;
+
   return Status::OK();
 }
 

@@ -73,10 +73,13 @@ FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
+# TODO(ckluk): This summary mode is only meaningful in TTv2. We should move
+#              this over to tensor_tracer_v2_flags.py.
 # Flag used in v2 only.
 FLAG_SUMMARY_MODE_TYPE = 'summary_mode'
 UI_MODE = 'ui'
 TEXT_MODE = 'text'
+SAFE_MODE = 'safe'
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -147,7 +150,9 @@ class TTParameters(object):
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
     self.summary_mode = self._get_summary_mode()
-    self._check_flag_errors()
+    # Do not produce errors or warnings if Tensor Tracer is not enabled.
+    if self.is_enabled():
+      self._check_flag_errors()
 
   def _check_flag_errors(self):
     if self.trace_mode in (TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY):
@@ -288,6 +293,10 @@ class TTParameters(object):
             '\n%s' % (flag_name, FLAGS_ENV_VAR, valid_flag_names))
       pos = match.end()
 
+  def _supported_signatures(self):
+    """Returns a tuple of supported signatures."""
+    return TT_SUMMARY_SIGNATURES
+
   def _get_summary_signatures(self):
     """Verifies and returns the summary signatures.
 
@@ -296,17 +305,18 @@ class TTParameters(object):
       computed when trace_mode is summary.
     """
     signatures = self._flag_value_as_list(FLAG_NAME_SUMMARY_SIGNATURES)
+    supported_signatures = self._supported_signatures()
 
     tt_signatures = []
     for signature in signatures:
       signature_with_prefix = '%s_%s' % (_TT_PREFIX, signature)
-      if signature in TT_SUMMARY_SIGNATURES:
+      if signature in supported_signatures:
         tt_signatures.append(signature)
-      elif signature_with_prefix in TT_SUMMARY_SIGNATURES:
+      elif signature_with_prefix in supported_signatures:
         tt_signatures.append(signature_with_prefix)
       else:
-        logging.warning('Unknown signature:%s. Supported signatures: %s' % (
-            signature, TT_SUMMARY_SIGNATURES))
+        logging.warning('Unknown signature:%s. Supported signatures: %s' %
+                        (signature, supported_signatures))
     if not tt_signatures:
       # Default case collects norm and max only.
       return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
@@ -420,7 +430,8 @@ class TTParameters(object):
       if flag_name == wanted_flag_name:
         return True, flag_value
       pos = match.end()
-    raise RuntimeError('Should not reach here.')
+    raise RuntimeError('Invalid tensor tracer flag. Could not recognize %s.' %
+                       flag_name)
 
   def _flag_value_to_re_list(self, flag_name):
     """Converts list of strings to compiled RE."""
@@ -479,7 +490,7 @@ class TTParameters(object):
     if not found:
       summary_mode = UI_MODE
 
-    valid_summary_modes = [UI_MODE, TEXT_MODE]
+    valid_summary_modes = [UI_MODE, TEXT_MODE, SAFE_MODE]
     if summary_mode not in valid_summary_modes:
       raise ValueError('Invalid summary mode "%s" given to the Tensor_Tracer.'
                        'Valid submodes are: %s'%(summary_mode,

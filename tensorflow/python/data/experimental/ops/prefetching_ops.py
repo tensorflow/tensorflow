@@ -40,6 +40,15 @@ def prefetch_to_device(device, buffer_size=None):
   NOTE: Although the transformation creates a `tf.data.Dataset`, the
   transformation must be the final `Dataset` in the input pipeline.
 
+  For example,
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> dataset = dataset.apply(tf.data.experimental.prefetch_to_device("/cpu:0"))
+  >>> for element in dataset:
+  ...   print(f'Tensor {element} is on device {element.device}')
+  Tensor 1 is on device /job:localhost/replica:0/task:0/device:CPU:0
+  Tensor 2 is on device /job:localhost/replica:0/task:0/device:CPU:0
+  Tensor 3 is on device /job:localhost/replica:0/task:0/device:CPU:0
+
   Args:
     device: A string. The name of a device to which elements will be prefetched.
     buffer_size: (Optional.) The number of elements to buffer on `device`.
@@ -214,9 +223,10 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   # GPU
   def make_one_shot_iterator(self):
     if self._is_gpu_target:
-      raise ValueError("Cannot create a one shot iterator when using "
-                       "`tf.data.experimental.copy_to_device()` on GPU. Please "
-                       "use `Dataset.make_initializable_iterator()` instead.")
+      raise ValueError(
+          "`make_one_shot_iterator` is not compatible with GPU execution. "
+          "Please use `Dataset.make_initializable_iterator()` instead."
+      )
     else:
       return super(_CopyToDeviceDataset, self).make_one_shot_iterator()
 

@@ -53,7 +53,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
     ],
@@ -73,6 +72,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c/experimental/grappler",
+        "//tensorflow/c/experimental/pluggable_profiler",
+        "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_internal",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/core:core_cpu",

@@ -156,23 +156,59 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
                   .c_str());
         }
       } else if (tensorflow::swig::IsTensor(elem)) {
+        // TODO(b/200324512): Unify the runtime error message format.
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
-        tensorflow::Safe_PyObjectPtr name_attr(
+        tensorflow::Safe_PyObjectPtr tensor_name(
             PyObject_GetAttrString(elem, "name"));
+        std::string tensor_name_str =
+            tensor_name ? TFE_GetPythonString(tensor_name.get()) : "<unknown>";
+        tensorflow::Safe_PyObjectPtr py_op(PyObject_GetAttrString(elem, "op"));
+        tensorflow::Safe_PyObjectPtr c_op(
+            PyObject_GetAttrString(py_op.get(), "_c_op"));
+        auto& node = py::cast<TF_Operation*>(c_op.get())->node;
+        auto node_name_str = node.name();
+        std::string frame_str, traceback_str;
+        if (auto stack_trace = node.GetStackTrace()) {
+          auto frame = stack_trace->LastUserFrame();
+          frame_str =
+              absl::StrFormat("File \"%s\", line %d, in %s", frame.file_name,
+                              frame.line_number, frame.function_name);
+          traceback_str = absl::StrJoin(
+              stack_trace->ToFrames(), "",
+              [&](std::string* out, const auto frame) {
+                if (!absl::StrContains(frame.file_name,
+                                       "<embedded module '_launcher'")) {
+                  absl::StrAppend(out, ">>>  File ", frame.file_name, ", line ",
+                                  frame.line_number, ", in ",
+                                  frame.function_name, "\n");
+                }
+              });
+        } else {
+          frame_str = "<unknown>";
+          traceback_str = "<unknown>\n";
+        }
         tensorflow::ThrowTypeError(
             tensorflow::strings::StrCat(
-                "An op outside of the function building code is being passed\n"
-                "a \"Graph\" tensor. It is possible to have Graph tensors\n"
-                "leak out of the function building context by including a\n"
-                "tf.init_scope in your function building code.\n"
-                "For example, the following function will fail:\n",
-                "  @tf.function\n", "  def has_init_scope():\n",
-                "    my_constant = tf.constant(1.)\n",
-                "    with tf.init_scope():\n",
-                "      added = my_constant * 2\n",
-                "The graph tensor has name: ",
-                name_attr ? TFE_GetPythonString(name_attr.get()) : "<unknown>")
+                "Originated from a graph execution error.\n\n"
+                "The graph execution error is detected at a node built at "
+                "(most recent call last):\n",
+                traceback_str,
+                "\n"
+                "Error detected in node '",
+                node_name_str, "' defined at: ", frame_str, "\n\n",
+                "TypeError: tf.Graph captured an external symbolic tensor. "
+                "The symbolic tensor '",
+                tensor_name_str, "' created by node '", node_name_str,
+                "' is captured by the tf.Graph being executed "
+                "as an input. But a tf.Graph is not allowed to take symbolic "
+                "tensors from another graph as its inputs. Make sure all "
+                "captured inputs of the executing tf.Graph are not symbolic "
+                "tensors. Use return values, explicit Python locals or "
+                "TensorFlow collections to access it. Please see "
+                "https://www.tensorflow.org/guide/"
+                "function#all_outputs_of_a_tffunction_must_be_return_values"
+                " for more information.")
                 .c_str());
       } else {
         tensorflow::ThrowTypeError(
@@ -209,8 +245,15 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // PyLong_AsLong might throw an error if an overflow occurs.
+  if (PyErr_Occurred()) {
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   // We can't handle more than int32 sizes for number of outputs.
-  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+  if (static_cast<long>(static_cast<int32_t>(sz)) != sz) {  // NOLINT
     PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
                                           "Number of outputs is too big: ", sz)
                                           .c_str());
@@ -375,6 +418,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::OPTIMIZED_HLO;
     } else if (s_stage == "optimized_hlo_serialized") {
       return IrExportStage::OPTIMIZED_HLO_SERIALIZED;
+    } else if (s_stage == "optimized_hlo_proto_serialized") {
+      return IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED;
     } else if (s_stage == "optimized_hlo_dot") {
       return IrExportStage::OPTIMIZED_HLO_DOT;
     } else {
@@ -814,6 +859,52 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def(
+      "TFE_InsertConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, const char* config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_GetConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                              &config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_DeleteConfigKeyValue",
+      [](py::handle& ctx, const char* config_key) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_ReportErrorToCluster",
+      [](py::handle& ctx, int error_code, const char* error_message) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TFE_ReportErrorToCluster(tensorflow::InputTFE_Context(ctx), error_code,
+                                 error_message, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
   m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
@@ -1104,11 +1195,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg",
-        [](const py::handle& o, bool include_tensor_ranks_only) {
-          return tensorflow::PyoOrThrow(
-              TFE_Py_EncodeArg(o.ptr(), include_tensor_ranks_only));
-        });
+  m.def("TFE_Py_EncodeArg", [](const py::handle& o,
+                               bool include_tensor_ranks_only,
+                               bool encode_variables_by_resource_id) {
+    return tensorflow::PyoOrThrow(TFE_Py_EncodeArg(
+        o.ptr(), include_tensor_ranks_only, encode_variables_by_resource_id));
+  });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

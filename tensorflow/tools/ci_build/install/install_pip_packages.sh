@@ -51,7 +51,7 @@ pip3 install --upgrade bleach==2.0.0
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip3 install --upgrade protobuf==3.6.1
+pip3 install --upgrade protobuf==3.16.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -95,6 +95,7 @@ pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
 # Keras
+pip3 install keras-nightly --no-deps
 pip3 install keras_preprocessing==1.1.0 --no-deps
 pip3 install --upgrade h5py==3.1.0
 

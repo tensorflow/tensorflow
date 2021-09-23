@@ -33,6 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
+
+#if BEF_THUNKS
+#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#endif  // BEF_THUNKS
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -48,13 +54,16 @@ namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line, const char* expr);
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                const char* expr);
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
 // NCCL and CUDA errors.)
@@ -147,10 +156,47 @@ class NcclCliqueMap {
 
 NcclCliqueMap& NcclCliqueCache();
 
+struct NcclCliqueParticipantData : public ParticipantData {
+  // For running in StreamExecutor. To be deprecated after transitioning to
+  // TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            int64_t device_ordinal, se::Stream* stream)
+      : ParticipantData(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
+
+  int64_t device_ordinal;
+  se::Stream* stream;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "NcclCliqueParticipantData{rendezvous_key=%s, device_ordinal=%d, "
+        "stream=%p}",
+        rendezvous_key.ToString(), device_ordinal, stream);
+  }
+};
+
+#if BEF_THUNKS
+// This struct contains stateful resource(s) needed to execute collective
+// BefThunks.
+struct XcclContext {
+  struct CollectivePermuteSourceTarget {
+    absl::optional<int64_t> source_peer;
+    absl::optional<int64_t> target_peer;
+  };
+
+  XcclContext(const NcclClique& clique) : clique(clique) {}
+
+  const NcclClique& clique;
+  CollectivePermuteSourceTarget collective_permute_source_target;
+  tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> ccl_handle;
+};
+#endif  // BEF_THUNKS
+
 // Acquires a locked NCCL clique for use in NCCL collective operations.
 StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
+    const NcclCliqueParticipantData& participant,
+    const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback);  // may be null
 
 }  // namespace gpu

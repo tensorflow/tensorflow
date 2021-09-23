@@ -287,7 +287,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
           cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
       if (mlir::failed(result)) return mlir::failure();
 
-      const int64 tiled_inputs_size = tiled_inputs.size();
+      const int64_t tiled_inputs_size = tiled_inputs.size();
       if (tiled_inputs_size != num_cores_per_replica)
         return tiled_sharding_mismatched(tiled_inputs.size());
 

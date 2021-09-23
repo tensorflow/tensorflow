@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -69,9 +69,9 @@ class QrOp : public LinearAlgebraOp<Scalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0);
-    int64 n = input_matrix_shapes[0].dim_size(1);
-    int64 min_size = std::min(m, n);
+    int64_t m = input_matrix_shapes[0].dim_size(0);
+    int64_t n = input_matrix_shapes[0].dim_size(1);
+    int64_t min_size = std::min(m, n);
     if (full_matrices_) {
       return TensorShapes({TensorShape({m, m}), TensorShape({m, n})});
     } else {
@@ -80,7 +80,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     }
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double max_size = std::max(m, n);
@@ -90,7 +90,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     // TODO(jpoulson): Increase the cost if full_matrices is true in a manner
     // that reflects the algorithm used for the expansion.
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;
@@ -139,10 +139,10 @@ class QrOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 m = input.dim_size(ndims - 2);
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 min_size = std::min(m, n);
-    const int64 batch_size =
+    const int64_t m = input.dim_size(ndims - 2);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t min_size = std::min(m, n);
+    const int64_t batch_size =
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Validate inputs.
@@ -171,7 +171,7 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Allocate temporaries.
     Tensor input_transposed;
@@ -285,8 +285,8 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // Asynchronously check return status from cuSolver kernels.
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(done));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(done));
   }
 
  private:

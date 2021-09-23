@@ -42,6 +42,11 @@ class TakeTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, [tuple(components[0][i:i + 1]) for i in range(num_output)])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).take(1, name="take")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
@@ -53,16 +58,12 @@ class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(count=[5], num_outputs=[5]) +
           combinations.combine(count=[20, 10, -1], num_outputs=[10]) +
           combinations.combine(count=[0], num_outputs=[0])))
-  def testCore(self, count, num_outputs):
-    self.run_core_tests(lambda: self._build_take_dataset(count), num_outputs)
-
-  def testInvalidTake(self):
-    with self.assertRaisesRegex(ValueError,
-                                "Shape must be rank 0 but is rank 1"):
-      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), 0)
+  def test(self, verify_fn, count, num_outputs):
+    verify_fn(self, lambda: self._build_take_dataset(count), num_outputs)
 
 
 if __name__ == "__main__":

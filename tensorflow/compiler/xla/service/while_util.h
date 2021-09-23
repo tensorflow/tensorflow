@@ -81,9 +81,22 @@ class WhileUtil {
   //    return loop_state;
   //  }
   static StatusOr<LoopStateTy> MakeCountedLoop(
-      HloComputation* computation, int32 trip_count,
+      HloComputation* computation, int32_t trip_count,
       const LoopStateTy& init_values,
       const LoopBodyGeneratorTy& loop_body_generator,
+      const OpMetadata& metadata);
+
+  struct OwningLoopStateTy {
+    std::vector<std::unique_ptr<HloInstruction>> instructions_to_add;
+    WhileUtil::LoopStateTy while_results;
+  };
+  // As above but does not add the while loop or other instructions created
+  // around it in any particular computation. The caller can instead add it to a
+  // computation of their choosing.
+  static StatusOr<OwningLoopStateTy> MakeCountedLoop(
+      HloModule* module, int32_t trip_count,
+      const WhileUtil::LoopStateTy& init_values,
+      const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
       const OpMetadata& metadata);
 
   // Returns the GetTupleElement instructions in `while_body` that access
@@ -96,7 +109,7 @@ class WhileUtil {
   // `while_conditional` that access elements in the parameter tuple. Assumes
   // `while_conditional` is the conditional computation of the while loop in
   // question.
-  static absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+  static absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
   GetGTEsMapForWhileConditional(const HloComputation& while_conditional);
 };
 }  // namespace xla

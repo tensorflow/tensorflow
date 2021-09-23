@@ -49,6 +49,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -183,7 +184,57 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     ret = func()
     self.assertAllEqual(ret, 2.0)
 
+  def testStaticHashTableDatasetFnHostTrainingLoop(self, enable_packed_var):
+    self._dataset_fn_tracing_count = 0
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      vals = [0, 1, 2]
+      keys_tensor = constant_op.constant(
+          list(range(len(vals))), dtype=dtypes.int64)
+      vals_tensor = constant_op.constant(vals)
+      initializer = lookup_ops.KeyValueTensorInitializer(
+          keys_tensor, vals_tensor)
+      per_worker_table = lookup_ops.StaticHashTable(
+          initializer, default_value=-1)
+
+    @def_function.function
+    def dataset_fn(input_context):
+      tensor = constant_op.constant([0, 1, 3], dtype=dtypes.int64)
+      global_batch_size = 2
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      dataset = dataset_ops.Dataset.from_tensors(tensor).repeat().batch(
+          batch_size, drop_remainder=True)
+      dataset = dataset.shard(input_context.num_input_pipelines,
+                              input_context.input_pipeline_id)
+      dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
+      dataset = dataset.map(per_worker_table.lookup)
+      self._dataset_fn_tracing_count += 1
+      return dataset
+
+    dist_iterator = iter(
+        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def step_fn(inputs):
+      # inputs should be [0, 1, -1]
+      return math_ops.reduce_sum(inputs)
+
+    def train_steps(iterator, steps):
+
+      for _ in math_ops.range(steps):
+        strategy.run(step_fn, args=(next(iterator),))
+
+    train_steps(dist_iterator, steps=5)
+    self.assertEqual(self._dataset_fn_tracing_count, 1)
+
   def test_function_compile_with_xla(self, enable_packed_var):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "This test triggers _XlaCompile and XlaLaunch which are not "
+          "supported in tfrt yet. We should avoid using these kernels on TPU. "
+          "However, it is a workaround to support b/129842431. We need more "
+          "discussion about how to support it in the long term.")
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
       v = variables.Variable(1.0)
@@ -961,6 +1012,44 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       update_variable.get_concrete_function()
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
+
+  def test_tpu_cancellation_does_not_close_chips(self, enable_packed_var):
+    if not FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "`tpu_cancellation_closes_chip only applies to TFRT TPU Runtime.")
+    strategy = get_tpu_strategy(enable_packed_var)
+    num_replicas = strategy.num_replicas_in_sync
+    with strategy.scope():
+      x = random_ops.random_normal((10240, 10240))
+      y = random_ops.random_normal((10240, 10240))
+
+      v = variables.Variable(array_ops.identity(x))
+      dist_dataset = strategy.experimental_distribute_dataset(
+          dataset_ops.Dataset.from_tensors(y).repeat(num_replicas).batch(
+              num_replicas))
+      dist_iterator = iter(dist_dataset)
+
+      @def_function.function
+      def train_steps(v, iterator, steps):
+
+        def step_fn(inputs):
+          for val in inputs:
+            v.assign(math_ops.matmul(v, val))
+
+        for _ in math_ops.range(steps):
+          strategy.run(step_fn, args=(next(iterator),))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        # The iterator has num_replicas/num_replicas = 1 step only.
+        train_steps(v, dist_iterator, 2)
+
+      # If TPU chips are not closed we can run the function on TPU again.
+      w = variables.Variable(array_ops.identity(x))
+      dist_dataset = strategy.experimental_distribute_dataset(
+          dataset_ops.Dataset.from_tensors(y).repeat(num_replicas).batch(
+              num_replicas))
+      dist_iterator = iter(dist_dataset)
+      train_steps(w, dist_iterator, 1)
 
 
 class TPUStrategyDataPrefetchTest(test.TestCase):

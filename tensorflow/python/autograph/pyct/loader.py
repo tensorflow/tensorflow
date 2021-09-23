@@ -48,9 +48,12 @@ def _remove_file(file_name):
 
 def load_source(source, delete_on_exit):
   """Loads the given source code as a Python module."""
-  # TODO(mdan): Drop the linter verride once the CI stops running Py2.
-  with tempfile.NamedTemporaryFile(  # pylint:disable=unexpected-keyword-arg
-      mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+  with tempfile.NamedTemporaryFile(
+      mode='w',
+      suffix='.py',
+      prefix='__autograph_generated_file',
+      delete=False,
+      encoding='utf-8') as f:
     module_name = os.path.basename(f.name[:-3])
     file_name = f.name
     f.write(source)

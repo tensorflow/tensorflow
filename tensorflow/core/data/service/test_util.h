@@ -15,29 +15,43 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor.h"
+#include <string>
+#include <vector>
+
+#include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
-namespace test_util {
+namespace testing {
 
-struct GraphDefTestCase {
-  // Name for the test case.
-  string name;
-  // A dataset graph.
-  GraphDef graph_def;
-  // The expected output from iterating over the dataset represented by the
-  // graph.
-  std::vector<std::vector<Tensor>> output;
-};
+// Returns a test dataset representing
+// tf.data.Dataset.range(range). Useful for testing dataset graph execution.
+DatasetDef RangeDataset(int64_t range);
 
-// Fills in the input test_case pointer with test case data representing the
-// dataset tf.data.Dataset.range(10).map(lambda x: x*x). Useful for testing
-// dataset graph execution.
-Status map_test_case(GraphDefTestCase* test_case);
+// Returns a test dataset representing
+// tf.data.Dataset.range(range).map(lambda x: x*x).
+DatasetDef RangeSquareDataset(int64_t range);
 
-}  // namespace test_util
+// Returns a test dataset representing
+// tf.data.Dataset.range(range).shard(SHARD_HINT, SHARD_HINT).
+DatasetDef RangeDatasetWithShardHint(int64_t range);
+
+// Returns a test dataset representing
+// tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
+//     lambda filepath: tf.data.TextLineDataset(filepath),
+//     cycle_length=10)
+StatusOr<DatasetDef> InterleaveTextlineDataset(
+    const std::vector<tstring>& filenames,
+    const std::vector<tstring>& contents);
+
+// Repeatedly calls `f()`, blocking until `f()` returns `false`.
+//
+// Returns an error if `f()` returns an error.
+Status WaitWhile(std::function<StatusOr<bool>()> f);
+}  // namespace testing
 }  // namespace data
 }  // namespace tensorflow
 

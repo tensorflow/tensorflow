@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -36,8 +38,11 @@ struct ArrayInfo {
 };
 
 struct GraphImportConfig {
+  // Returns string representation of config.
+  std::string str() const;
+
   using InputArrays =
-      llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
+      llvm::MapVector<std::string, ArrayInfo, llvm::StringMap<unsigned>>;
   // The name assigned to the function which is the import result of the given
   // graph. If empty, a default one will be used.
   std::string graph_func_name;
@@ -69,6 +74,12 @@ struct GraphImportConfig {
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;
+  // _output_shapes is an unregistered attribute which is used during
+  // GraphConstructor::ConvertGraph to override shapes. It is unfortunately
+  // not always set correctly (which is undesirable and should be addressed)
+  // so make it opt-in to consider it unconditionally also when importing the
+  // graph.
+  bool unconditionally_use_set_output_shapes = false;
 };
 
 struct GraphExportConfig {

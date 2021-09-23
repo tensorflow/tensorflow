@@ -91,7 +91,8 @@ StatusOr<string> RenderNeighborhoodAround(
 // than max_nodes on all paths, restricts to the max_nodes nodes on the shortest
 // paths.
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
-                                      const HloInstruction& to, int64 max_nodes,
+                                      const HloInstruction& to,
+                                      int64_t max_nodes,
                                       RenderedGraphFormat format,
                                       HloRenderOptions hlo_render_options = {});
 

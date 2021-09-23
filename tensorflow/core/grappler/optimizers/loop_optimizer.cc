@@ -759,13 +759,10 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 }
 
 Status LoopOptimizer::RemoveDeadBranches(
-    const std::unordered_set<string>& nodes_to_preserve,
-    const NodeMap& node_map, const absl::flat_hash_set<string>& feed_nodes,
-    GraphDef* optimized_graph) {
+    const std::unordered_set<string>& nodes_to_preserve, NodeMap& node_map,
+    const absl::flat_hash_set<string>& feed_nodes, GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
-  // TODO(bsteiner): also rewrite switches as identity. For now we just record
-  // them
   absl::flat_hash_set<GraphView::OutputPort> identity_switches;
 
   MutableGraphView view(optimized_graph);
@@ -789,7 +786,6 @@ Status LoopOptimizer::RemoveDeadBranches(
       continue;
     }
     GraphView::OutputPort dead(&node, dead_fanout);
-    identity_switches.insert(dead);
 
     SetVector<MutableGraphView::InputPort, absl::Hash<MutableGraphView::Port>>
         zombie_inputs;
@@ -875,6 +871,11 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (!found_node_to_preserve) {
       std::swap(dead_nodes, local_dead_nodes);
       std::swap(dead_merge_inputs, local_dead_merge_inputs);
+      // Found no nodes to preserve in fanout of this switch node. This switch
+      // node can be replaced with Identity node, collect here to process later
+      identity_switches.insert(dead);
+      VLOG(3) << "Found no nodes to preserve in fanout of switch node: "
+              << node.name() << ", fanout port: " << dead_fanout;
     }
   }
 
@@ -939,14 +940,52 @@ Status LoopOptimizer::RemoveDeadBranches(
     VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
   }
 
+  for (const auto& id_switch : identity_switches) {
+    NodeDef* sw_node = const_cast<NodeDef*>((id_switch.node));
+    int dead_port_id = id_switch.port_id;
+
+    // Switch node where pred is not a constant, is not optimized.
+    // TODO(intel-tf): For that case, enable optimization only if safe.
+    // TODO(intel-tf): Need to check for RefSwitch and replace RefSwitch with
+    // RefIdentity
+    NodeDef* pred = node_map.GetNode(sw_node->input(1));
+    if (IsReallyConstant(*pred, feed_nodes) && sw_node->op() == "Switch") {
+      // From the dead_port_id, get the live port id, so we can correct
+      // input names of consumers. When switch will be replaced with Identity,
+      // it will have only 1 output versus 2 outputs of a Switch node
+      int live_port_id = (dead_port_id + 1) % 2;
+      string live_output_name = sw_node->name();
+      if (live_port_id == 1) {
+        live_output_name = StrCat(sw_node->name(), ":1");
+      }
+
+      // Get consumers of live port and update the input names
+      auto consumers = node_map.GetOutputs(sw_node->name());
+      for (auto* consumer : consumers) {
+        for (int i = 0; i < consumer->input_size(); ++i) {
+          if (consumer->input(i) == live_output_name) {
+            consumer->set_input(i, sw_node->name());
+            node_map.UpdateInput(consumer->name(), live_output_name,
+                                 sw_node->name());
+          }
+        }
+      }
+
+      VLOG(3) << "Switch node before cleanup: " << sw_node->DebugString();
+
+      // Change node from Switch to Identity and add a control dependency to
+      // this Identity op.
+      const string ctrl_dep = ConstantFolding::AddControlDependency(
+          pred->name(), optimized_graph, &node_map);
+      node_map.UpdateInput(sw_node->name(), pred->name(), ctrl_dep);
+      sw_node->set_input(1, ctrl_dep);
+      sw_node->set_op("Identity");
+      VLOG(3) << "Switch node after cleanup: " << sw_node->DebugString();
+    }
+  }
   EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
   return Status::OK();
-}
-
-void LoopOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                             const GraphDef& optimize_output, double result) {
-  // Nothing to do for LoopOptimizer.
 }
 
 }  // end namespace grappler

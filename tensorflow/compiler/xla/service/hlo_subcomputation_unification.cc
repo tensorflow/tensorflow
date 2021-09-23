@@ -22,7 +22,7 @@ namespace xla {
 StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {
   // For each computation C in the module, find the first computation C0 in the
   // computations_ list that is identical to C, and adds canon[C] = C0.
-  std::unordered_map<HloComputation*, HloComputation*> canon;
+  absl::flat_hash_map<HloComputation*, HloComputation*> canon;
   const auto& computations = module->computations();
   for (auto i = computations.begin(); i != computations.end(); ++i) {
     for (auto j = computations.begin(); j != i; ++j) {

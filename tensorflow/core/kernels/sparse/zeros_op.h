@@ -42,14 +42,14 @@ template <typename Device>
 struct CSRSparseMatrixZeros {
   Status operator()(OpKernelContext* c, DataType dtype,
                     const Tensor& dense_shape_t, CSRSparseMatrix* matrix) {
-    auto dense_shape = dense_shape_t.vec<int64>();
+    auto dense_shape = dense_shape_t.vec<int64_t>();
     const int rank = dense_shape.size();
     if (!(rank == 2 || rank == 3)) {
       return errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
                                      "but dense shape has ", rank, " entries");
     }
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape(0);
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                        TensorShape({batch_size + 1}));

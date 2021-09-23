@@ -64,6 +64,10 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduce").Device(DEVICE),                    \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduce").Device(DEVICE),            \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduceV2").Device(DEVICE),          \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduceWindow")                              \
                               .HostMemory("window_dimensions")                 \
                               .HostMemory("window_strides")                    \
@@ -92,6 +96,11 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaDequantize").Device(DEVICE),                \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaEinsum").Device(DEVICE),                    \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaRngBitGenerator")                           \
+                              .HostMemory("algorithm")                         \
+                              .HostMemory("shape")                             \
+                              .Device(DEVICE),                                 \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaSpmdShardToFullShape").Device(DEVICE),      \
                           XlaCompileOnDemandOp);                               \

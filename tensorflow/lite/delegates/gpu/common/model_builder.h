@@ -78,7 +78,8 @@ absl::Status BuildFinalModel(
 // FlatBufferModel.
 absl::Status BuildFromFlatBuffer(const FlatBufferModel& flatbuffer,
                                  const OpResolver& op_resolver,
-                                 GraphFloat32* graph);
+                                 GraphFloat32* graph,
+                                 bool allow_quant_ops = false);
 
 // Module-internal converter, exposed for unit testing purpose only.
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,

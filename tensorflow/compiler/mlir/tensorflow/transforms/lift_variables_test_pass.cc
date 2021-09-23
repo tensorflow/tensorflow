@@ -31,6 +31,14 @@ class LiftVariablesTestPass
 
   ~LiftVariablesTestPass() override { delete session_; }
 
+  StringRef getArgument() const final {
+    return "tf-saved-model-lift-variables-test";
+  }
+
+  StringRef getDescription() const final {
+    return "Lift variables and save them as global tensors";
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
     if (failed(tf_saved_model::LiftVariables(module, session_)))
@@ -46,6 +54,15 @@ class LiftVariablesInvalidSessionTestPass
     : public PassWrapper<LiftVariablesInvalidSessionTestPass,
                          OperationPass<ModuleOp>> {
  public:
+  StringRef getArgument() const final {
+    return "tf-saved-model-lift-variables-invalid-session-test";
+  }
+
+  StringRef getDescription() const final {
+    return "Lift variables and save them as global tensors with an invalid "
+           "session";
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
     // Pass an invalid session argument, which is a nullptr.
@@ -58,15 +75,10 @@ class LiftVariablesInvalidSessionTestPass
 
 namespace tf_saved_model {
 
-static PassRegistration<LiftVariablesTestPass> lift_variables_test_pass(
-    "tf-saved-model-lift-variables-test",
-    "Lift variables and save them as global tensors");
+static PassRegistration<LiftVariablesTestPass> lift_variables_test_pass;
 
 static PassRegistration<LiftVariablesInvalidSessionTestPass>
-    lift_variables_invalid_session_test_pass(
-        "tf-saved-model-lift-variables-invalid-session-test",
-        "Lift variables and save them as global tensors with an invalid "
-        "session");
+    lift_variables_invalid_session_test_pass;
 
 }  // namespace tf_saved_model
 }  // namespace mlir

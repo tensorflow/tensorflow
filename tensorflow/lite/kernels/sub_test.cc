@@ -43,6 +43,8 @@ class BaseSubOpModel : public SingleOpModel {
   int input1() { return input1_; }
   int input2() { return input2_; }
 
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
  protected:
   int input1_;
   int input2_;
@@ -110,6 +112,28 @@ float GetTolerance(float min, float max) {
   float kQuantizedStep = (max - min) / (std::numeric_limits<T>::max() -
                                         std::numeric_limits<T>::min());
   return 2.0 * kQuantizedStep;
+}
+
+TEST(FloatSubOpModel, FirstInputZero) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  FloatSubOpModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input2(), {0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray<int>({0}));
+}
+
+TEST(FloatSubOpModel, SecondInputZero) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  FloatSubOpModel m({TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {0}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray<int>({0}));
 }
 
 TEST(FloatSubOpModel, NoActivation) {

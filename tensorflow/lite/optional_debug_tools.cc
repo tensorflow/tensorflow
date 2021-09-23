@@ -36,6 +36,10 @@ namespace {
 // Just forward declarations.
 const char* AllocTypeName(TfLiteAllocationType type);
 
+void PrintIntVector(const std::vector<int>& v,
+                    bool collapse_consecutives = true,
+                    bool add_newline = false);
+
 // A class to represent the information of a memory arena that's used in TfLite
 // runtime for holding allocated memory of tensors. The information includes
 // the following:
@@ -144,6 +148,45 @@ class MemoryArenaInfo {
   std::set<TensorAllocInfo, TensorAllocInfoCompare> alloc_info_;
 };
 
+class DynamicMemoryInfo {
+ public:
+  void Update(size_t tensor_index, const TfLiteTensor& tensor) {
+    if (tensor.allocation_type != kTfLiteDynamic) return;
+    if (tensor.data.data == nullptr) return;
+    if (tensor.bytes > max_tensor_mem_bytes_) {
+      max_tensor_mem_bytes_ = tensor.bytes;
+      max_tensor_ids_.clear();
+      max_tensor_ids_.push_back(tensor_index);
+    } else if (tensor.bytes == max_tensor_mem_bytes_) {
+      max_tensor_ids_.push_back(static_cast<int>(tensor_index));
+    }
+    total_mem_bytes_ += tensor.bytes;
+    num_total_tensors_++;
+  }
+
+  void Print() const {
+    printf("kTfLiteDynamic Info: ");
+    if (total_mem_bytes_ == 0) {
+      printf("not holding any allocation.\n");
+      return;
+    }
+    printf("\n%zu Tensors ", max_tensor_ids_.size());
+    PrintIntVector(max_tensor_ids_, /*collapse_consecutives*/ false);
+    printf(" have the max size %zu bytes (%.3f MB).\n", max_tensor_mem_bytes_,
+           static_cast<float>(max_tensor_mem_bytes_) / (1 << 20));
+    printf("There are %d dynamic tensors, taking %zu bytes (%.3f MB).\n",
+           num_total_tensors_, total_mem_bytes_,
+           static_cast<float>(total_mem_bytes_) / (1 << 20));
+  }
+
+ private:
+  size_t max_tensor_mem_bytes_ = 0;
+  // the index list of the tensor that has the max memory size.
+  std::vector<int> max_tensor_ids_;
+  size_t total_mem_bytes_ = 0;
+  int num_total_tensors_ = 0;
+};
+
 class ModelTensorMemoryInfo {
  public:
   ModelTensorMemoryInfo()
@@ -155,6 +198,7 @@ class ModelTensorMemoryInfo {
     rw_info_.Update(tensor_index, tensor);
     rw_persistent_info_.Update(tensor_index, tensor);
     mmap_info_.Update(tensor_index, tensor);
+    dynamic_info_.Update(tensor_index, tensor);
   }
 
   // Get the offset from the beginning address of the memory arena for 'tensor'.
@@ -185,12 +229,15 @@ class ModelTensorMemoryInfo {
     printf("\n");
     mmap_info_.Print();
     printf("\n");
+    dynamic_info_.Print();
+    printf("\n");
   }
 
  private:
   MemoryArenaInfo rw_info_;
   MemoryArenaInfo rw_persistent_info_;
   MemoryArenaInfo mmap_info_;
+  DynamicMemoryInfo dynamic_info_;
 };
 
 template <typename T>
@@ -206,9 +253,8 @@ void PrintTotalBytesOfTensors(const Subgraph& subgraph, const T& tensor_ids,
          static_cast<float>(total) / (1 << 20));
 }
 
-void PrintIntVector(const std::vector<int>& v,
-                    bool collapse_consecutives = true,
-                    bool add_newline = false) {
+void PrintIntVector(const std::vector<int>& v, bool collapse_consecutives,
+                    bool add_newline) {
   if (v.empty()) {
     printf("(null)");
     if (add_newline) {
@@ -389,6 +435,11 @@ void PrintInterpreterState(const Interpreter* interpreter) {
       printf(" [%" PRId64 ", %" PRId64 ")\n", start_offset, end_offset);
     }
     tensor_mem_info.Print();
+
+    // Dumps debugging info provided by the underlying memory planner.
+    // Note that this will output nothing unless the
+    // ":simple_memory_arena_debug_dump" is added as an extra dependence.
+    subgraph.DumpMemoryPlannerDebugInfo();
 
     // Going to print out all nodes (i.e. op kernels) in this subgraph.
     std::vector<bool> replaced_node_bits;

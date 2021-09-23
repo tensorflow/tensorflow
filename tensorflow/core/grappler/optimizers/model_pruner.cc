@@ -529,10 +529,5 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void ModelPruner::Feedback(Cluster* cluster, const GrapplerItem& item,
-                           const GraphDef& optimized_graph, double result) {
-  // Nothing to do for ModelPruner.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

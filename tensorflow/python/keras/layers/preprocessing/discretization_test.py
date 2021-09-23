@@ -43,7 +43,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
   def test_bucketize_with_explicit_buckets_integer(self):
     input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
 
-    expected_output = [[0, 1, 3, 1], [0, 3, 2, 0]]
+    expected_output = [[0, 2, 3, 1], [1, 3, 2, 1]]
     expected_output_shape = [None, 4]
 
     input_data = keras.Input(shape=(4,))
@@ -88,7 +88,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     input_array = ragged_factory_ops.constant([[-1.5, 1.0, 3.4, .5],
                                                [0.0, 3.0, 1.3]])
 
-    expected_output = [[0, 1, 3, 1], [0, 3, 2]]
+    expected_output = [[0, 2, 3, 1], [1, 3, 2]]
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True)
@@ -130,7 +130,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_dataset.values)
 
   def test_output_shape(self):
-    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.int64)
     layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
     output = layer(input_data)
     self.assertAllEqual(output.shape.as_list(), [16, 4])
@@ -156,7 +156,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
           "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]]),
           "test_data": np.array([[1.], [2.], [3.]]),
           "use_dataset": True,
-          "expected": np.array([[0], [1], [2]]),
+          "expected": np.array([[1], [2], [3]]),
           "num_bins": 5,
           "epsilon": 0.01
       }, {
@@ -165,7 +165,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
                                   [5., 10.]]),
           "test_data": np.array([[1., 10.], [2., 6.], [3., 8.]]),
           "use_dataset": True,
-          "expected": np.array([[0, 4], [0, 2], [1, 3]]),
+          "expected": np.array([[0, 4], [1, 3], [1, 4]]),
           "num_bins": 5,
           "epsilon": 0.01
       }, {
@@ -173,7 +173,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
           "adapt_data": np.array([3., 2., 1., 5., 4.]),
           "test_data": np.array([1., 2., 3.]),
           "use_dataset": True,
-          "expected": np.array([0, 1, 2]),
+          "expected": np.array([1, 2, 3]),
           "num_bins": 5,
           "epsilon": 0.01
       }, {
@@ -199,7 +199,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
           "adapt_data": np.arange(300),
           "test_data": np.arange(300),
           "use_dataset": True,
-          "expected": np.concatenate([np.zeros(137), np.ones(163)]),
+          "expected": np.concatenate([np.zeros(136), np.ones(164)]),
           "num_bins": 2,
           "epsilon": 0.1
       }])
@@ -267,7 +267,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
     first_adapt = [[1], [2], [3]]
     second_adapt = [[4], [5], [6]]
     predict_input = [[2], [2]]
-    expected_first_output = [[1], [1]]
+    expected_first_output = [[2], [2]]
     expected_second_output = [[0], [0]]
 
     inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
@@ -289,15 +289,16 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
 
   def test_saved_model_tf(self):
     input_data = [[1], [2], [3]]
+    predict_data = [[0.5], [1.5], [2.5]]
     expected_output = [[0], [1], [2]]
 
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
     layer = discretization.Discretization(num_bins=3)
     layer.adapt(input_data)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 
-    output_data = model.predict(input_data)
+    output_data = model.predict(predict_data)
     self.assertAllClose(output_data, expected_output)
 
     # Save the model to disk.
@@ -310,21 +311,22 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
     self.assertIsNot(model, loaded_model)
 
     # Validate correctness of the new model.
-    new_output_data = f(constant_op.constant(input_data))["discretization"]
+    new_output_data = f(constant_op.constant(predict_data))["discretization"]
     self.assertAllClose(new_output_data, expected_output)
 
   def test_saved_model_keras(self):
     input_data = [[1], [2], [3]]
+    predict_data = [[0.5], [1.5], [2.5]]
     expected_output = [[0], [1], [2]]
 
     cls = discretization.Discretization
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
     layer = cls(num_bins=3)
     layer.adapt(input_data)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 
-    output_data = model.predict(input_data)
+    output_data = model.predict(predict_data)
     self.assertAllClose(output_data, expected_output)
 
     # Save the model to disk.
@@ -337,21 +339,22 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
     self.assertIsNot(model, loaded_model)
 
     # Validate correctness of the new model.
-    new_output_data = loaded_model.predict(input_data)
+    new_output_data = loaded_model.predict(predict_data)
     self.assertAllClose(new_output_data, expected_output)
 
   def test_saved_weights_keras(self):
     input_data = [[1], [2], [3]]
+    predict_data = [[0.5], [1.5], [2.5]]
     expected_output = [[0], [1], [2]]
 
     cls = discretization.Discretization
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
     layer = cls(num_bins=3)
     layer.adapt(input_data)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 
-    output_data = model.predict(input_data)
+    output_data = model.predict(predict_data)
     self.assertAllClose(output_data, expected_output)
 
     # Save the model to disk.
@@ -362,7 +365,7 @@ class DiscretizationAdaptTest(keras_parameterized.TestCase,
     new_model.load_weights(output_path)
 
     # Validate correctness of the new model.
-    new_output_data = new_model.predict(input_data)
+    new_output_data = new_model.predict(predict_data)
     self.assertAllClose(new_output_data, expected_output)
 
 

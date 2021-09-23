@@ -14,18 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -48,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -397,7 +401,7 @@ class IteratorVariantSerializer {
 
   // Initializes `this` from `serialized_t` while restoring the iterator state.
   Status InitFromTensor(const Tensor* serialized_t) {
-    int64 num_tensors = serialized_t->dim_size(0);
+    int64_t num_tensors = serialized_t->dim_size(0);
     auto serialized_vec = serialized_t->vec<Variant>();
     std::vector<const VariantTensorData*> data;
     data.reserve(num_tensors);
@@ -416,7 +420,7 @@ class IteratorVariantSerializer {
     return Status::OK();
   }
 
-  int64 NumTensors() { return num_tensors_; }
+  int64_t NumTensors() { return num_tensors_; }
 
   // Stores the IteratorStateVariant list into a pre-allocated tensor. Expects
   // that InitializeFromIterator was called before.
@@ -425,8 +429,8 @@ class IteratorVariantSerializer {
       return errors::InvalidArgument(
           "Please call InitializeFromIterator before calling Serialize.");
     }
-    int64 size = variants_.size();
-    for (int64 i = 0; i < size; ++i) {
+    int64_t size = variants_.size();
+    for (int64_t i = 0; i < size; ++i) {
       if (variants_[i].GetData() == nullptr) {
         return errors::Internal(
             "Cannot serialize an empty IteratorStateVariant");
@@ -442,7 +446,7 @@ class IteratorVariantSerializer {
 
  private:
   bool can_serialize_ = false;
-  int64 num_tensors_;
+  int64_t num_tensors_;
   std::vector<IteratorStateVariant> variants_;
   std::unique_ptr<IteratorStateReader> reader_;
 };
@@ -566,11 +570,19 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 // running them.
 AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
-    : AnonymousResourceOp<IteratorResource>(context),
+    : AnonymousResourceOp<IteratorResource>(
+          context,
+          /* ref_counting */
+          // Only enable this for V2 (via Python's iter protocol),
+          // AnonymousIteratorV1 requires IteratorToStringHandle, which is
+          // undefined on Refcounting ResourceHandle.
+          context->def().op() == kAnonymousIteratorV2,
+          // V1 does not return a deleter.
+          /* return_deleter */
+          context->def().op() == kAnonymousIteratorV2),
       graph_def_version_(context->graph_def_version()) {
   OP_REQUIRES_OK(context, context->GetAttr(kOutputTypes, &output_dtypes_));
   OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
-  create_deleter_ = context->def().op() == kAnonymousIteratorV2;
 }
 
 string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
@@ -622,7 +634,7 @@ Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
-  return ctx->resource_manager()->Delete(handle);
+  return DeleteResource(ctx, handle);
 }
 
 namespace {
@@ -890,7 +902,7 @@ AsyncOpKernel* IteratorGetNextOp::AsAsync() {
 void RecordElementSize(const std::vector<Tensor> element,
                        profiler::TraceMe* traceme) {
   traceme->AppendMetadata([&]() {
-    int64 element_size = 0;
+    int64_t element_size = 0;
     for (const auto& component : element) {
       element_size += component.TotalBytes();
     }
@@ -901,7 +913,7 @@ void RecordElementSize(const std::vector<Tensor> element,
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        int64 mem_bw = port::GetMemoryBandwidthInfo().bw_used;
+        int64_t mem_bw = port::GetMemoryBandwidthInfo().bw_used;
 
         if (mem_bw != INT64_MAX) {
           return profiler::TraceMeEncode(
@@ -939,9 +951,9 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        return strings::StrCat(
-            "IteratorGetNextAsOptionalOp::DoCompute#id=", ctx->step_id(),
-            ",iter_num=", ctx->frame_iter().iter_id, "#");
+        return profiler::TraceMeEncode(
+            "IteratorGetNextAsOptionalOp::DoCompute",
+            {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});
       },
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
@@ -1052,7 +1064,7 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
 SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   if (ctx->HasAttr(kExternalStatePolicy)) {
-    int64 state_change_option;
+    int64_t state_change_option;
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr(kExternalStatePolicy, &state_change_option));
     external_state_policy_ =
@@ -1073,7 +1085,7 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
-  SerializationContext::Params params;
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,
@@ -1102,8 +1114,8 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
-        Status(s.code(),
-               absl::StrCat(
+        errors::CreateWithUpdatedMessage(
+            s, absl::StrCat(
                    "Failed to restore dataset iterator from checkpoint: ",
                    s.error_message(),
                    ". Make sure the dataset definition has not changed between "

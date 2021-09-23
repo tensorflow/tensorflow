@@ -26,14 +26,14 @@ int main(int argc, char** argv) {
 
   struct FrontendState frontend_state;
   if (!FrontendPopulateState(&frontend_config, &frontend_state, sample_rate)) {
-    MICROFRONTEND_FPRINTF(stderr, "Failed to populate frontend state\n");
+    fprintf(stderr, "Failed to populate frontend state\n");
     FrontendFreeStateContents(&frontend_state);
     return 1;
   }
 
   FILE* fp = fopen(filename, "r");
   if (fp == NULL) {
-    MICROFRONTEND_FPRINTF(stderr, "Failed to open %s for read\n", filename);
+    fprintf(stderr, "Failed to open %s for read\n", filename);
     return 1;
   }
   fseek(fp, 0L, SEEK_END);
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   int16_t* original_audio_data = audio_data;
   if (audio_file_size !=
       fread(audio_data, sizeof(int16_t), audio_file_size, fp)) {
-    MICROFRONTEND_FPRINTF(stderr, "Failed to read in all audio data\n");
+    fprintf(stderr, "Failed to read in all audio data\n");
     fclose(fp);
     return 1;
   }

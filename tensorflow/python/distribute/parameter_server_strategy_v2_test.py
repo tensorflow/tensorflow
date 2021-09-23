@@ -20,44 +20,489 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import copy
 import functools
 import os
 
 from absl.testing import parameterized
 import numpy as np
+
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.saving import save as keras_save
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.saved_model import load as tf_load
+from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
 
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+MAX_NUM_WORKER = 2
+MAX_NUM_PS = 3
+
+_cluster = None
+
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _cluster
+  if _cluster is None:
+    _cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _cluster["worker"][:num_workers],
+      "ps": _cluster["ps"][:num_ps],
+  }
+
+
+source_combination = combinations.combine(source=["textfile", "keyvaluetensor"])
+
+source_and_load_combination = combinations.combine(
+    source=["textfile", "keyvaluetensor"], load=["tf_load", "keras_load"])
+
+
+class DistributedTableTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+
+  def tearDown(self):
+    super().tearDown()
+    # reset context to disconnect from the cluster.
+    context._reset_context()
+
+  def make_initializer(self, init_source, vals):
+    if init_source == "textfile":
+      file = os.path.join(self.get_temp_dir(), "text_file_initializer")
+      with open(file, "w") as f:
+        f.write("\n".join(str(v) for v in vals) + "\n")
+      return lookup_ops.TextFileInitializer(
+          filename=file,
+          key_dtype=dtypes.int64,
+          key_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+          value_dtype=dtypes.int64,
+          value_index=lookup_ops.TextFileIndex.WHOLE_LINE)
+    elif init_source == "keyvaluetensor":
+      keys_tensor = constant_op.constant(
+          list(range(len(vals))), dtype=dtypes.int64)
+      vals_tensor = constant_op.constant(vals)
+      return lookup_ops.KeyValueTensorInitializer(keys_tensor, vals_tensor)
+    else:
+      raise ValueError("Unrecognized init_source: " + init_source)
+
+  def createStaticHashTable(self,
+                            init_source=None,
+                            vals=None,
+                            default_value=None,
+                            initializer=None):
+    if not initializer:
+      initializer = self.make_initializer(init_source, vals)
+    return lookup_ops.StaticHashTable(
+        initializer=initializer, default_value=default_value)
+
+  def makeDatasetFromTensorWithoutUsingResource(self, input_context, tensor):
+    """Returns a dataset made from `tensor`. To be called in a dataset_fn."""
+    global_batch_size = 24
+    batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+    dataset = dataset_ops.DatasetV2.from_tensors(tensor).repeat().batch(
+        batch_size, drop_remainder=True)
+    dataset = dataset.shard(input_context.num_input_pipelines,
+                            input_context.input_pipeline_id)
+    dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
+    return dataset
+
+  @combinations.generate(source_combination)
+  def testCreateDistributedTableInScope(self, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookuptable = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    self.assertIsInstance(lookuptable, ps_values.DistributedTable)
+    self.assertEqual(self.evaluate(lookuptable.size()), 3)
+
+    # Lookup on the coordinator.
+    output = lookuptable.lookup(
+        constant_op.constant([0, 1, -1], dtype=dtypes.int64))
+    self.assertAllEqual([0, 1, -2], output)
+    self.assertEqual(lookuptable.size(), 3)
+
+  @combinations.generate(source_combination)
+  def testCopyDistributedTable(self, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookuptable = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    new_table = copy.copy(lookuptable)
+    # No new coordinator instance or distributed tables are created.
+    self.assertDictEqual(lookuptable.__dict__, new_table.__dict__)
+
+  @combinations.generate(source_combination)
+  def testCreateLookupInDatasetFnUnderScope(self, source):
+    # TODO(wxinyi): Warn the user of the inefficiency of this workflow (i.e.
+    # creating `StaticHashTable` inside a `@tf.function`-wrapped `dataset_fn` to
+    # be distributed with `distribute_datasets_from_function` and
+    # `create_per_worker_dataset`.
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+
+      def dataset_fn(input_context):
+        some_out_of_range_tensor = constant_op.constant(10, dtype=dtypes.int64)
+        lookuptable = self.createStaticHashTable(
+            init_source=source, vals=[0, 1, 2], default_value=-2)
+
+        self.assertNotIsInstance(lookuptable, ps_values.DistributedTable)
+
+        generation_tensor = lookuptable.lookup(some_out_of_range_tensor)
+        dataset = self.makeDatasetFromTensorWithoutUsingResource(
+            input_context, generation_tensor)
+        return dataset
+
+      @def_function.function
+      def per_worker_dataset_fn():
+        return strategy.distribute_datasets_from_function(dataset_fn)
+
+      per_worker_dataset = coordinator.create_per_worker_dataset(
+          per_worker_dataset_fn)
+      per_worker_iterator = iter(per_worker_dataset)
+
+      @def_function.function
+      def worker_fn(iterator):
+        return math_ops.reduce_sum(next(iterator))
+
+      result = []
+      for _ in range(10):
+        result.append(
+            coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+      for r in result:
+        returned_input = r.fetch()
+        self.assertAllClose(-48, returned_input)
+
+  @combinations.generate(source_combination)
+  def testAccessingResourceHandleInDatasetFnWithoutMap(self, source):
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookuptable = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    def dataset_fn(input_context):
+      some_out_of_range_tensor = constant_op.constant(10, dtype=dtypes.int64)
+
+      self.assertIsInstance(lookuptable, ps_values.DistributedTable)
+
+      generation_tensor = lookuptable.lookup(some_out_of_range_tensor)
+      dataset = self.makeDatasetFromTensorWithoutUsingResource(
+          input_context, generation_tensor)
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return strategy.distribute_datasets_from_function(dataset_fn)
+
+    per_worker_dataset = coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return math_ops.reduce_sum(next(iterator))
+
+    result = []
+    for _ in range(10):
+      result.append(
+          coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+    for r in result:
+      returned_input = r.fetch()
+      self.assertAllClose(-48, returned_input)
+
+  @combinations.generate(source_combination)
+  def testAccessingResourceHandleInDatasetFnWithMapFnDefinedInside(
+      self, source):
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookuptable = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    def dataset_fn(input_context):
+      generation_tensor = constant_op.constant([0, 1, 3], dtype=dtypes.int64)
+      dataset = self.makeDatasetFromTensorWithoutUsingResource(
+          input_context, generation_tensor)
+      dataset = dataset.map(lookuptable.lookup)
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return strategy.distribute_datasets_from_function(dataset_fn)
+
+    per_worker_dataset = coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return math_ops.reduce_sum(next(iterator))
+
+    result = []
+    for _ in range(10):
+      # batch_size == 24 and each input is [0, 1, -2]
+      result.append(
+          coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+    for r in result:
+      returned_input = r.fetch()
+      self.assertAllClose(-24, returned_input)
+
+  @combinations.generate(source_combination)
+  def testAccessingResourceHandleInDatasetFnWithMapFnDefinedOutside(
+      self, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookuptable = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    def map_fn(vals):
+      return lookuptable.lookup(vals)
+
+    def dataset_fn(input_context):
+      generation_tensor = constant_op.constant([0, 1, 3], dtype=dtypes.int64)
+      dataset = self.makeDatasetFromTensorWithoutUsingResource(
+          input_context, generation_tensor)
+      dataset = dataset.map(map_fn)
+      return dataset
+
+    @def_function.function
+    def per_worker_dataset_fn():
+      return strategy.distribute_datasets_from_function(dataset_fn)
+
+    per_worker_dataset = coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return math_ops.reduce_sum(next(iterator))
+
+    result = []
+    for _ in range(10):
+      # batch_size == 24 and each input is [0, 1, -2]
+      result.append(
+          coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+    for r in result:
+      returned_input = r.fetch()
+      self.assertAllClose(-24, returned_input)
+
+  class Model(module.Module):
+
+    def __init__(self, init_source, filepath):
+      vals = [0, 1, 2]
+      if init_source == "textfile":
+
+        with open(filepath, "w") as f:
+          f.write("\n".join(str(v) for v in vals) + "\n")
+
+        self.initializer = lookup_ops.TextFileInitializer(
+            filepath, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+            dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
+      else:
+        keys_tensor = constant_op.constant(
+            list(range(len(vals))), dtype=dtypes.int64)
+        vals_tensor = constant_op.constant(vals)
+        self.initializer = lookup_ops.KeyValueTensorInitializer(
+            keys_tensor, vals_tensor)
+
+      self.table = lookup_ops.StaticHashTable(
+          self.initializer, default_value=-2)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
+    def use_table(self, x):
+      return self.table.lookup(x)
+
+  def verifyWorkerLocalInstance(self, coordinator, model):
+    # assert capturing a worker-local resource on each worker
+    for worker in coordinator._cluster.workers:
+      with coordinator_context.with_dispatch_context(worker):
+        captures = model.use_table.get_concrete_function().captured_inputs
+        resource_capture = [t for t in captures if t.dtype == dtypes.resource]
+        self.assertNotEmpty(resource_capture)
+        for capture in resource_capture:
+          self.assertEqual(
+              capture.device,
+              device_util.canonicalize("/CPU:0", default=worker.device_name))
+
+  @combinations.generate(source_combination)
+  def testInModelAndCapture(self, source):
+
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+
+    model = self.Model(source, file_path)
+    func_captures = model.use_table.get_concrete_function(
+    ).graph.external_captures
+    self.assertLen(func_captures, 2)
+    self.assertTrue(
+        any(model.table.resource_handle is t for t in func_captures))
+    deferred_captures = model.use_table.get_concrete_function(
+    ).graph.deferred_external_captures
+    self.assertEmpty(deferred_captures)
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy)
+    with strategy.scope():
+      distributed_model = self.Model("value", file_path)
+    func_captures = distributed_model.use_table.get_concrete_function(
+    ).graph.external_captures
+    # One less external_capture, since the table handle becomes a closure in the
+    # deferred_external_capture
+    self.assertLen(func_captures, 1)
+    self.assertFalse(
+        any(model.table.resource_handle is t for t in func_captures))
+    deferred_captures = distributed_model.use_table.get_concrete_function(
+    ).graph.deferred_external_captures
+    self.assertNotEmpty(deferred_captures)
+
+    self.verifyWorkerLocalInstance(coordinator, distributed_model)
+
+  @combinations.generate(source_and_load_combination)
+  def testDistributeTableSaveAndServe(self, load, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with strategy.scope():
+      model = self.Model(source, file_path)
+
+    model_dir = self.get_temp_dir()
+    tf_save.save(model, model_dir)
+
+    if load == "tf_load":
+      load_fn = tf_load.load
+    else:
+      load_fn = keras_save.load_model
+
+    loaded_without_strategy = load_fn(model_dir)
+    loaded_func_captures_without_strategy = (
+        loaded_without_strategy.use_table.get_concrete_function().graph
+        .external_captures)
+    loaded_func_deferred_captures_without_strategy = (
+        loaded_without_strategy.use_table.get_concrete_function().graph
+        .deferred_external_captures)
+    self.assertLen(loaded_func_captures_without_strategy, 2)
+    self.assertEmpty(loaded_func_deferred_captures_without_strategy)
+
+    self.assertAllEqual(
+        loaded_without_strategy.use_table(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64)), [0, 1, -2])
+
+  @combinations.generate(source_and_load_combination)
+  def testDistributeTableSaveAndLoadUnderStrategy(self, load, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy)
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with strategy.scope():
+      model = self.Model(source, file_path)
+    model_dir = self.get_temp_dir()
+    tf_save.save(model, model_dir)
+
+    if load == "tf_load":
+      load_fn = tf_load.load
+    else:
+      load_fn = keras_save.load_model
+
+    with strategy.scope():
+      loaded = load_fn(model_dir)
+
+    loaded_func_captures = (
+        loaded.use_table.get_concrete_function().graph.external_captures)
+    loaded_func_deferred_captures = (
+        loaded.use_table.get_concrete_function().graph
+        .deferred_external_captures)
+    # Compared with loading without strategy, there is one less
+    # external_capture, since the captured table handle has been swapped to a
+    # closure in the deferred_external_capture
+    self.assertLen(loaded_func_captures, 1)
+    self.assertNotEmpty(loaded_func_deferred_captures)
+
+    self.assertIsInstance(loaded.table, ps_values.DistributedTable)
+
+    self.assertLen([
+        t for t in loaded.use_table.get_concrete_function().captured_inputs
+        if t.dtype == dtypes.resource
+    ], 1)
+
+    self.verifyWorkerLocalInstance(coordinator, loaded)
+
 
 class ParameterServerStrategyV2Test(test.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(ParameterServerStrategyV2Test, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=3)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -163,17 +608,6 @@ class ParameterServerStrategyV2Test(test.TestCase):
     self.assertEqual(v6.device, "/job:ps/replica:0/task:0/device:CPU:0")
 
   @contextlib.contextmanager
-  def _assertRaisesUsageError(self):
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        "`tf.distribute.experimental.ParameterServerStrategy` must be used "
-        "with `tf.distribute.experimental.coordinator.ClusterCoordinator` in "
-        "a custom training loop. If you are using `Model.fit`, please supply "
-        "a dataset function directly to a "
-        "`tf.keras.utils.experimental.DatasetCreator` instead."):
-      yield
-
-  @contextlib.contextmanager
   def _assertRaisesUsageWarningWithSchedule(self):
     with self.assertLogs(level="WARNING") as logs:
       yield
@@ -191,7 +625,7 @@ class ParameterServerStrategyV2Test(test.TestCase):
   def testRunNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    dataset = dataset_ops.DatasetV2.range(3)
+    dataset = dataset_ops.DatasetV2.range(8)
     with strategy.scope():
       v = variables.Variable(1, dtype=dtypes.int64)
 
@@ -220,24 +654,74 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageWarningWithSchedule():
       strategy.reduce("SUM", None, axis=None)
 
-  def testDistributeDatasetNotUsedWithClusterCoordinator(self):
+  def testDistributeDatasetUsedDirectly(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     dataset = dataset_ops.DatasetV2.range(3)
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.experimental_distribute_dataset(dataset))()
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
 
-  def testDistributeDatasetFromFunctionNotUsedWithClusterCoordinator(self):
+    distributed_dataset = strategy.distribute_datasets_from_function(
+        lambda: dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
+
+  def testSparselyReadForEmbeddingLookup(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
 
-    def dataset_fn(_):
-      return dataset_ops.DatasetV2.range(3)
+    class FakeModel(module.Module):
 
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.distribute_datasets_from_function(dataset_fn))()
+      def __init__(self):
+        self._var0 = variables.Variable([1.0, 2.0, 3.0, 4.0])
+        self._var1 = variables.Variable([5.0, 6.0, 7.0, 8.0])
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[2], dtype=dtypes.int32, name="inputs")
+      ])
+      def func(self, x):
+        return embedding_ops.embedding_lookup([self._var0, self._var1], x)
+
+    with strategy.scope():
+      model = FakeModel()
+
+    # Assert that ResourceGather op exists instead of Gather in training
+    # function.
+    found_resource_gather = False
+    found_gather = False
+
+    for n in model.func.get_concrete_function().graph.as_graph_def().node:
+      if n.op == "ResourceGather":
+        found_resource_gather = True
+      elif n.op == "Gather":
+        found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # Assert that ResourceGather op exists instead of Gather in saved_model.
+    found_resource_gather = False
+    found_gather = False
+
+    tmp_dir = self.get_temp_dir()
+    tf_save.save(model, tmp_dir, signatures=model.func)
+
+    with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
+      saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())
+
+    for function in saved_model_proto.meta_graphs[0].graph_def.library.function:
+      for n in function.node_def:
+        if n.op == "ResourceGather":
+          found_resource_gather = True
+          resource_gather_device = n.device
+        elif n.op == "Gather":
+          found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # We also assert that the colocate_with in embedding_ops will not result in
+    # a hard-coded device string.
+    self.assertEmpty(resource_gather_device)
 
 
 class PartitionAwareIdentity(object):
@@ -253,12 +737,10 @@ class PartitionAwareIdentity(object):
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningTest, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=2)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=2)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -600,35 +1082,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
 class ClusterTypeNameTest(test.TestCase):
 
-  def testArbitraryChiefName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1,
-        num_ps=1,
-        has_chief=True,
-        chief_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryWorkerName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryPsName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
-    cluster_def["chief"] = [
+  def testArbitraryJobName(self):
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
+    cluster_def["some_arbitrary_name"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
@@ -637,18 +1094,15 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
     with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testMoreThanOneChief(self):
-    cluster_def = multi_worker_test_base._create_cluster(
+    cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=1)
     chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
     cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
@@ -662,11 +1116,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOneWorker(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=0, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=0, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
     with self.assertRaisesRegexp(ValueError,
@@ -674,11 +1125,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOnePs(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=0)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=0, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def),
         rpc_layer="grpc",

@@ -245,7 +245,9 @@ class OpNode {
 
   // Build thew new EagerOperation. In case of error, the returned 'op' is
   // guaranteed to be 'nullptr'.
-  tensorflow::Status BuildEagerOp(tensorflow::EagerContext* eager_context) {
+  tensorflow::Status BuildEagerOp(
+      tensorflow::EagerContext* eager_context,
+      tensorflow::CancellationManager* cancellation_manager) {
     op_.reset(new tensorflow::EagerOperation(eager_context));
     TF_RETURN_IF_ERROR(op_->Reset(name_.c_str(), nullptr, false, nullptr));
     if (op_->is_function()) {
@@ -264,6 +266,8 @@ class OpNode {
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
     op_->MutableAttrs()->CacheKey(op_->DeviceName());
+
+    op_->SetCancellationManager(cancellation_manager);
 
     return tensorflow::Status::OK();
   }
@@ -366,6 +370,7 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
 // The larger 'op', which contains all the nodes in a supported subgraph.
 struct OpData {
   tensorflow::EagerContext* eager_context;
+  tensorflow::CancellationManager* cancellation_manager;
   BufferMap* buffer_map;
   std::vector<std::unique_ptr<OpNode>> nodes;
   std::vector<int> subgraph_inputs;
@@ -380,6 +385,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   auto* flex_delegate_data =
       reinterpret_cast<FlexDelegate*>(params->delegate->data_)->mutable_data();
   op_data_->eager_context = flex_delegate_data->GetEagerContext();
+  op_data_->cancellation_manager = flex_delegate_data->GetCancellationManager();
   op_data_->buffer_map = flex_delegate_data->GetBufferMap(context);
 
   CHECK(params->output_tensors);
@@ -412,7 +418,8 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     status = node_data.InitializeNodeDef(node->custom_initial_data,
                                          node->custom_initial_data_size);
     if (!status.ok()) break;
-    status = node_data.BuildEagerOp(op_data_->eager_context);
+    status = node_data.BuildEagerOp(op_data_->eager_context,
+                                    op_data_->cancellation_manager);
     if (!status.ok()) break;
   }
 
@@ -613,6 +620,12 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
     TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
         reinterpret_cast<Profiler*>(context->profiler),
         node_data->name().c_str(), node_data->index());
+
+    if (op_data_->cancellation_manager != nullptr &&
+        op_data_->cancellation_manager->IsCancelled()) {
+      TF_LITE_KERNEL_LOG(context, "Client requested cancel during Invoke()");
+      return kTfLiteError;
+    }
 
     auto status = ExecuteFlexOp(context, buffer_map, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));

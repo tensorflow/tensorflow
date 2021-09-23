@@ -21,9 +21,11 @@ from __future__ import print_function
 
 class PyCTError(Exception):
   """Base class for all exceptions."""
-  pass
 
 
 class UnsupportedLanguageElementError(PyCTError, NotImplementedError):
   """Raised for code patterns that AutoGraph does not support."""
-  pass
+
+
+class InaccessibleSourceCodeError(PyCTError, ValueError):
+  """Raised when inspect can not access source code."""

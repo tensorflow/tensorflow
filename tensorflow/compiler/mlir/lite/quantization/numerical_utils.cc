@@ -34,9 +34,9 @@ QuantizedMultiplier QuantizeMultiplier(double double_multiplier) {
 
   int32_t shift;
   const double q = frexp(double_multiplier, &shift);
-  auto q_fixed = static_cast<int64_t>(round(q * (1ll << 31)));
-  assert(q_fixed <= (1ll << 31));
-  if (q_fixed == (1ll << 31)) {
+  auto q_fixed = static_cast<int64_t>(round(q * (1LL << 31)));
+  assert(q_fixed <= (1LL << 31));
+  if (q_fixed == (1LL << 31)) {
     q_fixed /= 2;
     ++shift;
   }

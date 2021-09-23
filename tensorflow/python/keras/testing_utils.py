@@ -572,7 +572,8 @@ def get_model_from_layers(model_layers,
                           input_dtype=None,
                           name=None,
                           input_ragged=None,
-                          input_sparse=None):
+                          input_sparse=None,
+                          model_type=None):
   """Builds a model from a sequence of layers.
 
   Args:
@@ -582,12 +583,14 @@ def get_model_from_layers(model_layers,
     name: Name for the model.
     input_ragged: Boolean, whether the input data is a ragged tensor.
     input_sparse: Boolean, whether the input data is a sparse tensor.
+    model_type: One of "subclass", "subclass_custom_build", "sequential", or
+      "functional". When None, defaults to `get_model_type`.
 
   Returns:
     A Keras model.
   """
-
-  model_type = get_model_type()
+  if model_type is None:
+    model_type = get_model_type()
   if model_type == 'subclass':
     inputs = None
     if input_ragged or input_sparse:

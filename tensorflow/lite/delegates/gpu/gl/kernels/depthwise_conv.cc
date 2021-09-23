@@ -92,7 +92,6 @@ class DepthwiseConvolution : public NodeShader {
       source = R"(
         int offsets_count = $kernel_w$ * $kernel_h$;
         int src_layer_offset = (gid.z % $channel_multiplier$) * 4;
-        int filter_offset = gid.z * $src_depth$ * offsets_count * 4;
         int i = 0;
         for (int ky = 0; ky < $kernel_h$; ky++) {
           for (int kx = 0; kx < $kernel_w$; kx++, i++) {
@@ -101,7 +100,6 @@ class DepthwiseConvolution : public NodeShader {
       source = R"(
         int offsets_count = $offsets_count$;
         int src_layer_offset = (gid.z % $channel_multiplier$) * 4;
-        int filter_offset = gid.z * $src_depth$ * offsets_count * 4;
         for (int i = 0; i < offsets_count; ++i) {
           ivec2 coord = gid.xy * $stride$ + $offsets[i]$;)";
     }
@@ -121,8 +119,7 @@ class DepthwiseConvolution : public NodeShader {
           input_[(src_layer_offset + 2) / $channel_multiplier$],
           input_[(src_layer_offset + 3) / $channel_multiplier$]
         );
-        int filter_offset = gid.z * offsets_count + i;
-        value_0 += input_shifted * $weights[filter_offset]$;
+        value_0 += input_shifted * $weights[gid.z * offsets_count + i]$;
       }
 )";
     if (offsets_count_too_large) {

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -83,8 +85,11 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
+  //
+  // "start_time_usecs" is a timestamp for the start of RunAsync()
+  // execution. Used for system-wide latency metrics.
   struct Args {
-    int64 step_id = 0;
+    int64_t step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
@@ -96,6 +101,10 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    int64_t start_time_usecs = 0;
+    // The deadline for the kernel to complete by. Empty if unspecified.
+    absl::optional<absl::Time> deadline;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

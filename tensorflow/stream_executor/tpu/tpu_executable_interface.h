@@ -81,7 +81,11 @@ class TpuExecutableInterface : public Executable {
  protected:
   virtual Shape HostShapeToDeviceShape(const Shape& host_shape) = 0;
 
-  virtual int64 ShapeSize(const Shape& shape) = 0;
+  virtual int64_t ShapeSize(const Shape& shape) = 0;
+
+  virtual bool InputShapeValidForAlias(const Shape& shape, se::Stream* stream) {
+    return true;
+  }
 };
 
 }  // namespace xla

@@ -53,6 +53,7 @@ ASYNC_STATEFUL_OPS = [
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
     "Recv",
+    "CollectiveInitializeCommunicator",
 ]
 
 LEGACY_RANDOM_OPS = [
@@ -315,7 +316,9 @@ class AutomaticControlDependencies(object):
 
     if self._graph is not ops.get_default_graph():
       raise RuntimeError(
-          "Graph changed while trying to add control dependencies.")
+          "Within the automatic control dependency context, the default graph"
+          f" cannot change. Upon entry it was {self._graph}, but on exit it"
+          f" changed to {ops.get_default_graph()}")
 
     if hasattr(self._graph, "outer_graph"):
       outer_val = self._graph.outer_graph._add_control_dependencies

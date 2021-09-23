@@ -14,89 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 
-#include <vector>
-
-#include "absl/strings/str_split.h"
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-
 namespace mlir {
 namespace TFL {
-namespace {
-// The signature contains namespaces (Ex: mlir::TFL::(anonymous namespace)::).
-// So only extract the function name as the pass name.
-inline std::string extract_pass_name(const std::string &signature) {
-  const std::vector<std::string> &v = absl::StrSplit(signature, "::");
-  return v.back();
-}
-}  // namespace
 
-ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
-    MLIRContext *context) {
-  handler_.reset(new ScopedDiagnosticHandler(context, [this](Diagnostic &diag) {
-    if (diag.getSeverity() == DiagnosticSeverity::Error) {
-      Location loc = diag.getLocation();
-      if (loc_to_name_.count(loc)) {
-        const std::string &op_name = loc_to_name_[loc];
-        AppendNewError(/*pass_name=*/"", diag.str(), /*error_code=*/"",
-                       op_name);
-      } else {
-        common_error_message_ += diag.str();
-        common_error_message_ += "\n";
-      }
-    }
-    return failure();
-  }));
-}
+ErrorCollector* ErrorCollector::error_collector_instance_ = nullptr;
 
-void ErrorCollectorInstrumentation::runBeforePass(Pass *pass,
-                                                  Operation *module) {
-  // Find the op names with tf or tfl dialect prefix, Ex: "tf.Abs" or "tfl.Abs".
-  auto collectOps = [this](Operation *op) {
-    const auto &op_name = op->getName().getStringRef().str();
-    if (absl::StartsWith(op_name, "tf.") || absl::StartsWith(op_name, "tfl.")) {
-      loc_to_name_.emplace(op->getLoc(), op_name);
-    }
-  };
-
-  for (auto &region : module->getRegions()) {
-    region.walk(collectOps);
+ErrorCollector* ErrorCollector::GetErrorCollector() {
+  if (error_collector_instance_ == nullptr) {
+    error_collector_instance_ = new ErrorCollector();
   }
+  return error_collector_instance_;
 }
 
-void ErrorCollectorInstrumentation::runAfterPass(Pass *pass,
-                                                 Operation *module) {
-  loc_to_name_.clear();
-  errors_.clear();
-  common_error_message_.clear();
-}
-
-void ErrorCollectorInstrumentation::runAfterPassFailed(Pass *pass,
-                                                       Operation *module) {
-  std::string pass_name = extract_pass_name(pass->getName().str());
-  for (auto &error : errors_) {
-    error.set_subcomponent(pass_name);
-  }
-
-  // Create a new error if no errors collected yet.
-  if (errors_.empty() && !common_error_message_.empty()) {
-    AppendNewError(pass_name, common_error_message_,
-                   /*error_code=*/"", /*op_name=*/"");
-  }
-
-  // Report to ErrorCollector.
-  ErrorCollector *collector = GetErrorCollector();
-  for (auto &error : errors_) {
-    collector->ReportError(error);
-  }
-  loc_to_name_.clear();
-  errors_.clear();
-  common_error_message_.clear();
-}
-
-ErrorCollector *GetErrorCollector() {
-  static ErrorCollector *global_error_collector = new ErrorCollector();
-  return global_error_collector;
-}
 }  // namespace TFL
 }  // namespace mlir

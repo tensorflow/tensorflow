@@ -22,6 +22,7 @@ import itertools
 import pickle
 import re
 import sys
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -33,6 +34,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -240,6 +242,113 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
 
+  @unittest.expectedFailure
+  def testMethodAllowDynamicVariableWithoutGuards(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._var = 0
+
+      def __call__(self, val):
+        self.compute(val)
+        return self._var
+
+      @def_function.function
+      def compute(self, val):
+        self._var = variables.Variable(val)
+
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
+    foo = Foo()
+    self.assertAllEqual(foo(0.3), 0.3)
+    self.assertAllEqual(
+        foo(0.9), 0.9, 'https://github.com/tensorflow/tensorflow/issues/27120')
+
+  def testMethodAllowDynamicVariable(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._flag_keyed_vars = {}
+        self.trace_count = 0
+
+      def __call__(self, var_creation_flag):
+        self.compute(var_creation_flag)
+        return self._flag_keyed_vars[var_creation_flag]
+
+      @def_function.function
+      def compute(self, var_creation_flag):
+        self.trace_count += 1
+        if var_creation_flag not in self._flag_keyed_vars:
+          if var_creation_flag:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
+          else:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
+
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
+    foo = Foo()
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(False), 2.0)
+    self.assertEqual(foo.trace_count, 3)
+
+  def testMethodNotAllowDynamicVariable(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._flag_keyed_vars = {}
+        self.trace_count = 0
+
+      def __call__(self, var_creation_flag):
+        self.compute(var_creation_flag)
+        return self._flag_keyed_vars[var_creation_flag]
+
+      @def_function.function
+      def compute(self, var_creation_flag):
+        self.trace_count += 1
+        if var_creation_flag not in self._flag_keyed_vars:
+          if var_creation_flag:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
+          else:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
+
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = False
+    foo = Foo()
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    msg = 'singleton tf.Variable.*on the first call'
+    with self.assertRaisesRegex(ValueError, msg):
+      foo(False)
+    self.assertEqual(foo.trace_count, 3)
+
+  def testMethodExtensionType(self):
+
+    class MaskedTensor(extension_type.ExtensionType):
+      values: ops.Tensor
+      mask: ops.Tensor
+
+      @def_function.function
+      def with_default(self, default_value):
+        return array_ops.where_v2(self.mask, self.values, default_value)
+
+      @def_function.function
+      def sum(self):
+        # Use a loop & conditional to test that autograph works correctly.
+        result = 0
+        for i in range(array_ops.size(self.values)):
+          if self.mask[i]:
+            result += self.values[i]
+        return result
+
+    mt = MaskedTensor([1, 2, 3], [True, False, True])
+    self.assertAllEqual(mt.with_default(-1), [1, -1, 3])
+    self.assertAllEqual(mt.sum(), 4)
+
   def test_functools_partial(self):
     self.assertAllClose(
         3.,
@@ -317,6 +426,144 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
 
+  def testInputSignatureMissingTensorSpecsMethod(self):
+
+    class MyModule(module.Module):
+
+      def f1(self, arg1, arg2, arg3):
+        pass
+
+      def f2(self, arg1, arg2, arg3, **kwargs):
+        pass
+
+      def f3(self, arg1, arg2, arg3, arg4=4, **kwargs):
+        pass
+
+      def f4(self, arg1, arg2, arg3, *args):
+        pass
+
+      def f5(self, arg1, arg2, arg3, *args, **kwargs):
+        pass
+
+      def f6(self, arg1, arg4=4, **kwargs):
+        return arg1 + arg4
+
+    m = MyModule()
+    tf_func_dec = def_function.function(
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+    error_msg = 'TensorSpecs are still required.*arg2.*arg3'
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(m.f1)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(m.f2)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(m.f3)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(m.f4)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(m.f5)(1, 2, 3)
+
+    self.assertEqual(tf_func_dec(m.f6)(1).numpy(), 5)
+
+  def testInputSignatureMissingTensorSpecsFunction(self):
+    tf_func_dec = def_function.function(
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+    error_msg = 'TensorSpecs are still required.*arg2.*arg3'
+    # pylint: disable=unused-argument
+    def f1(arg1, arg2, arg3):
+      pass
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(f1)(1, 2, 3)
+
+    def f2(arg1, arg2, arg3, **kwargs):
+      pass
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(f2)(1, 2, 3)
+
+    def f3(arg1, arg2, arg3, arg4=4, **kwargs):
+      pass
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(f3)(1, 2, 3)
+
+    def f4(arg1, arg2, arg3, *args):
+      pass
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(f4)(1, 2, 3)
+
+    def f5(arg1, arg2, arg3, *args, **kwargs):
+      pass
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(f5)(1, 2, 3)
+    # pyline: enable=unused-argument
+
+    def f6(arg1, arg4=4, **kwargs):
+      return arg1 + arg4
+    self.assertEqual(tf_func_dec(f6)(1).numpy(), 5)
+
+  def testInputSignatureMissingTensorSpecsLambdaFunction(self):
+    tf_func_dec = def_function.function(
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+    error_msg = 'TensorSpecs are still required.*arg2.*arg3'
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(lambda ar1, arg2, arg3: None)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(lambda arg1, arg2, arg3, **kwargs: None)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(lambda arg1, arg2, arg3, arg4=4, **kwargs: None)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(lambda arg1, arg2, arg3, *args: None)(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError, error_msg):
+      tf_func_dec(lambda arg1, arg2, arg3, *args, **kwargs: None)(1, 2, 3)
+
+    self.assertEqual(
+        tf_func_dec(lambda arg1, arg4=4, **kwargs: arg1 + arg4)(1).numpy(), 5)
+
+  @parameterized.named_parameters(('_method', 'method'),
+                                  ('_function', 'function'),
+                                  ('_lambda_function', 'lambda_function'))
+  def testInputSignaturePartialFuncMissingTensorSpecs(self, func_type):
+    if func_type == 'method':
+      class MyModule(module.Module):
+
+        def f(self, arg1, arg2, arg3, arg4=4):
+          return arg1 + arg2 + arg3 + arg4
+      f = MyModule().f
+    elif func_type == 'function':
+      def f(arg1, arg2, arg3, arg4=4):
+        return arg1 + arg2 + arg3 + arg4
+    else:  # lambda_function
+      f = lambda arg1, arg2, arg3, arg4=4: arg1 + arg2 + arg3 + arg4
+
+    tf_func_dec = def_function.function(
+        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+    with self.assertRaisesRegex(TypeError,
+                                'TensorSpecs are still required.*arg3'):
+      tf_func_dec(functools.partial(f, 1))(2, 3)
+
+    with self.assertRaisesRegex(TypeError,
+                                'TensorSpecs are still required.*arg2.*arg3'):
+      tf_func_dec(functools.partial(f, arg4=5))(1, 2, 3)
+
+    with self.assertRaisesRegex(TypeError,
+                                'TensorSpecs are still required.*arg3'):
+      tf_func_dec(functools.partial(f, 1, arg4=5))(2, 3)
+
+    self.assertAllEqual(tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
+                        array_ops.constant(11))
+
   @test_util.run_in_graph_and_eager_modes
   def test_variable_naming(self):
     class HasVars(module.Module):
@@ -384,7 +631,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return outputs
 
     with self.assertRaisesRegex(errors.InaccessibleTensorError,
-                                'defined in another function or code block'):
+                                'captured an external symbolic tensor'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testRuntimeErrorNotSticky(self):
@@ -463,8 +710,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         TypeError,
-        re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
+        re.compile('captured an external symbolic tensor.*Const', re.DOTALL)):
       failing_function()
+
+  def testSymbolicTensorCapturedInput(self):
+
+    x = None
+
+    @def_function.function
+    def f1(a):
+      nonlocal x
+      x = a
+      return a
+
+    @def_function.function
+    def f2(b):
+      return b + x
+
+    f1(constant_op.constant(1))
+    with self.assertRaisesRegex(
+        TypeError,
+        re.compile('def_function_test.*captured an external symbolic tensor',
+                   re.DOTALL)):
+      f2(constant_op.constant(2))
 
   def testNonUniqueNamesGetConcreteFunction(self):
     @def_function.function
@@ -553,10 +821,12 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    self.assertEqual(trace_count[0], 2)
+    # No retracing because v2's data type and shape are the same as v1
+    self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    self.assertEqual(trace_count[0], 3)
+    # Retracing because of data type change
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):

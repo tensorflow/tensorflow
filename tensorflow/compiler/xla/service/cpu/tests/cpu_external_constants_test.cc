@@ -30,7 +30,8 @@ namespace cpu {
 namespace {
 class CpuExternalConstantsTest : public CpuCodegenTest {
  public:
-  void TestWithArray(int64 rows, int64 cols, const char* filecheck_pattern) {
+  void TestWithArray(int64_t rows, int64_t cols,
+                     const char* filecheck_pattern) {
     HloComputation::Builder builder(TestName());
 
     Array2D<float> backing_array(rows, cols);

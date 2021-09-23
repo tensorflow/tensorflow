@@ -45,8 +45,10 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    # TODO(b/187847053): Enable test in pip.
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/190842754): Enable test in OSS.
+        "no_pip",  # TODO(b/187847053): Enable test in pip.
+    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -184,9 +186,24 @@ py_library(
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/optimize:calibrator",
-        "//tensorflow/python:graph_util",
-        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/lite/tools/optimize/debugging/python:debugger",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -221,7 +238,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -364,9 +381,11 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
@@ -500,7 +519,7 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
@@ -509,6 +528,9 @@ pytype_strict_library(
 py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     tags = ["no_oss"],
     visibility = ["//visibility:public"],
@@ -516,6 +538,7 @@ py_test(
         ":lite",
         ":metrics_nonportable",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -563,8 +586,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -572,12 +596,14 @@ py_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
+        "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
-        "//tensorflow/lite/python/testdata:interpreter_test_data",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     python_version = "PY3",
     deps = [
         ":analyzer",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

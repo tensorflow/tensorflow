@@ -25,6 +25,15 @@ namespace {
 // Perform tf.data optimizations.
 struct TFDataOptimization
     : public PassWrapper<TFDataOptimization, FunctionPass> {
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-data-optimization";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Performs tf.data optimizations";
+  }
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
@@ -37,5 +46,4 @@ struct TFDataOptimization
 }  // namespace TF
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::TF::TFDataOptimization> pass(
-    "tf-data-optimization", "Performs tf.data optimizations");
+static mlir::PassRegistration<mlir::TF::TFDataOptimization> pass;

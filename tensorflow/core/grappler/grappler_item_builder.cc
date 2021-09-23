@@ -61,7 +61,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
       flat(i) = static_cast<float>(i % period) / 10.0f;
     }
   } else if (type == DT_INT64) {
-    auto flat = tensor->flat<int64>();
+    auto flat = tensor->flat<int64_t>();
     // Populate numbers 0, 1, 2, ..., 5, 6, 0, 1, 2, ...
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;
@@ -143,7 +143,7 @@ Status UpdatePlaceholderShape(
                             ": ", make_shape_status, ", skipping this input");
   }
 
-  // Some placeholder nodes have a mis-match between the node
+  // Some placeholder nodes have a mismatch between the node
   // attribute "shape" and a different node attribute "_output_shapes".
   // Specifically, a shape with shape.dims() == 0 could indicate either
   // a scalar or an unknown shape. In those cases, we check _output_shapes
@@ -278,7 +278,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr,
+                     tensorflow::GraphOptimizer::Options());
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.
@@ -328,7 +329,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         // Define the shapes following the comment of CooSparse.
         // TODO(yuefengz): we probably want to use different dim values for the
         // three tensors of a SparseTensor.
-        int64 dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
+        int64_t dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
         TensorShape shape_1d({dim});
         TensorShape shape_2d({dim, dim});
 

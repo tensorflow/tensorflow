@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -83,9 +87,11 @@ class DynamicPadderTest : public HloTestBase {
   }
 
   StatusOr<bool> RunPadder(bool slice_dynamic_output = false) {
-    DynamicPadder padder(/*slice_dynamic_output=*/slice_dynamic_output,
-                         CustomCallDynamicDimensionInference,
-                         OpHasDynamismSupport);
+    DynamicPadderOptions options;
+    options.slice_dynamic_output = slice_dynamic_output;
+    options.custom_call_handler = CustomCallDynamicDimensionInference;
+    options.op_supports_dynamism_handler = OpHasDynamismSupport;
+    DynamicPadder padder(std::move(options));
     return padder.Run(module_.get());
   }
 
@@ -251,9 +257,38 @@ ENTRY main {
   auto custom_call_1 =
       module_->entry_computation()->GetInstructionWithName("custom-call.1");
   EXPECT_THAT(custom_call_1,
-              op::CustomCall(
-                  "OpWithDynamicLowering",
-                  op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic"))));
+              op::CustomCall("OpWithDynamicLowering",
+                             op::Tuple(op::GetTupleElement(),
+                                       op::CustomCall("SliceToDynamic"))));
+}
+
+TEST_F(DynamicPadderTest, DynamicOutputNestedTuple) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  const2 = s32[] constant(4)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  // Create a tuple with static and dynamic componenet.
+  tuple0 = (s32[], s32[<=5]) tuple(const, param_padded)
+  ROOT tuple1 = (s32[], (s32[], s32[<=5])) tuple(const2, tuple0)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module_.get()).status());
+  XLA_LOG_LINES(0, module_->ToString());
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Constant(), op::Tuple()));
+  HloInstruction* nested_tuple = root->mutable_operand(1);
+  EXPECT_THAT(nested_tuple,
+              op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic")));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {
@@ -429,7 +464,9 @@ class ExecutionTest : public HloTestBase {
           ->ClearDynamicShape();
       module->set_config(new_config);
     }
-    DynamicPadder padder(slice_dynamic_output);
+    DynamicPadderOptions options;
+    options.slice_dynamic_output = slice_dynamic_output;
+    DynamicPadder padder(options);
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloDCE dce;
     TF_CHECK_OK(dce.Run(module.get()).status());
@@ -768,6 +805,61 @@ ENTRY main {
                                  {&operand_0, &operand_1, &operand_2}, false);
   result.SetDynamicSize(0, 7);
   Literal expected = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6, 7});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicReverseSingleDim) {
+  const string hlo_text = R"(
+HloModule DynamicConcat
+
+ENTRY main {
+  param_0 = s32[3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_0 = s32[<=3] set-dimension-size(param_0, size), dimensions={0}
+  ROOT %reverse = s32[<=3]
+    reverse(s32[<=3] param_padded_0),
+    dimensions={0}
+}
+)";
+
+  // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
+  Literal operand_0 =
+      LiteralUtil::CreateR1<int32>({1, 2, -1});  // Dynamic operand.
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
+  result.SetDynamicSize(0, 2);
+  Literal expected = LiteralUtil::CreateR1<int32>({2, 1});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicReverseMultiDims) {
+  const string hlo_text = R"(
+HloModule DynamicConcat
+
+ENTRY main {
+  param_0 = s32[3, 3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_0 = s32[<=3, 3] set-dimension-size(param_0, size), dimensions={0}
+  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size), 
+    dimensions={1}
+  ROOT %reverse = s32[<=3, <=3]
+    reverse(s32[<=3, <=3] param_padded_1),
+    dimensions={0, 1}
+}
+)";
+
+  // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
+  Literal operand_0 = LiteralUtil::CreateR2<int32>(
+      {{1, 2, -1}, {3, 4, -1}, {-1, -1, -1}});  // Dynamic operand.
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
+  result.SetDynamicSize(0, 2);
+  result.SetDynamicSize(1, 2);
+  Literal expected = LiteralUtil::CreateR2<int32>({{4, 3}, {2, 1}});
 
   EXPECT_EQ(result, expected);
 }
@@ -1244,6 +1336,74 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicStackPop) {
+  // This tests the case where a static sized stack is popped by a dynamic
+  // number of times.
+
+  // In the beginning the stack has static size that has 4 elements:
+  // [[1, 1],
+  //  [1, 1],
+  //  [1, 1],
+  //  [1, 1]]
+  //
+  // Popping this stack using set-dimension-size in a loop creates a dynamic
+  // result depending on how many times we pop it (in this test, two times).
+
+  const string hlo_text = R"(
+HloModule module
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+body {
+  param_tuple = (s32[<=4,2]) parameter(0)
+  param = s32[<=4, 2] get-tuple-element(param_tuple), index=0
+  one = s32[] constant(1)
+  size = s32[] get-dimension-size(param), dimensions={0}
+  new_size = s32[] subtract(size, one)
+  output = s32[<=4, 2] set-dimension-size(param, new_size), dimensions={0}
+  ROOT root = (s32[<=4, 2]) tuple(output)
+}
+
+condition {
+  stack = (s32[<=4,2]) parameter(0)
+  stack_buffer = s32[<=4,2] get-tuple-element(stack), index=0
+  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
+  two = s32[] constant(2)
+  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GE
+}
+
+ENTRY entry {
+  one = s32[] constant(1)
+  zero = s32[] constant(0)
+  stack_buffer_input = s32[4, 2] broadcast(s32[] one), dimensions={}
+  input_tuple = (s32[4, 2]) tuple(stack_buffer_input)
+  while = (s32[4, 2]) while(input_tuple), body=body, condition=condition
+  stack_buffer = s32[<=4, 2] get-tuple-element(while), index=0
+  ROOT reduce = s32[2] reduce(stack_buffer, zero),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {});
+
+  // Stack has two valid items in it:
+  // [[1, 1],
+  //  [1, 1],
+  //  [P, P],
+  //  [P, P]]
+  // Reducing them gives us [2, 2]
+  Literal expected = LiteralUtil::CreateR1<int32>({{1, 1}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -1667,6 +1827,55 @@ ENTRY gds {
                     .ValueOrDie();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
+}
+
+class SizeCheckTest : public HloTestBase {
+ protected:
+  SizeCheckTest() {}
+};
+
+TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpFail) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  size_0 = s32[] parameter(0)
+  size_1 = s32[] parameter(1)
+  arg = s32[4]{0} parameter(2)
+  dynamic_arg_0 = s32[<=4] set-dimension-size(arg, size_0), dimensions={0}
+  dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
+  ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
+})")
+                    .ValueOrDie();
+  auto options = DynamicPadderOptions();
+  options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  DynamicPadder pass(options);
+  auto status = pass.Run(module.get()).status();
+  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+}
+
+TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {
+  // Two different sizes.
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  size_0 = s32[] parameter(0)
+  size_0_reshape = s32[1] reshape(size_0)
+  size_1 = s32[] reshape(size_0_reshape)
+  arg = s32[4]{0} parameter(1)
+  dynamic_arg_0 = s32[<=4] set-dimension-size(arg, size_0), dimensions={0}
+  dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
+  ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
+})")
+                    .ValueOrDie();
+  auto options = DynamicPadderOptions();
+  options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  DynamicDimensionSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).ok());
+  DynamicPadder pass(options);
+  auto status = pass.Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
 }
 
 }  // namespace

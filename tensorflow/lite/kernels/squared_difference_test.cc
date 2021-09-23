@@ -66,7 +66,8 @@ class IntegerSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
 
 float GetTolerance(int min, int max) {
   float kQuantizedStep = (max - min) / 255.0;
-  return kQuantizedStep;
+  // Allow at most off-by-2.
+  return kQuantizedStep * 2;
 }
 
 class QuantizedSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {

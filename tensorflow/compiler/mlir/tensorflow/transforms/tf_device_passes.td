@@ -72,12 +72,12 @@ def ResourceOpLiftingPass : Pass<"tf-resource-op-lifting", "ModuleOp"> {
       })
       return
     }
-    func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    func @while_body(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
      %constant = "tf.Const"() ...
      "tf.AssignVariableOp"(%arg0, %constant)
      return %arg0
     }
-    func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    func @while_cond(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
       %read = "tf.ReadVariableOp"(%arg0)
       return %read
     }
@@ -120,4 +120,158 @@ def AnnotateParameterReplicationPass :
     Pass<"tf-annotate-parameter-replication", "ModuleOp"> {
   let summary = "Annotate whether a ClusterFuncOp's parameters have the same data across replicas.";
   let constructor = "TFDevice::CreateAnnotateParameterReplicationPass()";
+}
+
+def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
+
+  let description = [{
+    This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+    the same device attribute.
+
+    For example, the following:
+
+    ```mlir
+    func @single_op_launch() {
+      %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+      return %a
+    }
+    ```
+
+    will be transformed into:
+
+    ```mlir
+    func @single_op_launch() {
+      %1 = tf_device.launch() ( {
+        %a = "tf.opA"() : () -> tensor<i1>
+        tf_device.return %a
+      }) {device = "CPU:0"} : () -> tensor<i1>
+      return %1
+    }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
+}
+
+def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
+  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
+
+  let description = [{
+    This pass takes ops wrapped in a tf_device.launch op with host device
+    assignment extracts them from launch and adds an `_xla_outside_compilation`
+    attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
+
+    A simple example:
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf_device.launch"() {
+          "tf.B"()
+          tf_device.return
+        } {device = "TPU_REPLICATED_HOST"} : () -> ()
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+
+    Would become the following ops (unimportant attribute, type are omitted):
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf.B"() {_xla_outside_compilation = "cluster1"}
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
+}
+
+def DecomposeResourceOpsPass : FunctionPass<"tf-device-decompose-resource-ops"> {
+  let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation.";
+
+  let description = [{
+    A pass that decomposes composite resource operations into primitive ones like
+    ReadVariableOp, AssignVariableOp and other computations to facilitate
+    transformations like resource op lifting.
+
+    For example:
+
+    ```mlir
+    tf.AssignAddVariableOp(%res, %0)
+    ```
+
+    Becomes
+
+    ```mlir
+    %res_val = tf.ReadVariableOp(%res)
+    %1 = tf.AddV2(%res_val, %0)
+    tf.AssignVariableOp(%res, %1)
+    ```
+
+    NOTE: This pass does not support `use_locking=true` for a lot of resource
+    operations. So decomposition may not be correct outside of backends like XLA,
+    which automatically locks all resource variables.
+  }];
+
+  let constructor = "TFDevice::CreateDecomposeResourceOpsPass()";
+}
+
+def DecomposeResourceOpsInClusterPass : Pass<"tf-device-decompose-resource-ops-in-cluster", "ModuleOp"> {
+  let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation within device cluster and reachable functions.";
+
+  let description = [{
+    This is a variation of DecomposeResourceOps pass. It operates on a module and
+    only decomposes ops within a device cluster (tf_device.cluster op) and any
+    functions reachable from the cluster.
+  }];
+
+  let constructor = "TFDevice::CreateDecomposeResourceOpsInClusterPass()";
+}
+
+def LaunchToDeviceAttributePass : FunctionPass<"tf-launch-to-device-attribute"> {
+  let summary = "Hoists and annotates device launch inner ops with associated device attribute.";
+
+  let description = [{
+    This pass hoists a `tf_device.launch` body and assigns a `device` attribute
+    to each TensorFlow dialect op in the body based on the `device` attribute on
+    the `tf_device.launch`. If a TensorFlow dialect op already has a device
+    attribute, that attribute will be overwritten with the `tf_device.launch`
+    device.
+
+    For example:
+
+    ```mlir
+      %island:5 = tf_executor.island {
+        %a = "tf.opA"() : () -> tensor<i1>
+        %launch:2 = "tf_device.launch"() ( {
+          %b = "tf.opB"() : () -> tensor<i32>
+          %c = "tf.opC"() : () -> tensor<f32>
+          tf_device.return %c, %b : tensor<f32>, tensor<i32>
+        }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
+        %d = "tf.opD"() : () -> tensor<i1>
+        tf_executor.yield %a, %launch#0, %launch#1, %d :
+                          tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
+      }
+    ```
+
+    Will be transformed into:
+
+    ```mlir
+      %island:5 = tf_executor.island {
+        %a = "tf.opA"() : () -> tensor<i1>
+        %b = "tf.opB"() {device = "CPU:0"} : () -> tensor<i32>
+        %c = "tf.opC"() {device = "CPU:0"} : () -> tensor<f32>
+        %d = "tf.opD"() : () -> tensor<i1>
+        tf_executor.yield %a, %c, %b, %d :
+                          tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
+      }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
 }

@@ -54,6 +54,9 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   def set_converter_error(self, error_data):
     pass
 
+  def set_converter_latency(self, value):
+    pass
+
 
 class TFLiteConverterMetrics(TFLiteMetrics):
   """Similar to TFLiteMetrics but specialized for converter."""

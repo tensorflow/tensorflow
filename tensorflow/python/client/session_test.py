@@ -76,6 +76,7 @@ except ImportError:
 defaultdict = collections.defaultdict  # pylint:disable=invalid-name
 
 
+@test_util.with_eager_op_as_function
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1569,9 +1570,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array(
-            [compat.as_bytes(str(i)) for i in xrange(size)],
-            dtype=np.object).reshape(shape) if size > 0 else []
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+                          dtype=np.object_).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
         self.assertAllEqual(c, c_list)
 
@@ -1581,9 +1581,8 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array(
-            [compat.as_bytes(str(i)) for i in xrange(size)],
-            dtype=np.object).reshape(shape)
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+                          dtype=np.object_).reshape(shape)
         feed_t = array_ops.placeholder(dtype=dtypes.string, shape=shape)
         c = array_ops.identity(feed_t)
         self.assertAllEqual(sess.run(c, feed_dict={feed_t: c_list}), c_list)
@@ -1617,7 +1616,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       for i in range(len(c_list)):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
-      out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object)})
+      out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object_)})
       for i in range(len(c_list)):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
@@ -1848,11 +1847,14 @@ class SessionTest(test_util.TensorFlowTestCase):
           pass
 
   def testInvalidArgument(self):
-    with self.assertRaisesRegex(TypeError, 'target must be a string'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `target` must be a string'):
       session.Session(37)
-    with self.assertRaisesRegex(TypeError, 'config must be a tf.ConfigProto'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `config` must be a tf.ConfigProto'):
       session.Session(config=37)
-    with self.assertRaisesRegex(TypeError, 'graph must be a tf.Graph'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `graph` must be a tf.Graph'):
       session.Session(graph=37)
 
   @test_util.run_v1_only('b/120545219')
@@ -1960,8 +1962,15 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(c, 3)
     self.assertEqual(d, 3)
+
     # Ensure that we did log device placement.
-    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    # We have three modes of execution at the moment:
+    # (1) TF1 Graph (2) TF2 eager (3) TF2 eager with function wrapping.
+    # The codepaths taken by each are slightly different in all resulting in
+    # slightly different logging messages.
+    log_msg = ('Executing op AddV2'
+               if ops.executing_eagerly_outside_functions() else 'AddV2')
+    add_executions = [l for l in str(log).splitlines() if log_msg in l]
     self.assertEqual(len(add_executions), 2)
 
     @def_function.function

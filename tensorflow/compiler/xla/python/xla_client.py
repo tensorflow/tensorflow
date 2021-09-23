@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 23
+_version = 38
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -160,8 +160,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError(
-          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
+      raise RuntimeError('Unknown backend %s. Available: %s' %
+                         (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -285,7 +285,6 @@ class ProgramShape(object):
   def __repr__(self):
 """
 
-
 ShapeIndex = _xla.ShapeIndex
 ShapeIndex.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
@@ -395,6 +394,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
     A list of python values, one per replica.
   """
   devices = executable.local_devices()
+
   # pylint: disable=g-complex-comprehension
   def copy_to_devices(pyvals):
     return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
@@ -448,6 +448,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
+OpSharding = _xla.OpSharding  # type: ignore
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -499,7 +500,7 @@ def make_padding_config(
   Returns:
     A `PaddingConfig` object.
   """
-  if isinstance(padding_config, tuple) or isinstance(padding_config, list):
+  if not isinstance(padding_config, PaddingConfig):
     triples = padding_config
     padding_config = PaddingConfig()
     for lo, hi, interior in triples:
@@ -633,21 +634,6 @@ def make_convolution_dimension_numbers(
         sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                key=lambda i: rhs_spec.index(out_spec[i])))
   return dimension_numbers
-
-
-class OpSharding(object):
-  """Python representation of a xla.OpSharding protobuf."""
-  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings', 'replicate_on_last_tile_dim')
-
-  Type = _xla.OpSharding_Type
-
-  def __init__(self):
-    self.type = self.Type.REPLICATED
-    self.tile_assignment_dimensions = []
-    self.tile_assignment_devices = []
-    self.tuple_shardings = []
-    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

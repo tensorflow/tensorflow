@@ -69,7 +69,7 @@ class XlaVariadicSortOp : public XlaOpKernel {
     std::vector<TensorShape> input_shapes;
     OP_REQUIRES_OK(context,
                    context->InputList("inputs", &inputs, &input_shapes));
-    int64 dimension;
+    int64_t dimension;
     OP_REQUIRES_OK(context,
                    context->ConstantInputAsIntScalar("dimension", &dimension));
 

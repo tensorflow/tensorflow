@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
@@ -49,6 +50,7 @@ using ::grpc::Channel;
 using ::grpc::ChannelArguments;
 using ::grpc::ChannelCredentials;
 using ::grpc::ClientContext;
+using ::tensorflow::data::testing::RangeSquareDataset;
 
 constexpr const char kHostAddress[] = "localhost";
 constexpr const char kProtocol[] = "grpc";
@@ -105,12 +107,9 @@ class GrpcWorkerImplTest : public ::testing::Test {
   }
 
   StatusOr<GetOrRegisterDatasetResponse> RegisterDataset() {
-    test_util::GraphDefTestCase graph_def_test_case;
-    TF_RETURN_IF_ERROR(map_test_case(&graph_def_test_case));
-
     GetOrRegisterDatasetRequest request;
     GetOrRegisterDatasetResponse response;
-    *request.mutable_dataset()->mutable_graph() = graph_def_test_case.graph_def;
+    *request.mutable_dataset() = RangeSquareDataset(/*range=*/10);
     ClientContext context;
     TF_RETURN_IF_ERROR(
         FromGrpcStatus(dispatcher_client_stub_->GetOrRegisterDataset(
@@ -118,18 +117,20 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<GetOrCreateJobResponse> CreateJob(const int64 dataset_id) {
+  StatusOr<GetOrCreateJobResponse> CreateJob(const int64_t dataset_id) {
     GetOrCreateJobRequest request;
     GetOrCreateJobResponse response;
     request.set_dataset_id(dataset_id);
-    request.set_processing_mode(ProcessingModeDef::PARALLEL_EPOCHS);
+    request.mutable_processing_mode_def()->set_sharding_policy(
+        ProcessingModeDef::OFF);
     ClientContext context;
     TF_RETURN_IF_ERROR(FromGrpcStatus(
         dispatcher_client_stub_->GetOrCreateJob(&context, request, &response)));
     return response;
   }
 
-  StatusOr<ClientHeartbeatResponse> ClientHeartbeat(const int64 job_client_id) {
+  StatusOr<ClientHeartbeatResponse> ClientHeartbeat(
+      const int64_t job_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
     request.set_job_client_id(job_client_id);
@@ -139,7 +140,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<GetElementResponse> GetElement(const int64 task_id) {
+  StatusOr<GetElementResponse> GetElement(const int64_t task_id) {
     GetElementRequest request;
     GetElementResponse response;
     request.set_task_id(task_id);

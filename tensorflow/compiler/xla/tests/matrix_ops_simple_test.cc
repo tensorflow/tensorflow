@@ -118,8 +118,8 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
 }
 
 struct TestLinspaceMaxParam {
-  int64 rows;
-  int64 cols;
+  int64_t rows;
+  int64_t cols;
 };
 
 class TestLinspaceMaxParametric
@@ -129,8 +129,8 @@ class TestLinspaceMaxParametric
   template <typename T>
   void TestImpl() {
     TestLinspaceMaxParam param = GetParam();
-    int64 rows = param.rows;
-    int64 cols = param.cols;
+    int64_t rows = param.rows;
+    int64_t cols = param.cols;
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
@@ -188,7 +188,7 @@ class MatOpsDotAddTest
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
 
-    auto minor_to_major = [](bool row_major) -> std::vector<int64> {
+    auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
       return {row_major ? 1 : 0, row_major ? 0 : 1};
     };
 

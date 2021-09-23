@@ -170,14 +170,15 @@ class CropAndResizeOp : public AsyncOpKernel {
         context, crop_height > 0 && crop_width > 0,
         errors::InvalidArgument("crop dimensions must be positive"), done);
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(num_boxes), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({num_boxes, crop_height, crop_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& image = context->input(0);
@@ -235,14 +236,14 @@ struct CropAndResize<CPUDevice, T> {
     }
 
     // Sharding across boxes.
-    auto CropAndResizePerBox = [&](int64 start_box, int64 limit_box) {
+    auto CropAndResizePerBox = [&](int64_t start_box, int64_t limit_box) {
       for (int b = start_box; b < limit_box; ++b) {
         const float y1 = boxes(b, 0);
         const float x1 = boxes(b, 1);
         const float y2 = boxes(b, 2);
         const float x2 = boxes(b, 3);
 
-        const int32 b_in = box_index(b);
+        const int32_t b_in = box_index(b);
         if (!FastBoundsCheck(b_in, batch_size)) {
           continue;
         }
@@ -417,14 +418,15 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
           done);
     }
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(batch_size), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, image_height, image_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& grads = context->input(0);
@@ -470,14 +472,15 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
 
     grads_image.setZero();
 
-    auto CropAndResizeBackImgPerBox = [&](int64 start_box, int64 limit_box) {
+    auto CropAndResizeBackImgPerBox = [&](int64_t start_box,
+                                          int64_t limit_box) {
       for (int b = start_box; b < limit_box; ++b) {
         const float y1 = boxes(b, 0);
         const float x1 = boxes(b, 1);
         const float y2 = boxes(b, 2);
         const float x2 = boxes(b, 3);
 
-        const int32 b_in = box_index(b);
+        const int32_t b_in = box_index(b);
         if (!FastBoundsCheck(b_in, batch_size)) {
           continue;
         }
@@ -689,7 +692,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
       const float y2 = boxes(b, 2);
       const float x2 = boxes(b, 3);
 
-      const int32 b_in = box_index(b);
+      const int32_t b_in = box_index(b);
       if (!FastBoundsCheck(b_in, batch_size)) {
         continue;
       }

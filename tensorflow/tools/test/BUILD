@@ -92,7 +92,7 @@ py_library(
 #    ],
 #    args = [
 #        "--test_name=" + "//tensorflow/core/kernels:cast_op_test",
-#        "--test_args=" + "'--benchmarks=BM_cpu_float'",
+#        "--test_args=" + "'--benchmark_filter=BM_cpu_float'",
 #    ],
 #    data = [
 #        "//tensorflow/core/kernels:cast_op_test",

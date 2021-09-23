@@ -177,7 +177,7 @@ PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors);
 PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
-void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
+void TFE_Py_TapeSetDeleteTrace(int64_t tensor_id);
 
 // Stops any gradient recording on the current thread.
 //
@@ -370,7 +370,8 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 // then the encoding only stores tensor ranks, and the key is
 // agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
 // returned.
-PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
+PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only,
+                           bool encode_var_by_res_id);
 
 void TFE_Py_EnableInteractivePythonLogging();
 

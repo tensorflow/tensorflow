@@ -25,7 +25,7 @@ namespace xla {
 class TensorFormat {
  public:
   TensorFormat(int batch_dimension, int feature_dimension,
-               absl::Span<const int64> spatial_dimensions)
+               absl::Span<const int64_t> spatial_dimensions)
       : batch_dimension_(batch_dimension),
         feature_dimension_(feature_dimension),
         spatial_dimensions_(spatial_dimensions.begin(),
@@ -49,29 +49,29 @@ class TensorFormat {
 };
 
 // Computes the max pool of 'operand'.
-XlaOp MaxPool(XlaOp operand, absl::Span<const int64> kernel_size,
-              absl::Span<const int64> stride, Padding padding,
+XlaOp MaxPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
+              absl::Span<const int64_t> stride, Padding padding,
               const TensorFormat& data_format);
 
 // Computes the average pool of 'operand'.
-XlaOp AvgPool(XlaOp operand, absl::Span<const int64> kernel_size,
-              absl::Span<const int64> stride,
-              absl::Span<const std::pair<int64, int64>> padding,
+XlaOp AvgPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
+              absl::Span<const int64_t> stride,
+              absl::Span<const std::pair<int64_t, int64_t>> padding,
               const TensorFormat& data_format,
               const bool counts_include_padding);
 
 // Returns the list of low and high padding elements in each spatial dimension
 // for the given 'padding' specification.
-std::vector<std::pair<int64, int64>> MakeSpatialPadding(
-    absl::Span<const int64> input_size, absl::Span<const int64> kernel_size,
-    absl::Span<const int64> stride, Padding padding,
+std::vector<std::pair<int64_t, int64_t>> MakeSpatialPadding(
+    absl::Span<const int64_t> input_size, absl::Span<const int64_t> kernel_size,
+    absl::Span<const int64_t> stride, Padding padding,
     const TensorFormat& data_format);
 
 // Computes the average pool gradient.
-XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
-                  absl::Span<const int64> kernel_size,
-                  absl::Span<const int64> stride,
-                  absl::Span<const std::pair<int64, int64>> spatial_padding,
+XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
+                  absl::Span<const int64_t> kernel_size,
+                  absl::Span<const int64_t> stride,
+                  absl::Span<const std::pair<int64_t, int64_t>> spatial_padding,
                   const TensorFormat& data_format,
                   const bool counts_include_padding);
 

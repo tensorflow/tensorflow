@@ -49,10 +49,10 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 
   ~ScratchBufAllocator() override = default;
 
-  int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
+  int64_t GetMemoryLimitInBytes() override { return scratch_.size(); }
 
   se::port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     if (allocated_) {
       return se::port::InternalError(
           "Can't allocate twice from a ScratchBufAllocator.");
@@ -86,10 +86,10 @@ Status RunGpuConvForward(GpuConvParams params,
         params.config.conv_result_scale);
   }
   return stream->ConvolveWithAlgorithm(
-      params.config.input_descriptor, input_buf,
-      params.config.filter_descriptor, filter_buf, params.config.conv_desc,
-      params.config.output_descriptor, &output_buf, scratch_allocator,
-      algorithm, options.profile_result);
+      se::dnn::ConvolutionKind::FORWARD, params.config.input_descriptor,
+      input_buf, params.config.filter_descriptor, filter_buf,
+      params.config.output_descriptor, output_buf, params.config.conv_desc,
+      scratch_allocator, algorithm, options.profile_result);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -175,11 +175,12 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.config.conv_result_scale);
       }
-      return stream->ConvolveBackwardDataWithAlgorithm(
+      return stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_DATA,
+          params.config.input_descriptor, input_buf,
           params.config.filter_descriptor, filter_buf,
           params.config.output_descriptor, output_buf, params.config.conv_desc,
-          params.config.input_descriptor, &input_buf, scratch_allocator,
-          algorithm, options.profile_result);
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kBackwardFilter:
       if (params.config.conv_result_scale != 1) {
@@ -187,11 +188,12 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.config.conv_result_scale);
       }
-      return stream->ConvolveBackwardFilterWithAlgorithm(
+      return stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_FILTER,
           params.config.input_descriptor, input_buf,
+          params.config.filter_descriptor, filter_buf,
           params.config.output_descriptor, output_buf, params.config.conv_desc,
-          params.config.filter_descriptor, &filter_buf, scratch_allocator,
-          algorithm, options.profile_result);
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kForwardActivation: {
       return RunGpuConvForwardActivation<ElementType, BiasType, OutputType>(
@@ -265,7 +267,7 @@ Status RunGpuConvImpl(const GpuConvParams& params,
   return Status::OK();
 }
 
-int64 GetVectCSize(DataLayout layout) {
+int64_t GetVectCSize(DataLayout layout) {
   switch (layout) {
     case DataLayout::kBatchDepthYX4:
       return 4;
@@ -276,7 +278,7 @@ int64 GetVectCSize(DataLayout layout) {
   }
 }
 
-int64 GetVectCSize(FilterLayout layout) {
+int64_t GetVectCSize(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX4:
       return 4;
@@ -550,6 +552,9 @@ Status RunGpuConv(const gpu::GpuConvConfig& config,
   switch (input_primitive_type) {
     case F16:
       return RunGpuConvImpl<Eigen::half, Eigen::half, Eigen::half>(
+          params, scratch_allocator, stream, options);
+    case BF16:
+      return RunGpuConvImpl<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16>(
           params, scratch_allocator, stream, options);
     case F32:
       return RunGpuConvImpl<float, float, float>(params, scratch_allocator,

@@ -31,18 +31,10 @@ namespace tensorflow {
 
 // Disabled - skip execution of the pass.
 // Enabled - execute the pass, propagate errors to the caller if any.
-// ShadowEnabled - execute the pass in a shadow mode. The pass should not commit
-//   any changes to the MLIR module it's processing. Failures are not propagated
-//   to the caller.
 // FallbackEnabled - execute the pass and commit all the changes to the MLIR
 //   module in case of success. Do not commit any changes in case of failures,
 //   let the rest of the pipeline run.
-enum class MlirOptimizationPassState {
-  Disabled,
-  Enabled,
-  ShadowEnabled,
-  FallbackEnabled
-};
+enum class MlirOptimizationPassState { Disabled, Enabled, FallbackEnabled };
 
 // An API for registering MLIR ModulePass with the Tensorflow runtime. These
 // passes are running only for function graphs built by Tensorflow V2 and
@@ -56,11 +48,12 @@ class MlirOptimizationPass {
   // Returns an enum value:
   //   Enabled if the pass is enabled for the given graph with specified config.
   //   Disabled if the pass is disabled.
-  //   ShadowEnabled if the pass needs to be executed in shadow mode.
+  //   FallbackEnabled if the pass needs to be executed in fallback mode.
   //
-  // When the pass is ShadowEnabled, the pass is executed for metrics collection
-  // and reporting purposes only, but none of the changes it makes to the MLIR
-  // module will be committed.
+  // When the pass is FallbackEnabled, the pass is executed and the changes it
+  // makes to the MLIR module will be committed only if the pass was successful,
+  // otherwise no changes are committed and the rest of the pipeline is run.
+  //
   // `device_set` can be nullptr if the devices information is not
   // available or no device specific filtering is required.
   // `function_library` contains function definitions for function calls in
@@ -122,19 +115,6 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
       : registry_(registry) {}
 
   // Executes all of the underlying registered MlirOptimizationPasses.
-  //
-  // The MlirFunctionOptimizationPass will be executed in fully shadow mode if
-  // all of the underlying registered MlirOptimizationPasses are ShadowEnabled.
-  // In this case, no changes should be done to the original TF graph and no
-  // failures propagated back to the user. Failures during the conversion
-  // of TF graph to MLIR module and back will be treated as a soft
-  // failures, e.g., relevant stats will be recorded and no error returned
-  // back to the caller.
-  //
-  // In case some of the passes are shadow enabled while others are enabled,
-  // failures in the enabled passes will be treated as real errors and
-  // propagated back to the caller. Failure during the shadow pass execution
-  // is a soft failure.
   Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,

@@ -235,7 +235,7 @@ Status ExecuteWrapperAfterExecution(
     // value may call back into the driver on GPU, which is not allowed.
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-    const int64 executable_size_in_bytes =
+    const int64_t executable_size_in_bytes =
         executable->SizeOfGeneratedCodeInBytes();
     // Merge in run-time profile information from execution_profile.
 
@@ -298,7 +298,7 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
+int64_t Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
 
 void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                            ExecutionOutput& result) {

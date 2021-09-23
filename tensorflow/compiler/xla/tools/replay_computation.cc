@@ -162,7 +162,7 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
     }
   };
 
-  auto find_instruction_from_id_or_die = [&](int64 id) {
+  auto find_instruction_from_id_or_die = [&](int64_t id) {
     for (const auto& comp : module.computations()) {
       for (const auto& instruction : comp.instructions()) {
         if (instruction.id() == id) {
@@ -381,14 +381,14 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   return snapshots;
 }
 
-StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
-                                         const Options& opts) {
+StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
+                                                      const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
   HloSnapshot snapshot;
   auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
   if (s.ok()) {
-    return snapshot;
+    return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   if (s.code() == tensorflow::error::NOT_FOUND) {
     return s;
@@ -400,21 +400,37 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
           filename.c_str());
 
   if (tensorflow::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
-    return snapshot;
+    return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
   string contents;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(contents, config);
-  if (module.ok()) {
-    *snapshot.mutable_hlo()->mutable_hlo_module() =
-        module.ValueOrDie()->ToProto();
-    return snapshot;
-  } else {
-    LOG(ERROR) << module.status();
+  std::vector<std::string> hlo_module_texts =
+      absl::StrSplit(contents, "// -----");
+  std::vector<HloSnapshot> snapshots;
+  int start_line = 0;
+  for (const std::string& hlo_module_text : hlo_module_texts) {
+    StatusOr<std::unique_ptr<HloModule>> module =
+        ParseAndReturnUnverifiedModule(hlo_module_text, config);
+    if (module.ok()) {
+      HloSnapshot snapshot;
+      *snapshot.mutable_hlo()->mutable_hlo_module() =
+          module.ValueOrDie()->ToProto();
+      snapshots.push_back(snapshot);
+    } else {
+      LOG(ERROR) << module.status();
+      if (hlo_module_texts.size() > 1) {
+        LOG(ERROR)
+            << "The error below was done on the section starting at line "
+            << start_line;
+      }
+    }
+    start_line += absl::c_count(hlo_module_text, '\n');
+  }
+  if (!snapshots.empty()) {
+    return snapshots;
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
@@ -428,8 +444,7 @@ StatusOr<std::vector<HloSnapshot>> ParseInputFile(const string& filename,
   if (absl::ConsumePrefix(&filename_view, "recordio_hlo_proto:")) {
     return ParseRecordIoFile(filename_view, opts);
   }
-  TF_ASSIGN_OR_RETURN(auto snapshot, ParseSingleHloFile(filename, opts));
-  return std::vector<HloSnapshot>{std::move(snapshot)};
+  return ParseSingleHloFile(filename, opts);
 }
 
 int RealMain(absl::Span<char* const> args, const Options& opts) {
@@ -462,7 +477,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
         std::min<size_t>(std::max(kThreadLimits, snapshots.size()), 1),
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
-    for (int64 i = 0; i < snapshots.size(); ++i) {
+    for (int64_t i = 0; i < snapshots.size(); ++i) {
       thread_pool.Schedule([&snapshots, &executables, client, i, &opts] {
         executables[i] = CompileExecutable(snapshots[i], client, opts);
       });
@@ -470,7 +485,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
   }
   LOG(INFO) << "Done compiling; now running the modules.";
 
-  for (int64 i = 0; i < executables.size(); ++i) {
+  for (int64_t i = 0; i < executables.size(); ++i) {
     if (!executables[i].ok()) {
       LOG(ERROR) << "Compilation failed: " << executables[i].status() << ": "
                  << snapshots[i].ShortDebugString();

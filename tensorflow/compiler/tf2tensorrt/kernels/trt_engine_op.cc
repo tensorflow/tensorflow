@@ -55,7 +55,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace {
-static Logger logger;
+Logger& logger = *Logger::GetLogger();
 using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
@@ -446,13 +446,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
   }
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!use_implicit_batch_) {
-    VLOG(2) << "Need at least TensorRT 6.0 for explicit batch mode. Setting "
-            << "_use_implicit_batch=true";
-    use_implicit_batch_ = true;
-  }
-#endif
+
   status =
       context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
@@ -484,9 +478,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             "without the input_shapes attribute), then you need to convert the "
             "original model again to TensorRT in order to set the attribute "
             "input_shapes."));
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Explicit batch mode does not support calibration"));
 
     string profile_strategy_name;
     status = context->GetAttr("profile_strategy", &profile_strategy_name);
@@ -504,6 +495,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
+
+  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
+    OP_REQUIRES(context, !calibration_mode_,
+                errors::InvalidArgument(
+                    "Dynamic shape mode does not support calibration"));
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -772,7 +769,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, async_helper);
       return;
-    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+    } else if (cache_res->profiles_.GetNumProfiles() == 0 && !static_engine_) {
       // Add current shape if we did not collect any shapes so far.
       if (!cache_res->profiles_.HasShape()) {
         cache_res->profiles_.AddShape(input_concrete_shapes);
@@ -837,13 +834,14 @@ Status TRTEngineOp::ExecuteTrtEngine(
   auto& cuda_engine = engine_context->cuda_engine;
 
   if (VLOG_IS_ON(2)) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Network name: " << cuda_engine->getName();
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
             << " bytes";
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    // getWorkspaceSize() is deprecated as of TRT 8
     VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
             << " bytes";
+#endif  // #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
             << " inputs/outputs";
     string binding_types = "";
@@ -983,7 +981,14 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       // implicit batch is disabled.
       if (!use_implicit_batch_ ||
           AreShapesCompatible(input_concrete_shapes, cache.begin()->first)) {
-        return std::pair<EngineContext*, int>(cache.begin()->second.get(), 0);
+        int profile_id = 0;
+        if (!use_implicit_batch_)
+          profile_id =
+              cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+        if (profile_id != -1) {
+          return std::pair<EngineContext*, int>(cache.begin()->second.get(),
+                                                profile_id);
+        }
       }
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -996,6 +1001,28 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(), nullptr));
+    int profile_id = 0;
+    if (static_engine && !use_implicit_batch_) {
+      // load profiles
+      std::vector<ExecutionContext> exec_contexts;
+      TF_RETURN_IF_ERROR(
+          cache_res->profiles_.RestoreProfiles(static_engine.get()));
+      TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
+          static_engine.get(), &exec_contexts));
+      cache.emplace(input_concrete_shapes,
+                    absl::make_unique<EngineContext>(std::move(static_engine),
+                                                     std::move(exec_contexts)));
+      VLOG(1) << "Added new engine to cache of " << name()
+              << ". Cache size: " << cache.size();
+      // Query which profile of the new engine matches the actual input.
+      profile_id = cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+      if (profile_id == -1) {
+        return std::pair<EngineContext*, int>(&empty_context, 0);
+      }
+      EngineContext* engine_context = cache_res->GetEngineContext(profile_id);
+      return std::pair<EngineContext*, int>(engine_context, profile_id);
+    }
+
     if (!static_engine) {
       if (!allow_build_at_runtime_) {
         // Store an empty engine in the cache so we don't try to load the same

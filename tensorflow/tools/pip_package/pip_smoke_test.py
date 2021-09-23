@@ -35,6 +35,9 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 BUILD_DENYLIST = [
     "tensorflow/lite",
     "tensorflow/compiler/mlir/lite",
+    "tensorflow/compiler/mlir/tfrt",
+    "tensorflow/core/runtime_fallback",
+    "tensorflow/core/tfrt",
     "tensorflow/python/kernel_tests/signal",
     "tensorflow/examples",
     "tensorflow/tools/android",

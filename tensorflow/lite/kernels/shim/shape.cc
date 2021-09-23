@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/shape.h"
 
+#include <string>
+
 namespace tflite {
 namespace shim {
 
@@ -26,6 +28,8 @@ bool Shape::operator==(const Shape& rhs) const {
       return false;
   return true;
 }
+
+bool Shape::operator!=(const Shape& rhs) const { return !(*this == rhs); }
 
 bool Shape::Compatible(const Shape& rhs) const {
   if (!has_value() || !rhs.has_value()) return true;

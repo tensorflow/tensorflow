@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -73,11 +73,12 @@ def _set_handle_data(list_handle, element_shape, element_dtype):
       element_shape = tensor_shape.TensorShape(element_shape)
     handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
     handle_data.is_set = True
+    # TODO(b/191472076): This duplicates type inference. Clean up.
     handle_data.shape_and_type.append(
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
             shape=element_shape.as_proto(),
             dtype=element_dtype.as_datatype_enum,
-            specialized_type=types_pb2.ST_TENSOR_LIST))
+            type=full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_ARRAY)))
     list_handle._handle_data = handle_data  # pylint: disable=protected-access
 
 

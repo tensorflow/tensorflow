@@ -27,7 +27,10 @@ limitations under the License.
 typedef struct TpuSerializedProto TpuSerializedProto;
 
 namespace tensorflow {
+
 class TpuMeshCommonState;
+class TpuEmbeddingEngineState;
+
 }  // namespace tensorflow
 
 extern "C" {
@@ -58,6 +61,8 @@ struct HostComputeMetadataSerializedProto {
 };
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
+
+typedef struct XLA_TpuEmbeddingEngineState XLA_TpuEmbeddingEngineState;
 
 typedef struct TpuProfiler TpuProfiler;
 
@@ -106,6 +111,9 @@ struct TpuPartitionedCall_Params {
   // enable_auto_xla_input_sharding is set to true. Negative numbers are
   // allowed and refers to dimensions starting from the end.
   int32_t auto_xla_input_sharding_dim;
+
+  // If true, only create one variable on the TPU for each variable on the CPU.
+  bool enable_variable_deduplication;
 };
 
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
@@ -175,6 +183,19 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
 
+// Creates a new TPU embedding engine state object.
+TFTPU_CAPI_EXPORT XLA_TpuEmbeddingEngineState* TpuEmbeddingEngineState_Create();
+
+// Delete the given TPU embedding engine state object. Once deleted the object
+// is unusable.
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngineState_Free(
+    XLA_TpuEmbeddingEngineState* engine_state);
+
+// Returns a pointer to an opaque embedding engine state data structure used
+// internally.
+TFTPU_CAPI_EXPORT void* TpuEmbeddingEngineState_GetState(
+    XLA_TpuEmbeddingEngineState* engine_state);
+
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Create(
     TfTpuOrdinalSelector** ordinal_selector, int num_cores_per_replica);
 
@@ -220,8 +241,6 @@ TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompact(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompactRaw(XLA_Shape* shape);
-TFTPU_CAPI_EXPORT void HardwareLayout_UpdateLayout(
-    const XLA_Shape& device_shape);
 
 typedef struct TpuExecute_RuntimeInputToPaddedData_Params {
   int32_t struct_size;
@@ -488,6 +507,10 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
 
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_GetState);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
@@ -499,7 +522,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompact);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompactRaw);
-  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_UpdateLayout);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecute_RuntimeInputToPaddedData);
 
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);

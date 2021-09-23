@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -57,7 +57,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
     OP_REQUIRES(c, index_t.dims() == 0,
                 errors::InvalidArgument("index should be a scalar, but saw: ",
                                         index_t.DebugString()));
-    int32 index = index_t.scalar<int32>()();
+    int32_t index = index_t.scalar<int32>()();
     OP_REQUIRES(c, index >= 0 && index < csr_sparse_matrix->batch_size(),
                 errors::InvalidArgument("index (", index, ") not in [0, ",
                                         csr_sparse_matrix->batch_size(), ")"));
@@ -68,8 +68,8 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
       c->set_output(2, csr_sparse_matrix->values());
     } else {
       auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
-      auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64>();
-      int64 rows = dense_shape(1);
+      auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64_t>();
+      int64_t rows = dense_shape(1);
       int nnz = batch_ptrs(index + 1) - batch_ptrs(index);
       Tensor* row_ptrs_t;
       Tensor* col_inds_t;

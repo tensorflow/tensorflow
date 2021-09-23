@@ -294,6 +294,11 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42, name="from_tensors")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
@@ -303,12 +308,12 @@ class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return dataset_ops.Dataset.from_tensors(components)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromTensorsCore(self):
-    # Equal length components
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     arr = np.array(1)
-    num_outputs = 1
-    self.run_core_tests(lambda: self._build_tensor_dataset(arr), num_outputs)
+    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
 
 
 if __name__ == "__main__":

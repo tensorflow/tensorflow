@@ -247,6 +247,8 @@ Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
   return Status();
 }
 
+SavedModelV2Bundle* TFSavedModelAPI::GetBundle() { return &this->bundle_; }
+
 TFSavedModelAPI::TFSavedModelAPI(const std::string& directory,
                                  SavedModelV2Bundle bundle,
                                  RevivedObjects revived_objects)

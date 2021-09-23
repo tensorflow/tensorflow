@@ -408,7 +408,7 @@ TEST(TransposeTest, Test3DShrinkedAll) {
 
 TEST(TransposeTest, Test4DShrinkedOneTimes) {
   TransposeOpConstModel m({2, 2, 3, 1}, {4}, {3, 0, 1, 2});
-  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 3}));
   EXPECT_THAT(m.GetOutput(),

@@ -45,7 +45,8 @@ namespace gpu {
 // should run CudnnPadForConvolutions before this.
 class CudnnVectorizeConvolutions : public HloModulePass {
  public:
-  explicit CudnnVectorizeConvolutions(std::pair<int, int> compute_capability)
+  explicit CudnnVectorizeConvolutions(
+      se::CudaComputeCapability compute_capability)
       : compute_capability_(compute_capability) {}
 
   absl::string_view name() const override {
@@ -54,7 +55,7 @@ class CudnnVectorizeConvolutions : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  std::pair<int, int> compute_capability_;
+  se::CudaComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

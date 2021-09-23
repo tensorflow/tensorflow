@@ -40,7 +40,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: {filename = [[filename:.*]], sym_name = "[[sym_name:.*]]"} : () -> ()
 
 # CHECK:      func @[[restore]](
-# CHECK-SAME:   [[variable_path:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[sym_name]]}
+# CHECK-SAME:   [[variable_path:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[sym_name]]}
 # CHECK-SAME: tf_saved_model.exported_names = ["{{__tf_saved_model_session_initializer.*}}"]
 # CHECK: [[v0:%.*]] = "tf.RestoreV2"([[variable_path]]
 # CHECK: [[v1:%.*]] = "tf.Identity"([[v0]])

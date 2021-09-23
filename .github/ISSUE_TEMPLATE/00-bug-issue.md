@@ -32,9 +32,10 @@ You can also obtain the TensorFlow version with:
 
 **Describe the expected behavior**
 
-**[Contributing](https://www.tensorflow.org/community/contribute)** - Do you
-want to contribute a PR? (yes/no): - Briefly describe your candidate solution
-(if contributing):
+**[Contributing](https://www.tensorflow.org/community/contribute)**
+
+- Do you want to contribute a PR? (yes/no):
+- Briefly describe your candidate solution(if contributing):
 
 **Standalone code to reproduce the issue**
 Provide a reproducible test case that is the bare minimum necessary to generate

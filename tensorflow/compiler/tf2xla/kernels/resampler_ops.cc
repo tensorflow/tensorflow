@@ -57,14 +57,14 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
   first_term = xla::ConvertElementType(first_term, xla_type);
 
   auto warp_dims = warp_shape.dim_sizes();
-  std::vector<int64> broadcast_dims(warp_dims.begin(), warp_dims.end() - 1);
+  std::vector<int64_t> broadcast_dims(warp_dims.begin(), warp_dims.end() - 1);
   broadcast_dims.push_back(4);
   broadcast_dims.push_back(2);
 
-  const int64 broadcast_dims_size = broadcast_dims.size();
+  const int64_t broadcast_dims_size = broadcast_dims.size();
 
-  std::vector<int64> last_two_dims_indices = {(broadcast_dims_size - 2),
-                                              (broadcast_dims_size - 1)};
+  std::vector<int64_t> last_two_dims_indices = {(broadcast_dims_size - 2),
+                                                (broadcast_dims_size - 1)};
 
   auto broadcast_first_term =
       xla::BroadcastInDim(first_term, broadcast_dims, last_two_dims_indices);
@@ -73,7 +73,7 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
   // 2], we broadcast ratio tensor to 'broadcast_dim' by keeping the
   // [batch, dim_0,...dim_n] dimensions and the [2] dimension as the last
   // dimension.
-  std::vector<int64> ratio_broadcast_indices(broadcast_dims.size());
+  std::vector<int64_t> ratio_broadcast_indices(broadcast_dims.size());
   std::iota(ratio_broadcast_indices.begin(), ratio_broadcast_indices.end(), 0);
   ratio_broadcast_indices.erase(ratio_broadcast_indices.end() - 2);
 
@@ -117,7 +117,7 @@ XlaOp BilinearWeights(XlaOpKernelContext* ctx, XlaOp ratio,
 XlaOp ConcatenateIota(xla::XlaBuilder* b, XlaOp indices,
                       const TensorShape& warp_shape) {
   // We need to create an iota tensor with the same batch dimension.
-  std::vector<int64> dimensions;
+  std::vector<int64_t> dimensions;
   for (auto dim : warp_shape) {
     dimensions.push_back(dim.size);
   }
@@ -136,9 +136,9 @@ XlaOp ConcatenateIota(xla::XlaBuilder* b, XlaOp indices,
 // 'gather_indices' is of dimension [batch, dim_0, ..., dim_n, 3] where the last
 // dimension of size 3 is (batch_no, x, y).
 XlaOp Gather2by2Neighbors(xla::XlaBuilder* b, XlaOp data, XlaOp gather_indices,
-                          int64 data_channels, int warp_dims) {
+                          int64_t data_channels, int warp_dims) {
   xla::GatherDimensionNumbers gather_dim_numbers;
-  const int64 neighbor_data_dimensions = warp_dims + 2;
+  const int64_t neighbor_data_dimensions = warp_dims + 2;
   // Since the Gather output dimensions are [batch, dim_0, ... dim_n, 2, 2,
   // data_channels], the offset dimensions for Gather is the last 3 dimensions.
   gather_dim_numbers.add_offset_dims(neighbor_data_dimensions - 3);
@@ -165,10 +165,10 @@ XlaOp Gather2by2Neighbors(xla::XlaBuilder* b, XlaOp data, XlaOp gather_indices,
 // resulting tensor of dimension: [batch, dim_0, ...dim_n, 2, 2, data_channels].
 // This function can also be seen as the inverse of 'Gather2by2Neighbors'.
 XlaOp ScatterToGradData(XlaOpKernelContext* ctx, XlaOp grad_data, XlaOp indices,
-                        XlaOp updates, int64 warp_dims,
+                        XlaOp updates, int64_t warp_dims,
                         xla::PrimitiveType xla_type) {
   xla::ScatterDimensionNumbers scatter_dim_numbers;
-  const int64 neighbor_data_dimensions = warp_dims + 2;
+  const int64_t neighbor_data_dimensions = warp_dims + 2;
   // Since the Scatter output dimensions are [batch, dim_0, ... dim_n, 2, 2,
   // data_channels], the update window dimensions is the last 3 dimensions.
   scatter_dim_numbers.add_update_window_dims(neighbor_data_dimensions - 3);
@@ -194,8 +194,8 @@ XlaOp ScatterToGradData(XlaOpKernelContext* ctx, XlaOp grad_data, XlaOp indices,
 // The resulting dimension is given by 'result_dims'.
 XlaOp BoundSamples(XlaOpKernelContext* ctx, XlaOp warp,
                    xla::PrimitiveType warp_type, TensorShape warp_shape,
-                   std::vector<int64> result_dims,
-                   std::vector<int64> broadcasted_dims, int64 last_warp_dim,
+                   std::vector<int64_t> result_dims,
+                   std::vector<int64_t> broadcasted_dims, int64_t last_warp_dim,
                    xla::Shape data_shape, XlaOp sample) {
   auto is_gt_minus_one =
       xla::Gt(warp,
@@ -248,38 +248,38 @@ XlaOp BoundSamples(XlaOpKernelContext* ctx, XlaOp warp,
 XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
                         XlaOp gather_indices, XlaOp warp,
                         xla::PrimitiveType warp_type, TensorShape warp_shape,
-                        int64 last_warp_dim, int64 data_channels,
+                        int64_t last_warp_dim, int64_t data_channels,
                         xla::Shape data_shape) {
   // Weights tensor has dimension [batch, dim_0, ... dim_n, 4].
   auto weights = BilinearWeights(ctx, ratio, warp_shape, warp_type);
 
   auto warp_dims = warp_shape.dim_sizes();
-  std::vector<int64> warp_dims_without_last_dims(warp_dims.begin(),
-                                                 warp_dims.end() - 1);
+  std::vector<int64_t> warp_dims_without_last_dims(warp_dims.begin(),
+                                                   warp_dims.end() - 1);
 
-  std::vector<int64> reshaped_weights_dims = warp_dims_without_last_dims;
+  std::vector<int64_t> reshaped_weights_dims = warp_dims_without_last_dims;
   // Reshape the last dimension of size 4 to two dimensions [2, 2].
   reshaped_weights_dims.push_back(2);
   reshaped_weights_dims.push_back(2);
-  std::vector<int64> reshape_dims(warp_shape.dims());
+  std::vector<int64_t> reshape_dims(warp_shape.dims());
   std::iota(reshape_dims.begin(), reshape_dims.end(), 0);
   // The dimension is [batch, dim_0,..., dim_n, 2, 2].
   auto reshaped_weights = xla::Reshape(weights, /*dimensions=*/reshape_dims,
                                        /*new_sizes=*/reshaped_weights_dims);
 
-  std::vector<int64> weights_with_channels_dims = reshaped_weights_dims;
+  std::vector<int64_t> weights_with_channels_dims = reshaped_weights_dims;
   weights_with_channels_dims.push_back(data_channels);
-  std::vector<int64> reshaped_weights_indices(reshaped_weights_dims.size());
+  std::vector<int64_t> reshaped_weights_indices(reshaped_weights_dims.size());
   std::iota(reshaped_weights_indices.begin(), reshaped_weights_indices.end(),
             0);
 
   // Set out of bound weights to 0.
   // The dimension of the reshaped_weight: [batch, dim_0, ...dim_n, 2, 2].
-  std::vector<int64> reshaped_result_dims(warp_dims.begin(),
-                                          warp_dims.end() - 1);
+  std::vector<int64_t> reshaped_result_dims(warp_dims.begin(),
+                                            warp_dims.end() - 1);
   reshaped_result_dims.push_back(2);
   reshaped_result_dims.push_back(2);
-  std::vector<int64> broadcasted_dims(warp_dims.size() - 1);
+  std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
   std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
   reshaped_weights = BoundSamples(ctx, warp, warp_type, warp_shape,
                                   reshaped_result_dims, broadcasted_dims,
@@ -289,7 +289,7 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   auto broadcast_reshaped_weights = xla::BroadcastInDim(
       reshaped_weights, weights_with_channels_dims, reshaped_weights_indices);
 
-  std::vector<int64> grad_output_indices(warp_dims_without_last_dims.size());
+  std::vector<int64_t> grad_output_indices(warp_dims_without_last_dims.size());
   std::iota(grad_output_indices.begin(), grad_output_indices.end(), 0);
   grad_output_indices.push_back(weights_with_channels_dims.size() - 1);
   XlaOp broadcast_grad_output = xla::BroadcastInDim(
@@ -318,9 +318,9 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       ctx, padded_grad_data, shifted_gather_indices,
       grad_output_multiply_weights, warp_shape.dims(), warp_type);
 
-  const int64 batch_size = data_shape.dimensions(0);
-  const int64 width = data_shape.dimensions(1);
-  const int64 height = data_shape.dimensions(2);
+  const int64_t batch_size = data_shape.dimensions(0);
+  const int64_t width = data_shape.dimensions(1);
+  const int64_t height = data_shape.dimensions(2);
   // Slice out the result accounting for the padding.
   return xla::Slice(
       updated_grad_data, /*start_indices=*/{0, 1, 1, 0},
@@ -358,21 +358,21 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
 // bottom right corner in a 2x2 neighborhood.
 XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
                         XlaOp gather_indices, XlaOp data,
-                        TensorShape warp_shape, int64 data_channels,
+                        TensorShape warp_shape, int64_t data_channels,
                         xla::PrimitiveType data_type, xla::Shape data_shape) {
   auto warp_dims = warp_shape.dim_sizes();
-  std::vector<int64> warp_dims_without_last_dims(warp_dims.begin(),
-                                                 warp_dims.end() - 1);
+  std::vector<int64_t> warp_dims_without_last_dims(warp_dims.begin(),
+                                                   warp_dims.end() - 1);
 
   // With dimension [batch, dim_0, ...dim_n, 4]
-  std::vector<int64> neighbor_broadcast_dims = warp_dims_without_last_dims;
+  std::vector<int64_t> neighbor_broadcast_dims = warp_dims_without_last_dims;
   neighbor_broadcast_dims.push_back(4);
 
   // With dimension [batch, dim_0, ...dim_n, 4]
   auto neighbor_broadcast_shape =
       xla::ShapeUtil::MakeShape(data_type, neighbor_broadcast_dims);
 
-  const int64 last_warp_dim = warp_shape.dims() - 1;
+  const int64_t last_warp_dim = warp_shape.dims() - 1;
 
   // Pad data with 0, before gathering such that 0 will be returned for samples
   // in the range of (-1, 0) or (image_dimension-1, image_dimension).
@@ -452,10 +452,10 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       grad_output * weight_y * bottom_right_minus_bottom_left +
       one_minus_y * top_right_minus_top_left;
 
-  std::vector<int64> reshaped_sizes = warp_dims_without_last_dims;
+  std::vector<int64_t> reshaped_sizes = warp_dims_without_last_dims;
   reshaped_sizes.push_back(1);
 
-  std::vector<int64> reshaped_dims(warp_dims_without_last_dims.size());
+  std::vector<int64_t> reshaped_dims(warp_dims_without_last_dims.size());
   std::iota(reshaped_dims.begin(), reshaped_dims.end(), 0);
 
   // Reduce-add along the channel dimension.
@@ -489,7 +489,7 @@ class ResamplerOp : public XlaOpKernel {
     OP_REQUIRES(ctx, data_shape.dims() == 4,
                 errors::InvalidArgument("data must be 4-dimensional",
                                         data_shape.DebugString()));
-    const int64 data_channels = data_shape.dim_size(3);
+    const int64_t data_channels = data_shape.dim_size(3);
     xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
     TensorShape warp_shape = ctx->InputShape("warp");
@@ -501,7 +501,7 @@ class ResamplerOp : public XlaOpKernel {
                   errors::InvalidArgument("warp sizes must be positive, got [",
                                           size, "]"));
     }
-    const int64 last_warp_dim = warp_shape.dims() - 1;
+    const int64_t last_warp_dim = warp_shape.dims() - 1;
     // Last dimension of warp shape must be of size 2.
     OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
                 errors::InvalidArgument(
@@ -577,10 +577,10 @@ class ResamplerOp : public XlaOpKernel {
     // is the dimension of the result:
     //  [batch, dim_0, ...dim_n, data_channels].
     auto warp_dims = warp_shape.dim_sizes();
-    std::vector<int64> result_dims(warp_dims.begin(), warp_dims.end() - 1);
+    std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
     result_dims.push_back(data_channels);
 
-    std::vector<int64> broadcasted_dims(warp_dims.size() - 1);
+    std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
     std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
     auto broadcasted_is_in_bound =
         xla::BroadcastInDim(is_in_bound, result_dims, broadcasted_dims);
@@ -610,7 +610,7 @@ class ResamplerGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, data_shape_tf.dims() == 4,
                 errors::InvalidArgument("data must be 4-dimensional",
                                         data_shape_tf.DebugString()));
-    const int64 data_channels = data_shape_tf.dim_size(3);
+    const int64_t data_channels = data_shape_tf.dim_size(3);
     xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
     TensorShape warp_shape = ctx->InputShape("warp");
@@ -623,7 +623,7 @@ class ResamplerGradOp : public XlaOpKernel {
                                           size, "]"));
     }
     // Last dimension of warp shape must be of size 2.
-    const int64 last_warp_dim = warp_shape.dims() - 1;
+    const int64_t last_warp_dim = warp_shape.dims() - 1;
     OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
                 errors::InvalidArgument(
                     "the last dimension of warp must be exactly size 2."));
@@ -663,9 +663,9 @@ class ResamplerGradOp : public XlaOpKernel {
         CalculateGradWarp(ctx, grad_output, ratio, gather_indices, data,
                           warp_shape, data_channels, data_type, data_shape);
     auto warp_dims = warp_shape.dim_sizes();
-    std::vector<int64> result_dims(warp_dims.begin(), warp_dims.end() - 1);
+    std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
     result_dims.push_back(2);
-    std::vector<int64> broadcasted_dims(warp_dims.size() - 1);
+    std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
     std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
     auto grad_warp_bounded =
         BoundSamples(ctx, warp, warp_type, warp_shape, result_dims,

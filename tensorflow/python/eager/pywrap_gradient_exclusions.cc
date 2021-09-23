@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 361> a = {{
+  static std::array<OpIndexInfo, 362> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -411,6 +411,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"XlaSharding"},
       {"XlaSpmdShardToFullShape"},
       {"ZerosLike"},
+      {"_EagerConst"},
       {"VarHandleOp"},
   }};
   static const auto &m = *OpGradientInfoInit(a);
@@ -424,7 +425,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 479> a = {{
+  static std::array<OpIndexInfo, 480> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -903,6 +904,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Xlogy"},
       {"ZerosLike"},
       {"Zeta"},
+      {"_EagerConst"},
       {"VarHandleOp"},
   }};
   static const auto &m = *OpGradientInfoInit(a);

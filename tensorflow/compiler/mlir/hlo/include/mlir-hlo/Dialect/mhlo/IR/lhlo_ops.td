@@ -43,6 +43,7 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_dialect.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.td"
 
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
@@ -50,7 +51,8 @@ include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
 
 class LHLO_Op<string mnemonic, list<OpTrait> traits> :
   Op<LHLO_Dialect, mnemonic,
-    !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
+    !listconcat([MemoryEffects<[MemRead, MemWrite]>,
+    LmhloStructuredInterface], traits)>;
 
 def LHLO_ConstOp : LHLO_Op<"constant", []> {
   let summary = "Constant operator";
@@ -81,7 +83,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []> {
 
 class LHLO_UnaryElementwiseOp<string mnemonic,
                               Type BufferType = LHLO_Buffer,
-                              list<OpTrait> traits = [SameTypeOperands]>
+                              list<OpTrait> traits = [SameTypeOperands, Elementwise]>
     : LHLO_Op<mnemonic, traits> {
   let arguments = (ins Arg<BufferType, "", [MemRead]>:$input,
                        Arg<BufferType, "", [MemWrite]>:$output);
@@ -342,7 +344,7 @@ def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
-                               list<OpTrait> traits = [SameTypeOperands]> :
+                               list<OpTrait> traits = [SameTypeOperands, Elementwise]> :
         LHLO_Op<mnemonic, traits> {
   let arguments = (ins
       Arg<BufferType, "", [MemRead]>:$lhs,
@@ -619,6 +621,11 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config,
+    // TODO(b/189822916): Remove this field when all clients are migrated to
+    // the status-returning API.
+    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
+                      "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+                      $api_version,
     OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
   );
   let verifier = [{ return Verify(*this); }];
@@ -861,7 +868,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
       auto reversal = window_reversalAttr();
-      return reversal && llvm::any_of(reversal.getBoolValues(),
+      return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }
   }];
@@ -954,7 +961,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []> {
   let regions = (region SizedRegion<1>:$update_computation);
 }
 
-def LHLO_SelectOp: LHLO_Op<"select", []> {
+def LHLO_SelectOp: LHLO_Op<"select", [Elementwise]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`
@@ -1102,6 +1109,19 @@ def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce", [SameOperand
     See https://www.tensorflow.org/xla/operation_semantics#allreduce.
   }];
   let arguments = arguments_base;
+  let regions = (region SizedRegion<1>:$computation);
+}
+
+def LHLO_ReduceScatterOp : LHLO_CollectiveCommunicationOp<"reduce_scatter", [SameOperandsElementType]> {
+  let summary = "ReduceScatter operator";
+  let description = [{
+     Performs all_reduce followed by a scatter.
+
+     See https://www.tensorflow.org/xla/operation_semantics#reducescatter
+  }];
+  let arguments = !con(
+    arguments_base,
+    (ins I64Attr:$scatter_dimension));
   let regions = (region SizedRegion<1>:$computation);
 }
 
@@ -1372,6 +1392,17 @@ def FusionOp : LHLO_Op<"fusion", [
       }
       return buffers;
     }
+
+    SmallVector<Operation*> getFusionRoots() {
+      SmallVector<Operation*> roots;
+      for (auto value : getFusionResults()) {
+        Operation* op = value.getDefiningOp();
+        if (roots.empty() || roots.back() != op) {
+          roots.push_back(op);
+        }
+      }
+      return roots;
+    }
   }];
 }
 
@@ -1391,7 +1422,7 @@ def LHLO_RealDynamicSliceOp: LHLO_Op<
       [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let summary = "LHLO Real Dynamic Slice operator";
   let description = [{
-    The dynamic shape version of DynamicSliceOp. Extracts a sub-array from the 
+    The dynamic shape version of DynamicSliceOp. Extracts a sub-array from the
     input array according to dynamic start_indices, limit_indices and strides.
   }];
   let arguments = (ins
@@ -1407,10 +1438,10 @@ def LHLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
       []> {
   let summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   let description = [{
-    The dynamic shape version of BroadcastInDimOp. This is a generalization of the 
-    BroadcastInDimOp which accepts its output dimensions as an argument. It should 
-    eventually supercede the statically shaped original, but is being phased as a 
-    separate op in order to support compatibility with lowerings and translations that 
+    The dynamic shape version of BroadcastInDimOp. This is a generalization of the
+    BroadcastInDimOp which accepts its output dimensions as an argument. It should
+    eventually supercede the statically shaped original, but is being phased as a
+    separate op in order to support compatibility with lowerings and translations that
     precede dynamic shapes.
   }];
   let arguments = (ins
@@ -1441,20 +1472,20 @@ def LHLO_DotGeneralOp: LHLO_Op<"dot_general", []> {
 def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
   string summary = "LHLO Dynamic Gather operator";
   string description = [{
-    The dynamic shape version of GatherOp. Stitches together several slices of an input 
+    The dynamic shape version of GatherOp. Stitches together several slices of an input
     array. slice_sizes is not a const.
   }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    Arg<LHLO_IntBuffer, "", [MemRead]>:$slice_sizes,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$slice_sizes,
     GatherDimensionNumbers:$dimension_numbers,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
 
 def LHLO_DynamicPadOp: LHLO_Op<
-      "dynamic_pad", 
+      "dynamic_pad",
       [AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "LHLO Dynamic Pad operator";
   let description = [{
@@ -1492,7 +1523,7 @@ def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
 def LHLO_DynamicBitcastOp: LHLO_Op<"dynamic_bitcast", []> {
   let summary = "LHLO Dynamic Bitcast operator";
   let description = [{
-    The dynamic shape version of BitcastOp. This op changes the shape of the 
+    The dynamic shape version of BitcastOp. This op changes the shape of the
     input in the way that the physical arrangement of elements are unchanged.
 
     However, the op needs layout information to make sense of "physical
@@ -1509,12 +1540,12 @@ def LHLO_DynamicBitcastOp: LHLO_Op<"dynamic_bitcast", []> {
 def LHLO_DynamicIotaOp : LHLO_Op<"dynamic_iota", []> {
   let summary = "Create linear increasing values from 0 to length -1.";
   let description = [{
-    The dynamic shape version of IotaOp. Produces an output of the specified shape, 
+    The dynamic shape version of IotaOp. Produces an output of the specified shape,
     with an incremental set of values along the specified dimension starting at 0.
     See
     https://www.tensorflow.org/xla/operation_semantics#iota
   }];
-  let arguments = (ins Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+  let arguments = (ins Arg<LHLO_DimensionBuffer, "", [MemRead]>:$shape,
                    I64Attr:$iota_dimension,
                    Arg<LHLO_Buffer, "", [MemWrite]>:$output);
 }
@@ -1535,7 +1566,7 @@ def LHLO_DynamicReshapeOp: LHLO_Op<"dynamic_reshape", []> {
   }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$shape,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }

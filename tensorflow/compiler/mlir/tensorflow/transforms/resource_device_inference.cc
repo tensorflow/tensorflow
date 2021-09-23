@@ -61,6 +61,13 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
     : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final { return "tf-resource-device-inference"; }
+
+  StringRef getDescription() const final {
+    return "Propagates the device attribute on resources from callers to "
+           "callees.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -311,9 +318,7 @@ void ResourceDeviceInference::runOnOperation() {
   }
 }
 
-PassRegistration<ResourceDeviceInference> pass(
-    "tf-resource-device-inference",
-    "Propagates the device attribute on resources from callers to callees.");
+PassRegistration<ResourceDeviceInference> pass;
 
 }  // namespace
 

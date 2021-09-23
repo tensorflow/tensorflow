@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -25,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
@@ -33,7 +35,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-static port::StatusOr<absl::string_view> GetVersionString(
+static port::StatusOr<absl::string_view> GetPtxasVersionString(
     const std::string& binary_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
   static auto* seen_binary_paths TF_GUARDED_BY(mu) =
@@ -72,16 +74,17 @@ static port::StatusOr<absl::string_view> GetVersionString(
 //
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
-  auto version_string_or = GetVersionString(ptxas_path);
-  if (!version_string_or.ok()) {
+  port::StatusOr<absl::string_view> ptxas_version =
+      GetPtxasVersionString(ptxas_path);
+  if (!ptxas_version.ok()) {
     LOG(WARNING) << "Couldn't get ptxas version string: "
-                 << version_string_or.status();
+                 << ptxas_version.status();
     return;
   }
 
-  int64 vmaj, vmin, vdot;
+  int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(version_string_or.ValueOrDie(),
+  if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
                          R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,
                          &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &vmaj) ||
@@ -89,34 +92,29 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
       !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
-                 << version_string_or.ValueOrDie();
+                 << ptxas_version.ValueOrDie();
     return;
   }
 
   // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
   // PTX 6.0.  An older ptxas will just fail to compile any of our code.
   //
-  // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
-  // address calculations with large offsets (e.g. "load ptr + large_constant"),
-  // b/70245379.
-  //
-  // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
-  // that appears related to address calculations, b/111107644.  ptxas 9.2.88
-  // appears to work, as far as we can tell.
+  // ptxas versions before the version that shipped with CUDA 11.1 are known to
+  // miscompile XLA code.
   if (vmaj < 9) {
     LOG(ERROR)
         << "You are using ptxas 8.x, but TF requires ptxas 9.x (and strongly "
-           "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
-           "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
-           "binary is sufficient.";
-  } else if (std::make_tuple(vmaj, vmin, vdot) < std::make_tuple(9, 2, 88)) {
+           "prefers >= 11.1).  Compilation of XLA kernels below will likely "
+           "fail.\n\nYou may not need to update CUDA; cherry-picking the ptxas "
+           "binary is often sufficient.";
+  } else if (std::make_tuple(vmaj, vmin) < std::make_tuple(11, 1)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which is older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+        << ", which is older than 11.1. ptxas before 11.1 is known to "
            "miscompile XLA code, leading to incorrect results or "
-           "invalid-address errors.\n\nYou do not need to update to CUDA "
-           "9.2.88; cherry-picking the ptxas binary is sufficient.";
+           "invalid-address errors.\n\nYou may not need to update to CUDA "
+           "11.1; cherry-picking the ptxas binary is often sufficient.";
   }
 }
 
@@ -185,8 +183,9 @@ static std::string FindCudaExecutable(const std::string binary_name,
     return it->second;
   }
 
-  // Try searching in the default PATH first.
-  if (GetVersionString(binary_filename).ok()) {
+  // Try searching in the default PATH first if applicable.
+  if (tensorflow::PreferPtxasFromPath() &&
+      GetPtxasVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
     return binary_filename;
@@ -200,7 +199,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
     binary_path = tensorflow::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
-        GetVersionString(binary_path).ok()) {
+        GetPtxasVersionString(binary_path).ok()) {
       break;
     }
   }
@@ -226,7 +225,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
 
   absl::MutexLock lock(mutex);
 
-  if (already_logged->insert({ptxas_path, cc_major, cc_minor}).second) {
+  if (already_logged->insert(std::make_tuple(ptxas_path, cc_major, cc_minor))
+          .second) {
     LOG(WARNING) << "Falling back to the CUDA driver for PTX compilation; "
                     "ptxas does not support CC "
                  << cc_major << "." << cc_minor;
@@ -277,8 +277,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   });
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
-      ptxas_path, ptx_path, "-o", cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
+      ptxas_path,
+      ptx_path,
+      "-o",
+      cubin_path,
+      absl::StrCat("-arch=sm_", cc_major, cc_minor),
+      "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -315,7 +319,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   // Print the verbose output of ptxas.
   if (!stderr_output.empty()) {
-    VLOG(2) << stderr_output;
+    if (absl::StrContains(stderr_output, "warning")) {
+      LOG(INFO) << stderr_output;
+    } else {
+      VLOG(2) << stderr_output;
+    }
   }
 
   // Read in the result of compilation and return it as a byte vector.

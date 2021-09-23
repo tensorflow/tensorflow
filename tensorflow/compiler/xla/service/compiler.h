@@ -75,8 +75,8 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const = 0;
 
-  virtual int64 replica_count() const { return 0; }
-  virtual int64 num_cores() const { return 0; }
+  virtual int64_t replica_count() const { return 0; }
+  virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
   virtual bool deduplicate_hlo() const { return false; }
 
@@ -188,14 +188,12 @@ class Compiler {
                         CompileOptions{device_allocator});
   }
 
-  // Runs HLO passes to optimize the given HloModule, perform scheduling and
-  // buffer assignment, returns the optimized module and the buffer assignments.
-  // This interface is intentionally narrow.
-  virtual StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) {
+  // Performs scheduling and buffer assignment and returns the buffer
+  // assignments.
+  // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
+  // the module must live at least as long as the buffer assignments.
+  virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* module) {
     return Unimplemented("This compiler does not support this method");
   }
 
@@ -291,7 +289,7 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64(const BufferValue&)> BufferSizeBytesFunction() {
+  std::function<int64_t(const BufferValue&)> BufferSizeBytesFunction() {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
     return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());

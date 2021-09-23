@@ -9,6 +9,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "AutotuneOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
@@ -35,10 +39,6 @@ tf_module {
   member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
-  }
-  member {
-    name: "MapVectorizationOptions"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "OptimizationOptions"

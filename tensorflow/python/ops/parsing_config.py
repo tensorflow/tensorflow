@@ -197,25 +197,28 @@ class RaggedFeature(
               validate=False):
     if value_key is not None:
       if not isinstance(value_key, str):
-        raise ValueError("value_key must be a string; got %r" % value_key)
+        raise ValueError(
+            f"Argument `value_key` must be a string; got {value_key}")
       if not value_key:
-        raise ValueError("value_key may not be empty")
+        raise ValueError("Argument `value_key` must not be empty")
     dtype = dtypes.as_dtype(dtype)
     if dtype not in (dtypes.int64, dtypes.float32, dtypes.string):
-      raise ValueError("dtypes must be int64, float32, or bytes; got %r" %
-                       dtype)
+      raise ValueError("Argument `dtype` must be int64, float32, or bytes; got "
+                       f"{dtype!r}")
     row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
     if row_splits_dtype not in (dtypes.int32, dtypes.int64):
-      raise ValueError("row_splits_dtype must be int32 or int64; got %r" %
-                       row_splits_dtype)
+      raise ValueError("Argument `row_splits_dtype` must be int32 or int64; got"
+                       f"{row_splits_dtype!r}")
     if not isinstance(partitions, (list, tuple)):
-      raise TypeError("partitions must be a list or tuple")
+      raise TypeError("Argument `partitions` must be a list or tuple. Received"
+                      f"partitions={partitions} of type "
+                      f"{type(partitions).__name__}.")
     for partition in partitions:
       if not isinstance(partition, cls._PARTITION_TYPES):
-        raise TypeError("partitions must be a list of partition objects %s;"
-                        " got: %r" % (cls._PARTITION_TYPES, partition))
+        raise TypeError("Argument `partitions` must be a list of partition "
+                        f"objects {cls._PARTITION_TYPES}; got: {partition!r}")
     if not isinstance(validate, bool):
-      raise TypeError("validate must be a bool; got %r" % validate)
+      raise TypeError(f"Argument `validate` must be a bool; got {validate!r}")
     return super(RaggedFeature, cls).__new__(cls, dtype, value_key, partitions,
                                              row_splits_dtype, validate)
 
@@ -448,8 +451,8 @@ class _ParseOpParams(object):
       for key in sorted(features.keys()):
         feature = features[key]
         if not isinstance(feature, tuple(types)):
-          raise ValueError("Unsupported %s %s for key '%s')." %
-                           (type(feature).__name__, feature, key))
+          raise ValueError(
+              f"Unsupported {type(feature).__name__} {feature} for key '{key}'")
         params._add_feature(key, feature)  # pylint: disable=protected-access
     params._validate()  # pylint: disable=protected-access
     return params
@@ -520,12 +523,13 @@ class _ParseOpParams(object):
     elif isinstance(feature, RaggedFeature):
       self._add_ragged_feature(key, feature)
     else:
-      raise ValueError("Invalid feature %s:%s." % (key, feature))
+      raise ValueError(f"Invalid feature {key}:{feature}.")
 
   def _add_varlen_feature(self, key, feature):
     """Adds a VarLenFeature."""
     if not feature.dtype:
-      raise ValueError("Missing type for feature %s." % key)
+      raise ValueError(
+          f"Missing type for feature {key}. Received feature={feature}")
     self._add_sparse_key(key, feature.dtype)
 
   def _add_sparse_key(self, key, dtype):
@@ -533,8 +537,8 @@ class _ParseOpParams(object):
     if key in self.sparse_keys:
       original_dtype = self.sparse_types[self.sparse_keys.index(key)]
       if original_dtype != dtype:
-        raise ValueError("Conflicting type %s vs %s for feature %s." %
-                         (original_dtype, dtype, key))
+        raise ValueError(
+            f"Conflicting type {original_dtype} vs {dtype} for feature {key}.")
     else:
       self.sparse_keys.append(key)
       self.sparse_types.append(dtype)
@@ -543,11 +547,12 @@ class _ParseOpParams(object):
     """Adds a SparseFeature."""
 
     if not feature.index_key:
-      raise ValueError("Missing index_key for SparseFeature %s." % (feature,))
+      raise ValueError(f"Missing index_key for SparseFeature {feature}.")
     if not feature.value_key:
-      raise ValueError("Missing value_key for SparseFeature %s." % (feature,))
+      raise ValueError(f"Missing value_key for SparseFeature {feature}.")
     if not feature.dtype:
-      raise ValueError("Missing type for feature %s." % key)
+      raise ValueError(f"Missing type for feature {key}. Received feature="
+                       f"{feature}.")
     index_keys = feature.index_key
     if isinstance(index_keys, str):
       index_keys = [index_keys]
@@ -562,18 +567,21 @@ class _ParseOpParams(object):
   def _add_fixed_len_feature(self, key, feature):
     """Adds a FixedLenFeature."""
     if not feature.dtype:
-      raise ValueError("Missing type for feature %s." % key)
+      raise ValueError(f"Missing type for feature {key}. Received feature="
+                       f"{feature}.")
     if feature.shape is None:
-      raise ValueError("Missing shape for feature %s." % key)
+      raise ValueError(f"Missing shape for feature {key}. Received feature="
+                       f"{feature}.")
     feature_tensor_shape = tensor_shape.as_shape(feature.shape)
     if (feature.shape and feature_tensor_shape.ndims and
         feature_tensor_shape.dims[0].value is None):
-      raise ValueError("First dimension of shape for feature %s unknown. "
-                       "Consider using FixedLenSequenceFeature." % key)
+      raise ValueError(f"First dimension of shape for feature {key} unknown. "
+                       "Consider using FixedLenSequenceFeature. Received "
+                       f"feature={feature}.")
     if (feature.shape is not None and
         not feature_tensor_shape.is_fully_defined()):
-      raise ValueError("All dimensions of shape for feature %s need to be "
-                       "known but received %s." % (key, str(feature.shape)))
+      raise ValueError(f"All dimensions of shape for feature {key} need to be "
+                       f"known but received {feature.shape!s}.")
     self.dense_keys.append(key)
     self.dense_shapes.append(tensor_shape.as_shape(feature.shape))
     self.dense_types.append(feature.dtype)
@@ -583,9 +591,11 @@ class _ParseOpParams(object):
   def _add_fixed_len_sequence_feature(self, key, feature):
     """Adds a FixedLenSequenceFeature."""
     if not feature.dtype:
-      raise ValueError("Missing type for feature %s." % key)
+      raise ValueError(f"Missing type for feature {key}. Received feature="
+                       f"{feature}.")
     if feature.shape is None:
-      raise ValueError("Missing shape for feature %s." % key)
+      raise ValueError(f"Missing shape for feature {key}. Received feature="
+                       f"{feature}.")
     self.dense_keys.append(key)
     self.dense_shapes.append(tensor_shape.as_shape(feature.shape))
     self.dense_types.append(feature.dtype)
@@ -600,11 +610,11 @@ class _ParseOpParams(object):
       original_value_type = self.ragged_value_types[self.ragged_keys.index(key)]
       original_split_type = self.ragged_split_types[self.ragged_keys.index(key)]
       if original_value_type != value_type:
-        raise ValueError("Conflicting type %s vs %s for feature %s." %
-                         (original_value_type, value_type, key))
+        raise ValueError(f"Conflicting type {original_value_type} vs "
+                         f"{value_type} for feature {key}.")
       if original_split_type != split_type:
-        raise ValueError("Conflicting partition type %s vs %s for feature %s." %
-                         (original_split_type, split_type, key))
+        raise ValueError(f"Conflicting partition type {original_split_type} vs "
+                         f"{split_type} for feature {key}.")
     else:
       self.ragged_keys.append(key)
       self.ragged_value_types.append(value_type)
@@ -622,41 +632,41 @@ class _ParseOpParams(object):
   def _validate(self):
     """Validates the features in this ParseOpParams."""
     if len(self.dense_shapes) != len(self.dense_keys):
-      raise ValueError(
-          "len(self.dense_shapes) != len(self.dense_keys): %d vs %d" %
-          (len(self.dense_shapes), len(self.dense_keys)))
+      raise ValueError("len(self.dense_shapes) != len(self.dense_keys): "
+                       f"{len(self.dense_shapes)} vs {len(self.dense_keys)}.")
     if len(self.dense_types) != len(self.dense_keys):
-      raise ValueError(
-          "len(self.dense_types) != len(self.dense_keys): %d vs %d" %
-          (len(self.dense_types), len(self.dense_keys)))
+      raise ValueError("len(self.dense_types) != len(self.dense_keys): "
+                       f"{len(self.dense_types)} vs {len(self.dense_keys)}.")
     if len(self.sparse_types) != len(self.sparse_keys):
-      raise ValueError(
-          "len(self.sparse_types) != len(self.sparse_keys): %d vs %d" %
-          (len(self.sparse_types), len(self.sparse_keys)))
+      raise ValueError("len(self.sparse_types) != len(self.sparse_keys): "
+                       f"{len(self.sparse_types)} vs {len(self.sparse_keys)}.")
     if len(self.ragged_value_types) != len(self.ragged_keys):
       raise ValueError(
-          "len(self.ragged_value_types) != len(self.ragged_keys): %d vs %d" %
-          (len(self.ragged_value_types), len(self.ragged_keys)))
+          "len(self.ragged_value_types) != len(self.ragged_keys): "
+          f"{len(self.ragged_value_types)} vs {len(self.ragged_keys)}.")
     if len(self.ragged_split_types) != len(self.ragged_keys):
       raise ValueError(
-          "len(self.ragged_split_types) != len(self.ragged_keys): %d vs %d" %
-          (len(self.ragged_split_types), len(self.ragged_keys)))
+          "len(self.ragged_split_types) != len(self.ragged_keys): "
+          f"{len(self.ragged_split_types)} vs {len(self.ragged_keys)}.")
 
     dense_key_set = set(self.dense_keys)
     sparse_key_set = set(self.sparse_keys)
     ragged_key_set = set(self.ragged_keys)
     if not dense_key_set.isdisjoint(sparse_key_set):
       raise ValueError(
-          "Dense and sparse keys must not intersect; intersection: %s" %
-          dense_key_set.intersection(sparse_key_set))
+          "Dense and sparse keys must not intersect; dense_keys: "
+          f"{self.dense_keys}, sparse_keys: {self.sparse_keys}, intersection: "
+          f"{dense_key_set.intersection(sparse_key_set)}")
     if not dense_key_set.isdisjoint(ragged_key_set):
       raise ValueError(
-          "Dense and ragged keys must not intersect; intersection: %s" %
-          dense_key_set.intersection(ragged_key_set))
+          "Dense and ragged keys must not intersect; dense_keys: ",
+          f"{self.dense_keys}, ragged_keys: {self.ragged_keys}, intersection: "
+          f"{dense_key_set.intersection(ragged_key_set)}")
     if not ragged_key_set.isdisjoint(sparse_key_set):
       raise ValueError(
-          "Ragged and sparse keys must not intersect; intersection: %s" %
-          ragged_key_set.intersection(sparse_key_set))
+          "Ragged and sparse keys must not intersect; ragged_keys: "
+          f"{self.ragged_keys}, sparse_keys: {self.sparse_keys}, intersection: "
+          f"{ragged_key_set.intersection(sparse_key_set)}")
 
 
 def _construct_tensors_for_composite_features(features, tensor_dict):
@@ -792,7 +802,7 @@ def _add_ragged_partition(values, partition, tensor_dict, row_splits_dtype,
     elif isinstance(partition, RaggedFeature.ValueRowIds):
       return ragged_tensor.RaggedTensor.from_value_rowids(
           values, partition_t, validate=validate)
-    raise ValueError("Unhandled partition type %r" % partition)
+    raise ValueError(f"Unhandled partition type {partition!r}")
 
 
 def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
@@ -874,7 +884,7 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           nrows,
           validate=validate)
 
-    raise ValueError("Unhandled partition type %r" % partition)
+    raise ValueError(f"Unhandled partition type {partition!r}")
 
 
 def _build_ragged_tensors(serialized_shape,

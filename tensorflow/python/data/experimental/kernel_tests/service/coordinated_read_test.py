@@ -36,36 +36,33 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
           combinations.combine(num_workers=[1, 3], num_consumers=[1, 2, 5])))
   def testBasic(self, num_workers, num_consumers):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds = ds.take(100)
-    results = self.getDatasetOutput(ds)
+    get_next = self.getNext(ds, requires_initialization=False)
+    results = [self.evaluate(get_next()) for _ in range(100)]
     self.checkCoordinatedReadGroups(results, num_consumers)
+    cluster.stop_workers()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testConsumerRestart(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_consumers = 3
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds = ds.take(20)
-    self.getDatasetOutput(ds)
+    get_next = self.getNext(ds, requires_initialization=False)
+    _ = [self.evaluate(get_next()) for _ in range(20)]
+
     ds2 = self.make_coordinated_read_dataset(cluster, num_consumers)
-    ds2 = ds2.take(20)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "current round has already reached"):
-      self.getDatasetOutput(ds2)
+      get_next_ds2 = self.getNext(ds2, requires_initialization=False)
+      _ = [self.evaluate(get_next_ds2()) for _ in range(20)]
+    cluster.stop_workers()
 
   @combinations.generate(test_base.default_test_combinations())
   def testBucketizing(self):
     # Tests a common use case for round robin reads. At each step, all
     # consumers should get batches with the same bucket size.
     cluster = data_service_test_base.TestCluster(num_workers=4)
-    # Round robin reads can cause slow cluster shutdown.
-    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
     num_elements = 100
     low_bucket_max = 30
     mid_bucket_max = 60
@@ -173,6 +170,19 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
         "require that the input dataset has infinite "
         "cardinality, but the dataset has cardinality " + str(num_elements)):
       self.getDatasetOutput(ds)
+
+  # We test only eager combinations because the `map` transformation used for
+  # compression in make_distributed_dataset makes cardinality unknown in TF1.
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCardinality(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = self.make_distributed_dataset(
+        dataset_ops.Dataset.range(10).repeat(),
+        cluster,
+        job_name="test",
+        consumer_index=0,
+        num_consumers=2)
+    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
 
 
 if __name__ == "__main__":

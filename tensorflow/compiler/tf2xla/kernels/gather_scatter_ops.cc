@@ -35,7 +35,7 @@ class GatherOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> slice_sizes;
+    std::vector<int64_t> slice_sizes;
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntVector("slice_sizes", &slice_sizes));
     xla::XlaOp result =

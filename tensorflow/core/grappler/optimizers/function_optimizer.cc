@@ -834,7 +834,7 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
        "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
        "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
-       "Send", "Recv",
+       "Send", "Recv", "CollectiveInitializeCommunicator",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -1515,12 +1515,6 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
   return Status::OK();
-}
-
-void FunctionOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                 const GraphDef& optimized_graph,
-                                 double result) {
-  // Nothing to do for FunctionOptimizer.
 }
 
 }  // end namespace grappler

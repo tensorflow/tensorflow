@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -107,6 +108,20 @@ class BincountTest(test_util.TensorFlowTestCase):
             self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
 
+  @test_util.run_gpu_only
+  def test_bincount_determinism_error(self):
+    arr = np.random.randint(0, 1000, size=1000)
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of Bincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=None))
+    arr = np.random.randint(0, 1000, size=(100, 100))
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of "
+        "DenseBincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=-1))
+
   def test_zero_weights(self):
     with self.session():
       self.assertAllEqual(
@@ -119,11 +134,12 @@ class BincountTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(bincount_ops.bincount([1, 2, 3, -1, 6, 8]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_shape_function(self):
     # size must be scalar.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Shape must be rank 0 but is rank 1 .*Bincount"):
+        "Shape must be rank 0 but is rank 1(?s).*Bincount"):
       gen_math_ops.bincount([1, 2, 3, 1, 6, 8], [1], [])
     # size must be positive.
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),

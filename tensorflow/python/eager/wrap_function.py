@@ -117,7 +117,9 @@ def _get_element_from_tensor_info(tensor_info, graph):
                   tensor_info.composite_tensor.components]
     return spec._from_components(components)  # pylint: disable=protected-access
   else:
-    raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+    raise ValueError(f"Invalid TensorInfo.encoding: {encoding}. Valid "
+                     "encodings are 'name', 'coo_sparse', and "
+                     "'composite_tensor'.")
 
 
 def _lift_single_variable(old_variable, graph, variable_holder):
@@ -234,8 +236,8 @@ class WrappedFunction(function.ConcreteFunction):
     if self._arg_keywords is None:
       if kwargs:
         raise NotImplementedError(
-            "Keyword arguments not supported when calling a "
-            "wrap_function-decorated function.")
+            "Keyword arguments are not supported when calling a "
+            f"wrap_function-decorated function. Got {kwargs}.")
       if self._signature is not None:
         args = list(args)
         for i, arg in enumerate(args):
@@ -276,7 +278,8 @@ class WrappedFunction(function.ConcreteFunction):
     flat_feeds = [self.graph.as_graph_element(t) for t in flat_feeds]
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
-        raise ValueError("Feeds must be tensors.")
+        raise ValueError("All memebers of argument `feeds` must be tensors. "
+                         f"Got {f} with type {type(f)}.")
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
@@ -324,11 +327,11 @@ class WrappedFunction(function.ConcreteFunction):
     # Expand composite tensors into their component dense Tensors.
     tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)
 
-    for f in (flat_feeds + tensor_fetches + operation_fetches):
+    for f in flat_feeds + tensor_fetches + operation_fetches:
       if f.graph is not self._func_graph:
         raise ValueError("Can only prune function whose feeds and fetches "
-                         "are from this graph (%s). Input %s is from graph %s" %
-                         (self._func_graph, f, f.graph))
+                         f"from graph {self._func_graph}. Input "
+                         f"{f} is from a different graph {f.graph}.")
     with self._func_graph.as_default():
       pruned_graph = func_graph.FuncGraph(name)
     lift_map = lift_to_graph.lift_to_graph(
@@ -630,7 +633,7 @@ def wrap_function(fn, signature, name=None):
       signature=signature)
 
 
-def function_from_graph_def(graph_def, inputs, outputs):
+def function_from_graph_def(graph_def, inputs, outputs, captures=None):
   """Creates a ConcreteFunction from a GraphDef.
 
   Args:
@@ -639,6 +642,9 @@ def function_from_graph_def(graph_def, inputs, outputs):
       should be inputs to the function.
     outputs: A Tensor name or nested structure of names in `graph_def` which
       should be outputs of the function.
+    captures: (Optional) A dictionary mapping node names in `graph_def` that
+      should be captured as inputs to tensors containing the value of the
+      captured inputs.
 
   Returns:
     A ConcreteFunction.
@@ -646,6 +652,10 @@ def function_from_graph_def(graph_def, inputs, outputs):
 
   def _imports_graph_def():
     importer.import_graph_def(graph_def, name="")
+    graph = ops.get_default_graph()
+    if captures is not None:
+      for c in captures:
+        graph.add_capture(captures[c], graph.get_tensor_by_name(str(c) + ":0"))
 
   wrapped_import = wrap_function(_imports_graph_def, [])
   import_graph = wrapped_import.graph

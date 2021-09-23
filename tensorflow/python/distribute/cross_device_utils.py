@@ -237,9 +237,9 @@ class CollectiveKeys(object):
     with self._lock:
       group = self._instance_key_table.get(group_key, None)
       if group is None:
-        raise ValueError('group {} not found'.format(group_key))
+        raise ValueError(f'Group {group_key} is not found.')
       if device not in group:
-        raise ValueError('{} not in group {}'.format(device, group_key))
+        raise ValueError(f'Device {device} is not present in group {group_key}')
       v = group[device]
       group[device] += 1
       return v
@@ -269,11 +269,10 @@ class CollectiveReplicaLauncher(object):
     self._group_size = group_size
     self._collective_keys = collective_keys
     self._device = device
-    if self._use_ordering_token():
-      with ops.init_scope(), ops.device(device):
-        self._ordering_token = resource_variable_ops.ResourceVariable(0.)
-    else:
-      self._ordering_token = None
+    # Created lazily in _get_ordering_token to avoid creating tensors on TPUs
+    # before the user has a chance to call initialize_system.
+    self._ordering_token = None
+    self._ordering_token_init_lock = threading.Lock()
 
   def _control_input(self, control_input):
     if control_input is not None and not self._use_ordering_token():
@@ -324,8 +323,14 @@ class CollectiveReplicaLauncher(object):
                                                     self._device)
 
   def _get_ordering_token(self, communication_hint):
-    if self._use_ordering_token() and communication_hint == 'NCCL':
-      return self._ordering_token.handle
+    if self._use_ordering_token():
+      with self._ordering_token_init_lock:
+        if self._ordering_token is None:
+          with ops.init_scope(), ops.device(self._device):
+            self._ordering_token = resource_variable_ops.ResourceVariable(0.)
+        if communication_hint == 'NCCL':
+          return self._ordering_token.handle
+
     return None
 
   def can_order_nccl(self):
@@ -460,7 +465,7 @@ class CollectiveReplicaLauncher(object):
       RuntimeError: if called in eager mode.
     """
     if context.executing_eagerly():
-      raise RuntimeError('all_gather in eager mode is not supported')
+      raise RuntimeError('all_gather is not supported in eager mode.')
 
     with ops.device(self._device), \
          ops.control_dependencies([array_ops.identity(input_tensor)]):
@@ -523,7 +528,7 @@ class CollectiveReplicaLauncher(object):
     """
     if context.executing_eagerly():
       raise RuntimeError(
-          'all_reduce_indexed_slices in eager mode is not supported')
+          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
@@ -591,11 +596,15 @@ def divide_by_n_tensors_or_indexed_slices(value, n):
 
 
 def copy_tensor_or_indexed_slices_to_device(value, device):
+  """Copies a tensor or IndexedSlices to a device."""
   with ops.device(device):
     if isinstance(value, ops.IndexedSlices):
       copied_values = array_ops.identity(value.values)
       copied_indices = array_ops.identity(value.indices)
-      copied_shape = array_ops.identity(value.dense_shape)
+      if value.dense_shape is not None:
+        copied_shape = array_ops.identity(value.dense_shape)
+      else:
+        copied_shape = None
       result = ops.IndexedSlices(copied_values, copied_indices, copied_shape)
     else:
       result = array_ops.identity(value)

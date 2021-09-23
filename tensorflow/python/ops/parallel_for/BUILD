@@ -31,7 +31,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",

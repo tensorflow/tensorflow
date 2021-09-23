@@ -75,6 +75,8 @@ class TFSavedModelAPI : public SavedModelAPI {
 
   Status GetVariable(const std::string& variable_path, Variable** variable);
 
+  SavedModelV2Bundle* GetBundle() override;
+
  private:
   TFSavedModelAPI(const std::string& directory, SavedModelV2Bundle bundle,
                   RevivedObjects revived_objects);

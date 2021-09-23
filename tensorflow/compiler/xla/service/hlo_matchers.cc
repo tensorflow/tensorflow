@@ -297,6 +297,25 @@ void HloAsyncCopyMatcher::DescribeTo(std::ostream* os) const {
       << ")";
 }
 
+bool HloConstantMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->literal() != literal_) {
+    *listener << " has wrong value (got " << instruction->literal().ToString()
+              << ", want " << literal_.ToString() << ")";
+    return false;
+  }
+  return true;
+}
+
+void HloConstantMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " (has value " << literal_.ToString() << ")";
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {

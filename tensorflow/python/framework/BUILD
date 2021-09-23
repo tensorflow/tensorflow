@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_te
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -18,6 +21,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
@@ -325,7 +329,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":c_api_util",
-        ":error_interpolation",
         "//tensorflow/python:_pywrap_py_exception_registry",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python/util",
@@ -490,6 +493,7 @@ py_library(
     deps = [
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -752,25 +756,30 @@ cc_library(
     srcs = ["python_api_dispatcher.cc"],
     hdrs = ["python_api_dispatcher.h"],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/python/lib/core:py_util",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:function_parameter_canonicalizer",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
-# Note: this target is only used by python_api_dispatcher_test.
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
-    # testonly = True,
     srcs = ["python_api_dispatcher_wrapper.cc"],
     hdrs = ["python_api_dispatcher.h"],
     module_name = "_pywrap_python_api_dispatcher",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
 )
@@ -951,6 +960,7 @@ py_library(
         ":auto_control_deps",
         ":ops",
         ":sparse_tensor",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
@@ -999,6 +1009,7 @@ py_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        ":errors",
         ":ops",
         "//tensorflow/python/util",
     ],
@@ -1024,6 +1035,7 @@ tpu_py_test(
     name = "config_test_tpu",
     size = "small",
     srcs = ["config_test.py"],
+    disable_tfrt = True,  # TODO(tfrt-devs): Update this test to call initialize_tpu_system
     main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.
@@ -1042,6 +1054,7 @@ py_library(
     srcs = ["random_seed.py"],
     srcs_version = "PY3",
     deps = [
+        ":config",
         ":ops",
     ],
 )
@@ -1129,6 +1142,7 @@ py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":extension_type_field",
@@ -1137,6 +1151,7 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        "//tensorflow/python:composite_tensor_ops",
     ],
 )
 
@@ -1174,14 +1189,16 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "type_spec",
     srcs = ["type_spec.py"],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
+        ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/python:platform",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1386,7 +1403,10 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":constant_op",
-    ],
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
+    ] + tf_additional_xla_deps_py(),
 )
 
 tf_py_test(
@@ -1568,6 +1588,23 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "node_file_writer_test",
+    size = "small",
+    srcs = ["node_file_writer_test.py"],
+    python_version = "PY3",
+    # On Windows, fails in tempfile.TemporaryDirectory.cleanup() with error: "The directory is not
+    # empty", so test is disabled on Windows.
+    # TODO(reedwm): Debug this.
+    tags = ["no_windows"],
+    deps = [
+        ":test_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 tf_py_test(
     name = "traceable_stack_test",
     size = "small",
@@ -1594,10 +1631,11 @@ cc_library(
     srcs = ["test_ops.cc"],
     linkstatic = 1,
     deps = [
+        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 
@@ -1966,7 +2004,6 @@ tf_python_pybind_extension(
     srcs = ["errors_test_helper.cc"],
     module_name = "_errors_test_helper",
     deps = [
-        "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
@@ -2005,9 +2042,10 @@ tf_py_test(
 
 tf_py_test(
     name = "convert_to_constants_test",
-    size = "small",
+    size = "medium",
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":convert_to_constants",

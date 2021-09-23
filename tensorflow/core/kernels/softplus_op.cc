@@ -91,13 +91,14 @@ TF_CALL_FLOAT_TYPES(REGISTER_KERNELS);
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                          \
-  template <>                                                        \
-  void Softplus<GPUDevice, T>::operator()(                           \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features,  \
-      typename TTypes<T>::Tensor activations);                       \
-  extern template struct Softplus<GPUDevice, T>;                     \
-                                                                     \
+#define DECLARE_SOFTPLUS_GPU_SPEC(T)                                \
+  template <>                                                       \
+  void Softplus<GPUDevice, T>::operator()(                          \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features, \
+      typename TTypes<T>::Tensor activations);                      \
+  extern template struct Softplus<GPUDevice, T>;
+
+#define DECLARE_SOFTPLUS_GRAD_GPU_SPEC(T)                            \
   template <>                                                        \
   void SoftplusGrad<GPUDevice, T>::operator()(                       \
       const GPUDevice& d, typename TTypes<T>::ConstTensor gradients, \
@@ -105,20 +106,32 @@ namespace functor {
       typename TTypes<T>::Tensor backprops);                         \
   extern template struct SoftplusGrad<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTPLUS_GPU_SPEC);
+#endif
+
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_SOFTPLUS_GRAD_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("Softplus").Device(DEVICE_GPU).TypeConstraint<type>("T"),     \
-      SoftplusOp<GPUDevice, type>);                                      \
+#define REGISTER_SOFTPLUS_GPU_KERNELS(type)                          \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Softplus").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SoftplusOp<GPUDevice, type>);
+
+#define REGISTER_SOFTPLUS_GRAD_GPU_KERNELS(type)                         \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("SoftplusGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SoftplusGradOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-#undef REGISTER_GPU_KERNELS
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTPLUS_GPU_KERNELS);
+#endif
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTPLUS_GRAD_GPU_KERNELS);
+
+#undef REGISTER_SOFTPLUS_GPU_KERNELS
+#undef REGISTER_SOFTPLUS_GRAD_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

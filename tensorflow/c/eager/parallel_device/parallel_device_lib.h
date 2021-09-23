@@ -135,6 +135,8 @@ class ParallelDevice {
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
 
+  void AsyncWait(TFE_Context* context, TF_Status* status) const;
+
   // Device strings for component devices that only include a
   // worker/task/replica if any of those differ across components. Useful for
   // printing debug messages.
@@ -177,7 +179,7 @@ class ParallelTensor {
   // when ParallelTensor::Shape is called.
   static std::unique_ptr<ParallelTensor> FromTensorHandles(
       const ParallelDevice& parallel_device,
-      std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+      std::vector<TensorHandlePtr> components, absl::Span<const int64_t> shape,
       TF_Status* status);
 
   size_t num_tensors() const { return tensors_.size(); }
@@ -199,7 +201,7 @@ class ParallelTensor {
  private:
   ParallelTensor(const ParallelDevice& device,
                  std::vector<TensorHandlePtr> tensors,
-                 absl::Span<const int64> shape, const TF_DataType dtype)
+                 absl::Span<const int64_t> shape, const TF_DataType dtype)
       : device_(device),
         tensors_(std::move(tensors)),
         shape_(std::vector<int64_t>(shape.begin(), shape.end())),

@@ -54,13 +54,13 @@ class LRNFloatTest : public OpsTestBase {
 
   bool Compare() {
     const auto& input = GetInput(0);
-    const int64 batch_size = input.dim_size(0);
-    const int64 rows = input.dim_size(1);
-    const int64 cols = input.dim_size(2);
-    const int64 depth = input.dim_size(3);
-    const int64 rest = cols * rows * batch_size;
+    const int64_t batch_size = input.dim_size(0);
+    const int64_t rows = input.dim_size(1);
+    const int64_t cols = input.dim_size(2);
+    const int64_t depth = input.dim_size(3);
+    const int64_t rest = cols * rows * batch_size;
 
-    const int64 depth_radius = GetIntAttr("depth_radius");
+    const int64_t depth_radius = GetIntAttr("depth_radius");
     const float bias = GetFloatAttr("bias");
     const float alpha = GetFloatAttr("alpha");
     const float beta = GetFloatAttr("beta");
@@ -70,11 +70,11 @@ class LRNFloatTest : public OpsTestBase {
     auto out = expected.reshape(Eigen::DSizes<Eigen::Index, 2>{rest, depth});
     auto in = input.shaped<float, 2>({rest, depth});
 
-    for (int64 i = 0; i < rest; ++i) {
+    for (int64_t i = 0; i < rest; ++i) {
       Eigen::Tensor<float, 1, Eigen::RowMajor> out_col(depth);
-      for (int64 d = 0; d < depth; ++d) {
+      for (int64_t d = 0; d < depth; ++d) {
         float denom = 0.0f;
-        for (int64 r = std::max(int64{0}, d - depth_radius);
+        for (int64_t r = std::max(int64_t{0}, d - depth_radius);
              r < std::min(depth, d + depth_radius + 1); ++r) {
           denom += in(i, r) * in(i, r);
         }
@@ -223,15 +223,15 @@ static Graph* MakeRNGrad(int batches, int rows, int cols, int depth,
   return g;
 }
 
-#define BM_LRNGradDev(DEVICE, B, R, C, D, DR)                                \
-  static void BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR(            \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark(#DEVICE, MakeRNGrad(B, R, C, D, DR),                     \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * B * R * \
-                            C * D * DR * 4);                                 \
-  }                                                                          \
+#define BM_LRNGradDev(DEVICE, B, R, C, D, DR)                                  \
+  static void BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR(              \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#DEVICE, MakeRNGrad(B, R, C, D, DR),                       \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * B * R * \
+                            C * D * DR * 4);                                   \
+  }                                                                            \
   BENCHMARK(BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR)
 
 BM_LRNGradDev(cpu, 128, 12, 12, 64, 4);

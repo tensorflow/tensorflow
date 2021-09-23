@@ -258,7 +258,6 @@ py_test(
     srcs = ["debug_graphs_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":debug_graphs",
         "//tensorflow/python:client_testlib",

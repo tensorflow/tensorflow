@@ -77,10 +77,10 @@ namespace tensorflow {
 namespace {
 
 // Command line flags: see main() below.
-int64 tf_xla_random_seed = 0;
-int32 tf_xla_test_repetitions = 20;
-int64 tf_xla_max_tensor_size = 10000LL;
-string* tf_xla_test_device_ptr;  // initial value set in main()
+int64_t tf_xla_random_seed = 0;
+int32_t tf_xla_test_repetitions = 20;
+int64_t tf_xla_max_tensor_size = 10000LL;
+string* tf_xla_test_device_ptr;       // initial value set in main()
 string* tf_xla_reference_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
 
@@ -104,10 +104,10 @@ class OpTestBuilder {
   // Adds a random input tensor with 'type' as a Placeholder node.
   // If 'dims' is not provided, RandomDims() is used.
   OpTestBuilder& RandomInput(DataType type);
-  OpTestBuilder& RandomInput(DataType type, std::vector<int64> dims);
+  OpTestBuilder& RandomInput(DataType type, std::vector<int64_t> dims);
 
   // As RandomInput but the values are unique.
-  OpTestBuilder& RandomUniqueInput(DataType type, std::vector<int64> dims);
+  OpTestBuilder& RandomUniqueInput(DataType type, std::vector<int64_t> dims);
 
   // Sets an attribute.
   template <class T>
@@ -136,7 +136,7 @@ class OpTestBuilder {
     DataType type = DT_INVALID;
     bool has_dims = false;
     bool needs_unique_values = false;
-    std::vector<int64> dims;
+    std::vector<int64_t> dims;
   };
 
   const std::vector<InputDescription>& inputs() const { return inputs_; }
@@ -167,7 +167,7 @@ OpTestBuilder& OpTestBuilder::RandomInput(DataType type) {
 }
 
 OpTestBuilder& OpTestBuilder::RandomInput(DataType type,
-                                          std::vector<int64> dims) {
+                                          std::vector<int64_t> dims) {
   VLOG(1) << "Adding input: " << type << " " << TensorShape(dims).DebugString();
   InputDescription input;
   input.type = type;
@@ -178,7 +178,7 @@ OpTestBuilder& OpTestBuilder::RandomInput(DataType type,
 }
 
 OpTestBuilder& OpTestBuilder::RandomUniqueInput(DataType type,
-                                                std::vector<int64> dims) {
+                                                std::vector<int64_t> dims) {
   VLOG(1) << "Adding input: " << type << " " << TensorShape(dims).DebugString();
   InputDescription input;
   input.type = type;
@@ -283,40 +283,41 @@ class OpTest : public ::testing::Test {
   T Choose(absl::Span<const T> candidates);
 
   static constexpr int kDefaultMaxRank = 5;
-  static constexpr int64 kDefaultMaxDimensionSize = 256LL;
+  static constexpr int64_t kDefaultMaxDimensionSize = 256LL;
 
   // Returns true if 'dims' have a size less than tf_xla_max_tensor_size.
-  bool TensorSizeIsOk(absl::Span<const int64> dims);
+  bool TensorSizeIsOk(absl::Span<const int64_t> dims);
 
   // Returns a random dimension size, in the range [min, max).
-  int64 RandomDim(int64 min = 0, int64 max = kDefaultMaxDimensionSize);
+  int64_t RandomDim(int64_t min = 0, int64_t max = kDefaultMaxDimensionSize);
 
   // Returns a random shape. The tensor has rank in the range [min_rank,
   // max_rank). Each dimension has size [min_size, max_size).
-  std::vector<int64> RandomDims(int min_rank = 0,
-                                int max_rank = kDefaultMaxRank,
-                                int64 min_size = 0,
-                                int64 max_size = kDefaultMaxDimensionSize);
+  std::vector<int64_t> RandomDims(int min_rank = 0,
+                                  int max_rank = kDefaultMaxRank,
+                                  int64_t min_size = 0,
+                                  int64_t max_size = kDefaultMaxDimensionSize);
 
   // Given a shape 'dims', build a pair of dimensions such that one broadcasts
   // to the other.
-  std::pair<std::vector<int64>, std::vector<int64>> BroadcastableDims(
-      std::vector<int64> dims);
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> BroadcastableDims(
+      std::vector<int64_t> dims);
 
   // Builds a random pair of broadcastable dims.
   // TODO(phawkins): currently the maximum rank is 3, because broadcasting > 3
   // dimensions is unimplemented by the Tensorflow Eigen code (b/29268487)
-  std::pair<std::vector<int64>, std::vector<int64>> BroadcastableDims();
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> BroadcastableDims();
 
   // Returns a tensor filled with random but "reasonable" values from the middle
   // of the type's range. If the shape is omitted, a random shape is used.
   // TODO(phawkins): generalize this code to a caller-supplied distribution.
   Tensor RandomTensor(DataType dtype, bool needs_unique_values,
-                      absl::Span<const int64> shape);
+                      absl::Span<const int64_t> shape);
   Tensor RandomTensor(DataType dtype);
 
   // Like RandomTensor, but uses values >= 0.
-  Tensor RandomNonNegativeTensor(DataType dtype, absl::Span<const int64> shape);
+  Tensor RandomNonNegativeTensor(DataType dtype,
+                                 absl::Span<const int64_t> shape);
   Tensor RandomNonNegativeTensor(DataType dtype);
 
   // Returns a random subset of the integers in the range [0, rank), suitable
@@ -328,21 +329,31 @@ class OpTest : public ::testing::Test {
 
   struct WindowedSpatialDims {
     Padding padding;
-    std::vector<int64> kernel_dims;
-    std::vector<int64> stride_dims;
-    std::vector<int64> input_dims;
-    std::vector<int64> output_dims;
+    std::vector<int64_t> kernel_dims;
+    std::vector<int64_t> stride_dims;
+    std::vector<int64_t> input_dims;
+    std::vector<int64_t> output_dims;
   };
   // Choose spatial dimensions for a windowed op such as pooling or convolution.
   WindowedSpatialDims ChooseWindowedSpatialDims(int num_spatial_dims);
 
+  struct XlaDotArguments {
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    std::string dnums_encoded;
+    std::string precision_config_encoded;
+    DataType dtype;
+  };
+  // Choose arguments for tf.XlaDot operation.
+  XlaDotArguments ChooseXlaDotArguments();
+
   // Builds dimensions for a windowed op such as pooling or convolution,
   // including a batch and feature dimension.
-  std::vector<int64> ImageDims(TensorFormat format, int batch, int feature,
-                               const std::vector<int64>& spatial_dims);
+  std::vector<int64_t> ImageDims(TensorFormat format, int batch, int feature,
+                                 const std::vector<int64_t>& spatial_dims);
 
   // Converts an int64 vector to an int32 vector.
-  std::vector<int32> AsInt32s(const std::vector<int64>& int64s);
+  std::vector<int32> AsInt32s(const std::vector<int64_t>& int64s);
 
   std::mt19937& generator() { return *generator_; }
 
@@ -369,7 +380,7 @@ class OpTest : public ::testing::Test {
 OpTest::OpTest() {
   // Creates a random-number generator for the test case. Use the value of
   // --tf_xla_random_seed as the seed, if provided.
-  int64 s = tf_xla_random_seed;
+  int64_t s = tf_xla_random_seed;
   unsigned int seed;
   if (s <= 0) {
     std::random_device random_device;
@@ -428,26 +439,26 @@ T OpTest::Choose(absl::Span<const T> candidates) {
   return candidates[d(generator())];
 }
 
-int64 OpTest::RandomDim(int64 min, int64 max) {
-  std::uniform_int_distribution<int64> size_distribution(min, max - 1);
+int64_t OpTest::RandomDim(int64_t min, int64_t max) {
+  std::uniform_int_distribution<int64_t> size_distribution(min, max - 1);
   return size_distribution(generator());
 }
 
-bool OpTest::TensorSizeIsOk(absl::Span<const int64> dims) {
-  int64 size = 1LL;
-  for (int64 dim : dims) {
+bool OpTest::TensorSizeIsOk(absl::Span<const int64_t> dims) {
+  int64_t size = 1LL;
+  for (int64_t dim : dims) {
     size *= dim;
   }
   return size < tf_xla_max_tensor_size;
 }
 
-std::vector<int64> OpTest::RandomDims(int min_rank, int max_rank,
-                                      int64 min_size, int64 max_size) {
+std::vector<int64_t> OpTest::RandomDims(int min_rank, int max_rank,
+                                        int64_t min_size, int64_t max_size) {
   CHECK_LE(0, min_rank);
   CHECK_LE(min_rank, max_rank);
   std::uniform_int_distribution<int> rank_distribution(min_rank, max_rank);
   int rank = rank_distribution(generator());
-  std::vector<int64> dims(rank);
+  std::vector<int64_t> dims(rank);
   // TODO(phawkins): too small a maximum tensor size could lead to an infinite
   // loop here.
   do {
@@ -464,7 +475,7 @@ bool OpTest::RandomBool() {
 }
 
 Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
-                            absl::Span<const int64> shape) {
+                            absl::Span<const int64_t> shape) {
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
@@ -514,7 +525,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       absl::flat_hash_set<int32> already_generated;
       std::uniform_int_distribution<int32> distribution(-(1 << 20), 1 << 20);
       test::FillFn<int32>(&tensor, [&](int i) -> int32 {
-        int32 generated;
+        int32_t generated;
         do {
           generated = distribution(generator());
         } while (needs_unique_values &&
@@ -524,11 +535,11 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_INT64: {
-      absl::flat_hash_set<int64> already_generated;
-      std::uniform_int_distribution<int64> distribution(-(1LL << 40),
-                                                        1LL << 40);
-      test::FillFn<int64>(&tensor, [&](int i) -> int64 {
-        int64 generated;
+      absl::flat_hash_set<int64_t> already_generated;
+      std::uniform_int_distribution<int64_t> distribution(-(1LL << 40),
+                                                          1LL << 40);
+      test::FillFn<int64_t>(&tensor, [&](int i) -> int64_t {
+        int64_t generated;
         do {
           generated = distribution(generator());
         } while (needs_unique_values &&
@@ -561,7 +572,7 @@ Tensor OpTest::RandomTensor(DataType dtype) {
 }
 
 Tensor OpTest::RandomNonNegativeTensor(DataType dtype,
-                                       absl::Span<const int64> shape) {
+                                       absl::Span<const int64_t> shape) {
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
@@ -586,8 +597,8 @@ Tensor OpTest::RandomNonNegativeTensor(DataType dtype,
       break;
     }
     case DT_INT64: {
-      std::uniform_int_distribution<int64> distribution(0, 1LL << 40);
-      test::FillFn<int64>(&tensor, [this, &distribution](int i) -> int64 {
+      std::uniform_int_distribution<int64_t> distribution(0, 1LL << 40);
+      test::FillFn<int64_t>(&tensor, [this, &distribution](int i) -> int64_t {
         return distribution(generator());
       });
       break;
@@ -603,20 +614,20 @@ Tensor OpTest::RandomNonNegativeTensor(DataType dtype) {
   return RandomNonNegativeTensor(dtype, RandomDims());
 }
 
-std::pair<std::vector<int64>, std::vector<int64>> OpTest::BroadcastableDims(
-    std::vector<int64> dims) {
+std::pair<std::vector<int64_t>, std::vector<int64_t>> OpTest::BroadcastableDims(
+    std::vector<int64_t> dims) {
   if (dims.empty()) return {dims, dims};
 
   // Remove some dimensions from the front of 'dims'.
   size_t skip =
       std::uniform_int_distribution<size_t>(0, dims.size() - 1)(generator());
 
-  std::vector<int64> bdims(dims.begin() + skip, dims.end());
+  std::vector<int64_t> bdims(dims.begin() + skip, dims.end());
 
   // Randomly replace some of the remaining dimensions of 'dims' with 1.
   std::bernoulli_distribution random_bool;
 
-  for (int64& dim : bdims) {
+  for (int64_t& dim : bdims) {
     if (random_bool(generator())) {
       dim = 1LL;
     }
@@ -629,7 +640,8 @@ std::pair<std::vector<int64>, std::vector<int64>> OpTest::BroadcastableDims(
   return {dims, bdims};
 }
 
-std::pair<std::vector<int64>, std::vector<int64>> OpTest::BroadcastableDims() {
+std::pair<std::vector<int64_t>, std::vector<int64_t>>
+OpTest::BroadcastableDims() {
   return BroadcastableDims(RandomDims(0, 3));
 }
 
@@ -663,7 +675,7 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
       d.input_dims[i] = RandomDim(d.kernel_dims[i]);
       d.stride_dims[i] =
           std::uniform_int_distribution<int>(1, d.kernel_dims[i])(generator());
-      int64 pad_dummy;
+      int64_t pad_dummy;
       s = GetWindowedOutputSize(d.input_dims[i], d.kernel_dims[i],
                                 d.stride_dims[i], d.padding, &d.output_dims[i],
                                 &pad_dummy);
@@ -672,10 +684,45 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
   return d;
 }
 
-std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
-                                     int feature,
-                                     const std::vector<int64>& spatial_dims) {
-  std::vector<int64> dims;
+OpTest::XlaDotArguments OpTest::ChooseXlaDotArguments() {
+  std::vector<int64_t> batch_dims = RandomDims(0, 2);
+  std::vector<int64_t> contracting_dims = RandomDims(0, 2);
+  std::vector<int64_t> lhs_outer_dims = RandomDims(0, 2);
+  std::vector<int64_t> rhs_outer_dims = RandomDims(0, 2);
+
+  XlaDotArguments a;
+  a.lhs_dims.insert(a.lhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), lhs_outer_dims.begin(),
+                    lhs_outer_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), rhs_outer_dims.begin(),
+                    rhs_outer_dims.end());
+
+  xla::DotDimensionNumbers dnums;
+  for (auto i = 0; i < batch_dims.size(); ++i) {
+    dnums.add_lhs_batch_dimensions(i);
+    dnums.add_rhs_batch_dimensions(i);
+  }
+  for (auto i = 0; i < contracting_dims.size(); ++i) {
+    dnums.add_lhs_contracting_dimensions(batch_dims.size() + i);
+    dnums.add_rhs_contracting_dimensions(batch_dims.size() + i);
+  }
+  dnums.SerializeToString(&a.dnums_encoded);
+
+  a.precision_config_encoded = "";
+
+  a.dtype = Choose<DataType>(kAllXlaTypes);
+  return a;
+}
+
+std::vector<int64_t> OpTest::ImageDims(
+    TensorFormat format, int batch, int feature,
+    const std::vector<int64_t>& spatial_dims) {
+  std::vector<int64_t> dims;
   switch (format) {
     case FORMAT_NHWC:
       dims.push_back(batch);
@@ -697,7 +744,7 @@ std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
   return dims;
 }
 
-std::vector<int32> OpTest::AsInt32s(const std::vector<int64>& int64s) {
+std::vector<int32> OpTest::AsInt32s(const std::vector<int64_t>& int64s) {
   return std::vector<int32>(int64s.begin(), int64s.end());
 }
 
@@ -818,7 +865,7 @@ Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
     case DT_INT32:
       return TensorsAreEqualImpl<int32>(a, b);
     case DT_INT64:
-      return TensorsAreEqualImpl<int64>(a, b);
+      return TensorsAreEqualImpl<int64_t>(a, b);
     case DT_BOOL:
       return TensorsAreEqualImpl<bool>(a, b);
     case DT_BFLOAT16:
@@ -837,7 +884,7 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
     if (input.type == DT_INVALID) {
       input_tensors.push_back(input.tensor);
     } else {
-      std::vector<int64> dims;
+      std::vector<int64_t> dims;
       if (input.has_dims) {
         dims = input.dims;
       } else {
@@ -942,14 +989,14 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
 }
 
 // Helper that converts 'values' to an int32 or int64 Tensor.
-Tensor AsIntTensor(DataType dtype, const std::vector<int64>& values) {
+Tensor AsIntTensor(DataType dtype, const std::vector<int64_t>& values) {
   switch (dtype) {
     case DT_INT32: {
       std::vector<int32> values32(values.begin(), values.end());
       return test::AsTensor<int32>(values32);
     }
     case DT_INT64:
-      return test::AsTensor<int64>(values);
+      return test::AsTensor<int64_t>(values);
     default:
       LOG(FATAL);
   }
@@ -1129,6 +1176,7 @@ TEST_F(OpTest, AvgPool) {
 }
 
 TEST_F(OpTest, AvgPool3D) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::uniform_int_distribution<int> random_int(1, 5);
     std::vector<int64> dims = RandomDims(5, 5, 1);
@@ -1140,8 +1188,8 @@ TEST_F(OpTest, AvgPool3D) {
       input_dims.push_back(dims[i]);
       stride_dims.push_back(random_int(generator()));
     }
-    int64 batch = dims[3];
-    int64 feature = dims[4];
+    int64_t batch = dims[3];
+    int64_t feature = dims[4];
 
     string padding = Choose<string>({"SAME", "VALID"});
     return ExpectTfAndXlaOutputsAreClose(
@@ -1158,6 +1206,7 @@ TEST_F(OpTest, AvgPool3D) {
 }
 
 TEST_F(OpTest, AvgPoolGrad) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     int batch = RandomDim(1), features = RandomDim(1);
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
@@ -1178,6 +1227,7 @@ TEST_F(OpTest, AvgPoolGrad) {
 }
 
 TEST_F(OpTest, AvgPool3DGrad) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     int batch = RandomDim(1), features = RandomDim(1);
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
@@ -1201,8 +1251,8 @@ TEST_F(OpTest, BatchMatMul) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> output_dims = RandomDims(2, 5, 0, 7);
-    int64 ndims = output_dims.size();
-    int64 inner_dim = RandomDim();
+    int64_t ndims = output_dims.size();
+    int64_t inner_dim = RandomDim();
     std::vector<int64> x_dims(output_dims), y_dims(output_dims);
     x_dims[ndims - 1] = inner_dim;
     y_dims[ndims - 2] = inner_dim;
@@ -1227,11 +1277,12 @@ TEST_F(OpTest, BatchMatMul) {
 }
 
 TEST_F(OpTest, BatchToSpace) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     const int num_block_dims = 2;
     std::vector<int64> block_dims =
         RandomDims(num_block_dims, num_block_dims, 0, 5);
-    int64 block_size = RandomDim(2, 5);
+    int64_t block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
@@ -1557,7 +1608,7 @@ TEST_F(OpTest, RFFT3D) {
 TEST_F(OpTest, IRFFT) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1, kDefaultMaxRank, 3);
-    int64 orig_size = dims[dims.size() - 1];
+    int64_t orig_size = dims[dims.size() - 1];
     dims[dims.size() - 1] = dims[dims.size() - 1] / 2 + 1;
     Tensor fft_shape = test::AsTensor<int32>(AsInt32s({orig_size}));
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("IRFFT")
@@ -1593,13 +1644,14 @@ TEST_F(OpTest, IRFFT3D) {
 }
 
 TEST_F(OpTest, Conv2D) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
 
-    int64 batch = RandomDim();
+    int64_t batch = RandomDim();
 
     std::vector<int64> data_dims =
         ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims);
@@ -1619,12 +1671,13 @@ TEST_F(OpTest, Conv2D) {
 }
 
 TEST_F(OpTest, Conv2DBackpropFilter) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
-    int32 batch = RandomDim();
+    int32_t batch = RandomDim();
     std::vector<int64> activations =
         ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims);
     std::vector<int64> backprop =
@@ -1650,7 +1703,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
-    int32 batch = RandomDim();
+    int32_t batch = RandomDim();
     Tensor in_shape = test::AsTensor<int32>(
         AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
     std::vector<int64> backprop =
@@ -1671,6 +1724,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
 }
 
 TEST_F(OpTest, Conv3D) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -1693,12 +1747,13 @@ TEST_F(OpTest, Conv3D) {
 }
 
 TEST_F(OpTest, Conv3DBackpropFilter) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
-    int32 batch = RandomDim(1);
+    int32_t batch = RandomDim(1);
     std::vector<int64> activations =
         ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims);
     std::vector<int64> backprop =
@@ -1719,12 +1774,13 @@ TEST_F(OpTest, Conv3DBackpropFilter) {
 }
 
 TEST_F(OpTest, Conv3DBackpropInput) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
-    int32 batch = RandomDim(1);
+    int32_t batch = RandomDim(1);
     Tensor in_shape = test::AsTensor<int32>(
         AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
     std::vector<int64> backprop =
@@ -1761,7 +1817,7 @@ TEST_F(OpTest, Cosh) {
 
 TEST_F(OpTest, DepthToSpace) {
   Repeatedly([this]() {
-    int64 block = RandomDim(2, 5);
+    int64_t block = RandomDim(2, 5);
     std::vector<int64> input_dims = RandomDims(4, 4);
     input_dims[1] = (input_dims[1] + (block - 1)) / block;
     input_dims[2] = (input_dims[2] + (block - 1)) / block;
@@ -1775,6 +1831,7 @@ TEST_F(OpTest, DepthToSpace) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DNative) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -1798,12 +1855,13 @@ TEST_F(OpTest, DepthwiseConv2DNative) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int depth_multiplier = random_int(generator());
-    int32 batch = RandomDim();
+    int32_t batch = RandomDim();
     std::vector<int64> activations =
         ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims);
     std::vector<int64> backprop = ImageDims(
@@ -1825,12 +1883,13 @@ TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int depth_multiplier = random_int(generator());
-    int32 batch = RandomDim();
+    int32_t batch = RandomDim();
     Tensor in_shape = test::AsTensor<int32>(
         AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
     std::vector<int64> backprop = ImageDims(
@@ -1856,7 +1915,7 @@ TEST_F(OpTest, Diag) {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims;
     // Diag causes a quadratic blowup in output size.
-    int64 size;
+    int64_t size;
     do {
       dims = RandomDims(1);
       size = TensorShape(dims).num_elements();
@@ -2060,6 +2119,21 @@ TEST_F(OpTest, FloorMod) {
   });
 }
 
+TEST_F(OpTest, Gather) {
+  Repeatedly([this]() {
+    auto params_type = Choose<DataType>(kAllXlaTypes);
+    std::vector<int64> params_shape = RandomDims();
+    auto indices_type = Choose<DataType>({DT_INT32, DT_INT64});
+    Tensor indices = RandomTensor(indices_type);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Gather")
+            .RandomInput(params_type, params_shape)
+            .Input(indices)
+            .Attr("Tparams", params_type)
+            .Attr("Tindices", indices_type));
+  });
+}
+
 TEST_F(OpTest, Greater) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -2238,9 +2312,9 @@ TEST_F(OpTest, LRNGrad) {
 
 TEST_F(OpTest, MatMul) {
   Repeatedly([this]() {
-    int64 x = RandomDim();
-    int64 y = RandomDim();
-    int64 z = RandomDim();
+    int64_t x = RandomDim();
+    int64_t y = RandomDim();
+    int64_t z = RandomDim();
 
     std::vector<int64> a_dims = {x, y};
     std::vector<int64> b_dims = {y, z};
@@ -2333,6 +2407,7 @@ TEST_F(OpTest, MaxPool) {
 }
 
 TEST_F(OpTest, MaxPool3D) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::uniform_int_distribution<int> random_int(1, 5);
     std::vector<int64> dims = RandomDims(5, 5, 1);
@@ -2348,8 +2423,8 @@ TEST_F(OpTest, MaxPool3D) {
     }
     kernel_dims.push_back(1);
     stride_dims.push_back(1);
-    int64 batch = dims[3];
-    int64 feature = dims[4];
+    int64_t batch = dims[3];
+    int64_t feature = dims[4];
 
     string padding = Choose<string>({"SAME", "VALID"});
     return ExpectTfAndXlaOutputsAreClose(
@@ -2453,7 +2528,7 @@ TEST_F(OpTest, OneHot) {
     std::vector<int64> dims = RandomDims();
     int num_dims = dims.size();
 
-    int32 depth = RandomDim();
+    int32_t depth = RandomDim();
 
     Tensor indices(DT_INT32, TensorShape(dims));
     std::uniform_int_distribution<int32> distribution(-depth * 2, depth * 2);
@@ -2667,7 +2742,7 @@ TEST_F(OpTest, Reshape) {
     std::vector<int64> dims_before, dims_after;
     for (std::vector<int64>* out : {&dims_before, &dims_after}) {
       std::shuffle(dims.begin(), dims.end(), generator());
-      for (int64 dim : dims) {
+      for (int64_t dim : dims) {
         // Either add the dimension as a new dimension or merge it with the
         // previous dimension.
         if (out->empty() || random_bool(generator())) {
@@ -2720,7 +2795,7 @@ TEST_F(OpTest, Reverse) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1);
     auto type = Choose<DataType>(kAllXlaTypes);
-    int64 rank = dims.size();
+    int64_t rank = dims.size();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Reverse")
                                              .RandomInput(type, dims)
                                              .RandomInput(DT_BOOL, {rank})
@@ -2729,10 +2804,11 @@ TEST_F(OpTest, Reverse) {
 }
 
 TEST_F(OpTest, ReverseSequence) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(/*min_rank=*/2);
     auto type = Choose<DataType>(kAllXlaTypes);
-    int64 rank = dims.size();
+    int64_t rank = dims.size();
 
     // Choose random batch and sequence dimensions.
     std::vector<int> shuffled_dim_ids(rank);
@@ -2957,7 +3033,7 @@ TEST_F(OpTest, SpaceToBatch) {
   Repeatedly([this]() {
     std::vector<int64> block_dims = RandomDims(4, 4, 0, 5);
     const int num_block_dims = 2;
-    int64 block_size = RandomDim(2, 5);
+    int64_t block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
@@ -2969,8 +3045,8 @@ TEST_F(OpTest, SpaceToBatch) {
     std::vector<int64> padding_vals;
     std::uniform_int_distribution<int> distribution(0, 7);
     for (int i = 0; i < num_block_dims; ++i) {
-      int64 pad_before;
-      int64 pad_after;
+      int64_t pad_before;
+      int64_t pad_after;
       do {
         pad_before = distribution(generator());
         pad_after = distribution(generator());
@@ -3011,8 +3087,8 @@ TEST_F(OpTest, SpaceToBatchND) {
     std::vector<int64> padding_vals;
     std::uniform_int_distribution<int> distribution(0, 7);
     for (int i = 0; i < num_block_dims; ++i) {
-      int64 pad_before;
-      int64 pad_after;
+      int64_t pad_before;
+      int64_t pad_after;
       do {
         pad_before = distribution(generator());
         pad_after = distribution(generator());
@@ -3038,7 +3114,7 @@ TEST_F(OpTest, SpaceToBatchND) {
 
 TEST_F(OpTest, SpaceToDepth) {
   Repeatedly([this]() {
-    int64 block = RandomDim(2, 5);
+    int64_t block = RandomDim(2, 5);
     std::vector<int64> input_dims = RandomDims(4, 4);
     // Round spatial dimensions up to a multiple of the block size
     input_dims[1] = (input_dims[1] + (block - 1)) / block * block;
@@ -3051,10 +3127,11 @@ TEST_F(OpTest, SpaceToDepth) {
 }
 
 TEST_F(OpTest, SparseMatMul) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
-    int64 x = RandomDim();
-    int64 y = RandomDim();
-    int64 z = RandomDim();
+    int64_t x = RandomDim();
+    int64_t y = RandomDim();
+    int64_t z = RandomDim();
 
     std::vector<int64> a_dims = {x, y};
     std::vector<int64> b_dims = {y, z};
@@ -3082,11 +3159,11 @@ TEST_F(OpTest, SparseMatMul) {
 TEST_F(OpTest, SparseSoftmaxCrossEntropyWithLogits) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(2, 2, 1);
-    int64 batch_size = dims[0];
-    int64 num_classes = dims[1];
+    int64_t batch_size = dims[0];
+    int64_t num_classes = dims[1];
 
     std::vector<int32> indices(batch_size);
-    for (int64 i = 0; i < batch_size; ++i) {
+    for (int64_t i = 0; i < batch_size; ++i) {
       indices[i] =
           std::uniform_int_distribution<int32>(0, num_classes - 1)(generator());
     }
@@ -3101,11 +3178,12 @@ TEST_F(OpTest, SparseSoftmaxCrossEntropyWithLogits) {
 }
 
 TEST_F(OpTest, Split) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims = RandomDims(1);
     std::uniform_int_distribution<int> ud;
-    int32 dim = std::uniform_int_distribution<int32>(
+    int32_t dim = std::uniform_int_distribution<int32>(
         -static_cast<int32>(dims.size()),
         static_cast<int32>(dims.size()) - 1)(generator());
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
@@ -3214,21 +3292,21 @@ TEST_F(OpTest, StridedSlice) {
       // TODO(b/31360685): support strides other than 1 or -1
       strides[i] = std::bernoulli_distribution()(generator()) ? 1 : -1;
     }
-    int64 max_bitmask = (1LL << data_dims.size()) - 1;
+    int64_t max_bitmask = (1LL << data_dims.size()) - 1;
     std::uniform_int_distribution<int64> bitmask_distribution(0, max_bitmask);
-    int64 begin_mask = bitmask_distribution(generator());
-    int64 end_mask = bitmask_distribution(generator());
+    int64_t begin_mask = bitmask_distribution(generator());
+    int64_t end_mask = bitmask_distribution(generator());
 
     // Create a ellipsis bitmask with at most one 1 bit set.
-    int64 ellipsis_mask = 0;
+    int64_t ellipsis_mask = 0;
     if (!data_dims.empty() && std::bernoulli_distribution()(generator())) {
       int ellipsis_pos = std::uniform_int_distribution<int>(
           0, data_dims.size() - 1)(generator());
       ellipsis_mask = 1LL << ellipsis_pos;
     }
 
-    int64 new_axis_mask = bitmask_distribution(generator());
-    int64 shrink_axis_mask = bitmask_distribution(generator());
+    int64_t new_axis_mask = bitmask_distribution(generator());
+    int64_t shrink_axis_mask = bitmask_distribution(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("StridedSlice")
             .RandomInput(type, data_dims)
@@ -3246,6 +3324,7 @@ TEST_F(OpTest, StridedSlice) {
 }
 
 TEST_F(OpTest, StridedSliceGrad) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
 
@@ -3262,21 +3341,21 @@ TEST_F(OpTest, StridedSliceGrad) {
       strides[i] = std::uniform_int_distribution<int64>(
           -2 * dims[i], 2 * dims[i])(generator());
     }
-    int64 max_bitmask = (1LL << dims.size()) - 1;
+    int64_t max_bitmask = (1LL << dims.size()) - 1;
     std::uniform_int_distribution<int64> bitmask_distribution(0, max_bitmask);
-    int64 begin_mask = bitmask_distribution(generator());
-    int64 end_mask = bitmask_distribution(generator());
+    int64_t begin_mask = bitmask_distribution(generator());
+    int64_t end_mask = bitmask_distribution(generator());
 
     // Create a ellipsis bitmask with at most one 1 bit set.
-    int64 ellipsis_mask = 0;
+    int64_t ellipsis_mask = 0;
     if (!dims.empty() && std::bernoulli_distribution()(generator())) {
       int ellipsis_pos =
           std::uniform_int_distribution<int>(0, dims.size() - 1)(generator());
       ellipsis_mask = 1LL << ellipsis_pos;
     }
 
-    int64 new_axis_mask = bitmask_distribution(generator());
-    int64 shrink_axis_mask = bitmask_distribution(generator());
+    int64_t new_axis_mask = bitmask_distribution(generator());
+    int64_t shrink_axis_mask = bitmask_distribution(generator());
 
     // TODO(phawkins): use shape inference for the forward op to compute the
     // gradient shape for the backward op. At present, there is a low
@@ -3356,6 +3435,7 @@ TEST_F(OpTest, Transpose) {
 }
 
 TEST_F(OpTest, TruncateDiv) {
+  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     DataType type = DT_INT32;
     auto dims = BroadcastableDims();
@@ -3377,6 +3457,34 @@ TEST_F(OpTest, TruncateMod) {
   });
 }
 
+TEST_F(OpTest, XlaDot) {
+  Repeatedly([this]() {
+    const XlaDotArguments& a = ChooseXlaDotArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDot")
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("T", a.dtype));
+  });
+}
+
+TEST_F(OpTest, XlaDotV2) {
+  Repeatedly([this]() {
+    const XlaDotArguments& a = ChooseXlaDotArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDotV2")
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("LhsT", a.dtype)
+            .Attr("RhsT", a.dtype)
+            .Attr("preferred_element_type", a.dtype));
+  });
+}
+
 TEST_F(OpTest, ZerosLike) {
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
@@ -3392,13 +3500,14 @@ TEST_F(OpTest, ZerosLike) {
 //   --gunit_filter='OpTest.FusedBatchNormTraining'
 //   --tf_xla_random_seed=2838146746
 TEST_F(OpTest, FusedBatchNormTraining) {
+  GTEST_SKIP() << "b/197140886";
   bool is_nhwc = RandomBool();
-  std::vector<int64> x_dims = RandomDims(/*min_rank=*/4, /*max_rank=*/4,
-                                         /*min_size=*/5, /*max_size=*/20);
-  std::vector<int64> scale_dims = {x_dims[is_nhwc ? 3 : 1]};
-  std::vector<int64> offset_dims = {x_dims[is_nhwc ? 3 : 1]};
-  std::vector<int64> mean_dims = {0};
-  std::vector<int64> variance_dims = {0};
+  std::vector<int64_t> x_dims = RandomDims(/*min_rank=*/4, /*max_rank=*/4,
+                                           /*min_size=*/5, /*max_size=*/20);
+  std::vector<int64_t> scale_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64_t> offset_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64_t> mean_dims = {0};
+  std::vector<int64_t> variance_dims = {0};
   DataType type = DT_FLOAT;
   Repeatedly([&] {
     return ExpectTfAndXlaOutputsAreClose(

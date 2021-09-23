@@ -362,7 +362,7 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
     return failure();
 
   SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
-  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+  for (auto index_pair : llvm::enumerate(paddings_value.getValues<APInt>())) {
     size_t outer_idx = index_pair.index() / 2;
     size_t inner_idx = index_pair.index() % 2;
 
@@ -737,7 +737,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)
@@ -1209,7 +1209,7 @@ static LogicalResult Verify(SliceOp op) {
 
   auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
   if (input_ty && begin_ty.getNumElements() != input_ty.getRank()) {
-    return op.emitOpError() << "requires number of elements in begin and size"
+    return op.emitOpError() << "requires number of elements in begin and size "
                                "are equal to input rank";
   }
 
@@ -2117,13 +2117,14 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 // SummaryWriterOp
 //===----------------------------------------------------------------------===//
 
-ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+llvm::SmallVector<ResourceHandleValueAndId, 4>
+SummaryWriterOp::GetResourceHandleValueAndIdList(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
-  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
-                                         writer(), resource_handle_id_map,
-                                         next_id);
+  return {GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                          writer(), resource_handle_id_map,
+                                          next_id)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2448,6 +2449,15 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
 void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<ToBoolOfRankedTensor>(context);
+}
+
+LogicalResult ToBoolOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.push_back(
+      RankedTensorType::get({}, IntegerType::get(context, 1)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2807,13 +2817,14 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 // VarHandleOp
 //===----------------------------------------------------------------------===//
 
-ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
+llvm::SmallVector<ResourceHandleValueAndId, 4>
+VarHandleOp::GetResourceHandleValueAndIdList(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
-  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
-                                         resource(), resource_handle_id_map,
-                                         next_id);
+  return {GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                          resource(), resource_handle_id_map,
+                                          next_id)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2950,8 +2961,10 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   // TODO(jpienaar): Remove.
   if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
 
-  auto cond_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, cond());
-  auto body_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, body());
+  auto cond_fn =
+      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+  auto body_fn =
+      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
   if (!cond_fn) {
     return emitOpError("cond refers to an undefined function : ") << cond();
   }

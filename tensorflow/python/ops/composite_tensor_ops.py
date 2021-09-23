@@ -39,13 +39,14 @@ def composite_tensor_to_variants(value, type_spec=None, name=None):
     ValueError: If `type_spec` is not compatible with `value`.
   """
   if not isinstance(value, composite_tensor.CompositeTensor):
-    raise TypeError("Expected `value` to be a CompositeTensor.")
+    raise TypeError("Expected `value` to be a CompositeTensor. "
+                    f"Received {type(value)}.")
 
   if type_spec is None:
     type_spec = value._type_spec  # pylint: disable=protected-access
   if not type_spec.is_compatible_with(value):
-    raise ValueError("TypeSpec %r is not compatible with value %r" %
-                     (type_spec, value))
+    raise ValueError(f"`type_spec` {type_spec} is not compatible with `value` "
+                     f"{value!r}.")
   coder = nested_structure_coder.StructureCoder()
   metadata = composite_tensor_variant_pb2.CompositeTensorVariantMetadata()
   metadata.type_spec_proto.CopyFrom(
@@ -75,10 +76,10 @@ def composite_tensor_from_variant(encoded, type_spec, name=None):
     InvalidArgumentError: If `encoded` is not compatible with `type_spec`.
   """
   if not isinstance(encoded, ops.Tensor):
-    raise TypeError("Expected `encoded` to be a Tensor, got %r." % encoded)
+    raise TypeError(f"Expected `encoded` to be a Tensor, got {encoded!r}.")
   if encoded.dtype != dtypes.variant:
-    raise TypeError("Expected `encoded` to have dtype=variant, got %r." %
-                    encoded)
+    raise TypeError("Expected `encoded` to have dtype=variant, got "
+                    f"{encoded!r}.")
   encoded.shape.assert_is_compatible_with(())
 
   coder = nested_structure_coder.StructureCoder()

@@ -22,6 +22,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import string_ops
 
 
@@ -44,6 +45,7 @@ UNARY_FLOAT_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfcinv,
     math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
@@ -60,18 +62,41 @@ UNARY_FLOAT_OPS = [
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
+    math_ops.reciprocal_no_nan,
     math_ops.rint,
     math_ops.round,
     math_ops.rsqrt,
     math_ops.sign,
+    math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
+    math_ops.softplus,
     math_ops.sqrt,
     math_ops.square,
     math_ops.tan,
-    array_ops.identity,
+    math_ops.tanh,
     array_ops.ones_like,
+    array_ops.ones_like_v2,
     array_ops.zeros_like,
+    array_ops.zeros_like_v2,
+    special_math_ops.bessel_i0,
+    special_math_ops.bessel_i0e,
+    special_math_ops.bessel_i1,
+    special_math_ops.bessel_j0,
+    special_math_ops.bessel_j1,
+    special_math_ops.bessel_i1e,
+    special_math_ops.bessel_k0,
+    special_math_ops.bessel_k0e,
+    special_math_ops.bessel_k1,
+    special_math_ops.bessel_k1e,
+    special_math_ops.bessel_y0,
+    special_math_ops.bessel_y1,
+    special_math_ops.dawsn,
+    special_math_ops.expint,
+    special_math_ops.fresnel_cos,
+    special_math_ops.fresnel_sin,
+    special_math_ops.spence,
+    string_ops.as_string,
 ]
 UNARY_BOOL_OPS = [
     math_ops.logical_not,
@@ -80,6 +105,8 @@ UNARY_STRING_OPS = [
     string_ops.decode_base64,
     string_ops.encode_base64,
     string_ops.string_strip,
+    string_ops.string_length,
+    string_ops.string_length_v2,
     parsing_ops.decode_compressed,
 ]
 BINARY_FLOAT_OPS = [
@@ -98,6 +125,7 @@ BINARY_FLOAT_OPS = [
     math_ops.maximum,
     math_ops.minimum,
     math_ops.multiply,
+    math_ops.multiply_no_nan,
     math_ops.not_equal,
     math_ops.pow,
     math_ops.realdiv,

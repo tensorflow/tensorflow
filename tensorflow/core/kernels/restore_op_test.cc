@@ -148,8 +148,8 @@ TEST_F(RestoreOpTest, RestoreSimple) {
                                        [](int x) -> int16 { return x - 8; });
     inputs.push_back({nullptr, &input_10});
     // Input #11 is a 1-d int64 tensor
-    Tensor input_11 = MakeInput<int64>(TensorShape({9}),
-                                       [](int x) -> int64 { return x - 9; });
+    Tensor input_11 = MakeInput<int64_t>(TensorShape({9}),
+                                         [](int x) -> int64 { return x - 9; });
     inputs.push_back({nullptr, &input_11});
     // Input #12 is a 1-d string tensor
     Tensor input_12 = MakeInput<tstring>(
@@ -309,7 +309,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     TensorShape expected({9});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
     for (int i = 0; i < 9; ++i) {
-      EXPECT_EQ(i - 9, output->flat<int64>()(i));
+      EXPECT_EQ(i - 9, output->flat<int64_t>()(i));
     }
   }
   // The 1-d string tensor
@@ -411,7 +411,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
     // Input #2 is a 4x16 integer tensor.
     Tensor input_2(DT_INT32, TensorShape({4, 16}));
-    for (int64 i = 0; i < input_2.NumElements(); ++i) {
+    for (int64_t i = 0; i < input_2.NumElements(); ++i) {
       input_2.flat<int32>()(i) = i + 1;
     }
     inputs.push_back({nullptr, &input_2});
@@ -451,7 +451,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   Tensor* output = GetOutput(0);
   TensorShape expected({2, 16});
   EXPECT_TRUE(output->shape().IsSameSize(expected));
-  for (int64 i = 0; i < expected.num_elements(); ++i) {
+  for (int64_t i = 0; i < expected.num_elements(); ++i) {
     EXPECT_EQ(i + 1, output->flat<int32>()(i));
   }
 }

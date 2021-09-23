@@ -1,6 +1,6 @@
 path: "tensorflow.data.experimental.OptimizationOptions"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.optimization_options.OptimizationOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.OptimizationOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -8,31 +8,7 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "autotune"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "autotune_buffers"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "autotune_cpu_budget"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "autotune_ram_budget"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "filter_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "filter_with_random_uniform_fusion"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "hoist_random_uniform"
     mtype: "<type \'property\'>"
   }
   member {
@@ -52,19 +28,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "map_vectorization"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "noop_elimination"
     mtype: "<type \'property\'>"
   }
   member {
     name: "parallel_batch"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "reorder_data_discarding_ops"
     mtype: "<type \'property\'>"
   }
   member {

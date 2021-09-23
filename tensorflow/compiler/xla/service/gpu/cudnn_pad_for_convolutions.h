@@ -31,7 +31,7 @@ namespace gpu {
 // add slice instruction to remove unnecessary output features.
 class CudnnPadForConvolutions : public HloModulePass {
  public:
-  explicit CudnnPadForConvolutions(std::pair<int, int> compute_capability)
+  explicit CudnnPadForConvolutions(se::CudaComputeCapability compute_capability)
       : compute_capability_(compute_capability) {}
 
   absl::string_view name() const override {
@@ -41,14 +41,7 @@ class CudnnPadForConvolutions : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  bool IsVoltaOrLater() const {
-    return compute_capability_ >= std::make_pair(7, 0);
-  }
-  bool IsTuringOrLater() const {
-    return compute_capability_ >= std::make_pair(7, 5);
-  }
-
-  const std::pair<int, int> compute_capability_;
+  const se::CudaComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

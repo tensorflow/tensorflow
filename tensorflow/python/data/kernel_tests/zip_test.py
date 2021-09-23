@@ -129,6 +129,13 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
     self.assertDatasetProduces(dataset, expected)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    x = dataset_ops.Dataset.from_tensors(4)
+    y = dataset_ops.Dataset.from_tensors(2)
+    dataset = dataset_ops.Dataset.zip((x, y), name="zip")
+    self.assertDatasetProduces(dataset, [(4, 2)])
+
 
 class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
@@ -145,15 +152,14 @@ class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     ]
     return dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
-    # Equal length components
-    arr = [37.0, 38.0, 39.0, 40.0]
-    num_outputs = len(arr)
-    self.run_core_tests(lambda: self._build_dataset(arr), num_outputs)
-    # Variable length components
-    diff_size_arr = [1.0, 2.0]
-    self.run_core_tests(lambda: self._build_dataset(diff_size_arr), 2)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(elements=[[37.0, 38.0, 39.0, 40.0], [1.0, 2.0]]))
+  )
+  def test(self, verify_fn, elements):
+    verify_fn(self, lambda: self._build_dataset(elements), len(elements))
 
 
 if __name__ == "__main__":

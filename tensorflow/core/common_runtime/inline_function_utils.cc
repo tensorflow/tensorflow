@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -219,6 +220,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     return caller_device_;
   }
   absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const override {
+    // LINT.IfChange
     // TODO(ezhulenev): If function would have been instantiated as a
     // multi-device function and executed via FunctionLibraryRuntime, it could
     // be potentially placed on any available device. However there are multiple
@@ -231,23 +233,10 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &ndef_parsed_device))
       return ndef.device();
 
-    // Nodes with explicit device placements in the function body have those
-    // respected, but otherwise the function's placement provides a default.
-    if (caller_parsed_device_.has_job && !ndef_parsed_device.has_job) {
-      ndef_parsed_device.has_job = caller_parsed_device_.has_job;
-      ndef_parsed_device.job = caller_parsed_device_.job;
-    }
-
-    if (caller_parsed_device_.has_replica && !ndef_parsed_device.has_replica) {
-      ndef_parsed_device.has_replica = caller_parsed_device_.has_replica;
-      ndef_parsed_device.replica = caller_parsed_device_.replica;
-    }
-
-    if (caller_parsed_device_.has_task && !ndef_parsed_device.has_task) {
-      ndef_parsed_device.has_task = caller_parsed_device_.has_task;
-      ndef_parsed_device.task = caller_parsed_device_.task;
-    }
+    DeviceNameUtils::MergeUnsetDevNames(&ndef_parsed_device,
+                                        caller_parsed_device_);
     return DeviceNameUtils::ParsedNameToString(ndef_parsed_device);
+    // LINT.ThenChange(../../compiler/mlir/tensorflow/ir/tf_ops.cc)
   }
 
  private:

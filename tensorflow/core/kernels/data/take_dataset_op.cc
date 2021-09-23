@@ -32,13 +32,13 @@ constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kEmptyTake[] = "EmptyTake";
 constexpr char kFiniteTake[] = "FiniteTake";
 
-TakeDataset::TakeDataset(OpKernelContext* ctx, int64 count,
+TakeDataset::TakeDataset(OpKernelContext* ctx, int64_t count,
                          const DatasetBase* input)
     : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
   input_->Ref();
 }
 
-TakeDataset::TakeDataset(DatasetContext::Params params, int64 count,
+TakeDataset::TakeDataset(DatasetContext::Params params, int64_t count,
                          const DatasetBase* input)
     : DatasetBase(DatasetContext(std::move(params))),
       count_(count),
@@ -60,8 +60,8 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64 TakeDataset::Cardinality() const {
-  int64 n = input_->Cardinality();
+int64_t TakeDataset::Cardinality() const {
+  int64_t n = input_->Cardinality();
   if (n == kUnknownCardinality) {
     return kUnknownCardinality;
   }
@@ -175,7 +175,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
  private:
   mutex mu_;
-  int64 i_ TF_GUARDED_BY(mu_);
+  int64_t i_ TF_GUARDED_BY(mu_);
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 };
 
@@ -209,8 +209,8 @@ TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)
 void TakeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                 DatasetBase** output) {
   // Create a new TakeDatasetOp::Dataset, and return it as the output.
-  int64 count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  int64_t count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
   *output = new TakeDataset(ctx, count, input);
 }
 

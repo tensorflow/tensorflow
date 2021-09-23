@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -49,6 +50,17 @@ std::unordered_map<string, FactoryItem>& device_factories() {
   return *factories;
 }
 
+bool IsDeviceFactoryEnabled(const string& device_type) {
+  std::vector<string> enabled_devices;
+  TF_CHECK_OK(tensorflow::ReadStringsFromEnvVar(
+      /*env_var_name=*/"TF_ENABLED_DEVICE_TYPES", /*default_val=*/"",
+      &enabled_devices));
+  if (enabled_devices.empty()) {
+    return true;
+  }
+  return std::find(enabled_devices.begin(), enabled_devices.end(),
+                   device_type) != enabled_devices.end();
+}
 }  // namespace
 
 // static
@@ -76,6 +88,11 @@ bool DeviceFactory::IsPluggableDevice(const string& device_type) {
 // static
 void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
                              int priority, bool is_pluggable_device) {
+  if (!IsDeviceFactoryEnabled(device_type)) {
+    LOG(INFO) << "Device factory '" << device_type << "' disabled by "
+              << "TF_ENABLED_DEVICE_TYPES environment variable.";
+    return;
+  }
   mutex_lock l(*get_device_factory_lock());
   std::unique_ptr<DeviceFactory> factory_ptr(factory);
   std::unordered_map<string, FactoryItem>& factories = device_factories();
@@ -98,6 +115,11 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
   auto it = device_factories().find(device_type);
   if (it == device_factories().end()) {
     return nullptr;
+  } else if (!IsDeviceFactoryEnabled(device_type)) {
+    LOG(FATAL) << "Device type " << device_type  // Crash OK
+               << " had factory registered but was explicitly disabled by "
+               << "`TF_ENABLED_DEVICE_TYPES`. This environment variable needs "
+               << "to be set at program startup.";
   }
   return it->second.factory.get();
 }

@@ -237,7 +237,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     int scaling_dims[1] = {num_batches * batch_size};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
       TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-      scaling_factors_size->data[0] = batch_size;
+      scaling_factors_size->data[0] = scaling_dims[0];
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
@@ -462,6 +462,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
     num_batches_to_quantize *= input_shape.Dims(i);
   }
   // Quantize input from float to uint8 + quantization params (scaling factor).
+  const int scaling_factor_size = GetTensorShape(scaling_factors).FlatSize();
+  TF_LITE_ENSURE(context, scaling_factor_size >= num_batches_to_quantize);
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int32_t* input_offset_ptr = nullptr;
   int32_t* row_sums_ptr = nullptr;

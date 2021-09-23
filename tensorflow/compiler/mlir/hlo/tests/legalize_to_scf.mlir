@@ -25,10 +25,10 @@ func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg
 }
 
 // CHECK-LABEL:   func @lt_loop(
-// CHECK:  %[[VAL_9:.*]] = constant dense<-1> : tensor<i32>
-// CHECK:  %[[VAL_10:.*]] = constant dense<1> : tensor<i32>
-// CHECK:  %[[VAL_11:.*]] = constant dense<0> : tensor<i32>
-// CHECK:  %[[VAL_12:.*]] = constant dense<1000> : tensor<i32>
+// CHECK-DAG:  %[[VAL_9:.*]] = constant dense<-1> : tensor<i32>
+// CHECK-DAG:  %[[VAL_10:.*]] = constant dense<1> : tensor<i32>
+// CHECK-DAG:  %[[VAL_11:.*]] = constant dense<0> : tensor<i32>
+// CHECK-DAG:  %[[VAL_12:.*]] = constant dense<1000> : tensor<i32>
 // CHECK:  %[[VAL_14:.*]] = index_cast %[[VAL_11]] : tensor<i32> to tensor<index>
 // CHECK:  %[[VAL_15:.*]] = tensor.extract %[[VAL_14]][] : tensor<index>
 // CHECK:  %[[VAL_16:.*]] = index_cast %[[VAL_12]] : tensor<i32> to tensor<index>

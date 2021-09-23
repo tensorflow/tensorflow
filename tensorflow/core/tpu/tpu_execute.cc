@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -57,6 +58,7 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
+// These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
 
@@ -82,7 +84,7 @@ xla::StatusOr<HostTransferManager::HostCommmandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
                                 const string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
-  return HostCommmandHandler([](uint32, int64) {
+  return HostCommmandHandler([](uint32, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
 }
@@ -115,19 +117,19 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   return device_shape;
 }
 
-int64 ShapeSizeCompact(const xla::Shape& shape) {
+int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  int64 size =
+  int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
   ApiConverter::Free(&c_shape);
   return size;
 }
 
-int64 ShapeSizeCompactRaw(const xla::Shape& shape) {
+int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  int64 size =
+  int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
   ApiConverter::Free(&c_shape);
@@ -150,7 +152,7 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int64 i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int64_t i = 0; i < element_shape.tuple_shapes_size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
@@ -169,7 +171,7 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
   if (dynamic_shape.rank() != bounded_shape.rank()) {
     return false;
   }
-  for (int64 i = 0; i < dynamic_shape.rank(); ++i) {
+  for (int64_t i = 0; i < dynamic_shape.rank(); ++i) {
     if (dynamic_shape.dimensions(i) > bounded_shape.dimensions(i)) {
       return false;
     }
@@ -196,7 +198,7 @@ xla::Status UpdateDynamicInputs(
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
   TF_RET_CHECK(runtime_inputs->size() == compile_time_shapes.size());
-  for (int64 i = 0; i < compile_time_shapes.size(); i++) {
+  for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     // TODO(yunxing): Iterating over thousands of elements can be slow. One way
     // to optimize for fast path without dynamic shapes is add a field in
     // compilation result indicating if dynamic input is presented.
@@ -481,7 +483,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   auto tpu_executable = absl::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
-  const int32 device_ordinal = node_context->device_ordinal();
+  const int32_t device_ordinal = node_context->device_ordinal();
   CancellationToken token;
   bool already_cancelled;
   std::tie(token, already_cancelled) =

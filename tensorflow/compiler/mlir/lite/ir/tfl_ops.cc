@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <string>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -52,6 +55,26 @@ limitations under the License.
 
 namespace mlir {
 namespace TFL {
+namespace {
+
+Operation *getDefiningBroadcastArgsOp(Value operand) {
+  auto *defining_op = operand.getDefiningOp();
+  if (!llvm::dyn_cast_or_null<TF::BroadcastToOp>(defining_op) &&
+      !llvm::dyn_cast_or_null<TFL::BroadcastToOp>(defining_op)) {
+    return nullptr;
+  }
+
+  Value broadcast_shape = defining_op->getOperand(
+      1);  // Broadcasted shape operand of BroadcastTo op.
+  Operation *parent_of_defining_op = broadcast_shape.getDefiningOp();
+  if (!llvm::dyn_cast_or_null<TF::BroadcastArgsOp>(parent_of_defining_op) &&
+      !llvm::dyn_cast_or_null<TFL::BroadcastArgsOp>(parent_of_defining_op)) {
+    return nullptr;
+  }
+  return parent_of_defining_op;
+}
+
+}  // namespace
 
 // Returns true when the given operand arguments have the same shape or
 // broadcastable shape within the given rank. If any given shapes are
@@ -106,14 +129,40 @@ bool VerifyOperandsHaveSameShapesOrBroadcastableShape(
     current_shape = result_shape;
   }
 
-  // It will treat the unknown shape inputs as acceptable inputs for model
-  // compatibility unless there is an known rank that is bigger than the allowed
-  // broadcast maximum rank.
-  if (has_unknown_shape_input) return max_rank <= max_bcast_rank;
-
   // If all the shape is known and same, CPU kernels are able to handle inputs
   // regardless of dimension size.
-  return has_same_shape || max_rank <= max_bcast_rank;
+  if (!has_unknown_shape_input) {
+    return has_same_shape || max_rank <= max_bcast_rank;
+  }
+
+  // It will treat the unknown shape inputs as acceptable inputs for model
+  // compatibility if all known ranks are no bigger than the allowed broadcast
+  // maximum rank.
+  if (max_rank <= max_bcast_rank) {
+    return true;
+  }
+
+  // Checks if all operands are broadcasted by BroadcastTo ops with the shape
+  // is calculated from the same BroadcastArgs op. In such case, all operands
+  // will have the same shape.
+  Operation *broadcast_args_pivot = nullptr;
+  for (unsigned index : indices) {
+    Operation *parent_broadcast_args =
+        getDefiningBroadcastArgsOp(op->getOperand(index));
+    if (parent_broadcast_args == nullptr) {
+      return false;
+    }
+
+    if (broadcast_args_pivot == nullptr) {
+      broadcast_args_pivot = parent_broadcast_args;
+      continue;
+    }
+
+    if (broadcast_args_pivot != parent_broadcast_args) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Return true when the given element_type is QI8.
@@ -248,10 +297,10 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
         /*max_bcast_rank=*/4);
   }
 
-  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
-  // are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
-      element_type.isF32()) {
+  // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
+  // which are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsI64Type(element_type) ||
+      IsQI16Type(element_type) || element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -820,6 +869,23 @@ bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Gather op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(GatherOp op) {
+  ShapedType params_type = op.params().getType().cast<ShapedType>();
+  // TFLite gather kernel supports 1D string input only.
+  if (params_type.getElementType().isa<mlir::TF::StringType>()) {
+    if (params_type.hasRank() && params_type.getRank() != 1) {
+      return op.emitOpError(
+                 "expect 1d input when the given type is string, got ")
+             << params_type;
+    }
+  }
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1590,7 +1656,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)
@@ -1737,9 +1803,40 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
   }
 };
 
+// Replace PackOp with a reshape when there is only one operand.
+struct ReplacePackWithReshape : public RewritePattern {
+  explicit ReplacePackWithReshape(MLIRContext *context)
+      : RewritePattern(PackOp::getOperationName(), 2, context) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    TFL::PackOp pack_op = cast<TFL::PackOp>(op);
+    if (pack_op.getNumOperands() != 1) return failure();
+
+    Location loc = pack_op.getLoc();
+    auto output_type = pack_op.getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) return failure();
+
+    // This is to workaround the unnecessary cast i64 -> i32.
+    SmallVector<int32_t, 4> new_shape_array;
+    for (auto size : output_type.getShape()) {
+      new_shape_array.push_back(static_cast<int32_t>(size));
+    }
+
+    auto new_shape = rewriter.create<TFL::ConstOp>(
+        loc, DenseIntElementsAttr::get(
+                 RankedTensorType::get(new_shape_array.size(),
+                                       rewriter.getIntegerType(32)),
+                 new_shape_array));
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, output_type,
+                                           pack_op.getOperand(0), new_shape);
+    return success();
+  }
+};
+
 void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantUnpackPack>(context);
+  results.insert<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1876,6 +1973,19 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
 void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<CastDonwInt64BeginEndToInt32>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SqueezeOp::fold(ArrayRef<Attribute> operands) {
+  auto input_ty = input().getType().dyn_cast<RankedTensorType>();
+  auto result_ty = getType().dyn_cast<RankedTensorType>();
+
+  if (!input_ty || !result_ty) return {};
+  if (input_ty == result_ty) return input();
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2885,6 +2995,21 @@ LogicalResult Verify(StridedSliceOp op) {
   if (!ranked_input_type) return success();
   int num_input_dims = ranked_input_type.getRank();
 
+  if (auto begin_type = op.begin().getType().dyn_cast<RankedTensorType>()) {
+    if (begin_type.getRank() != 1) return failure();
+    if (begin_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto end_type = op.end().getType().dyn_cast<RankedTensorType>()) {
+    if (end_type.getRank() != 1) return failure();
+    if (end_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
+  if (auto strides_type = op.strides().getType().dyn_cast<RankedTensorType>()) {
+    if (strides_type.getRank() != 1) return failure();
+    if (strides_type.getDimSize(0) > num_input_dims) return failure();
+  }
+
   // The kernel will reshape the input tensor with new axis, it only supports
   // this reshaped tensor up to 5D.
   uint32_t ellipsis_mask = op.ellipsis_mask();
@@ -3066,7 +3191,76 @@ static LogicalResult Verify(TransposeOp op) {
     }
   }
 
+  // Verify the quantized axis if the type is UniformQuantizedPerAxisType. Other
+  // verifications to make sure the input and output has the same quantization
+  // type, scale and zero point are performed by the SameOperandsAndResultsScale
+  // trait.
+  auto in_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  auto out_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(output_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (in_per_axis_qtype && out_per_axis_qtype) {
+    if (out_per_axis_qtype.getQuantizedDimension() < axes.size() &&
+        axes[out_per_axis_qtype.getQuantizedDimension()] !=
+            in_per_axis_qtype.getQuantizedDimension()) {
+      return op.emitOpError(
+          "has mismatched quantized axes of input and output");
+    }
+  }
+
   return success();
+}
+
+static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
+                             Value input, Value perm) {
+  // Output size is only known if input is ranked and perm is a constant.
+  auto input_type = input.getType().cast<TensorType>();
+  DenseIntElementsAttr perm_const;
+  if (!input_type.hasRank() || !matchPattern(perm, m_Constant(&perm_const)) ||
+      perm_const.empty()) {
+    TFL::TransposeOp::build(
+        *builder, result, UnrankedTensorType::get(input_type.getElementType()),
+        input, perm);
+    return;
+  }
+
+  const auto perm_value_it = perm_const.value_begin<APInt>();
+
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  SmallVector<int64_t, 4> output_shape(input_shape.size());
+
+  for (int i = 0; i < output_shape.size(); ++i) {
+    const APInt perm_val = perm_value_it[i];
+    output_shape[i] = input_shape[perm_val.getSExtValue()];
+  }
+
+  auto element_type = input_type.getElementType();
+  // For UniformQuantizedPerAxisType element type, the quantized dimension
+  // should be changed corresponding with the transpose.
+  auto per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (per_axis_qtype) {
+    int32_t quantized_dimension = per_axis_qtype.getQuantizedDimension();
+    for (int i = 0; i < output_shape.size(); ++i) {
+      const APInt perm_val = perm_value_it[i];
+      if (perm_val.getSExtValue() == quantized_dimension) {
+        quantized_dimension = i;
+        break;
+      }
+    }
+    element_type = quant::UniformQuantizedPerAxisType::get(
+        per_axis_qtype.getFlags(), per_axis_qtype.getStorageType(),
+        per_axis_qtype.getExpressedType(), per_axis_qtype.getScales(),
+        per_axis_qtype.getZeroPoints(), quantized_dimension,
+        per_axis_qtype.getStorageTypeMin(), per_axis_qtype.getStorageTypeMax());
+  }
+
+  TFL::TransposeOp::build(*builder, result,
+                          RankedTensorType::get(output_shape, element_type),
+                          input, perm);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3116,7 +3310,23 @@ LogicalResult Verify(WhileOp op) {
     return op.emitOpError(llvm::formatv(
         "number of operands does not match number of results ({0} != {1})",
         op.getNumOperands(), op.getNumResults()));
-  // TODO(jpienaar): Verify operand, result & block arguments types
+  if (op.cond().front().getNumArguments() !=
+      op.body().front().getNumArguments())
+    return op.emitOpError(llvm::formatv(
+        "number of arguments in condition function does not match number of "
+        "arguments in body function ({0} != {1})",
+        op.cond().front().getNumArguments(),
+        op.body().front().getNumArguments()));
+  // Verify shapes are compatible.
+  for (auto it : llvm::zip(op.cond().front().getArgumentTypes(),
+                           op.body().front().getArgumentTypes())) {
+    if (failed(mlir::verifyCompatibleShape(std::get<0>(it), std::get<1>(it))))
+      return op->emitOpError(llvm::formatv(
+          "condition function's argument type does not match body "
+          "function's argument type ({0} != {1})",
+          std::get<0>(it), std::get<1>(it)));
+  }
+
   return success();
 }
 

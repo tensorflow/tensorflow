@@ -40,8 +40,8 @@ func @simplifyBroadcastReshape(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> tensor<8
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   return %98 : tensor<8x6x6x18xbf16>
 
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[8, 1, 1, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK: %[[CST1:.*]] =  "tf.Const"() {value = dense<[8, 6, 6, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[8, 1, 1, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
+  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() {value = dense<[8, 6, 6, 18]> : tensor<4xi64>} : () -> tensor<4xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<8x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<8x6x6x18xbf16>
@@ -55,8 +55,8 @@ func @simplifyBroadcastReshapeExtraDims(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) ->
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<7x1x8x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
   return %98 : tensor<7x8x6x6x18xbf16>
 
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 8, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK: %[[CST1:.*]] =  "tf.Const"() {value = dense<[7, 8, 6, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 8, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST1:.*]] =  "tf.Const"() {value = dense<[7, 8, 6, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x8x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x8x1x1x18xbf16>, tensor<5xi64>) -> tensor<7x8x6x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<7x8x6x6x18xbf16>
@@ -70,8 +70,8 @@ func @simplifyBroadcastReshapeOnes(%arg0: tensor<1x1x1x1x1x1x1x18xbf16>) -> tens
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
   return %98 : tensor<1x6x1x6x18xbf16>
 
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 1, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK: %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 6, 1, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 1, 1, 1, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<[1, 6, 1, 6, 18]> : tensor<5xi64>} : () -> tensor<5xi64>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[CST]]) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x1x1x1x18xbf16>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%[[RESHAPE]], %[[CST1]]) : (tensor<1x1x1x1x18xbf16>, tensor<5xi64>) -> tensor<1x6x1x6x18xbf16>
   // CHECK: return %[[BROADCAST]] : tensor<1x6x1x6x18xbf16>
@@ -85,8 +85,8 @@ func @avoidSimplifyBroadcastReshape(%arg0: tensor<1x8x1x1x1x1x1x18xbf16>) -> (te
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   return %97, %98 : tensor<1x8x6x1x6x1x1x18xbf16>, tensor<8x6x6x18xbf16>
 
-  // CHECK: %[[CST:.*]] = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
-  // CHECK: %[[CST1:.*]] = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
+  // CHECK-DAG: %[[CST:.*]] = constant dense<[1, 8, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<[8, 6, 6, 18]> : tensor<4xi64>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%arg0, %[[CST]]) : (tensor<1x8x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x8x6x1x6x1x1x18xbf16>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%[[BROADCAST]], %[[CST1]]) : (tensor<1x8x6x1x6x1x1x18xbf16>, tensor<4xi64>) -> tensor<8x6x6x18xbf16>
   // CHECK: return %[[BROADCAST]], %[[RESHAPE]] : tensor<1x8x6x1x6x1x1x18xbf16>, tensor<8x6x6x18xbf16>
@@ -102,8 +102,8 @@ func @avoidSimplifyBroadcastReshapeUnmatchedDims(%arg0: tensor<1x1x1x1x1x1x1x18x
   %98 = "tf.Reshape"(%97, %cst_2) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<7xi64>) -> tensor<1x3x2x1x3x2x18xbf16>
   return %98 : tensor<1x3x2x1x3x2x18xbf16>
 
-  // CHECK: %[[CST:.*]] = constant dense<[1, 1, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
-  // CHECK: %[[CST1:.*]] = constant dense<[1, 3, 2, 1, 3, 2, 18]> : tensor<7xi64>
+  // CHECK-DAG: %[[CST:.*]] = constant dense<[1, 1, 6, 1, 6, 1, 1, 18]> : tensor<8xi64>
+  // CHECK-DAG: %[[CST1:.*]] = constant dense<[1, 3, 2, 1, 3, 2, 18]> : tensor<7xi64>
   // CHECK: %[[BROADCAST:.*]] = "tf.BroadcastTo"(%arg0, %[[CST]]) : (tensor<1x1x1x1x1x1x1x18xbf16>, tensor<8xi64>) -> tensor<1x1x6x1x6x1x1x18xbf16>
   // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%[[BROADCAST]], %[[CST1]]) : (tensor<1x1x6x1x6x1x1x18xbf16>, tensor<7xi64>) -> tensor<1x3x2x1x3x2x18xbf16>
   // CHECK: return %[[RESHAPE]] : tensor<1x3x2x1x3x2x18xbf16>

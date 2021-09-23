@@ -56,7 +56,6 @@ cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
         "annotate_max_batch_sizes_test.py",
-        "base_test.py",
         "batch_matmul_test.py",
         "biasadd_matmul_test.py",
         "binary_tensor_weight_broadcast_test.py",
@@ -64,7 +63,6 @@ cuda_py_tests(
         "combined_nms_test.py",
         "concatenation_test.py",
         "const_broadcast_test.py",
-        "conv2d_test.py",
         "dynamic_input_shapes_test.py",
         "identity_output_test.py",
         "int32_test.py",
@@ -85,7 +83,28 @@ cuda_py_tests(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+    ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test_no_oss",
+    srcs = [
+        "base_test.py",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "conv2d_test.py",  # b/198501457
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",
         "no_rocm",
         "no_windows",
         "nomac",

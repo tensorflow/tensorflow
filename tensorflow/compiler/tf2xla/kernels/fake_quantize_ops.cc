@@ -187,6 +187,10 @@ class FakeQuantWithMinMaxVarsOp : public XlaOpKernel {
     xla::XlaOp input_min = ctx->Input(1);
     xla::XlaOp input_max = ctx->Input(2);
 
+    OP_REQUIRES(ctx, ctx->compiler(),
+                errors::InvalidArgument("compiler options are required for "
+                                        "FakeQuantWithMinMaxVars compilation"));
+
     if (ctx->compiler()->options().allow_cpu_custom_calls &&
         ctx->compiler()->options().custom_fake_quant_op_calls) {
       xla::XlaOp custom_call_output =

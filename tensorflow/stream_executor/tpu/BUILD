@@ -362,6 +362,21 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_executable",
+    srcs = ["tpu_executable.cc"],
+    hdrs = ["tpu_executable.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_conversions",
+        ":status_helper",
+        ":tpu_executable_interface",
+        ":tpu_executor",
+        ":tpu_executor_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_executor_api",
+    ],
+)
+
+cc_library(
     name = "tpu_topology_external",
     srcs = ["tpu_topology.cc"],
     hdrs = ["tpu_topology.h"],

@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -113,6 +114,7 @@ py_library(
         "//tensorflow/python:sdca_ops",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
+        "//tensorflow/python/training/tracking:base_delegate",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -865,6 +867,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
@@ -1213,6 +1216,18 @@ cuda_py_tests(
         "//tensorflow/python/summary",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+distribute_py_test(
+    name = "training_ops_mlir_test",
+    srcs = [
+        "training_ops_test.py",
+    ],
+    disable_mlir_bridge = False,
+    main = "training_ops_test.py",
+    deps = [
+        ":training",
     ],
 )
 

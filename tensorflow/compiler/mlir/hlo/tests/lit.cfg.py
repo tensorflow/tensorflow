@@ -60,14 +60,14 @@ config.excludes = [
 config.test_source_root = os.path.dirname(__file__)
 
 # test_exec_root: The root path where tests should be run.
-config.test_exec_root = os.path.join(config.mlir_hlo_obj_root, 'test')
-config.mlir_hlo_tools_dir = os.path.join(config.mlir_hlo_obj_root, 'tools')
+config.test_exec_root = os.path.join(config.mlir_hlo_obj_root, 'tests')
+config.mlir_hlo_tools_dir = os.path.join(config.mlir_hlo_obj_root, 'bin')
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [
-    os.path.join(config.mlir_hlo_tools_dir, 'mlir-hlo-opt'),
+    config.mlir_hlo_tools_dir,
     config.llvm_tools_dir,
 ]
 tools = [

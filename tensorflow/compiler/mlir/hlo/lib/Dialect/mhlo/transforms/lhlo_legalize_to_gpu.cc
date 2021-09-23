@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -68,7 +69,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       size = dim_size;
     }
 
-    auto reducing_dimension = *reduce_op.dimensions().int_value_begin();
+    auto reducing_dimension = *reduce_op.dimensions().value_begin<APInt>();
 
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
@@ -172,7 +173,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 };
 
 struct LhloLegalizeToGpuPass
-    : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+    : public LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
                     memref::MemRefDialect, scf::SCFDialect>();

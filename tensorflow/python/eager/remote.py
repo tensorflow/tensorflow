@@ -160,6 +160,19 @@ def connect_to_cluster(cluster_spec_or_resolver,
       raise ValueError("`cluster_device_filters` must be an instance of "
                        "`tf.train.experimental.ClusterDeviceFilters`.")
 
+  # Check whether the server def has changed. We need to do the check before the
+  # local job is added to the cluster.
+  is_server_def_changed = False
+  current_server_def = context.get_server_def()
+  if current_server_def and job_name not in cluster_spec.jobs:
+    for i, job in enumerate(current_server_def.cluster.job):
+      if job.name == job_name:
+        del current_server_def.cluster.job[i]
+  if (current_server_def is None or current_server_def.cluster != cluster_def or
+      current_server_def.job_name != job_name or
+      current_server_def.task_index != task_index):
+    is_server_def_changed = True
+
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
     local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
@@ -169,6 +182,12 @@ def connect_to_cluster(cluster_spec_or_resolver,
     # to connect with local.
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
+  if context.context().coordination_service is None:
+    # Maybe enable coordination service for the communication protocol
+    coordination_service = remote_utils.coordination_service_type(protocol)
+    if coordination_service:
+      context.context().enable_coordination_service(coordination_service)
+
   server_def = ServerDef(
       cluster=cluster_def,
       job_name=job_name,
@@ -177,7 +196,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
       default_session_config=context.context().config,
       cluster_device_filters=cluster_device_filters)
 
-  if context.get_server_def() is None:
+  if is_server_def_changed:
     context.set_server_def(server_def)
   else:
     context.update_server_def(server_def)

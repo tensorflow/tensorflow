@@ -97,12 +97,6 @@ Status BatchParallelization::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void BatchParallelization::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                    const GraphDef& optimize_output,
-                                    double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(BatchParallelization, "batch_parallelization");
 
 }  // namespace grappler

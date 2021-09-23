@@ -41,6 +41,14 @@ class InitializeVariablesInSessionInitializerPass
       tensorflow::Session* session)
       : session_(session) {}
 
+  StringRef getArgument() const final {
+    return "tf-saved-model-initialize-variables-in-session-init";
+  }
+
+  StringRef getDescription() const final {
+    return "Initialize variables in session initializer function.";
+  }
+
   void runOnOperation() override;
 
  private:
@@ -93,8 +101,8 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   auto new_session_init_op =
       builder.create<tf_saved_model::SessionInitializerOp>(
-          module->getLoc(),
-          builder.getArrayAttr(builder.getSymbolRefAttr(kSessionInitFuncName)));
+          module->getLoc(), builder.getArrayAttr(SymbolRefAttr::get(
+                                builder.getContext(), kSessionInitFuncName)));
   if (session_init_op) {
     session_init_op->replaceAllUsesWith(new_session_init_op);
     session_init_op->erase();
@@ -160,8 +168,10 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
     auto handle = resource_tensor.scalar<tensorflow::ResourceHandle>()();
     auto* var_ptr = GetVariableFromSession(var_op, handle.device(), mgr);
     if (!var_ptr) {
-      module.emitError("failed to fetch variable from Session");
-      return signalPassFailure();
+      // If no value in session, then just skip this variable.
+      // This can happen if the variable is not saved in checkpoint.
+      // For example, when the variable is created on every call.
+      continue;
     }
     tensorflow::core::RefCountPtr<tensorflow::Var> var(var_ptr);
     auto* tensor = var_ptr->tensor();

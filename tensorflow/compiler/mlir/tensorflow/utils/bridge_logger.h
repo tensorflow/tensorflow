@@ -88,15 +88,6 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
   const std::vector<std::string> string_filter_;
 };
 
-// Logger for logging/dumping pass pipeline timings after completion.
-class BridgeTimingConfig : public mlir::DefaultTimingManager {
- public:
-  BridgeTimingConfig();
-
- private:
-  std::unique_ptr<llvm::raw_ostream> file_;
-};
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_

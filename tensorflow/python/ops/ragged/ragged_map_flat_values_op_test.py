@@ -178,15 +178,15 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
   def testRaggedTensorSplitsRaggedRankMismatchError(self):
     x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
     y = ragged_factory_ops.constant([[[3, 1, 4], []], [], [[1, 5]]])
-    with self.assertRaisesRegex(ValueError,
-                                r'Inputs must have identical ragged splits.*'):
+    with self.assertRaisesRegex(
+        ValueError, r'All ragged inputs must have the same ragged_rank.'):
       ragged_functional_ops.map_flat_values(math_ops.add, x, y)
 
   def testRaggedTensorSplitsValueMismatchError(self):
     x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
     y = ragged_factory_ops.constant([[1], [2, 3], [4, 5]])
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r'Inputs must have identical ragged splits.*'):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r'partitions have incompatible'):
       ragged_functional_ops.map_flat_values(math_ops.add, x, y)
 
     z_splits = array_ops.placeholder_with_default(
@@ -213,9 +213,27 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
         constant_op.constant([0, 1, 3, 5], dtypes.int64), None)
     x = ragged_tensor.RaggedTensor.from_row_splits([3, 1, 4, 1, 5], splits1)
     y = ragged_tensor.RaggedTensor.from_row_splits([1, 2, 3, 4, 5], splits2)
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                r'.*Inputs must have identical ragged splits'):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r'partitions have incompatible'):
       self.evaluate(ragged_functional_ops.map_flat_values(math_ops.add, x, y))
+
+  def testRaggedMapFnPreservesUniformRowLength(self):
+    # x and y are equal, except that x has uniform_row_length and y does not.
+    x = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]), uniform_row_length=2)
+    y = ragged_factory_ops.constant([[[1, 2], [3]]])
+
+    a = ragged_functional_ops.map_flat_values(math_ops.add, x, y)
+    self.assertAllEqual(x.uniform_row_length, a.uniform_row_length)
+
+    b = ragged_functional_ops.map_flat_values(math_ops.add, y, x)
+    self.assertAllEqual(x.uniform_row_length, b.uniform_row_length)
+
+    c = ragged_functional_ops.map_flat_values(math_ops.add_n, [x, x])
+    self.assertAllEqual(x.uniform_row_length, c.uniform_row_length)
+
+    d = ragged_functional_ops.map_flat_values(math_ops.add_n, [y, x, y])
+    self.assertAllEqual(x.uniform_row_length, d.uniform_row_length)
 
 
 if __name__ == '__main__':

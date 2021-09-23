@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
@@ -34,9 +33,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -45,9 +45,10 @@ from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
@@ -163,11 +164,11 @@ class Loader(object):
 
     if not save_options.experimental_skip_checkpoint:
       self._restore_checkpoint()
-      for node in self._nodes:
-        if isinstance(node, tracking.CapturableResource):
-          init_op = node._initialize()  # pylint: disable=protected-access
-          if not context.executing_eagerly():
-            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    for node in self._nodes:
+      if isinstance(node, tracking.CapturableResource):
+        init_op = node._initialize()  # pylint: disable=protected-access
+        if not context.executing_eagerly():
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""
@@ -181,7 +182,7 @@ class Loader(object):
         if node_path[0] != "root":
           raise ValueError(
               "When passing string identifiers to node_filters, the first name"
-              " must be root.")
+              f" must be root. Received {node_path[0]}.")
         int_node_id = 0
         for n, name in enumerate(node_path[1:]):
           int_node_id = self._find_node_child(
@@ -220,9 +221,9 @@ class Loader(object):
         if not isinstance(node, base.Trackable):
           raise TypeError(
               "Error when processing dictionary values passed to nodes_to_load."
-              "Object at {} is expected to be a checkpointable TensorFlow "
-              "object (e.g. tf.Variable, tf.Module or Keras layer)."
-              .format(node_path))
+              f"Object at {node_path} is expected to be a checkpointable (i.e. "
+              "'trackable') TensorFlow object (e.g. tf.Variable, tf.Module or "
+              "Keras layer).")
         node._maybe_initialize_trackable()  # pylint: disable=protected-access
 
       for reference in self._proto.nodes[node_id].children:
@@ -252,7 +253,7 @@ class Loader(object):
     for reference in self._proto.nodes[node_id].children:
       if reference.local_name == child_name:
         return reference.node_id
-    raise ValueError("unable to find node {}".format(path))
+    raise ValueError(f"Unable to find node {path}.")
 
   def _load_all(self):
     """Loads all nodes and functions from the SavedModel and their edges."""
@@ -348,7 +349,7 @@ class Loader(object):
       # TODO(andresp): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
-      concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+      captured_inputs_list = []
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
       if bound_inputs:
         for bound_input, internal_capture in zip(
@@ -356,7 +357,20 @@ class Loader(object):
           if distribute_utils.is_distributed_variable(bound_input):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
+            captured_inputs_list.append(bound_input)
+          elif distribute_utils.is_distributed_table(bound_input):
+            closure, spec = bound_input.resource_handle_call_time_value()
+            concrete_function.graph.replace_capture_with_deferred_capture(
+                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                closure,
+                spec,
+                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                placeholder=internal_capture)
+            captured_inputs_list.append(
+                concrete_function.graph.deferred_external_captures[-1])
+
           else:
+            captured_inputs_list.append(bound_input)
             concrete_function.graph.replace_capture(bound_input,
                                                     internal_capture)
             if internal_capture.dtype == dtypes.resource:
@@ -368,24 +382,28 @@ class Loader(object):
                   # as they get captured.
                   pass
                 else:
-                  custom_gradient.copy_handle_data(handle, internal_capture)
+                  handle_data_util.copy_handle_data(handle, internal_capture)
               else:
-                custom_gradient.copy_handle_data(bound_input, internal_capture)
+                handle_data_util.copy_handle_data(bound_input, internal_capture)
             # Setting "captures" first means "capture" won't create a new
             # placeholder for this input.
             concrete_function.graph.capture(bound_input)
+
+      concrete_function.set_external_captures(captured_inputs_list)
 
   def _get_tensor_from_node(self, node_id, fn_name):
     """Resolves a node id into a tensor to be captured for a function."""
     if self._node_filters is not None and self._nodes[node_id] is None:
       raise ValueError(
-          "Error when processing nodes_to_load. Function \"{}\" requires "
-          "inputs/variables that are not loaded when nodes_to_load={}"
-          .format(fn_name, self._node_filters))
+          f"Error when processing nodes_to_load. Function '{fn_name}' requires "
+          "inputs/variables that are not loaded when nodes_to_load="
+          f"{self._node_filters}.")
 
     with ops.init_scope():
       obj = self._nodes[node_id]
       if distribute_utils.is_distributed_variable(obj):
+        return obj
+      elif distribute_utils.is_distributed_table(obj):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
@@ -396,7 +414,7 @@ class Loader(object):
       elif isinstance(obj, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.
         return obj.resource_handle
-      raise ValueError("Can't convert node %s to tensor" % (type(obj)))
+      raise ValueError(f"Cannot convert node {obj} to tensor.")
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -501,8 +519,7 @@ class Loader(object):
             ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
           else:
             raise NotImplementedError(
-                ("Missing functionality to restore state of object "
-                 "%r from the checkpoint." % obj))
+                f"Unable to restore state of object {obj} from the checkpoint.")
 
   def adjust_debug_info_func_names(self, debug_info):
     """Rewrite func names in the debug info by using the concrete func names."""
@@ -523,6 +540,25 @@ class Loader(object):
     return self._nodes[node_id]
 
   def _recreate(self, proto, node_id):
+    """Creates a Python object from a SavedObject protocol buffer.
+
+    Args:
+      proto: a SavedObject proto
+      node_id: int, the index of this object in the SavedObjectGraph node list.
+
+    Returns:
+      The recreated object, and the set-attribute function for reconnecting
+      the trackable children.
+    """
+    registered_class = registration.get_registered_class(proto.registered_name)
+    if registered_class:
+      obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
+          proto=proto.serialized_user_proto)
+      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+    else:
+      return self._recreate_default(proto, node_id)
+
+  def _recreate_default(self, proto, node_id):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": (
@@ -540,7 +576,8 @@ class Loader(object):
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
-      raise ValueError("Unknown SavedObject type: %r" % kind)
+      raise ValueError(f"Unknown SavedObject type: {kind}. Expected one of "
+                       f"{list(factory.keys())}.")
     return factory[kind]()
 
   def _recreate_user_object(self, proto, node_id):
@@ -562,7 +599,7 @@ class Loader(object):
     return _UserObject(), setattr
 
   def _recreate_asset(self, proto):
-    filename = os.path.join(
+    filename = file_io.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
     asset = tracking.Asset(filename)
@@ -860,9 +897,7 @@ def load(export_dir, tags=None, options=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  metrics.IncrementReadApi(_LOAD_V2_LABEL)
   result = load_internal(export_dir, tags, options)["root"]
-  metrics.IncrementRead()
   return result
 
 
@@ -879,6 +914,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
 
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+    metrics.IncrementReadApi(_LOAD_V2_LABEL)
     meta_graph_def = saved_model_proto.meta_graphs[0]
     # tensor_content field contains raw bytes in litle endian format
     # which causes problems when loaded on big-endian systems
@@ -889,10 +925,10 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          ("The SavedModel at {} has one MetaGraph with tags {}, but got an "
-           "incompatible argument tags={} to tf.saved_model.load. You may omit "
-           "it, pass 'None', or pass matching tags.")
-          .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
+          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"{export_dir} has one MetaGraph with tags "
+          f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
+          "pass 'None', or pass matching tags.")
     object_graph_proto = meta_graph_def.object_graph_def
 
     ckpt_options = checkpoint_options.CheckpointOptions(
@@ -903,21 +939,21 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
                             ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
-            str(err) + "\n If trying to load on a different device from the "
-            "computational device, consider using setting the "
-            "`experimental_io_device` option on tf.saved_model.LoadOptions "
-            "to the io_device such as '/job:localhost'."
-        )
+            str(err) + "\n You may be trying to load on a different device "
+            "from the computational device. Consider setting the "
+            "`experimental_io_device` option in `tf.saved_model.LoadOptions` "
+            "to the io_device such as '/job:localhost'.")
       root = loader.get(0)
       if isinstance(loader, Loader):
         root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
+    metrics.IncrementRead(write_version="2")
   else:
     if filters:
-      raise ValueError("SavedModels saved from Tensorflow V1 or Estimator (any "
-                       "version) cannot be loaded with node filters.")
+      raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
+                       " version) cannot be loaded with node filters.")
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info

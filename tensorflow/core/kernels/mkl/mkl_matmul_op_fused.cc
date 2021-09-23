@@ -123,6 +123,11 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
+#ifdef DNNL_AARCH64_USE_ACL
+    // Specifics of ACL: a primitive per constant weights ptr
+    matmul_params.weight_address = const_cast<void*>(
+        static_cast<const void*>(weight_tensor.flat<T>().data()));
+#endif
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -249,7 +254,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+      MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
@@ -281,6 +287,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       } else if (post_op == "LeakyRelu") {
         params.post_op_params.push_back(
             {"leakyrelu", {1.0, leakyrelu_alpha, 0.0}});
+      } else if (post_op == "Sigmoid") {
+        params.post_op_params.push_back({"logistic", {1.0, 0.0, 0.0}});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(

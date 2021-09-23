@@ -227,6 +227,15 @@ void PropagateDevicesToResults(
 struct TPUDevicePropagation
     : public PassWrapper<TPUDevicePropagation, FunctionPass> {
   void runOnFunction() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-tpu-device-propagation";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Propagates TPU devices from ops to users";
+  }
 };
 
 void TPUDevicePropagation::runOnFunction() {
@@ -246,8 +255,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass() {
   return std::make_unique<TPUDevicePropagation>();
 }
 
-static PassRegistration<TPUDevicePropagation> pass(
-    "tf-tpu-device-propagation", "Propagates TPU devices from ops to users");
+static PassRegistration<TPUDevicePropagation> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

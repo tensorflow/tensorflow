@@ -35,9 +35,9 @@ namespace tpu {
 
 namespace {
 
-int64 get_uid() {
+int64_t get_uid() {
   uint64 unsigned_rand = random::New64() & INT64_MAX;
-  return static_cast<int64>(unsigned_rand);
+  return static_cast<int64_t>(unsigned_rand);
 }
 
 void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
@@ -107,9 +107,15 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
 
   main_entry->initialization_status = initialization_status;
 
+  if (!initialization_status.ok()) {
+    // Compilation failure might caused the subsequent tpu_program_group init
+    // failed with assert error. Log the error here to make debugging easier.
+    LOG(ERROR) << initialization_status.error_message();
+  }
+
   // Add the entry to the uid index.
   auto uid_inserted = entries_by_uid_.insert(
-      std::pair<int64, CompiledSubgraph*>(main_entry->uid, main_entry));
+      std::pair<int64_t, CompiledSubgraph*>(main_entry->uid, main_entry));
   CHECK(uid_inserted.second);
 
   if (tpu_program_group.has_sharding_program()) {
@@ -137,7 +143,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
 
   PopulateEntry(key, main_entry, std::move(tpu_program_group));
 
-  for (int64 i = 0; i < main_entry->proto_key.size(); ++i) {
+  for (int64_t i = 0; i < main_entry->proto_key.size(); ++i) {
     auto entry_inserted = entries_by_proto_key_.insert(
         std::pair<std::string, std::pair<CompiledSubgraph*, int>>(
             main_entry->proto_key[i], std::make_pair(main_entry, i)));

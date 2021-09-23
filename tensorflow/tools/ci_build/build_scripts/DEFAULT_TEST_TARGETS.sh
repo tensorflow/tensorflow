@@ -19,5 +19,4 @@ DEFAULT_BAZEL_TARGETS="//tensorflow/... \
 -//tensorflow/python/integration_testing/... \
 -//tensorflow/compiler/tf2tensorrt/... \
 -//tensorflow/compiler/xrt/... \
--//tensorflow/lite/micro/examples/... \
 -//tensorflow/core/tpu/..."

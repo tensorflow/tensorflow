@@ -22,12 +22,6 @@ namespace gpu {
 // THe information contained in these structures is also contained in
 // se::DeviceDescription, but separating these out lets us write code that does
 // not depend on stream executor.
-
-struct CudaComputeCapability {
-  int cc_major;
-  int cc_minor;
-};
-
 struct GpuDeviceInfo {
   int threads_per_block_limit;
   int threads_per_warp;

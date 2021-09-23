@@ -289,12 +289,5 @@ Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,
   return DedupComputations(optimized_graph);
 }
 
-void CommonSubgraphElimination::Feedback(Cluster* /*cluster*/,
-                                         const GrapplerItem& /*item*/,
-                                         const GraphDef& /*optimized_graph*/,
-                                         double /*result*/) {
-  // Nothing to do for ArithmeticOptimizer.
-}
-
 }  // namespace grappler
 }  // namespace tensorflow

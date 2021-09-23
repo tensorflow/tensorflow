@@ -78,9 +78,9 @@ func @move_transpose_handle_broadcast(%arg0:tensor<8x64xf32>, %arg1:tensor<8x64x
 
   return %3 : tensor<512x64xf32>
 
-  // CHECK: %[[CST_0:.*]] = "tf.Const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
-  // CHECK: %[[CST_1:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[CST_2:.*]] = "tf.Const"() {value = dense<[512, 64]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[CST_2:.*]] = "tf.Const"() {value = dense<[512, 64]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK: %[[EXPAND_DIMS:.*]] = "tf.ExpandDims"(%arg0, %[[CST_1]]) {device = ""} : (tensor<8x64xf32>, tensor<i32>) -> tensor<8x64x1xf32>
   // CHECK: %[[TRANSPOSE_1:.*]] = "tf.Transpose"(%[[EXPAND_DIMS]], %[[CST_0]]) : (tensor<8x64x1xf32>, tensor<3xi32>) -> tensor<1x8x64xf32>
   // CHECK: %[[TRANSPOSE_2:.*]] = "tf.Transpose"(%arg1, %[[CST_0]]) : (tensor<8x64x64xf32>, tensor<3xi32>) -> tensor<64x8x64xf32>

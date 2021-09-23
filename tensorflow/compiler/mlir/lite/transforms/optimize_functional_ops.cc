@@ -36,6 +36,16 @@ namespace {
 struct OptimizeFunctionalOpsPass
     : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize-functional-ops";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize TensorFlow functional ops";
+  }
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -107,7 +117,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
       return failure();
 
     // Identify the branch to inline.
-    bool cond_value = (*cond.int_value_begin()).getSExtValue();
+    bool cond_value = (*cond.value_begin<APInt>()).getSExtValue();
     FuncOp func = cond_value ? then_func : else_func;
 
     // Make sure that the function has exactly one block to simplify inlining.
@@ -153,8 +163,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
-PassRegistration<OptimizeFunctionalOpsPass> pass(
-    "tfl-optimize-functional-ops", "Optimize TensorFlow functional ops");
+PassRegistration<OptimizeFunctionalOpsPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {

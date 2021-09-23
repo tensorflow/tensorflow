@@ -85,6 +85,13 @@ namespace cutil = TF::collection_ops_util;
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
     : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
+  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
+
+  StringRef getDescription() const final {
+    return "Decompose stack operations into local variable operations. Needs "
+           "static shapes.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -308,7 +315,8 @@ LogicalResult HandlePartitionedCallOp(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
-        "f", builder.getSymbolRefAttr(
+        "f", SymbolRefAttr::get(
+                 builder.getContext(),
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
@@ -359,8 +367,9 @@ LogicalResult HandlePartitionedCallOp(
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
-      lowered_callee.setName(
-          llvm::formatv("{0}_stack_decomposed", callee.getName()).str());
+      lowered_callee.setName(StringAttr::get(
+          callee->getContext(),
+          llvm::formatv("{0}_stack_decomposed", callee.getName()).str()));
       SymbolTable(module).insert(lowered_callee);
       callee = lowered_callee;
     }
@@ -582,10 +591,7 @@ void StackOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<StackOpsDecompositionPass> pass(
-    "tf-stack-ops-decomposition",
-    "Decompose stack operations into local variable operations. Needs static "
-    "shapes.");
+static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

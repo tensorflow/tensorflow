@@ -37,16 +37,12 @@ class SpaceToDepthTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
     input_nhwc = math_ops.cast(inputs, dtype)
-    with test_util.force_cpu():
-      # test NHWC (default) on CPU
-      x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-      self.assertAllEqual(self.evaluate(x_tf), outputs)
+    # test NHWC (default)
+    x_tf = array_ops.space_to_depth(input_nhwc, block_size)
+    self.assertAllEqual(self.evaluate(x_tf), outputs)
 
     if test_util.is_gpu_available():
       with test_util.force_gpu():
-        # test NHWC (default) on GPU
-        x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-        self.assertAllEqual(self.evaluate(x_tf), outputs)
         # test NCHW on GPU
         input_nchw = test_util.NHWCToNCHW(input_nhwc)
         output_nchw = array_ops.space_to_depth(
@@ -133,21 +129,9 @@ class SpaceToDepthTest(test.TestCase):
   def testBatchSize0(self):
     block_size = 2
     batch_size = 0
-    input_nhwc = array_ops.ones([batch_size, 4, 6, 3])
+    x_np = array_ops.ones([batch_size, 4, 6, 3])
     x_out = array_ops.ones([batch_size, 2, 3, 12])
-
-    with test_util.force_cpu():
-      # test NHWC (default) on CPU
-      x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-      self.assertAllEqual(x_tf.shape, x_out.shape)
-      self.evaluate(x_tf)
-
-    if test.is_gpu_available():
-      with test_util.use_gpu():
-        # test NHWC (default) on GPU
-        x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-        self.assertAllEqual(x_tf.shape, x_out.shape)
-        self.evaluate(x_tf)
+    self._testOne(x_np, block_size, x_out)
 
   # Tests for different width and height.
   def testNonSquare(self):

@@ -23,6 +23,7 @@ def HLO_Dialect : Dialect {
   let cppNamespace = "::mlir::mhlo";
 }
 
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 
@@ -151,5 +152,24 @@ def ConvolutionAttributes {
 
 class BASE_HLO_ConvOp {
 }
+
+//===----------------------------------------------------------------------===//
+// Common traits
+//===----------------------------------------------------------------------===//
+
+class HLO_NativeOpTrait<string name> : NativeOpTrait<name> {
+  let cppNamespace = "::mlir::mhlo::OpTrait";
+}
+
+// An operation that is essentially element-wise but may implement broadcasting
+// semantics.
+def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
+
+// Op has pairwise operand and result type matching: the number of operands
+// must be equal to the number of results and the type of ith operand must
+// match the type of ith result.
+// TODO(b/195086460) Promote this to be an mlir trait and remove it here.
+def HLO_PairwiseSameOperandAndResultType :
+  HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
 
 #endif // HLO_OPS_BASE

@@ -31,10 +31,10 @@ namespace tensorflow {
 
 namespace {
 
-const gtl::InlinedVector<int64, 8> GetStrides(const TensorShape& shape) {
-  gtl::InlinedVector<int64, 8> result(shape.dims());
-  int64 product = 1;
-  for (int32 i = shape.dims() - 1; i >= 0; --i) {
+const gtl::InlinedVector<int64_t, 8> GetStrides(const TensorShape& shape) {
+  gtl::InlinedVector<int64_t, 8> result(shape.dims());
+  int64_t product = 1;
+  for (int32_t i = shape.dims() - 1; i >= 0; --i) {
     result[i] = product;
     product *= shape.dim_size(i);
   }
@@ -46,15 +46,15 @@ const gtl::InlinedVector<int64, 8> GetStrides(const TensorShape& shape) {
 // dimensions in the subset, outputs the linear index to the full shape with
 // nonspecified dimensions set to 0.  Dimensions must be ordered from outer-most
 // to inner-most with respect to the subset linear index.
-inline int64 LinearSubIndexToFullIndex(
-    int64 output_index, const gtl::InlinedVector<int32, 8>& dim_list,
+inline int64_t LinearSubIndexToFullIndex(
+    int64_t output_index, const gtl::InlinedVector<int32, 8>& dim_list,
     const TensorShape& input_shape,
-    const gtl::InlinedVector<int64, 8>& strides) {
-  int64 result = 0;
-  int64 quotient = output_index;
-  for (int32 i = dim_list.size() - 1; i >= 0; --i) {
-    int32 dim = dim_list[i];
-    int64 dim_value = quotient % input_shape.dim_size(dim);
+    const gtl::InlinedVector<int64_t, 8>& strides) {
+  int64_t result = 0;
+  int64_t quotient = output_index;
+  for (int32_t i = dim_list.size() - 1; i >= 0; --i) {
+    int32_t dim = dim_list[i];
+    int64_t dim_value = quotient % input_shape.dim_size(dim);
     quotient = quotient / input_shape.dim_size(dim);
     result += strides[dim] * dim_value;
   }
@@ -62,10 +62,11 @@ inline int64 LinearSubIndexToFullIndex(
 }
 
 // Computes the number of input elements reduced per output element.
-int64 GetReductionIterSize(const gtl::InlinedVector<int32, 8>& reduced_indices,
-                           const TensorShape& input_shape) {
-  int64 result = 1;
-  for (int32 reduce_dim : reduced_indices) {
+int64_t GetReductionIterSize(
+    const gtl::InlinedVector<int32, 8>& reduced_indices,
+    const TensorShape& input_shape) {
+  int64_t result = 1;
+  for (int32_t reduce_dim : reduced_indices) {
     result *= input_shape.dim_size(reduce_dim);
   }
   return result;
@@ -74,12 +75,12 @@ int64 GetReductionIterSize(const gtl::InlinedVector<int32, 8>& reduced_indices,
 // Computes a list of all true reduced indices, accounting for negative
 // indices.
 gtl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
-                                               int32 input_dims) {
+                                               int32_t input_dims) {
   const auto reduction_indices_flat = reduction_indices.flat<int32>();
-  const int32 reduction_dims = reduction_indices_flat.size();
+  const int32_t reduction_dims = reduction_indices_flat.size();
 
   gtl::InlinedVector<int32, 8> reduced_indices(reduction_dims);
-  for (int32 i = 0; i < reduction_dims; ++i) {
+  for (int32_t i = 0; i < reduction_dims; ++i) {
     reduced_indices[i] = reduction_indices_flat(reduction_dims - i - 1);
     reduced_indices[i] += reduced_indices[i] < 0 ? input_dims : 0;
   }
@@ -89,9 +90,9 @@ gtl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
 
 // Appends all unreduced dimensions to the given vector.
 void MakeUnreducedIndices(gtl::InlinedVector<bool, 8> index_is_reduced,
-                          int32 input_dims,
+                          int32_t input_dims,
                           gtl::InlinedVector<int32, 8>* unreduced_indices) {
-  for (int32 index = 0; index < input_dims; ++index) {
+  for (int32_t index = 0; index < input_dims; ++index) {
     if (!index_is_reduced[index]) unreduced_indices->push_back(index);
   }
 }
@@ -124,16 +125,16 @@ class ReduceJoinOp : public OpKernel {
     const Tensor& input = context->input(0);
     const auto input_flat = input.flat<tstring>();
     const TensorShape& input_shape = input.shape();
-    const int32 input_dims = input_shape.dims();
+    const int32_t input_dims = input_shape.dims();
 
     const Tensor& reduction_indices = context->input(1);
     const auto reduction_indices_flat = reduction_indices.flat<int32>();
-    const int32 reduction_dims = reduction_indices_flat.size();
+    const int32_t reduction_dims = reduction_indices_flat.size();
 
     gtl::InlinedVector<bool, 8> index_is_reduced(input_dims, false);
-    for (int32 i = 0; i < reduction_dims; i++) {
-      int32 reduce_index = reduction_indices_flat(i);
-      const int32 true_reduce_index =
+    for (int32_t i = 0; i < reduction_dims; i++) {
+      int32_t reduce_index = reduction_indices_flat(i);
+      const int32_t true_reduce_index =
           reduce_index < 0 ? reduce_index + input_dims : reduce_index;
       OP_REQUIRES(
           context, reduce_index >= -input_dims && reduce_index < input_dims,
@@ -158,16 +159,16 @@ class ReduceJoinOp : public OpKernel {
                                                      &output_tensor));
     auto output_flat = output_tensor->flat<tstring>();
 
-    const int64 reduction_iter_size =
+    const int64_t reduction_iter_size =
         GetReductionIterSize(reduced_indices, input_shape);
     gtl::InlinedVector<StringPiece, 8> curr_strings(reduction_iter_size);
-    for (int64 output_index = 0; output_index < output_shape.num_elements();
+    for (int64_t output_index = 0; output_index < output_shape.num_elements();
          ++output_index) {
-      int64 output_full_index = LinearSubIndexToFullIndex(
+      int64_t output_full_index = LinearSubIndexToFullIndex(
           output_index, unreduced_indices, input_shape, strides);
-      for (int64 reduction_index = 0; reduction_index < reduction_iter_size;
+      for (int64_t reduction_index = 0; reduction_index < reduction_iter_size;
            ++reduction_index) {
-        int64 reduction_full_index = LinearSubIndexToFullIndex(
+        int64_t reduction_full_index = LinearSubIndexToFullIndex(
             reduction_index, reduced_indices, input_shape, strides);
         curr_strings[reduction_index] =
             input_flat(output_full_index + reduction_full_index);

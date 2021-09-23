@@ -317,11 +317,14 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                 .setUseFullTileBuffersByDefault(true)
                 .setUseAlloca(true))
         .vectorize<mlir::linalg::GenericOp>()
+        .setEnableVectorTransferPartialRewrite(true)
         .setVectorTransformsOptions(
             mlir::vector::VectorTransformsOptions().setVectorTransferSplit(
                 mlir::vector::VectorTransferSplit::VectorTransfer))
+        .setEnableVectorToSCFConversion(true)
         .setVectorTransferToSCFOptions(
             mlir::VectorTransferToSCFOptions().setUnroll(true))
+        .setEnableVectorContractLowering(true)
         .transform(f);
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization

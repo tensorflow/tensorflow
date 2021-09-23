@@ -39,11 +39,11 @@ typedef XRTBufferAllocation* XRTBufferAllocationPtr;
 class BufferAllocStats {
  public:
   struct Stats {
-    int64 count = 0;
-    int64 size = 0;
+    int64_t count = 0;
+    int64_t size = 0;
   };
 
-  Stats ReportAlloc(int64 device, int64 msize) {
+  Stats ReportAlloc(int64_t device, int64_t msize) {
     mutex_lock lock(lock_);
     Stats* device_stats = &stats_[device];
     device_stats->count += 1;
@@ -51,7 +51,7 @@ class BufferAllocStats {
     return *device_stats;
   }
 
-  Stats ReportFree(int64 device, int64 msize) {
+  Stats ReportFree(int64_t device, int64_t msize) {
     mutex_lock lock(lock_);
     Stats* device_stats = &stats_[device];
     device_stats->count -= 1;
@@ -61,7 +61,7 @@ class BufferAllocStats {
 
  private:
   mutable mutex lock_;
-  std::map<int64, Stats> stats_;
+  std::map<int64_t, Stats> stats_;
 };
 
 BufferAllocStats* GetAllocStats() {
@@ -335,9 +335,9 @@ bool XRTTupleAllocation::IsSwapped() const {
   return literal_ != nullptr;
 }
 
-int64 XRTTupleAllocation::Pin() { return pin_count_.fetch_add(1); }
+int64_t XRTTupleAllocation::Pin() { return pin_count_.fetch_add(1); }
 
-int64 XRTTupleAllocation::Unpin() { return pin_count_.fetch_sub(1); }
+int64_t XRTTupleAllocation::Unpin() { return pin_count_.fetch_sub(1); }
 
 bool XRTTupleAllocation::IsPinned() const { return pin_count_ != 0; }
 

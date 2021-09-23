@@ -49,6 +49,12 @@ class SimpleTFDeviceAssignmentPass
     });
   }
 
+  StringRef getArgument() const final { return "tf-simple-device-assignment"; }
+
+  StringRef getDescription() const final {
+    return "Simple device assignment in TF dialect.";
+  }
+
  private:
   Option<std::string> default_device_{
       *this, "default-device", llvm::cl::desc("The default device to assign."),
@@ -62,8 +68,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }
 
-static PassRegistration<SimpleTFDeviceAssignmentPass> pass(
-    "tf-simple-device-assignment", "Simple device assignment in TF dialect.");
+static PassRegistration<SimpleTFDeviceAssignmentPass> register_pass;
 
 }  // namespace TF
 }  // namespace mlir

@@ -182,11 +182,11 @@ const OpDef& Node::op_def() const { return *props_->op_def; }
 NodeDef* Node::mutable_def() { return &props_->node_def; }
 
 int32 Node::num_inputs() const { return props_->input_types.size(); }
-DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
+DataType Node::input_type(int32_t i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }
 
 int32 Node::num_outputs() const { return props_->output_types.size(); }
-DataType Node::output_type(int32 o) const { return props_->output_types[o]; }
+DataType Node::output_type(int32_t o) const { return props_->output_types[o]; }
 const DataTypeVector& Node::output_types() const {
   return props_->output_types;
 }
@@ -243,6 +243,16 @@ void Node::set_original_node_names(const std::vector<std::string>& names) {
   if (!names.empty()) {
     *props_->node_def.mutable_experimental_debug_info()
          ->mutable_original_node_names() = {names.begin(), names.end()};
+  }
+}
+
+void Node::set_original_func_names(const std::vector<std::string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_func_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_func_names() = {names.begin(), names.end()};
   }
 }
 
@@ -334,11 +344,12 @@ NodeDebugInfo::NodeDebugInfo(
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
     : name(node_name) {
   if (has_experimental_debug_info) {
-    const auto& names = experimental_debug_info.original_node_names();
-    original_node_names.assign(names.begin(), names.end());
+    const auto& node_names = experimental_debug_info.original_node_names();
+    original_node_names.assign(node_names.begin(), node_names.end());
+    const auto& func_names = experimental_debug_info.original_func_names();
+    original_func_names.assign(func_names.begin(), func_names.end());
   }
 }
-
 // InputTensor
 
 bool InputTensor::operator==(const InputTensor& other) const {
@@ -454,9 +465,6 @@ void Graph::Copy(const Graph& src) {
     Node* dst_copy = node_map[e->dst()];
     AddEdge(src_copy, e->src_output(), dst_copy, e->dst_input());
   }
-
-  types_ = src.types_;
-  node_name_to_out_type_ = src.node_name_to_out_type_;
 }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
@@ -887,26 +895,6 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
     result[n->name()] = n;
   }
   return result;
-}
-
-void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
-  TypeRef t = {std::make_shared<FullTypeDef>(ft)};
-  auto ret = types_.emplace(t);
-  if (ret.second == false) {
-    t = *ret.first;
-  }
-
-  node_name_to_out_type_.emplace(string(name), t);
-}
-
-void Graph::NodeType(StringPiece name, FullTypeDef** result) {
-  *result = nullptr;
-  auto it = node_name_to_out_type_.find(string(name));
-  if (it == node_name_to_out_type_.end()) {
-    *result = nullptr;
-    return;
-  }
-  *result = it->second.full_type.get();
 }
 
 std::string Edge::DebugString() const {

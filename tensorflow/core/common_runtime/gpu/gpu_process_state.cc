@@ -159,7 +159,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
   DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
                                      tf_device_id);
 
-  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+  if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     gpu_allocators_.resize(tf_device_id.value() + 1);
   }
 
@@ -184,8 +184,10 @@ Allocator* GPUProcessState::GetGPUAllocator(
                            total_bytes, peer_gpu_ids);
     GPUBFCAllocator* gpu_bfc_allocator = new GPUBFCAllocator(
         sub_allocator, total_bytes, options,
-        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"));
+        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"),
+        options.experimental().internal_fragmentation_fraction());
     Allocator* gpu_allocator = gpu_bfc_allocator;
+
     SharedCounter* timing_counter = nullptr;
     if (options.experimental().timestamped_allocator()) {
       timing_counter = new SharedCounter;
@@ -204,15 +206,19 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      gpu_allocator =
-          new GPUcudaMallocAllocator(gpu_allocator, platform_device_id);
-    } else if (UseCudaMallocAsyncAllocator()) {
+      delete gpu_bfc_allocator;
+      gpu_bfc_allocator = nullptr;
+      gpu_allocator = new GPUcudaMallocAllocator(platform_device_id);
+    } else if (UseCudaMallocAsyncAllocator() ||
+               options.experimental().use_cuda_malloc_async()) {
       LOG(INFO) << "Using CUDA malloc Async allocator for GPU: "
                 << platform_device_id;
       // If true, passes all allocation requests through to cudaMallocAsync
       // TODO: useful for doing memory debugging with tools like
       // compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
+      delete gpu_bfc_allocator;
+      gpu_bfc_allocator = nullptr;
       gpu_allocator =
           new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
@@ -251,7 +257,7 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(TfDeviceId tf_device_id) {
   DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
                                      tf_device_id);
   mutex_lock l(mu_);
-  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+  if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
                << " but only have " << gpu_allocators_.size();
     return nullptr;
@@ -259,6 +265,9 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(TfDeviceId tf_device_id) {
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_device_id.value()];
   if (allocator_parts.counter.get() == nullptr) {
+    if (allocator_parts.bfc_allocator == nullptr) {
+      return nullptr;
+    }
     SharedCounter* timing_counter = new SharedCounter;
     allocator_parts.bfc_allocator->SetTimingCounter(timing_counter);
     allocator_parts.counter.reset(timing_counter);
@@ -326,14 +335,14 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
         se, numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
-    int64 gpu_host_mem_limit_in_mb = -1;
+    int64_t gpu_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                         1LL << 16 /*64GB max by default*/,
                                         &gpu_host_mem_limit_in_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
     }
-    int64 gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
+    int64_t gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
 
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,
@@ -377,7 +386,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
       << "AddGPUAllocVisitor must be called before "
          "first call to GetGPUAllocator.";
   DCHECK_GE(bus_id, 0);
-  while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
+  while (bus_id >= static_cast<int64_t>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_visitors_[bus_id].push_back(visitor);
@@ -392,7 +401,7 @@ void GPUProcessState::AddGpuHostAllocVisitor(
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostAllocVisitor must be called before "
          "first call to GetGpuHostAllocator.";
-  while (numa_node >= static_cast<int64>(gpu_host_alloc_visitors_.size())) {
+  while (numa_node >= static_cast<int64_t>(gpu_host_alloc_visitors_.size())) {
     gpu_host_alloc_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_host_alloc_visitors_[numa_node].push_back(visitor);
@@ -407,7 +416,7 @@ void GPUProcessState::AddGpuHostFreeVisitor(
   CHECK(gpu_host_allocators_.empty())  // Crash OK
       << "AddGpuHostFreeVisitor must be called before "
          "first call to GetGpuHostAllocator.";
-  while (numa_node >= static_cast<int64>(gpu_host_free_visitors_.size())) {
+  while (numa_node >= static_cast<int64_t>(gpu_host_free_visitors_.size())) {
     gpu_host_free_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_host_free_visitors_[numa_node].push_back(visitor);

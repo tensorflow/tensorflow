@@ -35,9 +35,10 @@ namespace tensorflow {
 class GPUBFCAllocator : public BFCAllocator {
  public:
   GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const string& name);
+                  const string& name, double fragmentation_fraction = 0.0);
   GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const GPUOptions& gpu_options, const string& name);
+                  const GPUOptions& gpu_options, const string& name,
+                  double fragmentation_fraction = 0.0);
   ~GPUBFCAllocator() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);

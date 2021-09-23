@@ -32,6 +32,9 @@ std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling();
 // Removes reshape with input shape == output shape
 std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape();
 
+// Removes strided slice with input tensor == output tensor
+std::unique_ptr<NodeTransformation> NewRemoveIdentityStridedSlice();
+
 }  // namespace gpu
 }  // namespace tflite
 

@@ -166,10 +166,10 @@ class BetaincTest(test.TestCase):
            gradients_impl.gradients(tf_gout_t, [ga_s_t, gb_s_t, gx_s_t])[2]])
 
       # Equivalent to `assertAllFalse` (if it existed).
-      self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
-                          np.isnan(tf_gout))
-      self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
-                          np.isnan(grads_x))
+      self.assertAllEqual(
+          np.zeros_like(grads_x).astype(np.bool_), np.isnan(tf_gout))
+      self.assertAllEqual(
+          np.zeros_like(grads_x).astype(np.bool_), np.isnan(grads_x))
 
   @test_util.run_deprecated_v1
   def testBetaIncGrads(self):

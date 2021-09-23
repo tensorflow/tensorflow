@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements the lowering for trigonometric standard ops to
 // approximations.
 
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -154,8 +155,8 @@ class ApproximateTanhLowering
 };
 
 struct LegalizeTrigonometricToApproximationPass
-    : public PassWrapper<LegalizeTrigonometricToApproximationPass,
-                         FunctionPass> {
+    : public LegalizeTanhToApproximationPassBase<
+          LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());

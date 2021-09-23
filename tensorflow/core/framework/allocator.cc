@@ -27,8 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-thread_local MemoryDebugAnnotation ScopedMemoryDebugAnnotation::annotation_;
-
 string AllocatorStats::DebugString() const {
   return strings::Printf(
       "Limit:            %20lld\n"

@@ -37,8 +37,13 @@ namespace tensor_utils {
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result) {
+#if defined(__AVX2__)
+  Avx2MatrixBatchVectorMultiplyAccumulateImpl(matrix, m_rows, m_cols, vector,
+                                              n_batch, result);
+#else
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
                    vector, n_batch, result);
+#endif
 }
 
 void MatrixBatchVectorMultiplyAccumulate(

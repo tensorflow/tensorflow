@@ -35,7 +35,7 @@ class VerifiedHloModule : public HloModule {
   VerifiedHloModule(const string& name, const HloModuleConfig& config,
                     bool verifier_layout_sensitive,
                     bool allow_mixed_precision_in_hlo_verifier,
-                    std::function<int64(const Shape&)> shape_size_function)
+                    std::function<int64_t(const Shape&)> shape_size_function)
       : HloModule(name, config),
         verifier_(
             verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,

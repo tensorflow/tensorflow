@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -151,7 +151,7 @@ GraphExecutionState::~GraphExecutionState() {
   }
 
   // NOTE(mrry): This makes a copy of `graph_def`, which is
-  // regrettable. We could make `GraphDef` objects sharable between
+  // regrettable. We could make `GraphDef` objects shareable between
   // execution states to optimize pruned graph execution, but since
   // this case is primarily used for interactive sessions, we make the
   // bet that graph construction is not performance-critical. (Note
@@ -904,7 +904,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
 
-  int64 collective_graph_key = options.collective_graph_key;
+  int64_t collective_graph_key = options.collective_graph_key;
   if (collective_graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
     // BuildGraphOptions does not specify a collective_graph_key.  Check all
     // nodes in the Graph and FunctionLibraryDefinition for collective ops and
@@ -914,7 +914,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     bool has_collective_v2 = false;
     for (Node* node : optimized_graph->nodes()) {
       if (node->IsCollective()) {
-        int32 instance_key;
+        int32_t instance_key;
         TF_RETURN_IF_ERROR(
             GetNodeAttr(node->attrs(), "instance_key", &instance_key));
         instance_key_set.emplace(instance_key);
@@ -928,7 +928,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
                 ndef.op() == "CollectiveBcastSend" ||
                 ndef.op() == "CollectiveBcastRecv" ||
                 ndef.op() == "CollectiveGather") {
-              int32 instance_key;
+              int32_t instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));
               instance_key_set.emplace(instance_key);
@@ -941,7 +941,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     }
     if (!instance_key_set.empty()) {
       uint64 hash = 0x8774aa605c729c72ULL;
-      for (int32 instance_key : instance_key_set) {
+      for (int32_t instance_key : instance_key_set) {
         hash = Hash64Combine(instance_key, hash);
       }
       collective_graph_key = hash;

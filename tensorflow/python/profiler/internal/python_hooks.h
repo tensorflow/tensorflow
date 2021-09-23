@@ -45,25 +45,32 @@ struct PythonHooksOptions {
 };
 
 struct PythonTraceEntry {
-  PythonTraceEntry(uint64 start, uint64 end, PyObject* filename, PyObject* name,
-                   int firstlineno)
+  // Capture the source/line information for a PyCodeObject object.
+  // In eager mode, keeping a reference to PyCodeObject leaks device memory.
+  PythonTraceEntry(uint64 start, uint64 end, PyCodeObject* py_code_object)
       : start_time_ns(start),
         end_time_ns(end),
-        co_filename(filename),
-        co_name(name),
-        co_firstlineno(firstlineno) {
+        co_filename(py_code_object->co_filename),
+        co_name(py_code_object->co_name),
+        co_firstlineno(py_code_object->co_firstlineno) {
     Py_XINCREF(co_filename);
     Py_XINCREF(co_name);
   }
-  PythonTraceEntry(uint64 start, uint64 end, PyCFunctionObject* func)
-      : start_time_ns(start), end_time_ns(end), function_object(func) {
-    Py_XINCREF(function_object);
+  // Capture the source/line information for a PyCFunctionObject object.
+  // In eager mode, keeping a reference to PyCFunctionObject leaks device
+  // memory.
+  PythonTraceEntry(uint64 start, uint64 end, PyCFunctionObject* py_c_function)
+      : start_time_ns(start),
+        end_time_ns(end),
+        method_def(py_c_function->m_ml),
+        m_module(py_c_function->m_module) {
+    Py_XINCREF(m_module);
   }
 
   ~PythonTraceEntry() {
     Py_XDECREF(co_filename);
     Py_XDECREF(co_name);
-    Py_XDECREF(function_object);
+    Py_XDECREF(m_module);
   }
 
   PythonTraceEntry(PythonTraceEntry&& other) {
@@ -72,10 +79,12 @@ struct PythonTraceEntry {
     co_firstlineno = other.co_firstlineno;
     co_filename = other.co_filename;
     co_name = other.co_name;
-    function_object = other.function_object;
+    method_def = other.method_def;
+    m_module = other.m_module;
     other.co_filename = nullptr;
     other.co_name = nullptr;
-    other.function_object = nullptr;
+    other.method_def = nullptr;
+    other.m_module = nullptr;
   }
 
   std::string Name() const;
@@ -85,7 +94,8 @@ struct PythonTraceEntry {
   PyObject* co_filename = nullptr;
   PyObject* co_name = nullptr;
   int co_firstlineno = 0;
-  PyCFunctionObject* function_object = nullptr;
+  PyMethodDef* method_def = nullptr;
+  PyObject* m_module = nullptr;
 
   PythonTraceEntry(const PythonTraceEntry& other) = delete;
   void operator=(const PythonTraceEntry&) = delete;
@@ -118,7 +128,7 @@ class PythonHookContext {
   void operator=(const PythonHookContext&) = delete;
   void operator=(PythonHookContext&&) = delete;
 
-  absl::flat_hash_map<int64, PerThreadEvents> entries_;
+  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
   uint64 start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we

@@ -49,7 +49,8 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     drl_ = absl::make_unique<DeviceResolverLocal>(device_mgr_.get());
     prl_ = absl::make_unique<CollectiveParamResolverLocal>(
-        cp, device_mgr_.get(), drl_.get(), kTaskName);
+        cp, device_mgr_.get(), drl_.get(), /*nccl_communicator*/ nullptr,
+        kTaskName);
     rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(device_mgr_.get(),
                                                           drl_.get(), kStepId);
     cm_ = absl::make_unique<CancellationManager>();

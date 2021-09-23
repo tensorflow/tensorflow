@@ -412,7 +412,16 @@ REGISTER_OP("GroupByWindowDataset")
     .Attr("Twindow_size_func_other_arguments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("GetElementAtIndex")
+    .Input("dataset: variant")
+    .Input("index: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("ExperimentalGroupByWindowDataset")
     .Input("input_dataset: variant")
@@ -509,6 +518,7 @@ REGISTER_OP("MapAndBatchDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("metadata: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".
@@ -628,6 +638,7 @@ REGISTER_OP("ParallelInterleaveDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 // This is the V2 of ParallelInterleaveDataset, renamed to differentiate it
@@ -646,6 +657,7 @@ REGISTER_OP("LegacyParallelInterleaveDatasetV2")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 // This op is no longer used. We keep it so that we can read graphs written by
@@ -760,6 +772,7 @@ REGISTER_OP("RandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -825,6 +838,7 @@ REGISTER_OP("ScanDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
     .Attr("use_default_device: bool = true")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalScanDataset")
@@ -966,6 +980,7 @@ REGISTER_OP("SnapshotDatasetV2")
     .Attr("shard_func: func")
     .Attr("Treader_func_args: list(type) >= 0")
     .Attr("Tshard_func_args: list(type) >= 0")
+    .Attr("metadata: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
@@ -989,6 +1004,25 @@ REGISTER_OP("SaveDataset")
       return Status::OK();
     });
 
+REGISTER_OP("SaveDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Input("shard_func_other_args: Tshard_func_args")
+    .Output("handle: variant")
+    .Attr("compression: string = ''")
+    .Attr("shard_func: func")
+    .Attr("use_shard_func: bool = true")
+    .Attr("Tshard_func_args: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("LoadDataset")
     .Input("path: string")
     .Input("reader_func_other_args: Treader_func_args")
@@ -1005,6 +1039,31 @@ REGISTER_OP("LoadDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
+
+REGISTER_OP("SnapshotDatasetReader")
+    .Input("shard_dir: string")
+    .Input("start_index: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("compression: string = ''")
+    .Attr("version: int")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `shard_dir` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      // `start_index` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("SnapshotNestedDatasetReader")
+    .Input("inputs: N * variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SqlDataset")
     .Input("driver_name: string")
@@ -1081,6 +1140,7 @@ REGISTER_OP("TakeWhileDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalTakeWhileDataset")
@@ -1132,6 +1192,7 @@ REGISTER_OP("UnbatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalUnbatchDataset")
@@ -1146,6 +1207,7 @@ REGISTER_OP("UniqueDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalUniqueDataset")
@@ -1175,6 +1237,7 @@ REGISTER_OP("DataServiceDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -1195,6 +1258,7 @@ REGISTER_OP("DataServiceDatasetV2")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -1204,6 +1268,7 @@ REGISTER_OP("RegisterDataset")
     .Input("protocol: string")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
+    .Attr("element_spec: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

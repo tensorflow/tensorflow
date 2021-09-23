@@ -64,7 +64,7 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(int8),       // S8 = 2
     sizeof(int16),      // S16 = 3
     sizeof(int32),      // S32 = 4
-    sizeof(int64),      // S64 = 5
+    sizeof(int64_t),    // S64 = 5
     sizeof(uint8),      // U8 = 6
     sizeof(uint16),     // U16 = 7
     sizeof(uint32),     // U32 = 8
@@ -79,7 +79,7 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     0,                  // TOKEN = 17
     sizeof(complex128)  // C128 = 18
 };
-constexpr int64 kAnnotationPrintInterval = 5;
+constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
@@ -120,9 +120,9 @@ namespace {
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
-    PrimitiveType element_type, absl::Span<const int64> dimensions,
-    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-    int64 element_size_in_bits, int64 memory_space) {
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
+    int64_t element_size_in_bits, int64_t memory_space) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -194,9 +194,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return equal;
 }
 
-/* static */ int64 ShapeUtil::TrueRank(const Shape& shape) {
-  int64 accum = 0;
-  for (int64 dimension : shape.dimensions()) {
+/* static */ int64_t ShapeUtil::TrueRank(const Shape& shape) {
+  int64_t accum = 0;
+  for (int64_t dimension : shape.dimensions()) {
     // We do not count zero dimensions.
     if (dimension != 1) {
       accum += 1;
@@ -206,12 +206,12 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ bool ShapeUtil::FillNewShape(PrimitiveType element_type,
-                                          absl::Span<const int64> dimensions,
+                                          absl::Span<const int64_t> dimensions,
                                           Shape* shape) {
   const int eint = static_cast<int>(element_type);
-  int64 dense_shape_size = ((eint >= 0 && eint < PrimitiveType_ARRAYSIZE)
-                                ? primitive_byte_size[eint]
-                                : 0);  // Out of range: force a failure
+  int64_t dense_shape_size = ((eint >= 0 && eint < PrimitiveType_ARRAYSIZE)
+                                  ? primitive_byte_size[eint]
+                                  : 0);  // Out of range: force a failure
   if (dense_shape_size <= 0) {
     return false;
   }
@@ -226,7 +226,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   layout->set_format(DENSE);
   auto* minor_to_major = layout->mutable_minor_to_major();
   for (int i = 0; i < ndims; i++) {
-    const int64 d = dimensions[i];
+    const int64_t d = dimensions[i];
     if (d < 0) {
       return false;
     }
@@ -252,7 +252,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
-                                        absl::Span<const int64> dimensions) {
+                                        absl::Span<const int64_t> dimensions) {
   Shape shape;
   CHECK(FillNewShape(element_type, dimensions, &shape));
   return shape;
@@ -263,7 +263,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MakeShape(
-    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
       .ValueOrDie();
@@ -277,7 +277,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
-    PrimitiveType element_type, absl::Span<const int64> dimensions) {
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
   Shape shape;
   if (!FillNewShape(element_type, dimensions, &shape)) {
     return InvalidArgument("invalid shape type=%d, dims=[%s]",
@@ -288,7 +288,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
-    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   if (dynamic_dimensions.size() != dimensions.size()) {
     return InvalidArgument(
@@ -309,9 +309,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
-    PrimitiveType element_type, absl::Span<const int64> dimensions,
-    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-    int64 element_size_in_bits, int64 memory_space) {
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
+    int64_t element_size_in_bits, int64_t memory_space) {
   auto ret =
       MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
                                   tiles, element_size_in_bits, memory_space);
@@ -319,7 +319,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return ret.ValueOrDie();
 }
 
-/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64 dim) {
+/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64_t dim) {
   if (shape.IsTuple()) {
     std::vector<Shape> result_shapes;
     result_shapes.reserve(shape.tuple_shapes_size());
@@ -335,7 +335,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   *ret.mutable_layout() = LayoutUtil::MoveDimToMajor(ret.layout(), dim);
   DimensionVector minor_to_major;
-  for (int64 d : LayoutUtil::MinorToMajor(ret)) {
+  for (int64_t d : LayoutUtil::MinorToMajor(ret)) {
     if (d != dim) {
       minor_to_major.push_back(d);
     }
@@ -346,16 +346,16 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
-    PrimitiveType element_type, absl::Span<const int64> dimensions) {
-  std::vector<int64> layout(dimensions.size());
-  std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
+  std::vector<int64_t> layout(dimensions.size());
+  std::iota(layout.rbegin(), layout.rend(), static_cast<int64_t>(0));
   return MakeShapeWithLayout(element_type, dimensions, layout);
 }
 
 /* static */ Shape
 ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
-  std::vector<int64> dims(shape.dimensions_size());
+  std::vector<int64_t> dims(shape.dimensions_size());
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     dims[i] = shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
@@ -372,12 +372,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return new_shape;
 }
 
-/* static */ Status ShapeUtil::PopulateShape(PrimitiveType element_type,
-                                             absl::Span<const int64> dimensions,
-                                             Shape* shape) {
+/* static */ Status ShapeUtil::PopulateShape(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
-  for (int64 dimension : dimensions) {
+  for (int64_t dimension : dimensions) {
     shape->add_dimensions(dimension);
   }
   LayoutUtil::SetToDefaultLayout(shape);
@@ -401,6 +401,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
+/* static */ Shape ShapeUtil::MakeMaybeTupleShape(
+    absl::Span<const Shape> shapes) {
+  if (shapes.size() == 1) {
+    return shapes[0];
+  }
+  return MakeTupleShape(shapes);
+}
+
 /* static */ Shape ShapeUtil::MakeOpaqueShape() {
   Shape result;
   result.set_element_type(OPAQUE_TYPE);
@@ -421,7 +429,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   *tuple_shape->add_tuple_shapes() = shape;
 }
 
-/* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64 index,
+/* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64_t index,
                                               Shape* tuple_shape) {
   CHECK(index < tuple_shape->tuple_shapes_size());
   *tuple_shape->mutable_tuple_shapes(index) = shape;
@@ -429,7 +437,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ void ShapeUtil::UpdateDynamicDimension(Shape* shape,
                                                     ShapeIndexView index,
-                                                    int64 dim,
+                                                    int64_t dim,
                                                     bool is_dynamic) {
   if (index.empty()) {
     CHECK(!shape->IsTuple());
@@ -448,10 +456,25 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+/* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
+  CHECK(LayoutUtil::IsDenseArray(*shape));
+
+  // Bump up all values in the layout by one.
+  for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
+       dim_idx++) {
+    int layout_idx = shape->layout().minor_to_major(dim_idx);
+    shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
+  }
+  // Then we can safely add zero.
+  shape->mutable_layout()->add_minor_to_major(0);
+  shape->add_dimensions(bound);
+  TF_DCHECK_OK(ValidateShape(*shape));
+}
+
 /* static */ void ShapeUtil::CopyDynamicDimensions(Shape* to,
                                                    const Shape& from) {
   CHECK_EQ(to->rank(), from.rank());
-  for (int64 i = 0; i < from.rank(); ++i) {
+  for (int64_t i = 0; i < from.rank(); ++i) {
     to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
   }
   TF_DCHECK_OK(ValidateShape(*to));
@@ -462,7 +485,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::ElementIsIntegralWithBits(const Shape& shape,
-                                                       int32 bits) {
+                                                       int32_t bits) {
   return ElementIsIntegral(shape) && ElementHasBitWidth(shape, bits);
 }
 
@@ -520,28 +543,28 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return shape.IsTuple() && TupleElementCount(shape) == 0;
 }
 
-/* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
+/* static */ int64_t ShapeUtil::TupleElementCount(const Shape& shape) {
   CHECK(shape.IsTuple()) << HumanString(shape);
   return shape.tuple_shapes_size();
 }
 
 /* static */ const Shape& ShapeUtil::GetTupleElementShape(const Shape& shape,
-                                                          int64 index) {
+                                                          int64_t index) {
   CHECK(shape.IsTuple());
   CHECK_GT(TupleElementCount(shape), index);
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
   return shape.tuple_shapes(index);
 }
 
-/* static */ int64 ShapeUtil::SubshapeCount(const Shape& shape) {
-  int64 n = 0;
+/* static */ int64_t ShapeUtil::SubshapeCount(const Shape& shape) {
+  int64_t n = 0;
   ForEachSubshape(shape, [&](const Shape& literal_subshape,
                              const ShapeIndex& index) { ++n; });
   return n;
 }
 
-/* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64 start,
-                                         int64 limit) {
+/* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64_t start,
+                                         int64_t limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
   CHECK(tuple.IsTuple());
   CHECK_LE(start, TupleElementCount(tuple));
@@ -560,23 +583,23 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                               complex_shape.element_type()));
 }
 
-/* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
+/* static */ int64_t ShapeUtil::ElementsIn(const Shape& shape) {
   DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
   DCHECK_EQ(shape.dimensions_size(), shape.rank());
   if (shape.dimensions().size() == 1) {
     return shape.dimensions()[0];
   }
-  return std::accumulate<decltype(shape.dimensions().begin()), int64>(
+  return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
-      std::multiplies<int64>());
+      std::multiplies<int64_t>());
 }
 
-/* static */ int64 ShapeUtil::ElementsInRecursive(const Shape& shape) {
+/* static */ int64_t ShapeUtil::ElementsInRecursive(const Shape& shape) {
   CHECK(shape.IsArray() || shape.IsTuple());
   if (shape.IsArray()) {
     return ElementsIn(shape);
   }
-  int64 count = 0;
+  int64_t count = 0;
   for (const Shape& element_shape : shape.tuple_shapes()) {
     count += ElementsInRecursive(element_shape);
   }
@@ -609,7 +632,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   if (shape.IsTuple()) {
     string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
         StrAppend(&text, ", ");
@@ -639,7 +662,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   if (shape.IsTuple()) {
     string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
-    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+    for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
       if (i != 0) {
         StrAppend(&text, ", ");
@@ -720,13 +743,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       .IgnoreLayout()(lhs, rhs);
 }
 
-/* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
-                                           int64 dimension_number) {
+/* static */ int64_t ShapeUtil::GetDimension(const Shape& shape,
+                                             int64_t dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));
 }
 
-/* static */ int64 ShapeUtil::GetDimensionNumber(const Shape& shape,
-                                                 int64 dimension_number) {
+/* static */ int64_t ShapeUtil::GetDimensionNumber(const Shape& shape,
+                                                   int64_t dimension_number) {
   if (dimension_number < 0) {
     dimension_number += shape.rank();
   }
@@ -734,7 +757,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return dimension_number;
 }
 
-/* static */ int64 ShapeUtil::ByteSizeOfPrimitiveType(
+/* static */ int64_t ShapeUtil::ByteSizeOfPrimitiveType(
     PrimitiveType primitive_type) {
   switch (primitive_type) {
     case PRED:
@@ -746,7 +769,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S32:
       return sizeof(int32);
     case S64:
-      return sizeof(int64);
+      return sizeof(int64_t);
     case U8:
       return sizeof(uint8);
     case U16:
@@ -779,8 +802,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 }
 
-/* static */ int64 ShapeUtil::ByteSizeOf(const Shape& shape,
-                                         int64 pointer_size) {
+/* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,
+                                           int64_t pointer_size) {
   TF_DCHECK_OK(ValidateShape(shape));
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
@@ -796,18 +819,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
              << " primitive type has no definitive size";
 }
 
-/* static */ int64 ShapeUtil::ByteSizeOfTupleIndexTable(const Shape& shape,
-                                                        int64 pointer_size) {
+/* static */ int64_t ShapeUtil::ByteSizeOfTupleIndexTable(
+    const Shape& shape, int64_t pointer_size) {
   TF_DCHECK_OK(ValidateShape(shape));
   CHECK_EQ(TUPLE, shape.element_type());
   CHECK_GT(pointer_size, 0);
   return pointer_size * shape.tuple_shapes_size();
 }
 
-/* static */ int64 ShapeUtil::ByteSizeOfElements(const Shape& shape) {
+/* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
   TF_DCHECK_OK(ValidateShape(shape));
   CHECK(shape.IsArray());
-  int64 allocated_element_count;
+  int64_t allocated_element_count;
 
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
   allocated_element_count = ElementsIn(shape);
@@ -855,8 +878,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return Status::OK();
   }
 
-  for (int64 i = 0; i < shape.rank(); ++i) {
-    int64 dimension = shape.dimensions(i);
+  for (int64_t i = 0; i < shape.rank(); ++i) {
+    int64_t dimension = shape.dimensions(i);
     if (dimension < 0) {
       return InvalidArgument(
           "shape's dimensions must not be < 0; dimension at index %d was %d", i,
@@ -875,15 +898,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return Status::OK();
   }
 
-  int64 shape_size = [&]() {
-    int64 dense_shape_size = 1;
+  int64_t shape_size = [&]() {
+    int64_t dense_shape_size = 1;
     if (shape.dimensions().empty()) {
       return dense_shape_size;
     }
 
-    absl::Span<const int64> shape_max_dimensions =
+    absl::Span<const int64_t> shape_max_dimensions =
         AsInt64Slice(shape.dimensions());
-    for (int64 dim : shape_max_dimensions) {
+    for (int64_t dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
         return dense_shape_size;
@@ -986,11 +1009,11 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return !GetSubshape(shape, index).IsTuple();
 }
 
-/* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+/* static */ int64_t ShapeUtil::GetLeafCount(const Shape& shape) {
   if (!shape.IsTuple()) {
     return 1;
   }
-  int64 count = 0;
+  int64_t count = 0;
   for (const Shape& subshape : shape.tuple_shapes()) {
     count += GetLeafCount(subshape);
   }
@@ -1015,7 +1038,7 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
   return FilterDimensions(
-      [&](int64 dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
+      [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
 }
 
 namespace {
@@ -1027,7 +1050,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (shape.IsTuple()) {
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       index->push_back(i);
       TF_RETURN_IF_ERROR(ForEachSubshapeHelper(
           ShapeUtil::GetTupleElementShape(shape, i), func, index));
@@ -1044,7 +1067,7 @@ Status ForEachMutableSubshapeHelper(
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (shape->IsTuple()) {
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
       index->push_back(i);
       TF_RETURN_IF_ERROR(ForEachMutableSubshapeHelper(
           shape->mutable_tuple_shapes(i), func, index));
@@ -1095,14 +1118,14 @@ Status ForEachMutableSubshapeHelper(
 }
 
 /* static */ Shape ShapeUtil::PermuteDimensions(
-    absl::Span<const int64> permutation, const Shape& shape) {
+    absl::Span<const int64_t> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
   for (auto dim : Permute(shape.dimensions(), permutation)) {
     new_shape.add_dimensions(dim);
   }
   auto inv_permutation = InversePermutation(permutation);
-  for (int64 i = 0; i < shape.rank(); i++) {
+  for (int64_t i = 0; i < shape.rank(); i++) {
     new_shape.set_dynamic_dimension(inv_permutation[i],
                                     shape.is_dynamic_dimension(i));
   }
@@ -1154,25 +1177,26 @@ Status ForEachMutableSubshapeHelper(
   return new_shape;
 }
 
-/* static */ std::tuple<bool, std::vector<int64>, std::vector<int64>>
+/* static */ std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
 ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                              const Shape& shape_post) {
   CHECK(shape_pre.IsArray());
   CHECK(shape_post.IsArray());
 
-  auto nil = std::make_tuple(false, std::vector<int64>(), std::vector<int64>());
+  auto nil =
+      std::make_tuple(false, std::vector<int64_t>(), std::vector<int64_t>());
 
-  std::vector<int64> deleted_indices;
-  std::vector<int64> inserted_indices;
+  std::vector<int64_t> deleted_indices;
+  std::vector<int64_t> inserted_indices;
   // Returns false if any input/output index between prior_unmodified_dim_pair
   // and unmodified_dim_pair have size >1. Otherwise, returns true and appends
   // the degerenate input/output dimensions in the gap to
   // deleted_indices/inserted_indices respectively.
   auto check_modified_dims =
       [&shape_pre, &shape_post, &deleted_indices, &inserted_indices](
-          std::pair<int64, int64> prior_unmodified_dim_pair,
-          std::pair<int64, int64> unmodified_dim_pair) {
-        for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
+          std::pair<int64_t, int64_t> prior_unmodified_dim_pair,
+          std::pair<int64_t, int64_t> unmodified_dim_pair) {
+        for (int64_t modified_input_dim = prior_unmodified_dim_pair.first + 1;
              modified_input_dim < unmodified_dim_pair.first;
              ++modified_input_dim) {
           if (shape_pre.dimensions(modified_input_dim) > 1) {
@@ -1180,7 +1204,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
           }
           deleted_indices.push_back(modified_input_dim);
         }
-        for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
+        for (int64_t modified_output_dim = prior_unmodified_dim_pair.second + 1;
              modified_output_dim < unmodified_dim_pair.second;
              ++modified_output_dim) {
           if (shape_post.dimensions(modified_output_dim) > 1) {
@@ -1191,7 +1215,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
         return true;
       };
 
-  std::vector<std::pair<int64, int64>> unmodified_dims =
+  std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
       DimensionsUnmodifiedByReshape(shape_pre, shape_post);
   // Returns nil if the reshape modifies any non-degenerate input/output
   // dimension. DimensionsUnmodifiedByReshape gives us all unmodified
@@ -1201,7 +1225,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     // Check (modified) dimensions between unmodified_dims[i-1] and
     // unmodified_dims[i].
     auto prior_unmodified_dim_pair =
-        i > 0 ? unmodified_dims[i - 1] : std::pair<int64, int64>(-1, -1);
+        i > 0 ? unmodified_dims[i - 1] : std::pair<int64_t, int64_t>(-1, -1);
     auto unmodified_dim_pair =
         i < unmodified_dims.size()
             ? unmodified_dims[i]
@@ -1214,7 +1238,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
   return std::make_tuple(true, deleted_indices, inserted_indices);
 }
 
-/* static */ std::vector<std::pair<int64, int64>>
+/* static */ std::vector<std::pair<int64_t, int64_t>>
 ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
                                          const Shape& output_shape) {
   CHECK(input_shape.IsArray());
@@ -1233,21 +1257,21 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   }
   // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
   common_factors.pop_back();
-  return std::vector<std::pair<int64, int64>>(common_factors.begin(),
-                                              common_factors.end());
+  return std::vector<std::pair<int64_t, int64_t>>(common_factors.begin(),
+                                                  common_factors.end());
 }
 
-/* static */ absl::optional<std::vector<int64>>
+/* static */ absl::optional<std::vector<int64_t>>
 ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     const Shape& from_shape, const Shape& to_shape,
-    absl::Span<const int64> input_dim_indices) {
+    absl::Span<const int64_t> input_dim_indices) {
   CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
 
-  std::vector<int64> output_dim_indices;
-  std::vector<std::pair<int64, int64>> unmodified_dims =
+  std::vector<int64_t> output_dim_indices;
+  std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
       ShapeUtil::DimensionsUnmodifiedByReshape(from_shape, to_shape);
   size_t i = 0;  // index to unmodified_dims
-  for (int64 input_dim_index : input_dim_indices) {
+  for (int64_t input_dim_index : input_dim_indices) {
     // Search unmodified_dims for input_dim_index. We can search from the last
     // matching position because input_dim_indices is guaranteed to be sorted.
     while (i < unmodified_dims.size() &&
@@ -1265,7 +1289,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
-    absl::Span<const int64> dimension_mapping) {
+    absl::Span<const int64_t> dimension_mapping) {
   CHECK(LayoutUtil::HasLayout(input_shape) &&
         LayoutUtil::HasLayout(output_shape));
 
@@ -1426,18 +1450,18 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     Shape output_shape_dim0_major = MakeShapeWithDescendingLayout(
         output_shape.element_type(), AsInt64Slice(output_shape.dimensions()));
 
-    for (int64 input_dim = 0; input_dim < input_shape.rank(); ++input_dim) {
+    for (int64_t input_dim = 0; input_dim < input_shape.rank(); ++input_dim) {
       if (input_shape.dimensions(input_dim) <= 1) {
         continue;
       }
 
-      std::vector<int64> input_unit_index(input_shape.rank(), 0);
+      std::vector<int64_t> input_unit_index(input_shape.rank(), 0);
       input_unit_index[input_dim] = 1;
-      int64 logical_linear_index =
+      int64_t logical_linear_index =
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
                                                         input_unit_index);
       // output_index has the same logical linear index as input_unit_index.
-      std::vector<int64> output_index =
+      std::vector<int64_t> output_index =
           IndexUtil::LinearIndexToMultidimensionalIndex(output_shape_dim0_major,
                                                         logical_linear_index);
       // Check input_unit_index and output_index have the same physical linear
@@ -1470,24 +1494,24 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       return absl::nullopt;
     }
 
-    std::vector<int64> layout =
+    std::vector<int64_t> layout =
         SpanToVector(simple_output_shape->layout().minor_to_major());
     // For each one sized dimension in the output, increment the dimension
     // numbers in layout that are more minor than the one.
-    absl::InlinedVector<int64, 8> dim_map;
+    absl::InlinedVector<int64_t, 8> dim_map;
     dim_map.reserve(simple_output_shape->rank());
-    for (int64 i = 0; i < output_shape.rank(); ++i) {
+    for (int64_t i = 0; i < output_shape.rank(); ++i) {
       if (output_shape.dimensions(i) != 1) {
         dim_map.push_back(i);
       }
     }
-    for (int64& d : layout) {
+    for (int64_t& d : layout) {
       d = dim_map[d];
     }
 
     // Add the ones in descending order to the layout. Descending layouts tend
     // to reduce the number of copies inserted in layout assignment.
-    for (int64 i = output_shape.rank() - 1; i >= 0; --i) {
+    for (int64_t i = output_shape.rank() - 1; i >= 0; --i) {
       if (output_shape.dimensions(i) == 1) {
         layout.push_back(i);
       }
@@ -1497,8 +1521,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return output_shape_with_layout;
   }
 
-  int64 input_rank = input_shape.rank();
-  int64 output_rank = output_shape.rank();
+  int64_t input_rank = input_shape.rank();
+  int64_t output_rank = output_shape.rank();
 
   // First, calculate an alignment of the dimensions. A consecutive sequence of
   // input dimensions and output dimensions belong to the same alignment part if
@@ -1514,14 +1538,14 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 
   // Stores the input and output dimension numbers where each alignment part
   // starts.
-  std::vector<std::pair<int64, int64>> alignment;
+  std::vector<std::pair<int64_t, int64_t>> alignment;
   alignment.push_back({0, 0});
 
   // Stores a mapping from the input dimension to the alignment part it belongs
   // to.
-  std::vector<int64> dimension_to_alignment_index(input_rank);
-  int64 input_dimension_product = 1, output_dimension_product = 1;
-  for (int64 i = 0, j = 0; i < input_rank || j < output_rank;) {
+  std::vector<int64_t> dimension_to_alignment_index(input_rank);
+  int64_t input_dimension_product = 1, output_dimension_product = 1;
+  for (int64_t i = 0, j = 0; i < input_rank || j < output_rank;) {
     // Check if we have reached the end of an alignment part.
     if (input_dimension_product == output_dimension_product &&
         input_dimension_product > 1) {
@@ -1554,14 +1578,14 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   // consecutively, and are in descending order. However we can ignore any
   // trivial dimension bounds of 1, because they can be placed anywhere.
   auto input_dimension_numbers = input_shape.layout().minor_to_major();
-  std::vector<int64> output_layout;
+  std::vector<int64_t> output_layout;
   output_layout.reserve(output_rank);
-  for (int64 i = 0; i < input_rank;) {
-    int64 current_dimension_number = input_dimension_numbers[i];
+  for (int64_t i = 0; i < input_rank;) {
+    int64_t current_dimension_number = input_dimension_numbers[i];
 
     // Trivial dimensions are stripped.
     CHECK_NE(input_shape.dimensions(current_dimension_number), 1);
-    const int64 current_alignment_index =
+    const int64_t current_alignment_index =
         dimension_to_alignment_index[current_dimension_number];
     // Because of the special end element that we added, we can be sure that
     // 'current_alignment_index' is < alignment.size() - 1.
@@ -1570,8 +1594,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     // Check that the following 'num_non_trivial_dimensions_in_alignment_part'
     // dimension numbers (ignoring dimension numbers with dimension bound 1) are
     // in descending order and belong to the current alignment part.
-    for (int64 j = 0; j < alignment[current_alignment_index + 1].first -
-                              alignment[current_alignment_index].first;
+    for (int64_t j = 0; j < alignment[current_alignment_index + 1].first -
+                                alignment[current_alignment_index].first;
          ++i, ++j) {
       if (i == input_rank) {
         return absl::nullopt;
@@ -1588,7 +1612,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     }
     // The output dimension numbers that belong to the current alignment part
     // need to appear in the same descending order as in the input.
-    for (int64 j = alignment[current_alignment_index + 1].second - 1;
+    for (int64_t j = alignment[current_alignment_index + 1].second - 1;
          j >= alignment[current_alignment_index].second; --j) {
       output_layout.push_back(j);
     }
@@ -1605,7 +1629,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return output_shape_with_layout;
 }
 
-/* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
+/* static */ Shape ShapeUtil::DeleteDimension(int64_t dim_to_delete,
                                               Shape shape) {
   CHECK(shape.IsArray());
   shape.DeleteDimension(dim_to_delete);
@@ -1617,7 +1641,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   if (dynamic_shape.rank() != bounded_shape.rank()) {
     return false;
   }
-  for (int64 i = 0; i < dynamic_shape.rank(); ++i) {
+  for (int64_t i = 0; i < dynamic_shape.rank(); ++i) {
     if (dynamic_shape.dimensions(i) > bounded_shape.dimensions(i)) {
       return false;
     }
@@ -1656,15 +1680,15 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(
-    const std::function<bool(int64)>& p, Shape shape) {
+    const std::function<bool(int64_t)>& p, Shape shape) {
   CHECK(shape.IsArray());
-  std::vector<int64> dims_to_delete;
-  for (int64 i = shape.dimensions().size() - 1; i >= 0; --i) {
+  std::vector<int64_t> dims_to_delete;
+  for (int64_t i = shape.dimensions().size() - 1; i >= 0; --i) {
     if (!p(i)) {
       dims_to_delete.push_back(i);
     }
   }
-  for (int64 dim : dims_to_delete) {
+  for (int64_t dim : dims_to_delete) {
     shape = DeleteDimension(dim, shape);
   }
   return shape;
@@ -1679,7 +1703,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   if (shape.tuple_shapes().empty()) {
     for (int i = 0; i < shape.dimensions_size(); ++i) {
       hash_value =
-          Hash64Combine(hash_value, hash<int64>()(shape.dimensions(i)));
+          Hash64Combine(hash_value, hash<int64_t>()(shape.dimensions(i)));
       hash_value = Hash64Combine(hash_value,
                                  hash<bool>()(shape.is_dynamic_dimension(i)));
     }
@@ -1698,7 +1722,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 // Returns the indices of the first elements of all consecutive subarrays of the
 // given array. For example:
 // ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
-static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64> xs) {
+static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64_t> xs) {
   std::vector<size_t> is = {0};
   for (size_t i = 1; i < xs.size(); ++i) {
     if (1 != xs[i] - xs[i - 1]) {
@@ -1712,31 +1736,31 @@ static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64> xs) {
 // given indices `segs`.
 static Shape MergeDimensions(absl::Span<const size_t> segs,
                              const Shape& shape) {
-  std::vector<int64> dimensions;
+  std::vector<int64_t> dimensions;
   for (size_t i = 1; i <= segs.size(); ++i) {
     dimensions.push_back(std::accumulate(
         shape.dimensions().begin() + segs[i - 1],
         shape.dimensions().begin() +
             (segs.size() == i ? shape.dimensions().size() : segs[i]),
-        1, std::multiplies<int64>()));
+        1, std::multiplies<int64_t>()));
   }
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   dimensions);
 }
 
-/*static*/ absl::optional<std::vector<int64>> ShapeUtil::FindTranspose021(
+/*static*/ absl::optional<std::vector<int64_t>> ShapeUtil::FindTranspose021(
     const Shape& a, const Shape& b) {
   if (!CompatibleIgnoringElementType(a, b)) {
     return absl::nullopt;
   }
 
-  std::vector<int64> permutation(a.dimensions().size());
-  absl::Span<const int64> minor_to_major_a = LayoutUtil::MinorToMajor(a);
-  std::vector<int64> major_to_minor_a(minor_to_major_a.rbegin(),
-                                      minor_to_major_a.rend());
-  absl::Span<const int64> minor_to_major_b = LayoutUtil::MinorToMajor(b);
-  std::vector<int64> major_to_minor_b(minor_to_major_b.rbegin(),
-                                      minor_to_major_b.rend());
+  std::vector<int64_t> permutation(a.dimensions().size());
+  absl::Span<const int64_t> minor_to_major_a = LayoutUtil::MinorToMajor(a);
+  std::vector<int64_t> major_to_minor_a(minor_to_major_a.rbegin(),
+                                        minor_to_major_a.rend());
+  absl::Span<const int64_t> minor_to_major_b = LayoutUtil::MinorToMajor(b);
+  std::vector<int64_t> major_to_minor_b(minor_to_major_b.rbegin(),
+                                        minor_to_major_b.rend());
   for (size_t i = 0; i < permutation.size(); ++i) {
     permutation[i] = PositionInContainer(major_to_minor_b, major_to_minor_a[i]);
   }
@@ -1746,9 +1770,9 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
     Shape descending_layout_shape =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
     Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
-    absl::Span<const int64> normalized_dims =
+    absl::Span<const int64_t> normalized_dims =
         AsInt64Slice(normalized_shape.dimensions());
-    std::vector<int64> dims_021;
+    std::vector<int64_t> dims_021;
     if (2 == segments.size()) {
       // The logical component-0 is of size one.
       dims_021 = {1, normalized_dims[1], normalized_dims[0]};
@@ -1777,6 +1801,20 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   return ElementIsFloating(from) == ElementIsFloating(to) &&
          ElementIsSigned(from) == ElementIsSigned(to) &&
          HigherPrecisionElementType(from, to) == to.element_type();
+}
+
+/*static*/
+Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
+  TF_RET_CHECK(shape.IsArray());
+  TF_RET_CHECK(shape.has_layout());
+  TF_RET_CHECK(shape.dimensions_size() == strides.size());
+
+  int64_t stride = ByteSizeOfPrimitiveType(shape.element_type());
+  for (int i : shape.layout().minor_to_major()) {
+    strides.at(i) = stride;
+    stride *= shape.dimensions(i);
+  }
+  return Status::OK();
 }
 
 }  // namespace xla

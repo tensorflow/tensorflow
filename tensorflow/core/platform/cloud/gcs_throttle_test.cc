@@ -31,7 +31,7 @@ class TestTime : public EnvTime {
 
   void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
 
-  void AdvanceSeconds(int64 secs) { now_micros_ += secs * kSecondsToMicros; }
+  void AdvanceSeconds(int64_t secs) { now_micros_ += secs * kSecondsToMicros; }
 
  private:
   uint64 now_micros_ = 1234567890000000ULL;

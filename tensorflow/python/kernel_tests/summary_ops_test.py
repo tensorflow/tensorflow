@@ -685,6 +685,71 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       expected_ops = ops_recording_on + ops_recording_off
       self.assertCountEqual(expected_ops, summary_ops.all_v2_summary_ops())
 
+  def testShouldRecordSummaries_defaultState(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      self.assertAllEqual(False, summary_ops.should_record_summaries())
+      w = summary_ops.create_file_writer_v2(logdir)
+      self.assertAllEqual(False, summary_ops.should_record_summaries())
+      with w.as_default():
+        # Should be enabled only when default writer is registered.
+        self.assertAllEqual(True, summary_ops.should_record_summaries())
+      self.assertAllEqual(False, summary_ops.should_record_summaries())
+      with summary_ops.record_if(True):
+        # Should be disabled when no default writer, even with record_if(True).
+        self.assertAllEqual(False, summary_ops.should_record_summaries())
+
+  def testShouldRecordSummaries_constants(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with summary_ops.record_if(True):
+          self.assertAllEqual(True, summary_ops.should_record_summaries())
+        with summary_ops.record_if(False):
+          self.assertAllEqual(False, summary_ops.should_record_summaries())
+          with summary_ops.record_if(True):
+            self.assertAllEqual(True, summary_ops.should_record_summaries())
+
+  def testShouldRecordSummaries_variable(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        cond = variables.Variable(False)
+        with summary_ops.record_if(cond):
+          self.assertAllEqual(False, summary_ops.should_record_summaries())
+          cond.assign(True)
+          self.assertAllEqual(True, summary_ops.should_record_summaries())
+
+  def testShouldRecordSummaries_callable(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        cond_box = [False]
+        cond = lambda: cond_box[0]
+        with summary_ops.record_if(cond):
+          self.assertAllEqual(False, summary_ops.should_record_summaries())
+          cond_box[0] = True
+          self.assertAllEqual(True, summary_ops.should_record_summaries())
+
+  def testShouldRecordSummaries_fromFunction(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[], dtype=dtypes.bool)])
+      def f(cond):
+        results = []
+        results.append(summary_ops.should_record_summaries())
+        with writer.as_default():
+          results.append(summary_ops.should_record_summaries())
+          with summary_ops.record_if(False):
+            results.append(summary_ops.should_record_summaries())
+          with summary_ops.record_if(cond):
+            results.append(summary_ops.should_record_summaries())
+        return results
+      self.assertAllEqual([False, True, False, True], f(True))
+      self.assertAllEqual([False, True, False, False], f(False))
+
 
 class SummaryWriterTest(test_util.TensorFlowTestCase):
 

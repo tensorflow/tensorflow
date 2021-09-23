@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -230,7 +231,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       lmhlo::ReduceOp reduce_op, ConversionPatternRewriter* rewriter) const {
     auto loc = reduce_op.getLoc();
     DenseSet<int> reducing_dims;
-    for (const auto& rdim : reduce_op.dimensions().getIntValues()) {
+    for (const auto& rdim : reduce_op.dimensions().getValues<APInt>()) {
       reducing_dims.insert(rdim.getSExtValue());
     }
 
@@ -560,7 +561,7 @@ class SelectAndScatterOpConverter
     OpBuilder::InsertPoint ip;
     WindowLoops result;
     for (const auto& window_dim :
-         s_and_s_op.window_dimensions()->getIntValues()) {
+         s_and_s_op.window_dimensions()->getValues<APInt>()) {
       Value upper = b->create<ConstantIndexOp>(loc, window_dim.getSExtValue());
       result.inner_loop =
           b->create<scf::ForOp>(loc, zero, upper, one, iter_args);
@@ -700,9 +701,11 @@ class SelectAndScatterOpConverter
 };
 
 struct LhloLegalizeToParallelLoopsPass
-    : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
+    : public LhloLegalizeToParallelLoopsPassBase<
+          LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+    registry
+        .insert<StandardOpsDialect, memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {

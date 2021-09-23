@@ -25,11 +25,11 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {};
 class PrefetchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  PrefetchDatasetParams(T input_dataset_params, int64 buffer_size,
+  PrefetchDatasetParams(T input_dataset_params, int64_t buffer_size,
                         DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
-                        int64 slack_period, bool legacy_autotune,
-                        int64 buffer_size_min, string node_name)
+                        int64_t slack_period, bool legacy_autotune,
+                        int64_t buffer_size_min, string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         buffer_size_(buffer_size),
@@ -43,7 +43,7 @@ class PrefetchDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return {CreateTensor<int64>(TensorShape({}), {buffer_size_})};
+    return {CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -55,13 +55,12 @@ class PrefetchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputShapes, output_shapes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kSlackPeriod, slack_period_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kLegacyAutotune,
-                              legacy_autotune_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kBufferSizeMin,
-                              buffer_size_min_);
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("slack_period", slack_period_);
+    attr_vector->emplace_back("legacy_autotune", legacy_autotune_);
+    attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 
@@ -70,17 +69,17 @@ class PrefetchDatasetParams : public DatasetParams {
   }
 
  private:
-  int64 buffer_size_;
-  int64 slack_period_;
+  int64_t buffer_size_;
+  int64_t slack_period_;
   bool legacy_autotune_;
-  int64 buffer_size_min_;
+  int64_t buffer_size_min_;
 };
 
 // Test case 1: positive buffer size.
 PrefetchDatasetParams PrefetchDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -96,8 +95,8 @@ PrefetchDatasetParams PrefetchDatasetParams1() {
 // Test case 2: zero buffer size.
 PrefetchDatasetParams PrefetchDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -113,8 +112,8 @@ PrefetchDatasetParams PrefetchDatasetParams2() {
 // Test case 3: autotune buffer size.
 PrefetchDatasetParams PrefetchDatasetParams3() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -130,8 +129,8 @@ PrefetchDatasetParams PrefetchDatasetParams3() {
 // Test case 4: slack_period > 0.
 PrefetchDatasetParams PrefetchDatasetParams4() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -147,8 +146,8 @@ PrefetchDatasetParams PrefetchDatasetParams4() {
 // Test case 5: legacy_autotune = false.
 PrefetchDatasetParams PrefetchDatasetParams5() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -164,8 +163,8 @@ PrefetchDatasetParams PrefetchDatasetParams5() {
 // Test case 6: buffer_size_min > 0.
 PrefetchDatasetParams PrefetchDatasetParams6() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -180,8 +179,8 @@ PrefetchDatasetParams PrefetchDatasetParams6() {
 
 PrefetchDatasetParams InvalidBufferSizePrefetchDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{10, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{10, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
       /*node_name=*/"tensor_slice");
   return PrefetchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
@@ -198,31 +197,31 @@ std::vector<GetNextTestCase<PrefetchDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/PrefetchDatasetParams1(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/PrefetchDatasetParams2(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams3(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams4(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams5(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams6(),
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1},
            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})}};
 }
@@ -296,30 +295,30 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/PrefetchDatasetParams1(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/PrefetchDatasetParams2(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams3(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams4(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
       {/*dataset_params=*/
        PrefetchDatasetParams5(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(
+       CreateTensors<int64_t>(
            TensorShape{1},
            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})}};
 }

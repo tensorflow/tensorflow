@@ -128,7 +128,7 @@ StringToFloatConverter() {
 
 namespace strings {
 
-size_t FastInt32ToBufferLeft(int32 i, char* buffer) {
+size_t FastInt32ToBufferLeft(int32_t i, char* buffer) {
   uint32 u = i;
   size_t length = 0;
   if (i < 0) {
@@ -154,7 +154,7 @@ size_t FastUInt32ToBufferLeft(uint32 i, char* buffer) {
   return buffer - start;
 }
 
-size_t FastInt64ToBufferLeft(int64 i, char* buffer) {
+size_t FastInt64ToBufferLeft(int64_t i, char* buffer) {
   uint64 u = i;
   size_t length = 0;
   if (i < 0) {
@@ -228,10 +228,10 @@ void SkipSpaces(StringPiece* str) {
 }
 }  // namespace
 
-bool safe_strto64(StringPiece str, int64* value) {
+bool safe_strto64(StringPiece str, int64_t* value) {
   SkipSpaces(&str);
 
-  int64 vlimit = kint64max;
+  int64_t vlimit = kint64max;
   int sign = 1;
   if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
@@ -241,7 +241,7 @@ bool safe_strto64(StringPiece str, int64* value) {
 
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  int64 result = 0;
+  int64_t result = 0;
   if (sign == 1) {
     do {
       int digit = SafeFirstChar(str) - '0';
@@ -293,7 +293,7 @@ bool safe_strtou64(StringPiece str, uint64* value) {
 bool safe_strto32(StringPiece str, int32* value) {
   SkipSpaces(&str);
 
-  int64 vmax = kint32max;
+  int64_t vmax = kint32max;
   int sign = 1;
   if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
@@ -303,7 +303,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  int64 result = 0;
+  int64_t result = 0;
   do {
     result = result * 10 + SafeFirstChar(str) - '0';
     if (result > vmax) {
@@ -324,7 +324,7 @@ bool safe_strtou32(StringPiece str, uint32* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  int64 result = 0;
+  int64_t result = 0;
   do {
     result = result * 10 + SafeFirstChar(str) - '0';
     if (result > kuint32max) {
@@ -448,7 +448,7 @@ bool HexStringToUint64(const StringPiece& s, uint64* result) {
   return true;
 }
 
-std::string HumanReadableNum(int64 value) {
+std::string HumanReadableNum(int64_t value) {
   std::string s;
   if (value < 0) {
     s += "-";
@@ -456,14 +456,14 @@ std::string HumanReadableNum(int64 value) {
   }
   if (value < 1000) {
     Appendf(&s, "%lld", static_cast<long long>(value));
-  } else if (value >= static_cast<int64>(1e15)) {
+  } else if (value >= static_cast<int64_t>(1e15)) {
     // Number bigger than 1E15; use that notation.
     Appendf(&s, "%0.3G", static_cast<double>(value));
   } else {
     static const char units[] = "kMBT";
     const char* unit = units;
-    while (value >= static_cast<int64>(1000000)) {
-      value /= static_cast<int64>(1000);
+    while (value >= static_cast<int64_t>(1000000)) {
+      value /= static_cast<int64_t>(1000);
       ++unit;
       CHECK(unit < units + TF_ARRAYSIZE(units));
     }
@@ -472,7 +472,7 @@ std::string HumanReadableNum(int64 value) {
   return s;
 }
 
-std::string HumanReadableNumBytes(int64 num_bytes) {
+std::string HumanReadableNumBytes(int64_t num_bytes) {
   if (num_bytes == kint64min) {
     // Special case for number with not representable negation.
     return "-8E";
@@ -494,7 +494,7 @@ std::string HumanReadableNumBytes(int64 num_bytes) {
 
   static const char units[] = "KMGTPE";  // int64 only goes up to E.
   const char* unit = units;
-  while (num_bytes >= static_cast<int64>(1024) * 1024) {
+  while (num_bytes >= static_cast<int64_t>(1024) * 1024) {
     num_bytes /= 1024;
     ++unit;
     CHECK(unit < units + TF_ARRAYSIZE(units));

@@ -45,3 +45,17 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin_impl",
     ],
 )
+
+cc_library(
+    name = "gpu_plugin",
+    srcs = ["gpu_plugin.cc"],
+    hdrs = ["gpu_plugin.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin_impl",
+    ],
+)

@@ -34,6 +34,14 @@ namespace {
 // (packed tensors) with the underlying physical TPU device.
 struct TPUColocateCompositeResourceOps
     : public PassWrapper<TPUColocateCompositeResourceOps, FunctionPass> {
+  StringRef getArgument() const final {
+    return "tf-tpu-colocate-composite-resource-ops";
+  }
+
+  StringRef getDescription() const final {
+    return "Colocate resource with composite device assignment to TPU device.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -129,9 +137,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
 
-static PassRegistration<TPUColocateCompositeResourceOps> pass(
-    "tf-tpu-colocate-composite-resource-ops",
-    "Colocate resource with composite device assignment to TPU device.");
+static PassRegistration<TPUColocateCompositeResourceOps> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

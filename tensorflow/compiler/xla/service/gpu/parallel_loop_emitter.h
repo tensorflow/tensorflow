@@ -30,8 +30,9 @@ namespace gpu {
 // collectively iterates over the entire array.
 class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
  public:
-  // `thread_count` is the number of threads to parallelize the loop on.
-  // The meanings of other parameters are the same as LoopEmitter.
+  // `launch_dimensions` specify the number of threads and blocks to
+  // parallelize the loop on.  `launch_config` specify some detail on
+  // how to parallelize.
   ParallelLoopEmitter(BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
                       llvm::IRBuilder<>* b,

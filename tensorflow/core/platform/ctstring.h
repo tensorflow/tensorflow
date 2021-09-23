@@ -37,12 +37,15 @@ inline char *TF_TString_Resize(TF_TString *str, size_t new_size, char c);
 // initialization of the new buffer.
 inline char *TF_TString_ResizeUninitialized(TF_TString *str, size_t new_size);
 // Reserves a string buffer with a capacity of at least `new_cap'.
-// ResizeUninitialized will not change the size, or the contents of the existing
+// Reserve will not change the size, or the contents of the existing
 // string.  This is useful if you have a rough idea of `str's upperbound in
 // size, and want to avoid allocations as you append to `str'. It should not be
 // considered safe to write in the region between size and capacity; explicitly
 // resize before doing so.
 inline void TF_TString_Reserve(TF_TString *str, size_t new_cap);
+// Similar to TF_TString_Reserve, except that we ensure amortized growth, i.e.
+// that we grow the capacity by at least a constant factor >1.
+inline void TF_TString_ReserveAmortized(TF_TString *str, size_t new_cap);
 
 // Returns the size of the string.
 inline size_t TF_TString_GetSize(const TF_TString *str);

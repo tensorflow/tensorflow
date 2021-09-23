@@ -45,9 +45,6 @@ class LoopOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
  private:
   friend class LoopOptimizerTest;
 
@@ -64,7 +61,7 @@ class LoopOptimizer : public GraphOptimizer {
   };
 
   Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
-                            const NodeMap& node_map,
+                            NodeMap& node_map,
                             const absl::flat_hash_set<string>& feed_nodes,
                             GraphDef* optimized_graph);
 

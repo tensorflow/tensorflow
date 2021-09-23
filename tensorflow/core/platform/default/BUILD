@@ -76,13 +76,13 @@ cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
-        "posix_file_system.h",
         "//tensorflow/core/platform:env.cc",
         "//tensorflow/core/platform:file_system.cc",
         "//tensorflow/core/platform:file_system_helper.cc",
         "//tensorflow/core/platform:threadpool.cc",
     ],
     hdrs = [
+        "posix_file_system.h",
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:file_system_helper.h",
@@ -114,6 +114,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -141,6 +142,11 @@ cc_library(
     ],
     deps = [
         ":env",
+        "//tensorflow/core/platform:load_library",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -515,7 +521,25 @@ cc_library(
         "//tensorflow/core/lib/core:notification",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "crash_analysis",
+    srcs = [
+        "crash_analysis.cc",
+    ],
+    hdrs = ["crash_analysis.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 

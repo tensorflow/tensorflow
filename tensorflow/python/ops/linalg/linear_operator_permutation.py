@@ -158,10 +158,14 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
 
       # Check and auto-set hints.
       if is_non_singular is False:  # pylint:disable=g-bool-id-comparison
-        raise ValueError("A Permutation operator is always non-singular.")
+        raise ValueError(f"A Permutation operator is always non-singular. "
+                         f"Expected argument `is_non_singular` to be True. "
+                         f"Received: {is_non_singular}.")
 
       if is_square is False:  # pylint:disable=g-bool-id-comparison
-        raise ValueError("A Permutation operator is always square.")
+        raise ValueError(f"A Permutation operator is always square. "
+                         f"Expected argument `is_square` to be True. "
+                         f"Received: {is_square}.")
       is_square = True
 
       super(LinearOperatorPermutation, self).__init__(
@@ -176,20 +180,19 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   def _check_perm(self, perm):
     """Static check of perm."""
     if (perm.shape.ndims is not None and perm.shape.ndims < 1):
-      raise ValueError(
-          "Argument perm must have at least 1 dimension.  "
-          "Found: %s" % perm)
+      raise ValueError(f"Argument `perm` must have at least 1 dimension. "
+                       f"Received: {perm}.")
     if not perm.dtype.is_integer:
-      raise TypeError("Argument perm must be integer dtype. Found:"
-                      " %s" % perm)
+      raise TypeError(f"Argument `perm` must be integer dtype. "
+                      f"Received: {perm}.")
     # Check that the permutation satisfies the uniqueness constraint.
     static_perm = tensor_util.constant_value(perm)
     if static_perm is not None:
       sorted_perm = np.sort(static_perm, axis=-1)
       if np.any(sorted_perm != np.arange(0, static_perm.shape[-1])):
         raise ValueError(
-            "Argument perm must be a vector of unique integers from"
-            " 0 to {}.".format(static_perm.shape[-1] - 1))
+            f"Argument `perm` must be a vector of unique integers from "
+            f"0 to {static_perm.shape[-1] - 1}.")
 
   def _shape(self):
     perm_shape = self._perm.shape

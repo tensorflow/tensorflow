@@ -1,6 +1,8 @@
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize | FileCheck %s --check-prefixes=CHECK,ALLOC
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
-
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
+// RUN:   --split-input-file | FileCheck %s --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
+// RUN:  --promote-buffers-to-stack --split-input-file |\
+// RUN:  FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 // CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
@@ -16,8 +18,8 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 // CHECK-LABEL: @tensor.from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> f32
 func @tensor.from_elements(%a : f32) -> f32 {
-  // CHECK: %[[B:.*]] = constant 1.2
-  // CHECK: %[[C:.*]] = constant 2.3
+  // CHECK-DAG: %[[B:.*]] = constant 1.2
+  // CHECK-DAG: %[[C:.*]] = constant 2.3
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: %[[C0:.*]] = constant 0 : index
@@ -40,8 +42,8 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -50,7 +52,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   %size = rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
-    %elem = memref.dim %arg, %i : tensor<*xf32>
+    %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
@@ -79,14 +81,14 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C5:.*]] = constant 5.000000e+00 : f32
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C5:.*]] = constant 5.000000e+00 : f32
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C6:.*]] = constant 6.000000e+00 : f32
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C6:.*]] = constant 6.000000e+00 : f32
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
   // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
   // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
   %result = constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
@@ -97,8 +99,8 @@ func @const() -> tensor<3xf32> {
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>
@@ -246,15 +248,25 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 // CHECK-LABEL: @tensor_reshape
 // CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
-  // CHECK: linalg.reshape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
-  %result = linalg.tensor_reshape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
+  // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
+  %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
   return %result : tensor<4xf32>
 }
 
-// CHECK-LABEL: @subtensor
+// CHECK-LABEL: @slice
 // CHECK-SAME: (%[[T:.*]]: memref<3xi32>)
-func @subtensor(%t : tensor<3xi32>) -> tensor<1xi32> {
+func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
   // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
-  %result = subtensor %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
+  %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
   return %result : tensor<1xi32>
+}
+
+// CHECK-LABEL: @jit_execute
+// CHECK-SAME: (%[[F:.*]]: !tf_framework.jit_callable, %[[ARG:.*]]: memref<*xf32>) -> memref<*xf32>
+func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
+    -> tensor<*xf32> {
+  // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[F]](%[[ARG]]) : memref<*xf32> -> memref<*xf32>
+  // CHECK: return %[[RES]] : memref<*xf32>
+  %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }

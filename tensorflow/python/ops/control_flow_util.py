@@ -343,12 +343,12 @@ def CheckInputFromValidContext(op, input_op):
   if not valid:
     if while_ctxt:
       error_msg = (
-          "Cannot use '%s' as input to '%s' because they are in different while"
-          " loops." % (input_op.name, op.name))
+          f"Cannot use '{input_op.name}' as input to '{op.name}' because they "
+          "are in different while loops.")
     else:
       error_msg = (
-          "Cannot use '%s' as input to '%s' because '%s' is in a while loop."
-          % (input_op.name, op.name, input_op.name))
+          f"Cannot use '{input_op.name}' as input to '{op.name}' because "
+          f"'{input_op.name}' is in a while loop.")
 
     # Log the error message plus the relevant stack traces. The stacks may be
     # useful for debugging this error, but we don't want to raise an

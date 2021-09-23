@@ -547,8 +547,8 @@ TEST(BCastTest, Basic_Tensor_Matrix_As_Tensor) {
 }
 
 TEST(BCastTest, Basic_SymbolicShape) {
-  constexpr int64 kSymDim1 = -10'000'000'000;
-  constexpr int64 kSymDim2 = -10'000'000'001;
+  constexpr int64_t kSymDim1 = -10'000'000'000;
+  constexpr int64_t kSymDim2 = -10'000'000'001;
 
   const tensorflow::BCast bcast({10, kSymDim1, kSymDim2}, {10, 1, 1}, false);
   EXPECT_TRUE(bcast.IsValid());

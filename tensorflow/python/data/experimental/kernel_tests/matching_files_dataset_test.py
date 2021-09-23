@@ -154,7 +154,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase,
       except errors.OutOfRangeError:
         break
 
-    self.assertItemsEqual(expected_filenames, actual_filenames)
+    self.assertCountEqual(expected_filenames, actual_filenames)
 
 
 class MatchingFilesDatasetCheckpointTest(
@@ -163,8 +163,10 @@ class MatchingFilesDatasetCheckpointTest(
   def _build_iterator_graph(self, test_patterns):
     return matching_files.MatchingFilesDataset(test_patterns)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testMatchingFilesCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     tmp_dir = tempfile.mkdtemp()
     width = 16
     depth = 8
@@ -186,8 +188,7 @@ class MatchingFilesDatasetCheckpointTest(
     ]
 
     num_outputs = width * len(patterns)
-    self.run_core_tests(lambda: self._build_iterator_graph(patterns),
-                        num_outputs)
+    verify_fn(self, lambda: self._build_iterator_graph(patterns), num_outputs)
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 

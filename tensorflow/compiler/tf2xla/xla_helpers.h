@@ -18,10 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -41,7 +45,7 @@ class XlaHelpers {
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.
   static xla::XlaOp IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
-                                   int64 value);
+                                   int64_t value);
 
   // Returns a handle representing the given value of a floating-point scalar
   // element of data_type.
@@ -51,7 +55,7 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               absl::Span<const int64> shape,
+                               absl::Span<const int64_t> shape,
                                xla::Literal* output);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
@@ -59,7 +63,7 @@ class XlaHelpers {
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
+  static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
                        const xla::XlaOp& indices, const xla::XlaOp& on_value,
                        const xla::XlaOp& off_value, xla::XlaOp* one_hot);
@@ -176,6 +180,26 @@ struct XlaCompilationResult {
   // Mapping from group keys to group sizes.
   absl::optional<CollectiveReduceV2OpInfo> collective_reduce_info;
 };
+
+// Resolves the device assignment based on CollectiveReduceV2OpInfo.
+// CollectiveReduceV2OpInfo records collective ops in the cluster. Note that
+// this relies on a rendezvous and blocks until all replicas are there.
+//
+// Takes several extra configuration objects by reference since
+// xla::ExecutableRunOptions does not take ownership; these are configured and
+// bundled into `run_options` if applicable.
+Status ResolveDeviceAssignment(
+    OpKernelContext* ctx,
+    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
+        collective_reduce_info,
+    xla::ExecutableRunOptions& run_options,
+    xla::DeviceAssignment& device_assignment,
+    xla::gpu::GpuExecutableRunOptions& gpu_options);
+
+// Generate a message with a definition location based on a provided stack
+// trace, or an empty one if the stack trace is empty.
+std::string DefinitionLocationMsg(
+    const absl::optional<ManagedStackTrace>& stack_trace);
 
 }  // end namespace tensorflow
 

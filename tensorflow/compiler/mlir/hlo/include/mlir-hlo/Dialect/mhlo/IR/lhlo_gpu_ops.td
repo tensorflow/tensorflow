@@ -21,6 +21,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td"
@@ -203,6 +204,8 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     I64Attr:$batch_size,
+    I64Attr:$lhs_stride,
+    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 
@@ -218,6 +221,8 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
+    I64Attr:$lhs_stride,
+    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 
@@ -228,6 +233,35 @@ def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     Arg<I32Buffer, "", [MemWrite]>:$info,
     BoolAttr:$is_lower);
+}
+
+def LHLOGPU_AllReduceStartOp :
+  LHLOGPU_Op<"all_reduce_start", [SameOperandsElementType, SameVariadicOperandSize]> {
+  let summary = "AllReduceStart operator";
+  let description = [{
+    Performs an asynchronous custom reduction across replicas.
+  }];
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    I64ElementsAttr:$replica_groups,
+    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    OptionalAttr<ChannelHandle>:$channel_id,
+    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+  );
+  let results = (outs HLO_Token:$token);
+  let regions = (region SizedRegion<1>:$computation);
+  let verifier = [{ return Verify(*this); }];
+}
+
+def LHLOGPU_AllReduceDoneOp:
+  LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
+  let summary = "AllReduceDone operator";
+  let arguments = (ins
+    HLO_Token:$token,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+  );
 }
 
 #endif // LHLO_GPU_OPS

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace tensorflow {
@@ -39,7 +40,7 @@ using xla::llvm_ir::AsStringRef;
 static void AddEmbeddedProtocolBufferToLlvmModule(
     llvm::Module* module, const ::tensorflow::protobuf::MessageLite& proto,
     absl::string_view unique_identifier, string* protobuf_array_symbol_name,
-    int64* protobuf_array_size) {
+    int64_t* protobuf_array_size) {
   string protobuf_array_contents = proto.SerializeAsString();
   *protobuf_array_symbol_name =
       absl::StrCat(unique_identifier, "_protobuf_array_contents");
@@ -57,7 +58,7 @@ static void AddEmbeddedProtocolBufferToLlvmModule(
 
 static string CreateCPPShimExpression(
     absl::string_view qualified_cpp_protobuf_name,
-    absl::string_view protobuf_array_symbol_name, int64 protobuf_array_size) {
+    absl::string_view protobuf_array_symbol_name, int64_t protobuf_array_size) {
   string code =
       "[]() {\n"
       "    {{PROTOBUF_NAME}}* proto = new {{PROTOBUF_NAME}};\n"
@@ -124,7 +125,7 @@ StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     string cpp_shim, cpp_variable_decl;
     if (protobuf_to_embed.message) {
       string protobuf_array_symbol_name;
-      int64 protobuf_array_size;
+      int64_t protobuf_array_size;
 
       AddEmbeddedProtocolBufferToLlvmModule(
           module_with_serialized_proto.get(), *protobuf_to_embed.message,

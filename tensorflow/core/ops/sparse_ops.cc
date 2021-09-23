@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -619,6 +620,8 @@ REGISTER_OP("SparseFillEmptyRows")
       DimensionHandle unused_dim;
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_indices, 1),
                                   c->Dim(input_shape, 0), &unused_dim));
+      if (c->Value(c->NumElements(input_shape)) == 0)
+        return errors::InvalidArgument("dense_shape must not be empty");
       ShapeHandle output_indices =
           c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
       ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);

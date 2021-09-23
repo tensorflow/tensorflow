@@ -52,6 +52,24 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
                           (TF_SubOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
+// Gather op patterns.
+//===----------------------------------------------------------------------===//
+
+class GetI32Attr<int x>: NativeCodeCall<
+  "$_builder.getI32IntegerAttr(" # x # ")">;
+
+class GetI64Attr<int x>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(" # x # ")">;
+
+// The deprecated validate_indices attribute is NOT verified during
+// canonicalization because it is neither supported in the old bridge
+// nor in the reference TF implementation.
+def GatherToV2 :
+  Pat<(TF_GatherOp $params, $indices, $ignored_validate_indices),
+      (TF_GatherV2Op $params, $indices,
+        (TF_ConstOp (GetI32Attr<0>)), (GetI64Attr<0>))>;
+
+//===----------------------------------------------------------------------===//
 // BatchMatMul op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -172,9 +190,6 @@ def LogicalNotOfLessEqual : Pat<(TF_LogicalNotOp (TF_LessEqualOp $arg0, $arg1)),
 // MatrixSetDiag op patterns.
 //===----------------------------------------------------------------------===//
 
-class GetI32Attr<int x>: NativeCodeCall<
-  "$_builder.getI32IntegerAttr(" # x # ")">;
-
 class GetStrAttr<string x>: NativeCodeCall<
   "$_builder.getStringAttr(\"" # x # "\")">;
 
@@ -264,3 +279,35 @@ def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:
 //===----------------------------------------------------------------------===//
 
 def VariableToVariableV2 : Pat<(TF_VariableOp $shape, $container, $shard_name), (TF_VariableV2Op $shape, $container, $shard_name)>;
+
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.HashTable and its user ops to V2 versions.
+//===----------------------------------------------------------------------===//
+def HashTableAndInitializeTableToV2 :
+ Pat<
+   (TF_InitializeTableFromTextFileOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $filename, $key_index, $value_index, $vocab_size, $delimiter, $offset),
+   (TF_InitializeTableFromTextFileV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $filename, $key_index, $value_index, $vocab_size, $delimiter, $offset)
+  >;
+
+def HashTableAndLookupTableSizeToV2 :
+ Pat<
+   (TF_LookupTableSizeOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype)),
+   (TF_LookupTableSizeV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype))
+  >;
+
+def HashTableAndLookupTableFindToV2 :
+ Pat<
+   (TF_LookupTableFindOp
+     (TF_HashTableOp $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $keys, $default_value),
+   (TF_LookupTableFindV2Op
+     (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
+     $keys, $default_value)
+ >;

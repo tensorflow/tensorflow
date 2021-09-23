@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -72,7 +72,7 @@ constexpr int kStatsReportingPeriodMillis = 1000;
 class ParallelMapDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          int64 num_parallel_calls, const DataTypeVector& output_types,
+          int64_t num_parallel_calls, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
           DeterminismPolicy deterministic,
           std::unique_ptr<CapturedFunction> captured_func,
@@ -112,7 +112,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (preserve_cardinality_) {
       return input_->Cardinality();
     } else {
@@ -219,6 +219,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
@@ -312,7 +314,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      int64 invocation_results_size;
+      int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                              kSize, &invocation_results_size));
@@ -326,7 +328,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
@@ -339,7 +341,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              ctx->flr(), element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               &result.return_values.back()));
         }
         result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
@@ -350,7 +352,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
+      int64_t parallelism = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -367,6 +369,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -378,7 +383,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      const int64 uid;
+      const int64_t uid;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -511,7 +516,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        int64 num_parallel_calls = num_parallel_calls_->value;
+        int64_t num_parallel_calls = num_parallel_calls_->value;
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
@@ -573,7 +578,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
 
     void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
-      for (int64 step = 0;; ++step) {
+      for (int64_t step = 0;; ++step) {
         int num_calls;
         int num_parallel_calls;
         {
@@ -604,7 +609,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& key, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          key, kErrorCode, static_cast<int64>(status.code())));
+          key, kErrorCode, static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
@@ -614,7 +619,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
@@ -643,7 +648,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool preserve_cardinality_;
     const bool autotune_;
     // Counts the number of outstanding calls.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Controls cancellation of `input_impl_`. Must be ordered before
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
@@ -660,10 +665,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;
-  const int64 num_parallel_calls_;
+  const int64_t num_parallel_calls_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const DeterminismPolicy deterministic_;
@@ -703,9 +714,9 @@ ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
 
 void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 num_parallel_calls;
+  int64_t num_parallel_calls;
   if (op_version_ == 1) {
-    int32 parallel_calls;
+    int32_t parallel_calls;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kNumParallelCalls, &parallel_calls));
     num_parallel_calls = parallel_calls;
@@ -724,7 +735,11 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           &captured_func));
 
   if (num_parallel_calls == model::kAutotune) {
-    metrics::RecordTFDataAutotune(kDatasetType);
+    if (GetExperiments().contains("max_parallelism")) {
+      num_parallel_calls = GetCpuBudget();
+    } else {
+      metrics::RecordTFDataAutotune(kDatasetType);
+    }
   }
 
   *output =

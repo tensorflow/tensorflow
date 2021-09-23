@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -36,9 +38,7 @@ GPUResources TensorLinearDescriptor::GetGPUResources(
     desc.access_type = access_type_;
     desc.element_size = 4;
     desc.memory_type = memory_type;
-    if (gpu_info.IsApiOpenGl() && gpu_info.opengl_info.major_version == 3 &&
-        gpu_info.opengl_info.minor_version == 0) {
-      desc.memory_type = tflite::gpu::MemoryType::CONSTANT;
+    if (gpu_info.IsGlsl() && memory_type == tflite::gpu::MemoryType::CONSTANT) {
       desc.attributes.push_back(std::to_string(size));
     }
     resources.buffers.push_back({"buffer", desc});
@@ -91,8 +91,27 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
                      args.size(), " was passed"));
   }
   if (storage_type == LinearStorageType::BUFFER) {
-    *result = absl::StrCat("buffer[", args[0], "]");
-    return absl::OkStatus();
+    if (gpu_info.IsGlsl()) {
+      if (element_type == DataType::FLOAT16) {
+        if (memory_type == MemoryType::CONSTANT) {
+          const std::string arg0 = "(" + args[0] + ")";
+          *result =
+              absl::StrCat("vec4(unpackHalf2x16(buffer[", arg0, " / 2][", arg0,
+                           " % 2 == 0 ? 0 : 2]), unpackHalf2x16(buffer[", arg0,
+                           " / 2][", arg0, " % 2 == 0 ? 1 : 3]))");
+        } else {
+          *result =
+              absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
+                           "].x), unpackHalf2x16(buffer[", args[0], "].y))");
+        }
+      } else {
+        *result = absl::StrCat("buffer[", args[0], "]");
+      }
+      return absl::OkStatus();
+    } else {
+      *result = absl::StrCat("buffer[", args[0], "]");
+      return absl::OkStatus();
+    }
   } else {
     if (gpu_info.IsApiMetal()) {
       *result = absl::StrCat("tex2d.read(ushort2(", args[0], ", 0))");
@@ -103,26 +122,14 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
       *result =
           absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0], ", 0))");
       return absl::OkStatus();
-    } else if (gpu_info.IsApiOpenGl()) {
-      if (storage_type == LinearStorageType::BUFFER) {
-        if (element_type == DataType::FLOAT16) {
-          *result = absl::StrCat(
-              "vec4(unpackHalf2x16(buffer[", args[0], " / 2][", args[0],
-              " % 2 == 0 ? 0 : 2]), unpackHalf2x16(buffer[", args[0], " / 2][",
-              args[0], " % 2 == 0 ? 1 : 3]))");
-        } else {
-          *result = absl::StrCat("buffer[", args[0], "]");
-        }
+    } else if (gpu_info.IsGlsl()) {
+      if (gpu_info.IsApiOpenGl() && gpu_info.opengl_info.major_version < 3) {
+        *result = absl::StrCat("texture2D(tex2d, vec2(float(", args[0],
+                               ") * inv_tex_width, 0.0))");
         return absl::OkStatus();
       } else {
-        if (gpu_info.opengl_info.major_version < 3) {
-          *result = absl::StrCat("texture2D(tex2d, vec2(float(", args[0],
-                                 ") * inv_tex_width, 0.0))");
-          return absl::OkStatus();
-        } else {
-          *result = "texelFetch(tex2d, ivec2(" + args[0] + ", 0), 0)";
-          return absl::OkStatus();
-        }
+        *result = "texelFetch(tex2d, ivec2(" + args[0] + ", 0), 0)";
+        return absl::OkStatus();
       }
     } else {
       return absl::UnimplementedError(

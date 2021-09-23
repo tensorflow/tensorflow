@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import weakref
 
@@ -142,27 +143,6 @@ class InterfaceTests(test.TestCase):
     self.assertEqual(dtypes.float64, v2.dtype)
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
-  def testNotTrackable(self):
-
-    class CallsFunctionalStuff(
-        tracking.NotTrackable, tracking.AutoTrackable):
-      pass
-
-    test_dir = self.get_temp_dir()
-    prefix = os.path.join(test_dir, "ckpt")
-    checkpoint = trackable_utils.Checkpoint(x=CallsFunctionalStuff())
-    with self.assertRaises(NotImplementedError):
-      checkpoint.save(prefix)
-
-    class CallsFunctionalStuffOtherMRO(
-        tracking.AutoTrackable, tracking.NotTrackable):
-      pass
-
-    checkpoint_reversed = trackable_utils.Checkpoint(
-        x=CallsFunctionalStuffOtherMRO())
-    with self.assertRaises(NotImplementedError):
-      checkpoint_reversed.save(prefix)
-
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 
@@ -257,6 +237,17 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status = ckpt.restore(save_path=save_path)
     del ckpt
     status.assert_consumed()
+
+  def testDeepCopyCheckpoint(self):
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    v = variables_lib.Variable(1.)
+    original_ckpt = trackable_utils.Checkpoint(v=v)
+    copied_ckpt = copy.deepcopy(original_ckpt)
+    copied_ckpt.v.assign(2.)
+    self.assertAllClose(1., v)
+    save_path = copied_ckpt.save(file_prefix=prefix)
+    original_ckpt.restore(save_path=save_path).assert_consumed()
+    self.assertAllClose(2., v)
 
   @test_util.run_in_graph_and_eager_modes
   def testPassingCheckpointOptions(self):

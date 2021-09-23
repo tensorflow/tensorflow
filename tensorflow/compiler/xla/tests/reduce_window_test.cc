@@ -70,8 +70,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
 
   void ReduceWindowAdd(const XlaOp input,
-                       absl::Span<const int64> window_dimensions,
-                       absl::Span<const int64> window_strides,
+                       absl::Span<const int64_t> window_dimensions,
+                       absl::Span<const int64_t> window_strides,
                        Padding padding) {
     auto init = CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(0.0f),
                                           &builder_);
@@ -81,8 +81,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMax(const XlaOp input,
-                       absl::Span<const int64> window_dimensions,
-                       absl::Span<const int64> window_strides,
+                       absl::Span<const int64_t> window_dimensions,
+                       absl::Span<const int64_t> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MinValue(F32), &builder_);
@@ -92,8 +92,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMin(const XlaOp input,
-                       absl::Span<const int64> window_dimensions,
-                       absl::Span<const int64> window_strides,
+                       absl::Span<const int64_t> window_dimensions,
+                       absl::Span<const int64_t> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MaxValue(F32), &builder_);
@@ -380,7 +380,7 @@ XLA_TEST_P(ReduceWindowTest, R4UnitWindow) {
 }
 
 XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
-  std::vector<int64> input_dims(6, 8);
+  std::vector<int64_t> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
   Literal arg_literal(shape);
@@ -390,8 +390,8 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   Padding padding = Padding::kValid;
   ReduceWindowAdd(input, {3, 1, 3, 3, 1, 1}, {1, 1, 1, 1, 1, 1}, padding);
 
-  std::vector<int64> output_layout = {1, 5, 3, 2, 0, 4};
-  std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
+  std::vector<int64_t> output_layout = {1, 5, 3, 2, 0, 4};
+  std::vector<int64_t> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
   Literal expected(result_shape);
@@ -400,7 +400,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
 }
 
 XLA_TEST_P(ReduceWindowTest, R6Add) {
-  std::vector<int64> input_dims(6, 8);
+  std::vector<int64_t> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
   Literal arg_literal =
@@ -411,7 +411,7 @@ XLA_TEST_P(ReduceWindowTest, R6Add) {
   Padding padding = Padding::kValid;
   ReduceWindowAdd(input, {1, 1, 3, 3, 1, 1}, {1, 1, 1, 1, 1, 1}, padding);
 
-  std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
+  std::vector<int64_t> output_dims = {8, 8, 6, 6, 8, 8};
   Literal expected =
       LiteralUtil::CreateFullWithDescendingLayout<float>(output_dims, 9.0f);
 
@@ -576,12 +576,12 @@ INSTANTIATE_TEST_CASE_P(ReduceWindowTestInstance, ReduceWindowTest,
 enum Reducer { kAdd, kMax };
 
 struct R4ReduceWindowTestData {
-  int64 base_bounds[4];
-  int64 window_bounds[4];
-  int64 strides[4];
-  int64 pad_low[4];
-  int64 pad_high[4];
-  int64 layout[4];
+  int64_t base_bounds[4];
+  int64_t window_bounds[4];
+  int64_t strides[4];
+  int64_t pad_low[4];
+  int64_t pad_high[4];
+  int64_t layout[4];
 
   Reducer reducer;
 };
@@ -629,7 +629,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
     // Floating point sum reduction requires higher localized precision. We need
     // the following normalization in order to enable testing of kAdd on large
     // windows.
-    input.Each([&](absl::Span<const int64> /*indices*/, float* value) {
+    input.Each([&](absl::Span<const int64_t> /*indices*/, float* value) {
       *value = *value / 10000000000.f;
     });
     Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
@@ -639,7 +639,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
                             CreateParameterAndTransferLiteral(
                                 0, input_literal, "p0", &b, &parameter));
 
-    std::vector<std::pair<int64, int64>> padding(4);
+    std::vector<std::pair<int64_t, int64_t>> padding(4);
     for (int i = 0; i < 4; ++i) {
       padding[i] = {param.pad_low[i], param.pad_high[i]};
     }
@@ -746,6 +746,33 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With negative padding on both ends.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{-3, -2, 0, 0},
+                           /*pad_high=*/{-2, -3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With negative low padding and positive high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{-3, -2, 0, 0},
+                           /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With positive low padding and negative high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{3, 2, 0, 0},
+                           /*pad_high=*/{-2, -3, 0, 0},
                            /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
@@ -948,10 +975,10 @@ INSTANTIATE_TEST_CASE_P(
     R4ReduceWindowTestDataToString);
 
 struct R3ReduceWindowTestData {
-  int64 base_bounds[3];
-  int64 window_bounds[3];
-  int64 strides[3];
-  int64 layout[3];
+  int64_t base_bounds[3];
+  int64_t window_bounds[3];
+  int64_t strides[3];
+  int64_t layout[3];
   Padding padding;
   Reducer reducer;
 } kR3TestCases[] = {
@@ -1069,14 +1096,14 @@ INSTANTIATE_TEST_CASE_P(
     R3ReduceWindowTestDataToString);
 
 struct R2ReduceWindowTestData {
-  int64 base_bounds[2];
-  int64 window_bounds[2];
-  int64 strides[2];
-  int64 base_dilation[2];
-  int64 window_dilation[2];
-  int64 pad_low[2];
-  int64 pad_high[2];
-  int64 layout[2];
+  int64_t base_bounds[2];
+  int64_t window_bounds[2];
+  int64_t strides[2];
+  int64_t base_dilation[2];
+  int64_t window_dilation[2];
+  int64_t pad_low[2];
+  int64_t pad_high[2];
+  int64_t layout[2];
   Reducer reducer;
 } kR2TestCases[] = {
     {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
@@ -1206,6 +1233,27 @@ struct R2ReduceWindowTestData {
      /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
      /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
+    // With negative padding on both ends.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, -1}, /*pad_high=*/{0, -1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
+    // With negative low padding and positive high padding.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, -1}, /*pad_high=*/{0, 1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
+    // With positive low padding and negative high padding.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{0, -1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
 };
 
 string R2ReduceWindowTestDataToString(
@@ -1222,6 +1270,9 @@ string R2ReduceWindowTestDataToString(
       absl::StrJoin(param.pad_high, "x"), "__layout_", param.layout[0], "_",
       param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
+
+  // Test names are not allowed to contain the '-' character.
+  std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
     absl::StrAppend(&str, "_bfloat16");
   }
@@ -1252,7 +1303,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
                                                    &parameter)
                      .status());
 
-    std::vector<std::pair<int64, int64>> padding(2);
+    std::vector<std::pair<int64_t, int64_t>> padding(2);
     for (int i = 0; i < 2; ++i) {
       padding[i] = {param.pad_low[i], param.pad_high[i]};
     }
@@ -1286,11 +1337,11 @@ INSTANTIATE_TEST_CASE_P(
     R2ReduceWindowTestDataToString);
 
 struct R1ReduceWindowTestData {
-  int64 base_bounds[1];
-  int64 window_bounds[1];
-  int64 strides[1];
-  int64 pad_low[1];
-  int64 pad_high[1];
+  int64_t base_bounds[1];
+  int64_t window_bounds[1];
+  int64_t strides[1];
+  int64_t pad_low[1];
+  int64_t pad_high[1];
   Reducer reducer;
 } kR1TestCases[] = {
     {/*base_bounds=*/{1}, /*window_bounds=*/{1},
@@ -1386,6 +1437,27 @@ struct R1ReduceWindowTestData {
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
 
+    // With negative padding on both ends.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{-5},
+     /*pad_high=*/{-5},
+     /*reducer=*/Reducer::kAdd},
+
+    // With negative low padding and positive high padding.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{-5},
+     /*pad_high=*/{5},
+     /*reducer=*/Reducer::kAdd},
+
+    // With positive low padding and negative high padding.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{5},
+     /*pad_high=*/{-5},
+     /*reducer=*/Reducer::kAdd},
+
     // The pattern generated by inclusive scan (cumsum/cumprod).
     {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
      /*strides=*/{1},
@@ -1426,6 +1498,9 @@ string R1ReduceWindowTestDataToString(
                    "__pad_low_", absl::StrJoin(param.pad_low, "x"),
                    "__pad_high_", absl::StrJoin(param.pad_high, "x"),
                    "__reducer_", param.reducer == kAdd ? "add" : "max");
+
+  // Test names are not allowed to contain the '-' character.
+  std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
     absl::StrAppend(&str, "_bfloat16");
   }
@@ -1454,7 +1529,7 @@ XLA_TEST_P(R1ReduceWindowTest, DoIt) {
       auto input_arg, CreateParameterAndTransferLiteral(0, input_literal, "p0",
                                                         &b, &parameter));
 
-  std::vector<std::pair<int64, int64>> padding(1);
+  std::vector<std::pair<int64_t, int64_t>> padding(1);
   padding[0] = {param.pad_low[0], param.pad_high[0]};
 
   auto computation = param.reducer == kAdd
@@ -1805,6 +1880,83 @@ ENTRY entry {
   ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0}) 
     reduce-window(constant, constant.2, constant.1, constant.3),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowS64Support)) {
+  const char* const hlo_string = R"(
+HloModule jit_dilated_window_sum.10
+
+%primitive_computation_add.4 (parameter.5: s64[], parameter.6: s64[]) -> s64[] {
+  %parameter.5 = s64[] parameter(0), metadata={op_type="add" op_name="add"}
+  %parameter.6 = s64[] parameter(1), metadata={op_type="add" op_name="add"}
+  ROOT %add.7 = s64[] add(s64[] %parameter.5, s64[] %parameter.6), metadata={op_type="add" op_name="add"}
+}
+
+ENTRY %jit_dilated_window_sum.10 (parameter.1: s64[8,10,12]) -> (s64[8,10,12]) {
+  %constant.2 = pred[] constant(false)
+  %parameter.1 = s64[8,10,12]{2,1,0} parameter(0)
+  %constant.3 = s64[] constant(0), metadata={op_type="reduce_window_sum" op_name="jit(dilated_window_sum)/reduce_window_sum[ base_dilation=(1, 1, 1)\n                                           padding=((1, 1), (1, 1), (0, 0))\n                                           window_dilation=(1, 2, 2)\n                                           window_dimensions=(3, 2, 1)\n                                           window_strides=(1, 1, 1) ]" source_file="<ipython-input-1-315291761729>" source_line=9}
+  %reduce-window.8 = s64[8,10,12]{2,1,0} reduce-window(s64[8,10,12]{2,1,0} %parameter.1, s64[] %constant.3), window={size=3x2x1 pad=1_1x1_1x0_0 rhs_dilate=1x2x2}, to_apply=%primitive_computation_add.4, metadata={op_type="reduce_window_sum" op_name="jit(dilated_window_sum)/reduce_window_sum[ base_dilation=(1, 1, 1)\n                                           padding=((1, 1), (1, 1), (0, 0))\n                                           window_dilation=(1, 2, 2)\n                                           window_dimensions=(3, 2, 1)\n                                           window_strides=(1, 1, 1) ]" source_file="<ipython-input-1-315291761729>" source_line=9}
+  ROOT %tuple.9 = (s64[8,10,12]{2,1,0}) tuple(s64[8,10,12]{2,1,0} %reduce-window.8)
+})";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowS64Support2)) {
+  const char* const hlo_string = R"(
+HloModule SyncTensorsGraph.43
+
+%MulComputation.18 (x.19: s64[], y.20: s64[]) -> s64[] {
+  %x.19 = s64[] parameter(0)
+  %y.20 = s64[] parameter(1)
+  ROOT %multiply.21 = s64[] multiply(s64[] %x.19, s64[] %y.20)
+}
+
+%MulComputation.26 (x.27: s64[], y.28: s64[]) -> s64[] {
+  %x.27 = s64[] parameter(0)
+  %y.28 = s64[] parameter(1)
+  ROOT %multiply.29 = s64[] multiply(s64[] %x.27, s64[] %y.28)
+}
+
+%MaxComputation.34 (x.35: s64[], y.36: s64[]) -> s64[] {
+  %x.35 = s64[] parameter(0)
+  %y.36 = s64[] parameter(1)
+  ROOT %maximum.37 = s64[] maximum(s64[] %x.35, s64[] %y.36)
+}
+
+ENTRY %SyncTensorsGraph.43 (p0.1: f32[], p1.7: pred[3,3]) -> (pred[]) {
+  %constant.8 = pred[] constant(false)
+  %reshape.9 = pred[1,1]{1,0} reshape(pred[] %constant.8)
+  %broadcast.10 = pred[1,1]{1,0} broadcast(pred[1,1]{1,0} %reshape.9), dimensions={0,1}
+  %reshape.11 = pred[] reshape(pred[1,1]{1,0} %broadcast.10)
+  %broadcast.12 = pred[3,3]{1,0} broadcast(pred[] %reshape.11), dimensions={}
+  %p1.7 = pred[3,3]{1,0} parameter(1)
+  %reshape.13 = pred[3,3]{1,0} reshape(pred[3,3]{1,0} %p1.7)
+  %reshape.14 = pred[3,3]{1,0} reshape(pred[3,3]{1,0} %reshape.13)
+  %convert.24 = s64[3,3]{1,0} convert(pred[3,3]{1,0} %reshape.14)
+  %constant.25 = s64[] constant(1)
+  %reduce-window.30 = s64[3,3]{1,0} reduce-window(s64[3,3]{1,0} %convert.24, s64[] %constant.25), window={size=3x1 pad=2_0x0_0}, to_apply=%MulComputation.26
+  %convert.15 = s32[3,3]{1,0} convert(pred[3,3]{1,0} %reshape.14)
+  %convert.16 = s64[3,3]{1,0} convert(s32[3,3]{1,0} %convert.15)
+  %constant.17 = s64[] constant(1)
+  %reduce-window.22 = s64[3,3]{1,0} reduce-window(s64[3,3]{1,0} %convert.16, s64[] %constant.17), window={size=3x1 pad=2_0x0_0}, to_apply=%MulComputation.18
+  %constant.2 = s64[] constant(1)
+  %reshape.3 = s64[1,1]{1,0} reshape(s64[] %constant.2)
+  %broadcast.4 = s64[1,1]{1,0} broadcast(s64[1,1]{1,0} %reshape.3), dimensions={0,1}
+  %reshape.5 = s64[] reshape(s64[1,1]{1,0} %broadcast.4)
+  %broadcast.6 = s64[3,3]{1,0} broadcast(s64[] %reshape.5), dimensions={}
+  %multiply.23 = s64[3,3]{1,0} multiply(s64[3,3]{1,0} %reduce-window.22, s64[3,3]{1,0} %broadcast.6)
+  %subtract.31 = s64[3,3]{1,0} subtract(s64[3,3]{1,0} %reduce-window.30, s64[3,3]{1,0} %multiply.23)
+  %abs.32 = s64[3,3]{1,0} abs(s64[3,3]{1,0} %subtract.31)
+  %constant.33 = s64[] constant(-9223372036854775808)
+  %reduce.38 = s64[] reduce(s64[3,3]{1,0} %abs.32, s64[] %constant.33), dimensions={0,1}, to_apply=%MaxComputation.34
+  %reshape.39 = s64[] reshape(s64[] %reduce.38)
+  %convert.40 = f32[] convert(s64[] %reshape.39)
+  %p0.1 = f32[] parameter(0)
+  %compare.41 = pred[] compare(f32[] %convert.40, f32[] %p0.1), direction=LE
+  ROOT %tuple.42 = (pred[]) tuple(pred[] %compare.41)
 })";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
 }

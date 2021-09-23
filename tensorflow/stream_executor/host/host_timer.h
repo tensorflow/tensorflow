@@ -29,18 +29,18 @@ class HostTimer : public internal::TimerInterface {
   ~HostTimer() override {}
 
   // Begins the timer at the present point in the stream.
-  bool Start(Stream *stream);
+  bool Start(Stream* stream);
 
   // Stops the timer at the present point in the stream.
-  bool Stop(Stream *stream);
+  bool Stop(Stream* stream);
 
   // Returns the most recent value recorded for a start/stopcycle, in
   // microseconds.
-  uint64 Microseconds() const override;
+  uint64_t Microseconds() const override;
 
   // Returns the most recent value recorded for a start/stopcycle, in
   // nanoseconds.
-  uint64 Nanoseconds() const override;
+  uint64_t Nanoseconds() const override;
 
  private:
   using clock = std::chrono::high_resolution_clock;
