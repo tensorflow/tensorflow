@@ -24,7 +24,7 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 class TfReductionTest(googletest.TestCase):
 
-  def test_2d_row_reduction(self):
+  def test_2d_column_reduction(self):
     mlir_function = """
         func @test(%input: tensor<?x?xf32>) -> tensor<?xf32> {
           %dim_to_reduce =  "tf.Const"() {value = dense<[1]> : tensor<1xi32>}
@@ -40,6 +40,23 @@ class TfReductionTest(googletest.TestCase):
 
     [res] = cpurt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, np.sum(arg0, axis=1), atol=0.01)
+
+  def test_2d_column_reduction_static(self):
+    mlir_function = """
+        func @test(%input: tensor<8x8xf32>) -> tensor<8xf32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[1]> : tensor<1xi32>}
+             : () -> tensor<1xi32>
+          %0 = "tf.Sum"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<8x8xf32>, tensor<1xi32>) -> tensor<8xf32>
+          return %0 : tensor<8xf32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test', codegen_reductions=True)
+
+    arg0 = np.random.uniform(0.0, 10.0, size=(8, 8)).astype(np.float32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, np.sum(arg0, axis=1), atol=1)
 
 
 if __name__ == '__main__':
