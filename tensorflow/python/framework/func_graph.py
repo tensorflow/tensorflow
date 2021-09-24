@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections as py_collections
 import itertools
+import traceback
 import weakref
 
 import numpy as np
@@ -729,14 +730,27 @@ class FuncGraph(ops.Graph):
       inner_graph = tensor.graph
       while inner_graph is not None and isinstance(inner_graph, FuncGraph):
         if inner_graph is self:
+          try:
+            tb = tensor.op.traceback
+          except AttributeError:
+            tensor_traceback = "<unknown>"
+          else:
+            tensor_traceback_list = []
+            for frame in traceback.format_list(tb.get_user_frames()):
+              tensor_traceback_list.extend(
+                  [f"  {line}" for line in frame.split("\n") if line.strip()])
+            tensor_traceback = "\n".join(tensor_traceback_list)
+          # Keep in sync with tfe_wrapper.cc.
+          # TODO(b/200991648): Unify those two paths.
           raise errors.InaccessibleTensorError(
-              "tf.Graph captured an external symbolic tensor. The symbolic "
-              f"tensor {tensor!r} is captured by {self}, but it is defined at "
-              f"{tensor.graph}. A tf.Graph is not allowed to capture symoblic "
-              f"tensors from another graph. Use return values, explicit Python "
-              f"locals or TensorFlow collections to access it. Please see "
-              "https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
-              "for more information.\n")
+              f"{tensor!r} is out of scope and cannot be used here. Use return "
+              "values, explicit Python locals or TensorFlow collections to "
+              "access it.\n"
+              "Please see https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
+              "for more information.\n\n"
+              f"{tensor!r} was defined here:\n{tensor_traceback}\n\n"
+              f"The tensor {tensor!r} cannot be accessed from {self}, because "
+              f"it was defined in {tensor.graph}, which is out of scope.")
         inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)
     return tensor

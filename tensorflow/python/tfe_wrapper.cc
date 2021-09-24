@@ -16,7 +16,9 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
@@ -156,14 +158,21 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
                   .c_str());
         }
       } else if (tensorflow::swig::IsTensor(elem)) {
-        // TODO(b/200324512): Unify the runtime error message format.
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
-        tensorflow::Safe_PyObjectPtr tensor_name(
-            PyObject_GetAttrString(elem, "name"));
-        std::string tensor_name_str =
-            tensor_name ? TFE_GetPythonString(tensor_name.get()) : "<unknown>";
+        tensorflow::Safe_PyObjectPtr py_tensor_repr(PyObject_Repr(elem));
+        std::string tensor_repr =
+            py_tensor_repr ? TFE_GetPythonString(py_tensor_repr.get())
+                           : "<unknown>";
         tensorflow::Safe_PyObjectPtr py_op(PyObject_GetAttrString(elem, "op"));
+        tensorflow::Safe_PyObjectPtr py_defined_graph(
+            PyObject_GetAttrString(py_op.get(), "graph"));
+        tensorflow::Safe_PyObjectPtr py_defined_graph_str(
+            PyObject_Str(py_defined_graph.get()));
+        std::string defined_graph_str =
+            py_defined_graph_str
+                ? TFE_GetPythonString(py_defined_graph_str.get())
+                : "<unknown>";
         tensorflow::Safe_PyObjectPtr c_op(
             PyObject_GetAttrString(py_op.get(), "_c_op"));
         auto& node = py::cast<TF_Operation*>(c_op.get())->node;
@@ -174,41 +183,32 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
           frame_str =
               absl::StrFormat("File \"%s\", line %d, in %s", frame.file_name,
                               frame.line_number, frame.function_name);
+          auto stack_trace_list =
+              absl::StrSplit(stack_trace->ToString({true}), '\n');
           traceback_str = absl::StrJoin(
-              stack_trace->ToFrames(), "",
-              [&](std::string* out, const auto frame) {
-                if (!absl::StrContains(frame.file_name,
-                                       "<embedded module '_launcher'")) {
-                  absl::StrAppend(out, ">>>  File ", frame.file_name, ", line ",
-                                  frame.line_number, ", in ",
-                                  frame.function_name, "\n");
-                }
+              stack_trace_list, "", [&](std::string* out, const auto line) {
+                absl::StrAppend(out, "    ", line, "\n");
               });
         } else {
           frame_str = "<unknown>";
           traceback_str = "<unknown>\n";
         }
+        // Keep in sync with func_graph.py.
+        // TODO(b/200991648): Unify those two paths.
         tensorflow::ThrowTypeError(
             tensorflow::strings::StrCat(
-                "Originated from a graph execution error.\n\n"
-                "The graph execution error is detected at a node built at "
-                "(most recent call last):\n",
-                traceback_str,
-                "\n"
-                "Error detected in node '",
-                node_name_str, "' defined at: ", frame_str, "\n\n",
-                "TypeError: tf.Graph captured an external symbolic tensor. "
-                "The symbolic tensor '",
-                tensor_name_str, "' created by node '", node_name_str,
-                "' is captured by the tf.Graph being executed "
-                "as an input. But a tf.Graph is not allowed to take symbolic "
-                "tensors from another graph as its inputs. Make sure all "
-                "captured inputs of the executing tf.Graph are not symbolic "
-                "tensors. Use return values, explicit Python locals or "
-                "TensorFlow collections to access it. Please see "
-                "https://www.tensorflow.org/guide/"
-                "function#all_outputs_of_a_tffunction_must_be_return_values"
-                " for more information.")
+                tensor_repr,
+                " is out of scope and cannot be used here. "
+                "Use return values, explicit Python locals or TensorFlow "
+                "collections to access it.\n"
+                "Please see https://www.tensorflow.org/guide/"
+                "function#all_outputs_of_a_tffunction_must_be_return_values "
+                "for more information.\n\n",
+                tensor_repr, " was defined here:\n", traceback_str,
+                "\nThe tensor ", tensor_repr,
+                " cannot be accessed from here, because it was "
+                "defined in ",
+                defined_graph_str, ", which is out of scope.")
                 .c_str());
       } else {
         tensorflow::ThrowTypeError(
