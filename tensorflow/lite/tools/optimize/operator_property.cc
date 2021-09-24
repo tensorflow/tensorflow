@@ -1041,6 +1041,18 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_ASSIGN_VARIABLE:
+      property.inputs = {{1, {}}};
+      property.quantize_input_as_activations = true;
+      property.version = 1;
+      break;
+    case BuiltinOperator_READ_VARIABLE:
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
+    case BuiltinOperator_VAR_HANDLE:
+      property.version = 1;
+      break;
     default:
       // No quantized implementation exists for this operation.
       property.quantizable = false;
