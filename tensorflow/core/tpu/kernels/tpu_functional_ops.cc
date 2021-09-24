@@ -1196,6 +1196,10 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
     metrics::RecordTPUXlaSpmdCoresPerReplica(num_cores_per_replica);
   });
+  OP_REQUIRES_ASYNC(
+      ctx, ordinal_selector_ != nullptr,
+      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
