@@ -280,6 +280,7 @@ py_test(
     deps = [
         ":lite",
         ":test_util",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
