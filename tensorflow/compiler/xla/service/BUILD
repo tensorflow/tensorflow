@@ -3,11 +3,11 @@
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library", "xla_py_test_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -2487,6 +2487,43 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "bitcast_dtypes_expander",
+    srcs = ["bitcast_dtypes_expander.cc"],
+    hdrs = ["bitcast_dtypes_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:broadcast",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "bitcast_dtypes_expander_test",
+    srcs = ["bitcast_dtypes_expander_test.cc"],
+    deps = [
+        ":bitcast_dtypes_expander",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "all_gather_broadcast_reorder_test",
     srcs = ["all_gather_broadcast_reorder_test.cc"],
@@ -4852,6 +4889,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -6112,4 +6150,23 @@ xla_py_proto_library(
     api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":hlo_proto"],
+)
+
+py_library(
+    name = "generate_test_hlo_checks",
+    srcs = ["generate_test_hlo_checks.py"],
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_test(
+    name = "generate_test_hlo_checks_test",
+    srcs = ["generate_test_hlo_checks_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":generate_test_hlo_checks",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
 )

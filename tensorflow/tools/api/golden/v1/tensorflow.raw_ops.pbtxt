@@ -761,6 +761,10 @@ tf_module {
     argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CollectiveAllToAllV3"
+    argspec: "args=[\'input\', \'communicator\', \'group_assignment\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
     name: "CollectiveBcastRecv"
     argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
@@ -785,6 +789,10 @@ tf_module {
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
+    name: "CollectiveInitializeCommunicator"
+    argspec: "args=[\'group_key\', \'rank\', \'group_size\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
     name: "CollectivePermute"
     argspec: "args=[\'input\', \'source_target_pairs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -795,6 +803,10 @@ tf_module {
   member_method {
     name: "CollectiveReduceV2"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'ordering_token\', \'merge_op\', \'final_op\', \'communication_hint\', \'timeout_seconds\', \'max_subdivs_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveReduceV3"
+    argspec: "args=[\'input\', \'communicator\', \'group_assignment\', \'reduction\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "CombinedNonMaxSuppression"

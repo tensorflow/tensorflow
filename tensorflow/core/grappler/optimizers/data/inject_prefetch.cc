@@ -84,6 +84,9 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &prefetch_node))
     return Status::OK();
 
+  TF_RETURN_IF_ERROR(
+      graph_utils::SetMetadataName(prefetch_node.name(), &prefetch_node));
+
   auto* added_node = graph.AddNode(std::move(prefetch_node));
   TF_RETURN_IF_ERROR(
       graph.UpdateFanouts(last_node->name(), added_node->name()));

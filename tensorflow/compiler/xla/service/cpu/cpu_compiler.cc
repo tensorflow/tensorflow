@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
@@ -314,6 +315,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
+  pipeline.AddPass<BitcastDtypesExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
   // Remove zero-sized HLO from the input so that other passes don't have to

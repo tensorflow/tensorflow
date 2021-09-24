@@ -611,7 +611,7 @@ func @matrix_diag_part(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32> {
   // CHECK-DAG: %[[V40:.*]] = mhlo.and %[[V36]], %[[V39]] : tensor<1x22x128xi1>
   // CHECK-DAG: %[[V41:.*]] = "mhlo.reshape"(%[[V40]]) : (tensor<1x22x128xi1>) -> tensor<22x128xi1>
   // CHECK-DAG: %[[V42:.*]] = "mhlo.concatenate"(%[[V33]], %[[V32]]) {dimension = 0 : i64} : (tensor<1x22x128xi32>, tensor<1x22x128xi32>) -> tensor<2x22x128xi32>
-  // CHECK-DAG: %[[V43:.*]] = "mhlo.gather"(%[[ARG]], %[[V42]]) {dimension_numbers = {collapsed_slice_dims = dense<[1, 2]> : tensor<2xi64>, index_vector_dim = 0 : i64, offset_dims = dense<0> : tensor<1xi64>, start_index_map = dense<[1, 2]> : tensor<2xi64>}, indices_are_sorted = false, slice_sizes = dense<[7, 1, 1]> : tensor<3xi64>} : (tensor<7x140x128xi32>, tensor<2x22x128xi32>) -> tensor<7x22x128xi32>
+  // CHECK-DAG: %[[V43:.*]] = "mhlo.gather"(%[[ARG]], %[[V42]]) {dimension_numbers = #mhlo.gather<offset_dims = [0], collapsed_slice_dims = [1, 2], start_index_map = [1, 2], >, indices_are_sorted = false, slice_sizes = dense<[7, 1, 1]> : tensor<3xi64>} : (tensor<7x140x128xi32>, tensor<2x22x128xi32>) -> tensor<7x22x128xi32>
   // CHECK-DAG: %[[V44:.*]] = "mhlo.broadcast"(%[[V41]]) {broadcast_sizes = dense<7> : tensor<1xi64>} : (tensor<22x128xi1>) -> tensor<7x22x128xi1>
   // CHECK-DAG: %[[V45:.*]] = "mhlo.broadcast"(%[[V0]]) {broadcast_sizes = dense<[7, 22, 128]> : tensor<3xi64>} : (tensor<i32>) -> tensor<7x22x128xi32>
   // CHECK: %[[V46:.*]] = "mhlo.select"(%[[V44]], %[[V43]], %[[V45]]) : (tensor<7x22x128xi1>, tensor<7x22x128xi32>, tensor<7x22x128xi32>) -> tensor<7x22x128xi32>
@@ -4133,7 +4133,14 @@ func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[ADD]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
+  // CHECK: indices_are_sorted = false,
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentSum"(%data, %segment_ids, %num_segments) : (tensor<8x16x64xf32>, tensor<8x16xi32>, tensor<i32>) -> (tensor<4x64xf32>)
   return %0: tensor<4x64xf32>
@@ -4150,7 +4157,14 @@ func @unsorted_segment_prod(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[MUL:%.*]] = mhlo.multiply [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[MUL]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
+  // CHECK: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentProd"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
   return %0: tensor<4x?xf32>
@@ -4184,7 +4198,13 @@ func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> te
   // CHECK: tensor.dim
   // CHECK: index_cast
   // CHECK: tensor.from_elements
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>, tensor<3xi32>) -> tensor<?x6x?xi32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME: dimension_numbers =
+  // CHECK-SAME:   offset_dims = [2]
+  // CHECK-SAME:   collapsed_slice_dims = [0, 1]
+  // CHECK-SAME:   start_index_map = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: indices_are_sorted = false
   %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>) -> tensor<?x6x?xi32>
   return %0 : tensor<?x6x?xi32>
 }
@@ -4192,13 +4212,13 @@ func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> te
 // CHECK-LABEL: func @gatherNd_static
 func @gatherNd_static(%arg0: tensor<2x4x128xf32>, %arg1: tensor<2x1xi32>) -> tensor<2x4x128xf32> {
   // CHECK:      "mhlo.gather"({{.*}}) {
-  // CHECK-SAME:   dimension_numbers = {
-  // CHECK-SAME:     collapsed_slice_dims = dense<0> : tensor<1xi64>
-  // CHECK-SAME:     index_vector_dim = 1 : i64
-  // CHECK-SAME:     offset_dims = dense<[1, 2]> : tensor<2xi64>
-  // CHECK-SAME:     start_index_map = dense<0> : tensor<1xi64>}
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [1, 2]
+  // CHECK-SAME:     collapsed_slice_dims = [0]
+  // CHECK-SAME:     start_index_map = [0]
+  // CHECK-SAME:     index_vector_dim = 1
   // CHECK-SAME:   indices_are_sorted = false
-  // CHECK-SAME:   slice_sizes = dense<[1, 4, 128]> : tensor<3xi64>
+  // CHECK-SAME:   slice_sizes = dense<[1, 4, 128]>
   // CHECK-SAME: (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
   %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
   return %0 : tensor<2x4x128xf32>
@@ -4223,7 +4243,13 @@ func @gather_v2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> ten
   // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<3xi32>) -> tensor<*xf32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
@@ -4236,7 +4262,13 @@ func @gather_v2_dynamic_index_i64(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi6
   // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
   // CHECK: index_cast {{.*}} : index to i64
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi64>
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<3xi64>) -> tensor<*xf32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
@@ -4257,7 +4289,13 @@ func @gather_v2_dynamic_shape(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) 
   // CHECK: tensor.dim {{.*}} : tensor<?x2x3xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<3xi32>) -> tensor<?x2x5xf32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<1xi32>) -> tensor<?x2x5xf32>
   return %1 : tensor<?x2x5xf32>
 }
@@ -4429,10 +4467,10 @@ func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4447,10 +4485,10 @@ func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4465,10 +4503,10 @@ func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4483,10 +4521,10 @@ func @tensor_scatter_min(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMin"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4501,10 +4539,10 @@ func @tensor_scatter_max(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMax"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4586,9 +4624,13 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 
   // CHECK: [[SWAPED_INDICES:%.*]] = "mhlo.get_tuple_element"([[WHILE_OUT]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tensor<4xi32>
   // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[SWAPED_INDICES]])
-  // CHECK-SAME: dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<[1, 2]> : tensor<2xi64>, start_index_map = dense<0> : tensor<1xi64>}
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [1, 2]
+  // CHECK-SAME:     collapsed_slice_dims = [0]
+  // CHECK-SAME:     start_index_map = [0]
+  // CHECK-SAME:     index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = false
-  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]> : tensor<3xi64>
+  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]>
   // CHECK: (tensor<4x?x16xf32>, tensor<4xi32>) -> tensor<4x?x16xf32>
 
   // CHECK: return [[GATHER]]
@@ -5307,10 +5349,10 @@ func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> ten
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
-  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   collapsed_slice_dims = [0]
+  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
@@ -5324,10 +5366,10 @@ func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) ->
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
-  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   collapsed_slice_dims = [0]
+  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 

@@ -746,7 +746,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getIntValues())) {
+  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -1010,7 +1010,8 @@ bool HasValidGatherDims(StringAttr attr) {
   return dims.ParseFromString(attr.getValue().str());
 }
 
-GatherDimensionNumbers GetGatherDimNumsAttr(StringAttr attr, Builder *builder) {
+GatherDimensionNumbersAttr GetGatherDimNumsAttr(StringAttr attr,
+                                                Builder *builder) {
   ::xla::GatherDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertGatherDimensionNumbers(dims, builder);
@@ -1184,13 +1185,9 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
     SmallVector<int64_t, 4> start_index_map(1, axis);
     // index_vector_dim
     int64_t index_vector_dim = indices_rank;
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
-        /*collapsed_slice_dims=*/
-        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(), offset_dims, collapsed_slice_dims,
+        start_index_map, index_vector_dim);
 
     rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
         op, op.getType(), op.params(), op.indices(), slice_sizes_value,
@@ -1704,13 +1701,9 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
     // index_vector_dim
     int64_t index_vector_dim = indices_rank - 1;
 
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
-        /*collapsed_slice_dims=*/
-        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(), offset_dims, collapsed_slice_dims,
+        start_index_map, index_vector_dim);
     // TODO(disc): Remove this if-statement once fold and canonicalization is
     // implemented.
     if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) {
@@ -2209,12 +2202,11 @@ class ConvertMatrixDiagPartV3Op
     // Gather the diagonal entries.
     // TODO(kramm): For a single diagonal, this might be slower than the
     //              mask + sum approach. Special-case num_diags==1?
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(0, num_dims - 2, &rewriter),
-        /*collapsed_slice_dims=*/GetI64ElementsAttr(collapsed_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(0),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(0, num_dims - 2)),
+        /*collapsed_slice_dims=*/collapsed_dims, start_index_map,
+        /*index_vector_dim=*/0);
     Value gather = rewriter.create<mhlo::GatherOp>(
         loc, output_type, op.input(), start_indices, dims_attr,
         GetI64ElementsAttr(slice_sizes, &rewriter));
@@ -4619,12 +4611,13 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     int64_t updates_rank = updates_ty.getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(updates_rank - window_dims, updates_rank,
-                                 &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        rewriter.getI64IntegerAttr(indices_rank - 1), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(
+            llvm::seq<int64_t>(updates_rank - window_dims, updates_rank)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        indices_rank - 1);
 
     Location loc = op.getLoc();
     auto scatter = rewriter.create<ScatterOp>(
@@ -5905,11 +5898,10 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
     int64_t index_vector_dim = segment_ids_rank;
 
     // Put all parameters in a StructAttr.
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(segment_ids_rank, data_rank, &rewriter),
-        GetI64ElementsAttr(inserted_window_dims, &rewriter),
-        GetI64ElementsAttr(scatter_dims_to_operand_dims, &rewriter),
-        rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
+        inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
 
     auto scatter =
         rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
@@ -6127,12 +6119,12 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     ArrayRef<int64_t> input_shape = input_type.getShape();
     SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
     slice_sizes[0] = 1;
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(1, input_rank, &rewriter),
-        /*collapsed_slice_dims=*/GetI64ElementsAttr({0}, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr({0}, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(1),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(1, input_rank)),
+        /*collapsed_slice_dims=*/{0},
+        /*start_index_map=*/{0},
+        /*index_vector_dim=*/1);
     rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
         op, op.getType(), op.value(), swaped_indices, dims_attr,
         GetI64ElementsAttr(slice_sizes, &rewriter));
@@ -6539,7 +6531,7 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
         op.getLoc(),
         RankedTensorType::get({input_ty.getRank()}, rewriter.getIndexType()),
         input);
-    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getIntValues());
+    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getValues<APInt>());
 
     llvm::SmallVector<Value, 4> dims;
     dims.resize(result_ty.getRank());

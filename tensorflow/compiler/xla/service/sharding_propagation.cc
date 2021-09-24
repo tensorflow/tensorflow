@@ -147,6 +147,18 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
   return true;
 }
 
+bool IsPassthroughCustomOps(const HloInstruction* hlo) {
+  if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
+      !hlo->operand(0)->shape().IsArray() ||
+      hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
+    return false;
+  }
+  return hlo->IsCustomCall("ResizeNearest") ||
+         hlo->IsCustomCall("ResizeBilinear") ||
+         hlo->IsCustomCall("ResizeNearestGrad") ||
+         hlo->IsCustomCall("ResizeBilinearGrad");
+}
+
 // Return the operand which is the most suitable for determining the sharding
 // for the specified instruction or nullptr if there isn't any suitable operand.
 const HloInstruction* PickRepresentativeOperand(
@@ -231,7 +243,12 @@ const HloInstruction* PickRepresentativeOperand(
       }
       return best_operand;
     }
-
+    case HloOpcode::kCustomCall: {
+      if (IsPassthroughCustomOps(instruction)) {
+        return instruction->operand(0);
+      }
+      return nullptr;
+    }
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
@@ -253,7 +270,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kConvolution:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
-    case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kDynamicSlice:
@@ -346,6 +362,8 @@ bool SupportSpatialPartitioning(
              computation_map.end();
     case HloOpcode::kReverse:
       return is_spmd;
+    case HloOpcode::kCustomCall:
+      return is_spmd && IsPassthroughCustomOps(instruction);
     default:
       return false;
   }
@@ -588,7 +606,9 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kReshape &&
       inst.opcode() != HloOpcode::kTuple &&
       inst.opcode() != HloOpcode::kGetTupleElement &&
-      inst.opcode() != HloOpcode::kWhile) {
+      inst.opcode() != HloOpcode::kWhile &&
+      inst.opcode() != HloOpcode::kDynamicSlice &&
+      inst.opcode() != HloOpcode::kConcatenate) {
     return false;
   }
   // Broadcast propagation should have at least aggressiveness 2.
@@ -1244,6 +1264,9 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           dims_to_replicate);
     }
     case HloOpcode::kConcatenate: {
+      if (aggressiveness == 0) {
+        return absl::nullopt;
+      }
       if (user.sharding().IsReplicated()) {
         return user.sharding();
       }
@@ -1297,6 +1320,9 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     }
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice: {
+      if (aggressiveness == 0) {
+        return absl::nullopt;
+      }
       if (user.sharding().IsReplicated()) {
         return user.sharding();
       }
@@ -1527,6 +1553,71 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
   return non_root_users;
 }
 
+// DyanmicSlice or DynamicUpdateSlice handling for InferShardingFromOperands().
+bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
+    HloInstruction* instruction, int64_t aggressiveness,
+    bool may_combine_partial_sharding) {
+  const HloInstruction* operand =
+      instruction->opcode() == HloOpcode::kDynamicSlice
+          ? instruction->operand(0)
+          : instruction->operand(1);
+  auto slice_dim_is_sharded = [&]() {
+    if (!IsSpatiallyPartitioned(operand) ||
+        operand->sharding().NumTiles() == 1) {
+      return false;
+    }
+    for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
+      const auto& tile_assignment = operand->sharding().tile_assignment();
+      if (tile_assignment.dim(i) > 1 && instruction->shape().dimensions(i) !=
+                                            operand->shape().dimensions(i)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Do not pass through sharding annotation at the first iteration
+  // if slice dim is sharded.
+  if (aggressiveness == 0 && slice_dim_is_sharded()) {
+    return false;
+  }
+
+  auto propagate_slicing = [&]() {
+    if (!IsSpatiallyPartitioned(operand)) {
+      return false;
+    }
+
+    if (operand->sharding().NumTiles() == 1) {
+      return MaybeImproveInstructionSharding(
+          operand->sharding(), instruction, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/
+          ComputeNonRootUsers(instruction) == 1);
+    }
+
+    if (slice_dim_is_sharded()) {
+      return false;
+    }
+    return MaybeImproveInstructionSharding(
+        operand->sharding(), instruction, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/
+        ComputeNonRootUsers(instruction) == 1);
+  };
+  auto propagate_base = [&]() {
+    if (instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return false;
+    }
+    if (!IsSpatiallyPartitioned(instruction->operand(0))) {
+      return false;
+    }
+    return MaybeImproveInstructionSharding(instruction->operand(0)->sharding(),
+                                           instruction,
+                                           may_combine_partial_sharding);
+  };
+  bool changed = propagate_slicing();
+  changed |= propagate_base();
+  return changed;
+}
+
 // Tries to update the sharding of the specified instruction based on its
 // operands and returns true if the sharding of the instruction have been
 // changed and false otherwise.
@@ -1547,7 +1638,10 @@ bool ShardingPropagation::InferShardingFromOperands(
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
-       instruction->opcode() == HloOpcode::kReduceWindow)) {
+       instruction->opcode() == HloOpcode::kReduceWindow) &&
+      !(aggressiveness == 0 &&
+        (instruction->opcode() == HloOpcode::kConcatenate ||
+         instruction->opcode() == HloOpcode::kDynamicSlice))) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
       instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
@@ -1767,6 +1861,33 @@ bool ShardingPropagation::InferShardingFromOperands(
           /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
               1);
     }
+    case HloOpcode::kConcatenate: {
+      const HloInstruction* operand = PickRepresentativeOperand(instruction);
+      if (!operand || !IsSpatiallyPartitioned(operand)) {
+        return false;
+      }
+
+      // Do not pass through sharding annotation at the first iteration
+      // if concat dim is sharded or operand sharding is manual.
+      if (aggressiveness == 0) {
+        if (operand->sharding().IsManual()) {
+          return false;
+        }
+        if (operand->sharding().NumTiles() > 1) {
+          const auto& tile_assignment = operand->sharding().tile_assignment();
+          for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
+            if (absl::c_linear_search(instruction->dimensions(), i) &&
+                tile_assignment.dim(i) > 1) {
+              return false;
+            }
+          }
+        }
+      }
+      return MaybeImproveInstructionSharding(
+          operand->sharding(), instruction, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
+              1);
+    }
     case HloOpcode::kConvolution:
       return InferConvolutionShardingFromOperands(instruction, aggressiveness,
                                                   may_combine_partial_sharding);
@@ -1920,49 +2041,8 @@ bool ShardingPropagation::InferShardingFromOperands(
     }
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice: {
-      auto propagate_slicing = [&]() {
-        const HloInstruction* operand =
-            instruction->opcode() == HloOpcode::kDynamicSlice
-                ? instruction->operand(0)
-                : instruction->operand(1);
-        if (!IsSpatiallyPartitioned(operand)) {
-          return false;
-        }
-
-        if (operand->sharding().NumTiles() == 1) {
-          return MaybeImproveInstructionSharding(
-              operand->sharding(), instruction, may_combine_partial_sharding,
-              /*allow_aggressive_resharding=*/
-              ComputeNonRootUsers(instruction) == 1);
-        }
-
-        const auto& tile_assignment = operand->sharding().tile_assignment();
-        for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
-          if (tile_assignment.dim(i) > 1 &&
-              instruction->shape().dimensions(i) !=
-                  operand->shape().dimensions(i)) {
-            return false;
-          }
-        }
-        return MaybeImproveInstructionSharding(
-            operand->sharding(), instruction, may_combine_partial_sharding,
-            /*allow_aggressive_resharding=*/
-            ComputeNonRootUsers(instruction) == 1);
-      };
-      auto propagate_base = [&]() {
-        if (instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
-          return false;
-        }
-        if (!IsSpatiallyPartitioned(instruction->operand(0))) {
-          return false;
-        }
-        return MaybeImproveInstructionSharding(
-            instruction->operand(0)->sharding(), instruction,
-            may_combine_partial_sharding);
-      };
-      bool changed = propagate_slicing();
-      changed |= propagate_base();
-      return changed;
+      return InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
+          instruction, aggressiveness, may_combine_partial_sharding);
     }
     case HloOpcode::kGather: {
       bool changed = false;

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
@@ -183,11 +184,6 @@ static const char kDefaultHostDeviceName[] =
 
 static const char kFuncName[] = "main";
 
-// The key for the GPU module data in the ExecutionContext.
-// Since the ExecutionContext is created per thunk at the moment, there will
-// be only one module in the context. So we use a fixed key for now.
-static const uint64_t kGpuModuleKey = 0;
-
 // Clones 'op' into a function within a new module.
 static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
   mlir::OpBuilder builder(op->getContext());
@@ -248,7 +244,7 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
     return Thunk::Kind::kGemm;
   }
   if (mlir::isa<mlir::gpu::MemcpyOp>(op)) {
-    return Thunk::Kind::kMemcpy;
+    return Thunk::Kind::kCopy;
   }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
     return Thunk::Kind::kNcclAllGather;
@@ -317,7 +313,7 @@ static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
 // kernel function.
 static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
     mlir::MLIRContext* mlir_context, const std::string& kernel_name,
-    int num_buffers, const LaunchDimensions& launch_dimensions, uint64_t key) {
+    int num_buffers, const LaunchDimensions& launch_dimensions) {
   mlir::OpBuilder builder(mlir_context);
   mlir::Location loc = builder.getUnknownLoc();
   mlir::OwningOpRef<ModuleOp> tfrt_module = builder.create<mlir::ModuleOp>(loc);
@@ -349,11 +345,8 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
   auto get_context_op =
       builder.create<tfrt::gpu::StreamGetContextOp>(loc, stream_arg);
 
-  // The module data is set to empty, so the module will be loaded from the
-  // execution context.
-  auto module_load_op = builder.create<tfrt::gpu::ModuleLoadOp>(
-      loc, get_context_op, builder.getStringAttr(""),
-      builder.getI64IntegerAttr(key));
+  // The module data will be provided by the execution context.
+  auto module_load_op = builder.create<ModuleLoadOp>(loc, get_context_op);
 
   auto module_function_op = builder.create<tfrt::gpu::ModuleGetFunctionOp>(
       loc, module_load_op, builder.getStringAttr(kernel_name));
@@ -445,9 +438,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
 
   // TODO(changhuilin): For the whole program lowering, we will need to feed the
   // right module key into the TFRT module in a pass.
-  mlir::OwningOpRef<mlir::ModuleOp> tfrt_module =
-      CreateTfrtKernelLaunchModule(&mlir_context, kernel_name, args.size(),
-                                   launch_dimensions, kGpuModuleKey);
+  mlir::OwningOpRef<mlir::ModuleOp> tfrt_module = CreateTfrtKernelLaunchModule(
+      &mlir_context, kernel_name, args.size(), launch_dimensions);
 
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
   TF_ASSIGN_OR_RETURN(
@@ -633,16 +625,11 @@ CreateKernelExecutionContext(absl::optional<llvm::StringRef> gpu_module_data) {
       std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
       CreateExecutionContext(
           [&](tfrt::RequestContextBuilder& request_context_builder) {
-            request_context_builder.context_data()
-                .emplace<tfrt::gpu::GpuModuleMap>();
+            request_context_builder.context_data().emplace<GpuModuleData>(
+                GpuModuleData{*gpu_module_data});
             return Status::OK();
           }));
 
-  if (auto error = exec_ctx->request_ctx()
-                       ->GetData<tfrt::gpu::GpuModuleMap>()
-                       .InsertModule(kGpuModuleKey, *gpu_module_data)) {
-    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
-  }
   return std::move(exec_ctx);
 }
 

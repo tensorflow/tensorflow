@@ -369,11 +369,6 @@ class StreamExecutor {
   bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
                              std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
-  // Returns the list of supported algorithms for the forward convolution
-  // operation.
-  bool GetConvolveForwardAlgorithms(
-      std::vector<dnn::AlgorithmDesc> *out_algorithms);
-
   // Returns the supported execution plans for the convolution operation.
   bool GetConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
@@ -424,15 +419,6 @@ class StreamExecutor {
 
   // Returns the list of supported algorithms for rnn operation.
   bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
-
-  // Get the list of supported algorithms for the backward convolution on data.
-  bool GetConvolveBackwardDataAlgorithms(
-      std::vector<dnn::AlgorithmDesc> *out_algorithms);
-
-  // Get the list of supported algorithms for the backward convolution on the
-  // filter.
-  bool GetConvolveBackwardFilterAlgorithms(
-      std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);

@@ -37,7 +37,7 @@ namespace gpu {
 
 namespace {
 
-HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
+HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
                               HloInstruction* lhs, HloInstruction* rhs,
                               const Window& window,
                               const ConvolutionDimensionNumbers& dnums,
@@ -62,6 +62,22 @@ HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
   custom_call->set_convolution_dimension_numbers(dnums);
   custom_call->set_feature_group_count(feature_group_count);
   custom_call->set_metadata(metadata);
+
+  // Give the customcall a user-friendly name.
+  absl::optional<std::string> name;
+  if (call_target == kCudnnConvForwardCallTarget) {
+    name = "cudnn-conv";
+  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
+    name = "cudnn-conv-bw-input";
+  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
+    name = "cudnn-conv-bw-filter";
+  } else if (call_target == kCudnnConvBiasActivationForwardCallTarget) {
+    name = "cudnn-conv-bias-activation";
+  }
+  if (name.has_value()) {
+    computation->parent()->SetAndUniquifyInstrName(custom_call, *name);
+  }
+
   return custom_call;
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -5816,7 +5817,7 @@ std::vector<float> CalcReduce(string op_name, std::vector<float> input, int m,
   }
   return output;
 }
-TEST_P(OpConverter_FP32_Test, ConvertReduce) {
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
   {
     // Input is weights, should fail.
     Reset();
@@ -5887,8 +5888,9 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
 
   for (bool keep_dims : {false, true}) {
     for (auto& op : op_test_info) {
+      VLOG(2) << "Processing " << op.name << " with keep_dims=" << keep_dims;
       for (auto p : params) {
-        SCOPED_TRACE(StrCat(op.name, keep_dims ? "keep_dims" : ""));
+        SCOPED_TRACE(StrCat(op.name, keep_dims ? " & keep_dims" : ""));
         Reset();
         NodeDef node_def = op.get_node(tf_type_, keep_dims);
 
@@ -5926,6 +5928,13 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
                                 "]");
         std::vector<float> expected_values = CalcReduce(
             op.name, p.helper_array, p.stride, op.val_func, op.init_val);
+
+        if (tf_type_ == DT_INT32) {
+          // We need to floor the float values in the `expected_values` vector.
+          std::for_each(expected_values.begin(), expected_values.end(),
+                        [](float& _n) { _n = std::floor(_n); });
+        }
+
         TestOpConverter("my_reduce", node_def, expected_output_dims,
                         p.conversion_status, Status::OK(),
                         ArrayFloatNear(expected_values));

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
@@ -897,8 +898,8 @@ void BatchResourceBase::SplitBatchCost(CostMeasurement* batch_cost_measurement,
         total_cost / processed_size * batch.task(i).size();
 
     request_cost->RecordCost(
-        {{absl::StrCat(cost_type, "_with_smear"), cost_with_smear},
-         {absl::StrCat(cost_type, "_no_smear"), cost_no_smear}});
+        {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
+         {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
   }
 }
 

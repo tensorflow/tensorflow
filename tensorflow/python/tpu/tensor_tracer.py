@@ -558,8 +558,10 @@ class TensorTracer(object):
     Returns:
       A ref to newly created or existing cache with the given dimensions.
     Raises:
-      ValueError: If missing a parameter to create the cache.
+      ValueError: If missing graph and shape parameters while creating the
+      cache.
     """
+
     def _escape_namescopes(variable_name):
       # TODO(deveci): This might cause name collisions as in "foo/bar/mytensor"
       # and "foo_bar/mytensor".
@@ -686,6 +688,8 @@ class TensorTracer(object):
       a tensor of dimension [1].
     Returns:
       A tensor that concats the signature values in a predefined order.
+    Raises:
+      ValueError: Unable to merge signatures.
     """
     sorted_update = []
     if self._num_signature_dimensions() > 1:
@@ -700,7 +704,8 @@ class TensorTracer(object):
       (_, val), = signatures.items()
       updates = val
     else:
-      raise ValueError('Cannot merge 0 signatures.')
+      raise ValueError('Cannot merge 0 signatures. Check the value passed for '
+                       'flag --signatures.')
     return updates
 
   def _save_tensor_value_to_tmp_cache(self, cache_idx, updates):
@@ -757,7 +762,7 @@ class TensorTracer(object):
     Returns:
       A tensor that should be input to the trace_function.
     Raises:
-      RuntimeError: If the trace mode is invalid.
+      RuntimeError: If the signature is invalid.
     """
 
     def _detect_nan_inf(tensor):
@@ -871,7 +876,7 @@ class TensorTracer(object):
       return result_dict
 
     raise RuntimeError(
-        'Tensor trace fun for %s is not yet implemented'
+        'Unsupported signature for trace mode %s.'
         % self._parameters.trace_mode)
 
   def _make_tensor_trace_fun(self, tensor_name, tensor_trace_order):
@@ -907,8 +912,8 @@ class TensorTracer(object):
       if self._parameters.is_brief_mode():
         if tensor_name not in tensor_trace_order.tensorname_to_cache_idx:
           raise ValueError(
-              'Tensor name %s is not in the tensorname_to_cache_idx' %
-              tensor_name)
+              'Tensor %s with name %s is not in the tensorname_to_cache_idx' %
+              (tensor, tensor_name))
         msg = '%d' % tensor_trace_order.tensorname_to_cache_idx[tensor_name]
       else:
         msg = '"%s"' % tensor_name
@@ -953,7 +958,7 @@ class TensorTracer(object):
         ):
       return _show_full_tensor
 
-    raise RuntimeError('Tensor trace fun for %s is not yet implemented'
+    raise RuntimeError('Full tensor support is not available with trace mode %s'
                        %self._parameters.trace_mode)
 
   def _is_in_control_flow(self, op):
@@ -1221,7 +1226,8 @@ class TensorTracer(object):
     if not gfile.Exists(self._parameters.trace_dir):
       file_io.recursive_create_dir(self._parameters.trace_dir)
       if not gfile.Exists(self._parameters.trace_dir):
-        raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
+        raise RuntimeError('Failed to create trace directory at %s' %
+                           self._parameters.trace_dir)
 
   def _create_temp_cache(self, num_traced_tensors, num_signatures):
     """Creates a temporary cache with the given dimensions.
@@ -1564,8 +1570,6 @@ class TensorTracer(object):
         by concanting data from other tpu cores.
     Returns:
       A merged tf.Tensor.
-    Raises:
-      RuntimeError: if there is no aggregate function defined for a signature.
     """
     x = array_ops.broadcast_to(
         local_tpu_cache_tensor,
@@ -1652,8 +1656,6 @@ class TensorTracer(object):
             content.
       Returns:
         A tf.Operation that needs to be executed for the host call dependencies.
-      Raises:
-        RuntimeError: if there is no aggregate function defined for a signature.
       """
       file_suffix = _TT_EVENT_FILE_SUFFIX
       if event_file_suffix is not None:
@@ -1958,9 +1960,6 @@ class TensorTracer(object):
     Returns:
       tensor_fetches: an exact copy of tensor_fetches that has additional
                       dependencies.
-    Raises:
-      RuntimeError: If num_replicas_per_host > 8.
-      RuntimeError: If tensor_fetches is None or empty.
     """
     if isinstance(graph, func_graph.FuncGraph) or isinstance(
         graph, function._FuncGraph):  # pylint: disable=protected-access
@@ -2015,8 +2014,6 @@ class TensorTracer(object):
     Returns:
       tensor_fetches: an exact copy of tensor_fetches that has additional
                       dependencies.
-    Raises:
-      RuntimeError: If tensor_fetches is None or empty.
     """
     if isinstance(graph, func_graph.FuncGraph) or isinstance(
         graph, function._FuncGraph):  # pylint: disable=protected-access

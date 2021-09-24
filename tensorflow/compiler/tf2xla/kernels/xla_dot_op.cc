@@ -84,7 +84,7 @@ class XlaDotV2Op : public XlaDotOp {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDotV2Op);
 };
 
-REGISTER_XLA_OP(Name("XlaDotV2"), XlaDotV2Op);
+REGISTER_XLA_OP(Name("XlaDotV2"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

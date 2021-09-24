@@ -362,7 +362,7 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
     return failure();
 
   SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
-  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+  for (auto index_pair : llvm::enumerate(paddings_value.getValues<APInt>())) {
     size_t outer_idx = index_pair.index() / 2;
     size_t inner_idx = index_pair.index() % 2;
 
@@ -737,7 +737,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)

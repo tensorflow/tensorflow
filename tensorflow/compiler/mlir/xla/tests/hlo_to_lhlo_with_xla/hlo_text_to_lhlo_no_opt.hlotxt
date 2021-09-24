@@ -29,10 +29,10 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 // CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
 // CHECK:  "mhlo.return"(%[[ARG6]])
 // CHECK: indices_are_sorted = false
-// CHECK: index_vector_dim = 1 : i64
-// CHECK: inserted_window_dims = dense<0> : tensor<1xi64>
-// CHECK: scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>
-// CHECK: update_window_dims = dense<1> : tensor<1xi64>
+// CHECK: update_window_dims = [1]
+// CHECK: inserted_window_dims = [0]
+// CHECK: scatter_dims_to_operand_dims = [0]
+// CHECK: index_vector_dim = 1
 // CHECK: unique_indices = false
 // CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
 ENTRY main {

@@ -280,10 +280,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     autotune_cache_stats.cache_misses++;
   }
 
-  // Make sure any previous activity on this executor is done. We don't want to
-  // interfere with programs that are still running on the GPU.
+  // Make sure any previous activity on this executor is done. We don't want
+  // other work still running on the GPU to interfere with autotuning.
   if (!stream_exec_->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
+    return InternalError(
+        "Failed to synchronize GPU for autotuning conv instruction: %s",
+        std::get<1>(key) /* instr */);
   }
 
   // allocator either points to this->allocator_ or, if that's null, to a

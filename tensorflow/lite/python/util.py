@@ -555,7 +555,6 @@ def _convert_model_from_bytearray_to_object(model_bytearray):
   model_object = schema_fb.Model.GetRootAsModel(model_bytearray, 0)
   model_object = schema_fb.ModelT.InitFromObj(model_object)
   model_object = copy.deepcopy(model_object)
-  model_object.subgraphs[0].inputs[0] = model_object.subgraphs[0].inputs[0]
   return model_object
 
 

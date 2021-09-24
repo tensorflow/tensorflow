@@ -577,7 +577,9 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
       {
           'tensor': [[1]],
           'lengths': [0.5],
-          'error': (TypeError, 'lengths must be an integer tensor')
+          'error': (
+              TypeError,
+              r'Argument `tensor` \(name\: lengths\) must be of type integer.*')
       },
       {
           'tensor': [[1, 2, 3]],

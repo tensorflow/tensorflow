@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import type_annotations
 
 # These names may not be used as the name for a ExtensionType field (to prevent
@@ -314,7 +315,9 @@ def _convert_value(value, expected_type, path,
 def _convert_tensor(value, path, context):
   """Converts `value` to a `Tensor`."""
   if context == _ConversionContext.SPEC:
-    if not isinstance(value, tensor_spec.TensorSpec):
+    if not (isinstance(value, tensor_spec.TensorSpec) or
+            (isinstance(value, ragged_tensor.RaggedTensorSpec) and
+             value.ragged_rank == 0)):
       raise TypeError(f'{"".join(path)}: expected a TensorSpec, got {value!r}')
     return value
 

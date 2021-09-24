@@ -819,13 +819,24 @@ func @main(%arg: tensor<3x4xf32>) -> tensor<1x2xf32> {
 
 // CHECK-LABEL: func @main
 // CHECK: "mhlo.gather"(%{{.*}}, %{{.*}}) {
-// CHECK-SAME: dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>,
-// CHECK-SAME: index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>,
-// CHECK-SAME: start_index_map = dense<[0, 1]> : tensor<2xi64>},
+// CHECK-SAME: dimension_numbers =
+// CHECK-SAME:   offset_dims = [1]
+// CHECK-SAME:   collapsed_slice_dims = [0, 1]
+// CHECK-SAME:   start_index_map = [0, 1]
+// CHECK-SAME:   index_vector_dim = 1
 // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>}
 // CHECK-SAME: : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
 func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x300xf32> {
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = true, slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>} : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0, 1],
+    >,
+    indices_are_sorted = true,
+    slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
+  } : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
   return %0 : tensor<10x300xf32>
 }
 

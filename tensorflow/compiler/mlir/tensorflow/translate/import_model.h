@@ -137,7 +137,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
     absl::optional<absl::Span<const std::string>> exported_names,
-    mlir::MLIRContext* context);
+    mlir::MLIRContext* context,
+    bool unconditionally_use_set_output_shapes = false);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

@@ -769,7 +769,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, async_helper);
       return;
-    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+    } else if (cache_res->profiles_.GetNumProfiles() == 0 && !static_engine_) {
       // Add current shape if we did not collect any shapes so far.
       if (!cache_res->profiles_.HasShape()) {
         cache_res->profiles_.AddShape(input_concrete_shapes);
@@ -981,7 +981,14 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       // implicit batch is disabled.
       if (!use_implicit_batch_ ||
           AreShapesCompatible(input_concrete_shapes, cache.begin()->first)) {
-        return std::pair<EngineContext*, int>(cache.begin()->second.get(), 0);
+        int profile_id = 0;
+        if (!use_implicit_batch_)
+          profile_id =
+              cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+        if (profile_id != -1) {
+          return std::pair<EngineContext*, int>(cache.begin()->second.get(),
+                                                profile_id);
+        }
       }
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -994,6 +1001,28 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(), nullptr));
+    int profile_id = 0;
+    if (static_engine && !use_implicit_batch_) {
+      // load profiles
+      std::vector<ExecutionContext> exec_contexts;
+      TF_RETURN_IF_ERROR(
+          cache_res->profiles_.RestoreProfiles(static_engine.get()));
+      TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
+          static_engine.get(), &exec_contexts));
+      cache.emplace(input_concrete_shapes,
+                    absl::make_unique<EngineContext>(std::move(static_engine),
+                                                     std::move(exec_contexts)));
+      VLOG(1) << "Added new engine to cache of " << name()
+              << ". Cache size: " << cache.size();
+      // Query which profile of the new engine matches the actual input.
+      profile_id = cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+      if (profile_id == -1) {
+        return std::pair<EngineContext*, int>(&empty_context, 0);
+      }
+      EngineContext* engine_context = cache_res->GetEngineContext(profile_id);
+      return std::pair<EngineContext*, int>(engine_context, profile_id);
+    }
+
     if (!static_engine) {
       if (!allow_build_at_runtime_) {
         // Store an empty engine in the cache so we don't try to load the same

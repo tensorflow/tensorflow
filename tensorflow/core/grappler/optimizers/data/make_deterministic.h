@@ -21,28 +21,40 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-constexpr char kAutotune[] = "autotune";
-
-// Removes sources on nondeterminism from dataset ops. In particular, this pass
-// does the following:
-//   1. Transforms ParallelInterleave and ParallelMap datasets into Interleave
-//      and Map datasets respectively, if the interleave/map function can
-//      introduce nondeterminism when run in parallel. Specifically, if the
-//      function can mutate state, it is considered nondeterministic. A
-//      MapAndBatch dataset instead has num_parallel_calls set to 1 if it can
-//      introduce non-determinism since there is no non-parallel version.
-//   2. Sets the "deterministic" attribute to true and "sloppy" attribute to
-//      False on dataset ops which have such attributes. Note step (1) is still
-//      needed, as even when the "deterministic" attribute is true,
-//      nondeterminism can occur if the interleave/map function mutates state.
+// Removes sources on nondeterminism from dataset ops. Nondeterminism can occur
+// in the follow ways, each which this pass addresses:
 //
-// NOTE: ParallelMap datasets are often rewritten to the non-parallel version,
-// as map functions which distort images typically use random ops (which are
-// stateful). Unfortunately, this rewrite usually causes a large performance
-// penalty in such cases by forcing the map function to run in serial.
+// 1. The datasets ParallelInterleave, ParallelMap, and MapAndBatch can
+//    introduce nondeterminism by running a function multiple times in parallel.
+//    Specifically, if the function can mutate state, it is potentially
+//    nondeterministic. In such cases, this pass converts such dataset ops to a
+//    non-parallel version.
+//
+// 2. Certain datasets, such as Prefetch, can introduce asynchrony by running a
+//    dataset iterator in a background thread while ops outside the dataset are
+//    also running. This can introduce nondeterminism if the input pipeline has
+//    certain stateful ops. Other than Prefetch, datasets with a
+//    `num_parallel_calls` argument also introduce asynchrony, which includes
+//    the parallel datasets mentioned in (1) above.
+//
+//    This pass modifies nodes to remove asynchrony when there are any datasets
+//    in the graph with problematic stateful ops. Unlike (1), legacy random ops
+//    such as RandomUniform are not problematic despite being stateful, as if
+//    the op is within a dataset's function, ops outside the dataset cannot
+//    access the state.
+//
+// 3. Nondeterminism occurs if an op has a "deterministic" attribute that is
+//    false or a "sloppy" attribute that is true. This pass changes such
+//    attributes to be deterministic.
+//
+// NOTE: To address (1) above, parallel datasets are often rewritten to the
+// non-parallel version as the user-defined functions they apply often use
+// stateful ops (such as RNG). Unfortunately, this rewrite usually causes a
+// large performance penalty in such cases by serializing invocations of the
+// user-defined function.
 //
 // TODO(reedwm): Avoid serial execution of stateful functions that contain
-// random ops.
+// stateful ops.
 class MakeDeterministic : public TFDataOptimizerBase {
  public:
   MakeDeterministic() = default;

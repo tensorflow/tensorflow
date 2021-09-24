@@ -692,6 +692,7 @@ cc_library(
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":xlir_opdefs",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_detail",
@@ -838,6 +839,7 @@ cc_library(
             ":virtual_nccl_utils",
             ":virtual_rccl",
             ":xlir_kernels",
+            ":xlir_opdefs",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
@@ -895,7 +897,6 @@ cc_library(
             "//tensorflow/stream_executor/cuda:cudnn_stub",
             "//tensorflow/stream_executor/cuda:cufft_stub",
             "//tensorflow/stream_executor/cuda:cusolver_stub",
-            "@tf_runtime//backends/gpu:cublas_compat",
         ],
         "//conditions:default": [],
     }),
@@ -1638,6 +1639,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -2481,5 +2483,19 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+test_suite(
+    name = "bef_thunk_tests",
+    tests = [
+        # Disabled: Repeated Kernel BefThunk invocations prolong test duration.
+        # E.g., it takes ~1300s for 256x128 matrix.
+        # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
+        "//tensorflow/compiler/xla/service/gpu:custom_call_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
+        "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
+        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
+        "//tensorflow/compiler/xla/tests:while_test_gpu",
     ],
 )

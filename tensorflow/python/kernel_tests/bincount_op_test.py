@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -109,20 +108,19 @@ class BincountTest(test_util.TensorFlowTestCase):
             self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
 
+  @test_util.run_gpu_only
   def test_bincount_determinism_error(self):
-    num_samples = 10000
-    np.random.seed(42)
-    arr = np.random.randint(0, 1000, num_samples)
-    try:
-      config.enable_op_determinism()
-      with test_util.use_gpu():
-        if test_util.is_gpu_available(cuda_only=True):
-          with self.assertRaisesRegexp(
-              errors_impl.UnimplementedError, "Determinism is not yet "
-              "supported for Bincount."):
-            self.evaluate(bincount_ops.bincount(arr, None))
-    finally:
-      config.disable_op_determinism()
+    arr = np.random.randint(0, 1000, size=1000)
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of Bincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=None))
+    arr = np.random.randint(0, 1000, size=(100, 100))
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of "
+        "DenseBincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=-1))
 
   def test_zero_weights(self):
     with self.session():

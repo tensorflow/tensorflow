@@ -97,13 +97,14 @@ FunctionDef RandomUniform() {
 
   return FDH::Define(
       // Name
-      "RandomUniform",
+      "RandomUniformFn",
       // Args
       {"x: T"},
       // Return values
       {"random_uniform: int64"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
+      // NodeDef
       {{{"random_uniform/shape"},
         "Const",
         {},

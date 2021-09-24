@@ -3740,6 +3740,10 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // TODO(intel): support `EXPLICIT` padding for ConvGrad
   if (n->type_string() == csinfo_.conv2d_grad_input ||
       n->type_string() == csinfo_.conv2d_grad_filter ||
+      n->type_string() == csinfo_.depthwise_conv2d_grad_filter ||
+      n->type_string() == csinfo_.depthwise_conv2d_grad_input ||
+      n->type_string() == csinfo_.conv3d_grad_filter ||
+      n->type_string() == csinfo_.conv3d_grad_filter ||
       n->type_string() == csinfo_.max_pool ||
       n->type_string() == csinfo_.max_pool_grad ||
       n->type_string() == csinfo_.max_pool3d ||

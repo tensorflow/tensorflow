@@ -730,11 +730,13 @@ class FuncGraph(ops.Graph):
       while inner_graph is not None and isinstance(inner_graph, FuncGraph):
         if inner_graph is self:
           raise errors.InaccessibleTensorError(
-              "The tensor '%s' cannot be accessed here: it is defined"
-              " in another function or code block. Use return values,"
-              " explicit Python locals or TensorFlow collections to access"
-              " it. Defined in: %s; accessed from: %s.\n"
-              % (tensor, tensor.graph, self))
+              "tf.Graph captured an external symbolic tensor. The symbolic "
+              f"tensor {tensor!r} is captured by {self}, but it is defined at "
+              f"{tensor.graph}. A tf.Graph is not allowed to capture symoblic "
+              f"tensors from another graph. Use return values, explicit Python "
+              f"locals or TensorFlow collections to access it. Please see "
+              "https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
+              "for more information.\n")
         inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)
     return tensor

@@ -105,6 +105,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "broadcast",
+    srcs = ["broadcast.cc"],
+    hdrs = ["broadcast.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],

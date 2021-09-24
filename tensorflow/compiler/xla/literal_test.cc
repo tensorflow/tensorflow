@@ -1503,20 +1503,24 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 }
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
-  auto original = LiteralUtil::CreateR1<uint32>(
+  Literal original = LiteralUtil::CreateR1<uint32>(
       {absl::bit_cast<uint32>(2.5f), absl::bit_cast<uint32>(-42.25f),
        absl::bit_cast<uint32>(100.f), 0xbeef});
-  auto expected = LiteralUtil::CreateR1<float>(
+  Literal expected = LiteralUtil::CreateR1<float>(
       {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(F32));
+  TF_ASSERT_OK_AND_ASSIGN(Literal converted,
+                          original.BitcastConvert(ShapeUtil::ChangeElementType(
+                              original.shape(), F32)));
 }
 
 TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
-  auto literal = LiteralUtil::CreateR0<uint32>(1234);
-  Status status = literal.BitcastConvert(F64).status();
+  Literal literal = LiteralUtil::CreateR0<uint32>(1234);
+  Status status =
+      literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
+          .status();
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "bit widths are different"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "to a shape of different size"));
 }
 
 // Sets the layout of the given ShapeProto to the default.

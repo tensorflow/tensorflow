@@ -83,6 +83,8 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
   def test_compatibility_error(self):
+    self.skipTest("b/200947416")
+
     @authoring.compatible
     @tf.function
     def f():

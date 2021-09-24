@@ -664,12 +664,13 @@ def get_current_local_resource_restore_context():
 @contextlib.contextmanager
 def with_local_resource_restore_context(instance):
   previous_context = getattr(_local_resource_restore_context, "current", None)
-  _local_resource_restore_context.current = LocalResourcRestoreContext(instance)
+  _local_resource_restore_context.current = LocalResourceRestoreContext(
+      instance)
   yield
   _local_resource_restore_context.current = previous_context
 
 
-class LocalResourcRestoreContext(object):
+class LocalResourceRestoreContext(object):
   """Class holding information of a distributed instance, e.g. StaticHashTable.
 
   Pairing use with context manager `with_local_resource_restore_context` allows
@@ -703,14 +704,14 @@ class RestoredDistributedTable(DistributedTable):
         local_resource_restore_context = (
             get_current_local_resource_restore_context())
 
-        # A LocalResourcRestoreContext is entered in the process of remote table
-        # creation and initialization if we're in the process of loading from a
-        # SavedModel. A LocalResourcRestoreContext carries the information
-        # regarding which table is being created and initialized. In order to
-        # initialize a table, we need the restored `_initialize` function,
-        # which captures this closure as table resource. And when this closure
-        # is executed, we will read the table info from the
-        # LocalResourcRestoreContext and return its handle, rather than
+        # A LocalResourceRestoreContext is entered in the process of remote
+        # table creation and initialization if we're in the process of loading
+        # from a SavedModel. A LocalResourceRestoreContext carries the
+        # information regarding which table is being created and initialized. In
+        # order to initialize a table, we need the restored `_initialize`
+        # function, which captures this closure as table resource. And when this
+        # closure is executed, we will read the table info from the
+        # LocalResourceRestoreContext and return its handle, rather than
         # following the normal procedure of fetching from
         # `self._distributed_table`, because we're still in the middle of
         # building `self._distributed_table`.

@@ -3540,22 +3540,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const MLIRImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
-    GraphDef graph_def;
-    if (import_options.enable_grappler) {
-      // Grappler is best-effort.
-      auto statusor = RunGrappler(*meta_graph_def);
-      if (statusor.ok()) {
-        graph_def = std::move(statusor).ValueOrDie();
-      } else {
-        // If the grappler fails, use the original graph def.
-        LOG(WARNING) << "SimpleSavedModelMLIRImportInput: grappler failed: "
-                     << statusor.status();
-        graph_def = meta_graph_def->graph_def();
-      }
-    } else {
-      graph_def = meta_graph_def->graph_def();
-    }
-
+    GraphDef graph_def = meta_graph_def->graph_def();
     auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
     if (import_options.upgrade_legacy) {
@@ -3666,9 +3651,11 @@ class SavedModelSignatureDefImporterLite {
   static StatusOr<mlir::OwningModuleRef> Convert(
       SavedModelMLIRImportInput& input,
       absl::optional<absl::Span<const std::string>> exported_names,
-      mlir::MLIRContext* context, bool import_restore = true) {
-    SavedModelSignatureDefImporterLite importer(input, exported_names, context,
-                                                import_restore);
+      mlir::MLIRContext* context, bool import_restore = true,
+      bool unconditionally_use_set_output_shapes = false) {
+    SavedModelSignatureDefImporterLite importer(
+        input, exported_names, context, import_restore,
+        unconditionally_use_set_output_shapes);
     return importer.ConvertSignatures();
   }
 
@@ -3676,14 +3663,17 @@ class SavedModelSignatureDefImporterLite {
   SavedModelSignatureDefImporterLite(
       SavedModelMLIRImportInput& input,
       absl::optional<absl::Span<const std::string>> exported_names,
-      mlir::MLIRContext* context, bool import_restore)
+      mlir::MLIRContext* context, bool import_restore,
+      bool unconditionally_use_set_output_shapes)
       : input_(input),
         original_func_tf_names_(GetOriginalTfFuncNamesFromGraphDef(
             input.meta_graph_def().graph_def())),
         exported_names_(exported_names),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(context))),
         symbol_table_(module_.get()),
-        import_restore_(import_restore) {}
+        import_restore_(import_restore),
+        unconditionally_use_set_output_shapes_(
+            unconditionally_use_set_output_shapes) {}
 
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
@@ -3724,6 +3714,7 @@ class SavedModelSignatureDefImporterLite {
   mlir::OwningModuleRef module_;
   mlir::SymbolTable symbol_table_;
   bool import_restore_ = true;
+  bool unconditionally_use_set_output_shapes_ = false;
 };
 
 StatusOr<std::vector<SavedModelSignatureDefImporterLite::AssetInfo>>
@@ -3857,6 +3848,8 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
   specs.enable_shape_inference = false;
+  specs.unconditionally_use_set_output_shapes =
+      unconditionally_use_set_output_shapes_;
 
   TF_ASSIGN_OR_RETURN(const auto* subgraph, input_.GetSubGraph(name, specs));
 
@@ -4202,15 +4195,18 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
     mlir::MLIRContext* context, MLIRImportOptions options) {
   TF_ASSIGN_OR_RETURN(auto input, SimpleSavedModelMLIRImportInput::Create(
                                       options, &meta_graph_def, debug_info));
-  return ConvertSavedModelV1ToMlirLite(input, exported_names, context);
+  return ConvertSavedModelV1ToMlirLite(
+      input, exported_names, context,
+      options.unconditionally_use_set_output_shapes);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
     absl::optional<absl::Span<const std::string>> exported_names,
-    mlir::MLIRContext* context) {
-  return SavedModelSignatureDefImporterLite::Convert(input, exported_names,
-                                                     context);
+    mlir::MLIRContext* context, bool unconditionally_use_set_output_shapes) {
+  return SavedModelSignatureDefImporterLite::Convert(
+      input, exported_names, context,
+      /*import_restore=*/true, unconditionally_use_set_output_shapes);
 }
 
 std::string MlirModuleToString(mlir::ModuleOp module,

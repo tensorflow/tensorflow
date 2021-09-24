@@ -245,12 +245,16 @@ func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2:
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<28996x512xf32>, %[[START_INDICES:.*]]: memref<1x128xi32>, %[[OUTPUT:.*]]: memref<1x128x512xf32>)
 func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: memref<1x128x512xf32>) {
   %0 = memref.alloc() : memref<1x128x512xf32>
-  "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = { collapsed_slice_dims = dense<0> : tensor<1xi64>,
-							     index_vector_dim = 2 : i64,
-							     offset_dims = dense<2> : tensor<1xi64>,
-							     start_index_map = dense<0> : tensor<1xi64>},
-				       indices_are_sorted = false, name = "gather.381", slice_sizes = dense<[1, 512]> : tensor<2xi64>} :
-  (memref<28996x512xf32>, memref<1x128xi32>, memref<1x128x512xf32>) -> ()
+  "lmhlo.gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 512]> : tensor<2xi64>
+  } : (memref<28996x512xf32>, memref<1x128xi32>, memref<1x128x512xf32>) -> ()
   "lmhlo.copy"(%0, %arg2) : (memref<1x128x512xf32>, memref<1x128x512xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
@@ -285,12 +289,16 @@ func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: me
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf32>, %[[START_INDICES:.*]]: memref<5x2xi32>, %[[OUTPUT:.*]]: memref<5x8x6xf32>)
 func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5x8x6xf32>) {
   %0 = memref.alloc() : memref<5x8x6xf32>
-  "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = { collapsed_slice_dims = dense<-1> : tensor<1xi64>,
-                                                             index_vector_dim = 1 : i64,
-                                                             offset_dims = dense<[1,2]> : tensor<2xi64>,
-                                                             start_index_map = dense<[0,1]> : tensor<2xi64>},
-                                       indices_are_sorted = false, name = "gather.381", slice_sizes = dense<[8, 6]> : tensor<2xi64>} :
-  (memref<16x11xf32>, memref<5x2xi32>, memref<5x8x6xf32>) -> ()
+  "lmhlo.gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [-1],
+      index_vector_dim = 1,
+      offset_dims = [1,2],
+      start_index_map = [0,1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[8, 6]> : tensor<2xi64>
+  } : (memref<16x11xf32>, memref<5x2xi32>, memref<5x8x6xf32>) -> ()
   "lmhlo.copy"(%0, %arg2) : (memref<5x8x6xf32>, memref<5x8x6xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
@@ -335,12 +343,16 @@ func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf16>, %[[START_INDICES:.*]]: memref<4x2x5xi32>, %[[OUTPUT:.*]]: memref<4x5x8x6xf16>)
 func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref<4x5x8x6xf16>) {
   %0 = memref.alloc() : memref<4x5x8x6xf16>
-  "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = { collapsed_slice_dims = dense<-1> : tensor<1xi64>,
-                                                             index_vector_dim = 1 : i64,
-                                                             offset_dims = dense<[2,3]> : tensor<2xi64>,
-                                                             start_index_map = dense<[0,1]> : tensor<2xi64>},
-                                       indices_are_sorted = false, name = "gather.381", slice_sizes = dense<[8, 6]> : tensor<2xi64>} :
-  (memref<16x11xf16>, memref<4x2x5xi32>, memref<4x5x8x6xf16>) -> ()
+  "lmhlo.gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [-1],
+      index_vector_dim = 1,
+      offset_dims = [2,3],
+      start_index_map = [0,1],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[8, 6]> : tensor<2xi64>
+  } : (memref<16x11xf16>, memref<4x2x5xi32>, memref<4x5x8x6xf16>) -> ()
   "lmhlo.copy"(%0, %arg2) : (memref<4x5x8x6xf16>, memref<4x5x8x6xf16>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
@@ -389,12 +401,16 @@ func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf32>, %[[START_INDICES:.*]]: memref<5x4xi32>, %[[OUTPUT:.*]]: memref<4x5x6xf32>)
 func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4x5x6xf32>) {
   %0 = memref.alloc() : memref<4x5x6xf32>
-  "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = { collapsed_slice_dims = dense<0> : tensor<1xi64>,
-                                                             index_vector_dim = 2 : i64,
-                                                             offset_dims = dense<2> : tensor<1xi64>,
-                                                             start_index_map = dense<0> : tensor<1xi64>},
-                                       indices_are_sorted = false, name = "gather.381", slice_sizes = dense<[1, 6]> : tensor<2xi64>} :
-  (memref<16x11xf32>, memref<5x4xi32>, memref<4x5x6xf32>) -> ()
+  "lmhlo.gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 6]> : tensor<2xi64>
+  } : (memref<16x11xf32>, memref<5x4xi32>, memref<4x5x6xf32>) -> ()
   "lmhlo.copy"(%0, %arg2) : (memref<4x5x6xf32>, memref<4x5x6xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
@@ -428,12 +444,16 @@ func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4
 // CHECK-LABEL: func @gather_5
 func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2: memref<10x20x10x5xf32>) {
   %0 = memref.alloc() : memref<10x20x10x5xf32>
-  "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = { collapsed_slice_dims = dense<-1> : tensor<1xi64>,
-                                                             index_vector_dim = 1 : i64,
-                                                             offset_dims = dense<[1,2,3]> : tensor<3xi64>,
-                                                             start_index_map = dense<[0,1,2]> : tensor<3xi64>},
-                                       indices_are_sorted = false, name = "gather.381", slice_sizes = dense<[20, 10, 5]> : tensor<3xi64>} :
-  (memref<28996x512x256xf32>, memref<10x3xi32>, memref<10x20x10x5xf32>) -> ()
+  "lmhlo.gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [-1],
+      index_vector_dim = 1,
+      offset_dims = [1,2,3],
+      start_index_map = [0,1,2],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[20, 10, 5]> : tensor<3xi64>
+  } : (memref<28996x512x256xf32>, memref<10x3xi32>, memref<10x20x10x5xf32>) -> ()
   "lmhlo.copy"(%0, %arg2) : (memref<10x20x10x5xf32>, memref<10x20x10x5xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }

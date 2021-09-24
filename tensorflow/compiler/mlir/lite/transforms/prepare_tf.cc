@@ -649,7 +649,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                      SmallVectorImpl<int32_t> &padded_val,
                                      ArrayRef<int32_t> padding_val,
                                      int *mask) const {
-    for (const auto &idx : dense_elem_attr.getIntValues()) {
+    for (const auto &idx : dense_elem_attr.getValues<APInt>()) {
       val.push_back(idx.getSExtValue());
       padded_val.push_back(idx.getSExtValue());
     }

@@ -53,6 +53,7 @@ ASYNC_STATEFUL_OPS = [
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
     "Recv",
+    "CollectiveInitializeCommunicator",
 ]
 
 LEGACY_RANDOM_OPS = [

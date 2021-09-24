@@ -409,7 +409,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     if (matchPattern(op_result, m_Constant(&attr))) {
       auto elements = attr.dyn_cast<DenseIntElementsAttr>();
       if (elements)
-        for (auto element : llvm::enumerate(elements.getIntValues()))
+        for (auto element : llvm::enumerate(elements.getValues<APInt>()))
           dims[element.index()] = ic.MakeDim(element.value().getSExtValue());
     }
     return ic.MakeShape(dims);

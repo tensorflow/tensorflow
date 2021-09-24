@@ -35,6 +35,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -48,8 +49,6 @@
 namespace tensorflow {
 namespace {
 
-using llvm::ArrayRef;
-
 // This struct contains the metadata of a matrix, e.g., its base address and
 // dimensions.
 struct MatrixDescriptor {
@@ -59,19 +58,24 @@ struct MatrixDescriptor {
   int64_t num_cols;
 };
 
-cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
-  mlir::Builder builder(type.getContext());
-  if (type.isF16())
-    return CUDA_R_16F;
-  else if (type.isF32())
-    return CUDA_R_32F;
-  else if (type.isF64())
-    return CUDA_R_64F;
-  else if (type == mlir::ComplexType::get(builder.getF32Type()))
-    return CUDA_C_32F;
-  else if (type == mlir::ComplexType::get(builder.getF64Type()))
-    return CUDA_C_64F;
+static cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
+  if (type.isF16()) return CUDA_R_16F;
+  if (type.isF32()) return CUDA_R_32F;
+  if (type.isF64()) return CUDA_R_64F;
+  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    auto element_type = complex_type.getElementType();
+    if (element_type.isF32()) return CUDA_C_32F;
+    if (element_type.isF64()) return CUDA_C_64F;
+  }
+  llvm_unreachable("unsupported type");
+}
 
+static cublasComputeType_t MlirTypeToBlasComputeType(mlir::Type type) {
+  if (auto complexType = type.dyn_cast<mlir::ComplexType>())
+    return MlirTypeToBlasComputeType(complexType.getElementType());
+  if (type.isF16()) return CUBLAS_COMPUTE_16F;
+  if (type.isF32()) return CUBLAS_COMPUTE_32F;
+  if (type.isF64()) return CUBLAS_COMPUTE_64F;
   llvm_unreachable("unsupported type");
 }
 
@@ -95,50 +99,38 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
   // (b/176561997), we won't worry about possible losses during conversions for
   // now.
   bool losesInfo = false;
-  // TODO(b/176913138): remove second argument to `builder.create` calls
-  // TODO(b/176562488): handle {,B}F16
   if (type.isF32()) {
     value.real.convert(llvm::APFloat::IEEEsingle(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantF32Op>(loc, type, value.real);
-  } else if (type.isF64()) {
+    return builder.create<tfrt::compiler::ConstantF32Op>(loc, value.real);
+  }
+  if (type.isF64()) {
     value.real.convert(llvm::APFloat::IEEEdouble(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantF64Op>(loc, type, value.real);
-  } else if (type == mlir::ComplexType::get(builder.getF32Type())) {
+    return builder.create<tfrt::compiler::ConstantF64Op>(loc, value.real);
+  }
+  if (type == mlir::ComplexType::get(builder.getF32Type())) {
     value.real.convert(llvm::APFloat::IEEEsingle(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
     value.imag.convert(llvm::APFloat::IEEEsingle(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantComplexF32Op>(
-        loc, type, value.real, value.imag);
-  } else if (type == mlir::ComplexType::get(builder.getF64Type())) {
+    return builder.create<tfrt::compiler::ConstantComplexF32Op>(loc, value.real,
+                                                                value.imag);
+  }
+  if (type == mlir::ComplexType::get(builder.getF64Type())) {
     value.real.convert(llvm::APFloat::IEEEdouble(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
     value.imag.convert(llvm::APFloat::IEEEdouble(),
                        llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantComplexF64Op>(
-        loc, type, value.real, value.imag);
+    return builder.create<tfrt::compiler::ConstantComplexF64Op>(loc, value.real,
+                                                                value.imag);
   }
 
   llvm_unreachable("unsupported type");
 }
 
-// The BEF GEMM thunk and the GEMM auto-tuning must match, so this
-// logic should be in sync with ComputationTypeFromPrimitive()
-static mlir::Type ComputationTypeFromElementType(mlir::Type type) {
-  if (type.isF16()) {
-    mlir::Builder builder(type.getContext());
-    return builder.getF32Type();
-  } else {
-    return type;
-  }
-}
-
 // Create all the Ops necessary for the GEMM operation, including the GEMM
 // operation itself.
-// TODO(b/175130778): element_type parameter when we move from GpuBuffers to
-// MemRefs
 FailureOr<Value> CreateTfrtOps(
     mlir::Location loc, mlir::Value chain, mlir::Value stream,
     int64_t batch_size, mlir::Type element_type, MatrixDescriptor lhs_matrix,
@@ -147,29 +139,30 @@ FailureOr<Value> CreateTfrtOps(
     cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder) {
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
-  const auto mlir_compute_type = ComputationTypeFromElementType(element_type);
+  // Use mixed precision for fp16 to match GEMM auto-tuning, see
+  // ComputationTypeFromPrimitive().
+  Type mlir_compute_type =
+      element_type.isF16() ? builder.getF32Type() : element_type;
 
-  // TODO(b/176913138): remove second argument to `rewriter.create` calls
   auto m = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), output_matrix.num_rows);
+      loc, output_matrix.num_rows);
   auto n = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), output_matrix.num_cols);
-  auto k = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), k_val);
+      loc, output_matrix.num_cols);
+  auto k = builder.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
 
   auto const_alpha =
       MakeScalingFactorConstant(builder, loc, mlir_compute_type, alpha);
 
-  auto lda = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), lhs_matrix.num_rows);
-  auto ldb = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), rhs_matrix.num_rows);
+  auto lda =
+      builder.create<tfrt::compiler::ConstantI32Op>(loc, lhs_matrix.num_rows);
+  auto ldb =
+      builder.create<tfrt::compiler::ConstantI32Op>(loc, rhs_matrix.num_rows);
 
   auto const_beta =
       MakeScalingFactorConstant(builder, loc, mlir_compute_type, beta);
 
   auto ldc = builder.create<tfrt::compiler::ConstantI32Op>(
-      loc, builder.getI32Type(), output_matrix.num_rows);
+      loc, output_matrix.num_rows);
 
   auto algo = builder.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
@@ -181,20 +174,19 @@ FailureOr<Value> CreateTfrtOps(
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
 
   const auto data_type = MlirTypeToCudaDataType(element_type);
-  const auto compute_type = MlirTypeToCudaDataType(mlir_compute_type);
+  const auto compute_type = MlirTypeToBlasComputeType(mlir_compute_type);
 
   if (batch_size != 1) {
     int64_t lhs_stride_val = lhs_matrix.num_rows * lhs_matrix.num_cols;
     int64_t rhs_stride_val = rhs_matrix.num_rows * rhs_matrix.num_cols;
     int64_t output_stride_val = output_matrix.num_rows * output_matrix.num_cols;
-    auto lhs_stride = builder.create<tfrt::compiler::ConstantI64Op>(
-        loc, builder.getI64Type(), lhs_stride_val);
-    auto rhs_stride = builder.create<tfrt::compiler::ConstantI64Op>(
-        loc, builder.getI64Type(), rhs_stride_val);
-    auto output_stride = builder.create<tfrt::compiler::ConstantI64Op>(
-        loc, builder.getI64Type(), output_stride_val);
-    auto batch = builder.create<tfrt::compiler::ConstantI32Op>(
-        loc, builder.getI32Type(), batch_size);
+    auto lhs_stride =
+        builder.create<tfrt::compiler::ConstantI64Op>(loc, lhs_stride_val);
+    auto rhs_stride =
+        builder.create<tfrt::compiler::ConstantI64Op>(loc, rhs_stride_val);
+    auto output_stride =
+        builder.create<tfrt::compiler::ConstantI64Op>(loc, output_stride_val);
+    auto batch = builder.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
     return builder
         .create<tfrt::gpu::BlasGemmBatchExOp>(
             loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,

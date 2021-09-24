@@ -1573,19 +1573,27 @@ StatusOr<Literal> LiteralBase::Convert(
   return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/false);
 }
 
-StatusOr<Literal> LiteralBase::BitcastConvert(
-    PrimitiveType primitive_dest_type) const {
-  if (primitive_util::BitWidth(shape().element_type()) !=
-      primitive_util::BitWidth(primitive_dest_type)) {
+StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
+  if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
     return InvalidArgument(
-        "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
-        "%d",
-        PrimitiveType_Name(shape().element_type()),
-        PrimitiveType_Name(primitive_dest_type),
-        primitive_util::BitWidth(shape().element_type()),
-        primitive_util::BitWidth(primitive_dest_type));
+        "Can not bitcast-convert from shape %s to a shape of different size %s",
+        shape().ToString(), dest_shape.ToString());
   }
-  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
+  if (dest_shape.IsTuple() || shape().IsTuple()) {
+    return InvalidArgument(
+        "bitcast-convert is not valid for tuple shapes %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+  if (shape().is_dynamic() || dest_shape.is_dynamic()) {
+    return InvalidArgument(
+        "bitcast-convert is not valid for dynamic shape %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+
+  Literal out(dest_shape);
+  std::memcpy(out.root_piece().buffer(), root_piece().buffer(),
+              root_piece().size_bytes());
+  return out;
 }
 
 StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {

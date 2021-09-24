@@ -42,6 +42,7 @@ using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
 using mlir::linalg::TiledLoopOp;
+using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
 
 // Tiles a GenericOp that models a reduction and then fuses its inputs and
@@ -155,6 +156,42 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   LinalgTilingOptions options;
 };
 
+// Rewrite linalg.fill(extract_slice) as linalg.fill(init_tensor). This rewrite
+// is required for correctness, because otherwise after bufferization the fused
+// output linalg.fill would still use the buffer for the reduction of the whole
+// output instead of allocating a local buffer only for the reduced tile.
+//
+// A better way to perform this transformation is to have it in MLIR Core as a
+// part of the fusion logic. To support this correctly, we would also modify
+// logic for padding, so that we could pad fill(init_tensor). Currently, only
+// fill(extract_slice) can be padded. All these changes will happen once we
+// converge on the pipeline design.
+struct FillOfExtractSlice : public mlir::OpRewritePattern<FillOp> {
+  using OpRewritePattern<FillOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FillOp fill,
+                                PatternRewriter &rewriter) const override {
+    if (!fill.hasTensorSemantics()) return failure();
+
+    auto fill_tensor_type = fill.getOutputTensorTypes().back();
+    if (!fill_tensor_type.hasStaticShape()) return failure();
+
+    if (auto extract = fill.output().getDefiningOp<ExtractSliceOp>()) {
+      llvm::SmallVector<int64_t, 4> static_sizes = llvm::to_vector<4>(
+          llvm::map_range(extract.static_sizes().cast<mlir::ArrayAttr>(),
+                          [](mlir::Attribute a) -> int64_t {
+                            return a.cast<mlir::IntegerAttr>().getInt();
+                          }));
+      auto init = rewriter.create<mlir::linalg::InitTensorOp>(
+          fill.getLoc(), extract.getDynamicSizes(), static_sizes,
+          fill_tensor_type.getElementType());
+      rewriter.replaceOpWithNewOp<FillOp>(fill, fill.value(), init);
+      return success();
+    }
+    return failure();
+  }
+};
+
 // Match 2D row reduction. This is a starting point, we will relax this
 // condition further down the road, when we add support for more reduction
 // types.
@@ -186,6 +223,7 @@ struct CodegenReductionPass
                       .addFilter([](Operation *op) {
                         return success(is2DRowReduction(op));
                       });
+    patterns.insert<FillOfExtractSlice>(context);
     patterns.insert<TileAndFusePattern>(tiling_options, filter,
                                         patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));

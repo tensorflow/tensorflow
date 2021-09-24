@@ -1242,3 +1242,53 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
 // CHECK-NEXT: memref.load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_multiple_operand
+module  {
+  func @reduce_multiple_operand(%arg0: memref<1x8xf32>, %arg1: memref<1x8xi32>,
+                                %arg2: memref<f32>, %arg3: memref<i32>,
+                                %arg4: memref<1xf32>, %arg5: memref<1xi32>) {
+    "lmhlo.reduce"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) ( {
+    ^bb0(%arg6: memref<f32>, %arg7: memref<i32>, %arg8: memref<f32>,
+         %arg9: memref<i32>, %arg10: memref<f32>, %arg11: memref<i32>):
+      "lmhlo.add"(%arg6, %arg8, %arg10) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.add"(%arg7, %arg9, %arg11) : (memref<i32>, memref<i32>, memref<i32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    }) {dimensions = dense<1> : tensor<1xi64>} 
+       : (memref<1x8xf32>, memref<1x8xi32>, memref<f32>, memref<i32>, memref<1xf32>, memref<1xi32>) -> ()
+    return
+  }
+}
+// CHECK: %[[INIT_VAL0:.*]] = memref.load %arg2[] : memref<f32>
+// CHECK: linalg.fill(%[[INIT_VAL0]], %arg4) : f32, memref<1xf32> 
+// CHECK: %[[INIT_VAL1:.*]] = memref.load %arg3[] : memref<i32>
+// CHECK: linalg.fill(%[[INIT_VAL1]], %arg5) : i32, memref<1xi32> 
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0, %arg1 : memref<1x8xf32>, memref<1x8xi32>) outs(%arg4, %arg5 : memref<1xf32>, memref<1xi32>) {
+// CHECK: %[[lhsf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[lhsi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: %[[rhsf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[rhsi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: %[[outf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[outi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: memref.store %arg[[#%u,idx:]], %[[lhsf]][] : memref<f32>
+// CHECK: memref.store %arg[[#idx+1]], %[[lhsi]][] : memref<i32>
+// CHECK: memref.store %arg[[#idx+2]], %[[rhsf]][] : memref<f32>
+// CHECK: memref.store %arg[[#idx+3]], %[[rhsi]][] : memref<i32>
+// CHECK: %[[lhsf_tmp:[0-9]+]] = memref.load %[[lhsf]][] : memref<f32>
+// CHECK: %[[rhsf_tmp:[0-9]+]] = memref.load %[[rhsf]][] : memref<f32>
+// CHECK: %[[outf_tmp:[0-9]+]] = addf %[[lhsf_tmp]], %[[rhsf_tmp]] : f32
+// CHECK: memref.store %[[outf_tmp]], %[[outf]][] : memref<f32>
+// CHECK: %[[lhsi_tmp:[0-9]+]] = memref.load %[[lhsi]][] : memref<i32>
+// CHECK: %[[rhsi_tmp:[0-9]+]] = memref.load %[[rhsi]][] : memref<i32>
+// CHECK: %[[outi_tmp:[0-9]+]] = addi %[[lhsi_tmp]], %[[rhsi_tmp]] : i32
+// CHECK: memref.store %[[outi_tmp]], %[[outi]][] : memref<i32>
+// CHECK: %[[scalarf:[0-9]+]] = memref.load %[[outf]][] : memref<f32>
+// CHECK: %[[scalari:[0-9]+]] = memref.load %[[outi]][] : memref<i32>
+// CHECK: linalg.yield %[[scalarf]], %[[scalari]] : f32, i32

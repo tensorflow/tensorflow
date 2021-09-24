@@ -17,6 +17,7 @@
 import pathlib
 import shutil
 import tempfile
+from typing import Iterable
 
 from absl import app
 from absl import flags
@@ -48,10 +49,10 @@ flags.DEFINE_bool(
 #   /android/sdk (android.googlesource.com/platform/prebuilts/sdk
 #     - Note that this needs a branch with an api/ dir, such as *-release)
 # Internally, both the monorepo and the external build system do this for you.
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
-SOURCE_PATH_CORE = REPO_ROOT / 'tensorflow/lite/java/src/main/java'
-SOURCE_PATH_SUPPORT = REPO_ROOT / 'tensorflow_lite_support/java/src/java'
-SOURCE_PATH_ODML = REPO_ROOT / 'tensorflow_lite_support/odml/java/image/src'
+SOURCE_PATH_CORE = pathlib.Path('tensorflow/lite/java/src/main/java')
+SOURCE_PATH_SUPPORT = pathlib.Path('tensorflow_lite_support/java/src/java')
+SOURCE_PATH_ODML = pathlib.Path('tensorflow_lite_support/odml/java/image/src')
+SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 
 # This (key) ordering is preserved in the TOC output.
 SECTION_LABELS = {
@@ -62,9 +63,7 @@ SECTION_LABELS = {
     'com.google.android.odml.image': 'ODML',
 }
 
-EXTERNAL_APIS = {
-    'https://developer.android.com': REPO_ROOT / 'android/sdk/api/26.txt'
-}
+EXTERNAL_APIS = {'https://developer.android.com': SOURCE_PATH_ANDROID_SDK}
 
 
 def overlay(from_root: pathlib.Path, to_root: pathlib.Path):
@@ -79,13 +78,46 @@ def overlay(from_root: pathlib.Path, to_root: pathlib.Path):
       to_path.mkdir(exist_ok=True)
 
 
+def resolve_nested_dir(path: pathlib.Path, root: pathlib.Path) -> pathlib.Path:
+  """Returns the path that exists, out of foo/... and foo/foo/..., with root."""
+  nested = path.parts[0] / path
+  root_path = root / path
+  root_nested_path = root / nested
+  if root_path.exists():
+    return root_path
+  elif root_nested_path.exists():
+    return root_nested_path
+  raise ValueError(f'Could not find {path} or {nested}')
+
+
+def exists_maybe_nested(paths: Iterable[pathlib.Path],
+                        root: pathlib.Path) -> bool:
+  """Evaluates whether all paths exist, either as-is, or nested."""
+  # Due to differing directory structures between GitHub & Google, we need to
+  # check if a path exists as-is, or with the first section repeated.
+  for path in paths:
+    try:
+      resolve_nested_dir(path, root)
+    except ValueError:
+      return False
+  return True
+
+
 def main(unused_argv):
+  root = pathlib.Path(__file__).resolve()
+  all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
+  # Keep searching upwards for a root that hosts the various dependencies. We
+  # test `root.name` to ensure we haven't hit /.
+  while root.name and not exists_maybe_nested(all_deps, root):
+    root = root.parent
+  assert exists_maybe_nested(all_deps, root), 'Could not find dependencies.'
+
   with tempfile.TemporaryDirectory() as merge_tmp_dir:
     # Merge the combined API sources into a single location.
     merged_temp_dir = pathlib.Path(merge_tmp_dir)
-    overlay(SOURCE_PATH_CORE, merged_temp_dir)
-    overlay(SOURCE_PATH_SUPPORT, merged_temp_dir)
-    overlay(SOURCE_PATH_ODML, merged_temp_dir)
+    overlay(resolve_nested_dir(SOURCE_PATH_CORE, root), merged_temp_dir)
+    overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
+    overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
 
     gen_java.gen_java_docs(
         package=['org.tensorflow.lite', 'com.google.android.odml'],
@@ -93,7 +125,7 @@ def main(unused_argv):
         output_dir=pathlib.Path(FLAGS.output_dir),
         site_path=pathlib.Path(FLAGS.site_path),
         section_labels=SECTION_LABELS,
-        federated_docs=EXTERNAL_APIS)
+        federated_docs={k: root / v for k, v in EXTERNAL_APIS.items()})
 
 
 if __name__ == '__main__':

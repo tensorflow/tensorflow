@@ -284,11 +284,6 @@ bool StreamExecutor::GetConvolveAlgorithms(
   }
 }
 
-bool StreamExecutor::GetConvolveForwardAlgorithms(
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  return GetConvolveAlgorithms(dnn::ConvolutionKind::FORWARD, out_algorithms);
-}
-
 bool StreamExecutor::GetConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
     const dnn::BatchDescriptor &input_descriptor,
@@ -331,18 +326,6 @@ bool StreamExecutor::GetRnnAlgorithms(
     return false;
   }
   return dnn_support->GetRnnAlgorithms(out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  return GetConvolveAlgorithms(dnn::ConvolutionKind::BACKWARD_DATA,
-                               out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  return GetConvolveAlgorithms(dnn::ConvolutionKind::BACKWARD_FILTER,
-                               out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(

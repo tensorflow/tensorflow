@@ -39,6 +39,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class DefFunctionTest(xla_test.XLATestCase):
 
   def testAutoclusteringWithTfFunction(self):
@@ -819,7 +820,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+      with self.assertRaises(TypeError):
         fn2(inputs, 1)
 
   def testGetCompilerIrKwargs(self):
@@ -1087,7 +1088,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       arg = random_ops.random_normal([2])
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'def_function_xla_jit_test.py'):
+                                  'Trying to access resource .*'):
         update_var(arg)
 
   def testMustBeConstantInsideCondition(self):
@@ -1126,8 +1127,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       def f(samples):
         v.assign(array_ops.zeros(samples))  # assignment
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  '@ .+def_function_xla_jit_test.py'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Shape .* cannot be changed after initialization'):
         f(constant_op.constant(6))
 
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
@@ -1146,8 +1148,22 @@ class DefFunctionTest(xla_test.XLATestCase):
           summary_ops_v2.scalar('my_metric', 0.5, step=10)
 
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'defined @.+def_function_xla_jit_test'):
+                                  'Trying to access resource .*'):
         my_func_temp()
+
+  def testSinglePassArgmax(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return math_ops.argmax(x)
+
+      hlo = f.experimental_get_compiler_ir(
+          array_ops.ones([10], dtype=dtypes.float32))(
+              stage='hlo')
+
+      # Test that reduction occurs only once.
+      self.assertTrue(hlo.count('reduce'), 1)
 
 
 if __name__ == '__main__':

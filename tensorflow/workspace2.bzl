@@ -133,11 +133,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "718d8c31d2179ed35ba6c3472ffbae25889658bd34cd945df509827531ac4d4f",
-        strip_prefix = "XNNPACK-5cc31e32aa87d10f844882156b396bea998891a6",
+        sha256 = "0a6ecf3c6fa38e4d4f655fec7e5d33afc9c8a91c8a437033c61f52c5189f3b9b",
+        strip_prefix = "XNNPACK-694d2524757f9040e65a02c374e152a462fe57eb",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5cc31e32aa87d10f844882156b396bea998891a6.zip",
-            "https://github.com/google/XNNPACK/archive/5cc31e32aa87d10f844882156b396bea998891a6.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/694d2524757f9040e65a02c374e152a462fe57eb.zip",
+            "https://github.com/google/XNNPACK/archive/694d2524757f9040e65a02c374e152a462fe57eb.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -188,11 +188,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
-        strip_prefix = "oneDNN-2.3-rc2",
+        sha256 = "a19e5fcf04d6ff775cc5f9d9d0ef01e4c74e77519caf4077052f16f037eba6a6",
+        strip_prefix = "oneDNN-2.4-rc",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
         ],
     )
 
