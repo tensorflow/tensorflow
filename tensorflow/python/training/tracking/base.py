@@ -313,13 +313,13 @@ class CheckpointPosition(object):
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
       if current_assignment is not trackable:
-        logging.warning((
+        logging.warning(
             "Inconsistent references when loading the checkpoint into this "
-            "object graph. Either the Trackable object references in the "
-            "Python program have changed in an incompatible way, or the "
-            "checkpoint was generated in an incompatible program.\n\nTwo "
-            "checkpoint references resolved to different objects (%s and %s)."),
-                        current_assignment, trackable)
+            "object graph. For example, in the saved checkpoint object, "
+            "`model.layer.weight` and `model.layer_copy.weight` reference the "
+            "same variable, while in the current object these are two different"
+            " variables. The referenced variables are:"
+            f"({current_assignment} and {trackable}).")
       return False  # Not a new assignment
 
   def is_simple_variable(self):
@@ -896,8 +896,9 @@ class Trackable(object):
     """
     self._maybe_initialize_trackable()
     if not isinstance(trackable, Trackable):
-      raise TypeError(("Trackable._track_trackable() passed type %s, not a "
-                       "Trackable.") % (type(trackable),))
+      raise TypeError(
+          "Trackable._track_trackable() can only be used to track objects of "
+          f"type Trackable. Got type {type(trackable)}.")
     if not getattr(self, "_manual_tracking", True):
       return trackable
     new_reference = TrackableReference(name=name, ref=trackable)
@@ -905,9 +906,9 @@ class Trackable(object):
     if (current_object is not None and current_object is not trackable):
       if not overwrite:
         raise ValueError(
-            ("Called Trackable._track_trackable() with name='%s', "
-             "but a Trackable with this name is already declared as a "
-             "dependency. Names must be unique (or overwrite=True).") % (name,))
+            f"Called Trackable._track_trackable() with name='{name}', "
+            "but a Trackable with this name is already declared as a "
+            "dependency. Names must be unique (or overwrite=True).")
       # This is a weird thing to do, but we're not going to stop people from
       # using __setattr__.
       for index, (old_name, _) in enumerate(

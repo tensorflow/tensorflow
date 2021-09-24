@@ -123,10 +123,9 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
                 "bothers you.")
           if slot_variable in node_ids:
             raise NotImplementedError(
-                ("A slot variable was re-used as a dependency of a "
-                 "Trackable object: %s. This is not currently "
-                 "allowed. File a feature request if this limitation bothers "
-                 "you.") % slot_variable)
+                "A slot variable was re-used as a dependency of a Trackable "
+                f"object: {slot_variable}. This is not currently allowed. "
+                "File a feature request if this limitation bothers you.")
           checkpoint_name = naming_scheme(
               variable_path=object_names[original_variable],
               slot_name=slot_name)
@@ -351,10 +350,9 @@ class ObjectGraphView(object):
               for new_feed_key in saveable_feed_dict.keys():
                 if new_feed_key in feed_additions:
                   raise AssertionError(
-                      ("The object %s tried to feed a value for the Tensor %s "
-                       "when saving, but another object is already feeding a "
-                       "value.")
-                      % (trackable, new_feed_key))
+                      f"The object {trackable} tried to feed a value for the "
+                      f"Tensor {new_feed_key} when saving, but another object "
+                      "is already feeding a value.")
               feed_additions.update(saveable_feed_dict)
           named_saveable_objects.append(saveable)
         if optional_restore is None:

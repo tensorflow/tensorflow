@@ -117,7 +117,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     else:
       raise ValueError(
           "Saveable is neither a resource variable nor a read operation."
-          " Got: %s" % repr(var))
+          f" Got: {repr(var)}")
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
                                     dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
@@ -213,7 +213,7 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
           (tensor_util.is_tf_type(name) and name.dtype == dtypes.string)):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
-        "trackable operations. Name is not a string: %s" % name)
+        f"trackable operations. Name is not a string: {name}")
   if isinstance(op, saveable_object.SaveableObject):
     yield op
   elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
@@ -227,15 +227,15 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
         yield variable
         continue
       if not isinstance(variable, variables.Variable):
-        raise ValueError("Slices must all be Variables: %s" % variable)
+        raise ValueError(f"Slices must all be Variables: {variable}")
       if not variable._save_slice_info:
-        raise ValueError("Slices must all be slices: %s" % variable)
+        raise ValueError(f"Slices must all be slices: {variable}")
       if slice_name is None:
         slice_name = variable._save_slice_info.full_name
       elif slice_name != variable._save_slice_info.full_name:
         raise ValueError(
-            "Slices must all be from the same tensor: %s != %s" %
-            (slice_name, variable._save_slice_info.full_name))
+            f"Slices must all be from the same tensor: {slice_name} != "
+            f"{variable._save_slice_info.full_name}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(
@@ -268,13 +268,13 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
     else:
       if context.executing_eagerly():
         raise ValueError("Can only save/restore ResourceVariables when "
-                         "executing eagerly, got type: %s." % type(op))
+                         f"executing eagerly, got type: {type(op)}.")
 
       variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
-        raise TypeError("names_to_saveables must be a dict mapping string "
-                        "names to Tensors/Variables. Not a variable: %s" %
-                        variable)
+        raise TypeError(
+            "names_to_saveables must be a dict mapping string "
+            f"names to Tensors/Variables. Not a variable: {variable}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(variable, "", name)
@@ -301,7 +301,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """
   if not isinstance(op_list, (list, tuple, set)):
     raise TypeError("Variables to save should be passed in a dict or a "
-                    "list: %s" % op_list)
+                    f"list. Got {op_list}")
   # List casting is necessary to support sets.
   op_list = nest.flatten(list(op_list))
   # When ResourceVariables are converted to Tensors, read ops are added to the
@@ -319,15 +319,15 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
       if var.name in names_to_saveables:
-        raise ValueError("At least two variables have the same name: %s" %
-                         var.name)
+        raise ValueError(
+            f"At least two variables have the same name: {var.name}")
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.Variable) and var._save_slice_info:
       name = var._save_slice_info.full_name
       if name in names_to_saveables:
         if not isinstance(names_to_saveables[name], list):
           raise ValueError("Mixing slices and non-slices with the same name: "
-                           "%s" % name)
+                           f"{name}")
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
@@ -345,15 +345,14 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
-              "is enabled, type: %s." % type(var))
+              f"is enabled. Got type: {type(var)}.")
         set_var = names_to_saveables.setdefault(var._shared_name, var)
         if set_var is not var:
           raise ValueError(
-              ("Two different ResourceVariable objects with the same "
-               "shared_name '%s' were passed to the Saver. This likely means "
-               "that they were created in different Graphs or isoWlation "
-               "contexts, and may not be checkpointed together.") %
-              (var._shared_name,))
+              "Two different ResourceVariable objects with the same "
+              f"shared_name '{var._shared_name}' were passed to the Saver. This"
+              " likely means that they were created in different Graphs or "
+              "isolated contexts, and may not be checkpointed together.")
       else:
         if convert_variable_to_tensor:
           if isinstance(var, resource_variable_ops.BaseResourceVariable):
@@ -361,14 +360,13 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           else:
             var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
-            raise TypeError("Variable to save is not a Variable: %s" % var)
+            raise TypeError(f"Variable to save is not a Variable: {var}")
         if var.op.type == "ReadVariableOp":
           name = var.op.inputs[0].op.name
         else:
           name = var.op.name
         if name in names_to_saveables:
-          raise ValueError("At least two variables have the same name: %s" %
-                           name)
+          raise ValueError(f"At least two variables have the same name: {name}")
         names_to_saveables[name] = var
 
     # pylint: enable=protected-access
@@ -388,8 +386,8 @@ def _add_saveable(saveables, seen_ops, saveable):
     ValueError: If the saveable has already been processed.
   """
   if saveable.op is not None and saveable.op in seen_ops:
-    raise ValueError("The same saveable will be restored with two names: %s" %
-                     saveable.name)
+    raise ValueError("The same saveable will be restored with two names: "
+                     f"{saveable.name}")
   saveables.append(saveable)
   seen_ops.add(saveable.op)
 
