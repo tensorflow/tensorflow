@@ -20,10 +20,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
@@ -113,6 +116,68 @@ class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          checkpoint_test_base.default_test_combinations()))
   def testInfiniteEmptyRepeat(self, verify_fn):
     verify_fn(self, lambda: self._build_repeat_dataset(-1, 0), num_outputs=0)
+
+
+class RepeatRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 6, 7])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3]).repeat(2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 0])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([]).repeat(2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(elements=[0, 5, 10],
+                                              count=[0, 3, 8])))
+  def testFiniteRepeat(self, elements, count):
+    dataset = dataset_ops.Dataset.range(elements).repeat(count)
+    expected_dataset = np.tile(
+        np.arange(
+            start=0, stop=elements, step=1, dtype=dtypes.int64.as_numpy_dtype),
+        count)
+    for i in range(elements * count):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)),
+          expected_dataset[i])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              elements=[0, 3, 5], count_1=[0, 1, 2], count_2=[3, 4, 5])))
+  def testRepeatRepeat(self, elements, count_1, count_2):
+    dataset = dataset_ops.Dataset.range(elements).repeat(count_1).repeat(
+        count_2)
+    expected_dataset = np.tile(
+        np.arange(
+            start=0, stop=elements, step=1, dtype=dtypes.int64.as_numpy_dtype),
+        count_1 * count_2)
+    for i in range(elements * count_1 * count_2):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)),
+          expected_dataset[i])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(elements=[3, 5], count=[None, -1, -2])))
+  def testInfiniteRepeat(self, elements, count):
+    dataset = dataset_ops.Dataset.range(elements).repeat(count=count)
+
+    # Datasets with infinite cardinality do not support random access.
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(random_access.at(dataset, index=0))
 
 
 if __name__ == "__main__":

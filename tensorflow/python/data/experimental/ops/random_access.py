@@ -37,7 +37,8 @@ def at(dataset, index):
      Currently, random access is supported for the following tf.data ops:
      `tf.data.Dataset.from_tensor_slices`, `tf.data.Dataset.shuffle`,
      `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
-     and `tf.data.Dataset.range`, `tf.data.Dataset.skip`.
+     and `tf.data.Dataset.range`, `tf.data.Dataset.skip`,
+     `tf.data.Dataset.repeat`.
   """
   # pylint: disable=protected-access
   return structure.from_tensor_list(
