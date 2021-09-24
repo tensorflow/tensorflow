@@ -586,7 +586,6 @@ def _GatherGrad(op, grad):
 def _GetBatchIndices(params_shape, indices, batch_dims):
   """Addds the batch offsets to the given indices and returns the results."""
   batch_indices = indices
-  indices_ndims = indices.shape.ndims
   indices_dtype = indices.dtype.base_dtype
   casted_params_shape = math_ops.cast(params_shape, indices_dtype)
   accum_dim_value = array_ops.ones((), dtype=indices_dtype)
@@ -597,8 +596,10 @@ def _GetBatchIndices(params_shape, indices, batch_dims):
     step = array_ops.ones((), dtype=indices_dtype)
     dim_indices = math_ops.range(start, dim_value, step)
     dim_indices *= accum_dim_value
-    dim_shape = array_ops.stack(
-        [1] * (dim - 1) + [dim_value] + [1] * (indices_ndims - dim), axis=0)
+    dim_shape = array_ops.concat([
+        array_ops.tile([1], [dim - 1]), [dim_value],
+        array_ops.tile([1], [array_ops.rank(indices) - dim])
+    ], axis=0)
     batch_indices += array_ops.reshape(dim_indices, dim_shape)
 
   return batch_indices
@@ -655,6 +656,13 @@ def _GatherV2Grad(op, grad):
   batch_dims = int(op.get_attr("batch_dims"))
 
   if batch_dims < 0:
+    if indices.shape.ndims is None:
+      raise ValueError(
+          f"Currently, it is unsupported to take the gradient of tf.gather "
+          f"when batch_dims < 0 and the rank of the indices is unknown. Please "
+          f"pass a positive batch_dims or use tf.ensure_shape to update the "
+          f"shape of indices when calling tf.gather. Got "
+          f"batch_dims={batch_dims} and indices={indices}")
     batch_dims += indices.shape.ndims
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
