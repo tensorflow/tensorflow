@@ -112,6 +112,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 
+// Creates a pass to remove operands of TFL WhileOp without changing outcomes.
+std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass();
+
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
