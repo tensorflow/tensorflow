@@ -560,7 +560,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<llvm::Value* const> partial_result_addresses);
+      absl::Span<llvm::Value* const> partial_result_addresses,
+      int threads_per_block);
 
   StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
