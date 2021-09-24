@@ -204,6 +204,10 @@ class _Compatible:
         # since the seond line is "Error code: xxxx"
         self._log(err.error_message.splitlines()[0])
         self._log(self._get_location_string(err.location) + "\n")
+      else:
+        # Log other errors.
+        self._log(f"{_AUTHORING_ERROR_HDR}: {err.error_message}")
+        self._log(self._get_location_string(err.location) + "\n")
 
     if custom_ops:
       custom_ops_str = ", ".join(sorted(custom_ops))
