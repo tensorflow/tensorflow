@@ -21,12 +21,14 @@ import time
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -444,6 +446,62 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       # Wait for the task to be garbage-collected on all workers.
       while cluster.num_tasks_on_workers() > 0:
         time.sleep(0.1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcClient(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            client_timeout_ms=50))
+    dispatcher_address = dispatcher.target.split("://")[1]
+    _ = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100))
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=ShardingPolicy.OFF,
+            service=dispatcher.target,
+            task_refresh_interval_hint_ms=10000))
+    get_next = self.getNext(dataset)
+
+    # The client does not heartbeat in 10 seconds. It will be garbage-collected.
+    with self.assertRaisesRegex(errors.NotFoundError, "Unknown job client id"):
+      self.evaluate(get_next())
+      time.sleep(3)
+      self.getIteratorOutput(get_next)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testKeepClientAliveBeforeReading(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            client_timeout_ms=1000))
+    dispatcher_address = dispatcher.target.split("://")[1]
+    _ = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100))
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=ShardingPolicy.OFF,
+            service=dispatcher.target,
+            task_refresh_interval_hint_ms=100))
+    get_next = self.getNext(dataset)
+
+    # The client regularly heartbeats in 100 milliseconds. It should not be
+    # garbage-collected even if it does not start reading in 3 seconds.
+    time.sleep(3)
+    self.assertEqual(
+        self.getIteratorOutput(get_next), list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testApplyDeterminismOption(self):

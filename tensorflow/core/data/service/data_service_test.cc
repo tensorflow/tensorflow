@@ -219,7 +219,12 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK(dataset_client.CreateJob().status());
+  TF_ASSERT_OK_AND_ASSIGN(int64_t job_client_id, dataset_client.CreateJob());
+  Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
+  // Job should not be garbage collected before the client has started reading.
+  EXPECT_THAT(cluster.NumActiveJobs(), IsOkAndHolds(1));
+
+  TF_ASSERT_OK(dataset_client.GetTasks(job_client_id).status());
   // Job should be garbage collected within 10 seconds.
   absl::Time wait_start = absl::Now();
   TF_ASSERT_OK(WaitWhile([&]() -> StatusOr<bool> {

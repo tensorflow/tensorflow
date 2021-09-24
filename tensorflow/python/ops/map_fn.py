@@ -421,10 +421,11 @@ def map_fn(fn,
 
     # Check that inputs are not scalars.
     first_elem = elems_flat[0]
-    elems_static_shape = first_elem.shape
-    if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
-      raise ValueError(
-          "Elements in elems must be 1+ dimensional Tensors, not scalars")
+    if hasattr(first_elem, "shape"):
+      elems_static_shape = first_elem.shape
+      if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
+        raise ValueError(
+            "Elements in elems must be 1+ dimensional Tensors, not scalars")
 
     # Box any composite tensors into tensor lists.
     elems_batchable = _elems_flat_to_batchable(elems_flat)

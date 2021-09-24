@@ -118,6 +118,9 @@ class DatasetClient {
       TargetWorkers target_workers);
   // Creates a job and returns the job client ID.
   StatusOr<int64> CreateJob();
+  // Gets the tasks for job `job_client_id`. The job has one task processed by
+  // every worker.
+  StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
 
  private:
   // Registers the dataset and returns the dataset ID.
@@ -126,9 +129,6 @@ class DatasetClient {
   StatusOr<int64> CreateJob(int64 dataset_id,
                             ProcessingModeDef::ShardingPolicy sharding_policy,
                             TargetWorkers target_workers);
-  // Gets the tasks for job `job_client_id`. The job has one task processed by
-  // every worker.
-  StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
   // Reads values from `tasks`, one task at a time, until all tasks have
   // finished.
   StatusOr<WorkerResultMap> ReadFromTasks(const std::vector<TaskInfo>& tasks);

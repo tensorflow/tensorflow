@@ -1288,34 +1288,6 @@ static void RuntimeFallbackSyncExecuteOp(tfrt::SyncKernelFrame* frame) {
   }
 }
 
-// Sync execution via kernel fallback compat mode, by taking and returning
-// tensorflow::Tensor (as such this is "thin").
-// Graph compiler needs to make sure this kernel is used in proper context.
-// TODO(tfrt-devs): Add function attribute support.
-// TODO(tfrt-devs): Add device support.
-static void KernelFallbackSyncExecuteThinOp(tfrt::SyncKernelFrame* frame) {
-  const auto& exec_ctx = frame->GetExecutionContext();
-  assert(frame->GetNumAttributes() == 2);
-  auto op_attr_array = AggregateAttr(frame->GetAttributeAt(0));
-  auto op_name = StringAttr(frame->GetAttributeAt(1));
-  auto op_name_sv = op_name.GetValue();
-  op_name_sv.consume_front("tf.");
-
-  tfrt::OpAttrs op_attrs;
-  tfrt::SetUpOpAttrs(op_attr_array, &op_attrs);
-
-  // The TF kernel we call takes and returns vectors of tensorflow::Tensor.
-  auto status = KernelFallbackSyncExecuteCompat(
-      exec_ctx, ToAbslStringView(op_name_sv),
-      /*device_name=*/ToAbslStringView(exec_ctx.host()->GetHostDevice().name()),
-      frame, tfrt::OpAttrsRef(op_attrs));
-
-  if (!status.ok()) {
-    frame->SetError(tfrt::MakeStringError(status.error_message()));
-    return;
-  }
-}
-
 void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
   registry->AddKernel("tfd.init_eager_context",
                       TFRT_KERNEL(TfdInitEagerContext));
@@ -1350,8 +1322,6 @@ void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
 
   registry->AddSyncKernel("tfrt_fallback_sync.executeop",
                           RuntimeFallbackSyncExecuteOp);
-  registry->AddSyncKernel("tfrt_fallback_sync.knfb_exec_thin",
-                          KernelFallbackSyncExecuteThinOp);
 }
 
 }  // namespace tfd

@@ -1504,167 +1504,15 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
-#if TENSORFLOW_USE_ROCM
-    // cudnn_use_autotune is applicable only the CUDA flow
-    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
-    // if we do not have a cached algorithm_config for this conv_parameters
-    cudnn_use_autotune_ = true;
-#endif
-    AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutotuneConv3dBwdData::GetInstance()->Find(
-                                   conv_parameters, &algorithm_config)) {
-      profiler::ScopedAnnotation trace("cudnn_autotuning");
-      std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-#if GOOGLE_CUDA
-      std::vector<AlgorithmDesc> algorithms;
-      std::vector<AlgorithmConfig> configs;
-      if (CudnnUseFrontend()) {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveExecutionPlans(
-                        se::dnn::ConvolutionKind::BACKWARD_DATA,
-                        se::dnn::ToDataType<T>::value, stream, input_desc,
-                        filter_desc, output_desc, conv_desc, &plans),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
-        for (const auto& plan : plans) {
-          configs.push_back(AlgorithmConfig(
-              AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-              plan->getWorkspaceSize()));
-        }
-      } else {
-        OP_REQUIRES(
-            context,
-            stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms),
-            errors::Unknown(
-                "Failed to get convolution execution plan. This is probably "
-                "because cuDNN failed to initialize, so try looking to see if "
-                "a warning log message was printed above."));
-        for (const auto& algorithm : algorithms) {
-          configs.push_back(AlgorithmConfig(algorithm));
-        }
-      }
+    auto config_or = AutotuneUnfusedConv(
+        cudnn_use_autotune_, AutotuneConv3dBwdData::GetInstance(),
+        conv_parameters, context, se::dnn::ConvolutionKind::BACKWARD_DATA,
+        input_desc, in_backprop_ptr, filter_desc, filter_ptr, conv_desc,
+        output_desc, out_backprop_ptr, ConvolveBackwardDataScratchSize);
 
-      se::TfAllocatorAdapter tf_allocator_adapter(
-          context->device()->GetAllocator({}), stream);
-      se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                        se::GpuAsmOpts());
-      se::DeviceMemory<T> in_backprop_ptr_rz(
-          WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
-
-      std::vector<tensorflow::AutotuneResult> results;
-      for (auto& profile_config : configs) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                              context);
-        se::RedzoneAllocator rz_scratch_allocator(
-            stream, &tf_allocator_adapter, se::GpuAsmOpts(),
-            /*memory_limit=*/ConvolveBackwardDataScratchSize);
-        se::ScratchAllocator* allocator_used =
-            !RedzoneCheckDisabled()
-                ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
-                : static_cast<se::ScratchAllocator*>(&scratch_allocator);
-        ProfileResult profile_result;
-
-        Status cudnn_launch_status;
-        if (CudnnUseFrontend()) {
-          cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
-              filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-              input_desc, &in_backprop_ptr_rz, allocator_used, profile_config,
-              &profile_result);
-        } else {
-          cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
-              filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-              input_desc, &in_backprop_ptr_rz, allocator_used, profile_config,
-              &profile_result);
-        }
-
-        if (cudnn_launch_status.ok() && profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          if (CudnnUseFrontend()) {
-            result.mutable_cuda_conv_plan()->set_exec_plan_id(
-                profile_config.algorithm()->exec_plan_id());
-          } else {
-            result.mutable_conv()->set_algorithm(
-                profile_config.algorithm()->algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_config.algorithm()->tensor_ops_enabled());
-          }
-
-          result.set_scratch_bytes(
-              !RedzoneCheckDisabled()
-                  ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
-                  : scratch_allocator.TotalByteSize());
-          *result.mutable_run_time() = proto_utils::ToDurationProto(
-              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-
-          // TODO(george): they don't do results at all??
-          CheckRedzones(rz_scratch_allocator, &result);
-          CheckRedzones(rz_allocator, &result);
-        } else {
-          // When CuDNN frontend APIs are used, we need to make sure the
-          // profiling results are one-to-one mapping of the "plans". So, we
-          // insert dummy results when the execution fails.
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-          result.mutable_failure()->set_msg(
-              absl::StrCat("Profiling failure on CUDNN engine: ",
-                           profile_config.algorithm()->exec_plan_id()));
-        }
-      }
-#elif TENSORFLOW_USE_ROCM
-      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                            context);
-      std::vector<ProfileResult> algorithms;
-      CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
-          se::dnn::ConvolutionKind::BACKWARD_DATA,
-          se::dnn::ToDataType<T>::value, stream, input_desc, in_backprop_ptr,
-          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          &scratch_allocator, &algorithms));
-      std::vector<tensorflow::AutotuneResult> results;
-      for (auto miopen_algorithm : algorithms) {
-        auto profile_algorithm = miopen_algorithm.algorithm();
-        ProfileResult profile_result;
-        auto miopen_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
-            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-            input_desc, &in_backprop_ptr, &scratch_allocator,
-            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
-            &profile_result);
-        if (miopen_launch_status.ok()) {
-          if (profile_result.is_valid()) {
-            results.emplace_back();
-            auto& result = results.back();
-            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_algorithm.tensor_ops_enabled());
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-            *result.mutable_run_time() = proto_utils::ToDurationProto(
-                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-          }
-        }
-      }
-#endif
-      LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_DATA,
-                             se::dnn::ToDataType<T>::value, in_backprop_ptr,
-                             filter_ptr, out_backprop_ptr, input_desc,
-                             filter_desc, output_desc, conv_desc,
-                             stream->parent(), results);
-      if (CudnnUseFrontend()) {
-        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, &plans,
-                                                       &algorithm_config));
-      } else {
-        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, nullptr,
-                                                       &algorithm_config));
-      }
-      AutotuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
-                                                   algorithm_config);
-    }
+    OP_REQUIRES_OK(context, config_or.status());
+    AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
 
     Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
@@ -1676,15 +1524,15 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       } else {
         VLOG(4) << "Convolution Autotune has been turned off";
       }
-      cudnn_launch_status = stream->ConvolveBackwardDataWithExecutionPlan(
+      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
+          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
-          nullptr);
+          &scratch_allocator, algorithm_config, nullptr);
     } else {
-      cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+      cudnn_launch_status = stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
-          nullptr);
+          &scratch_allocator, algorithm_config, nullptr);
     }
 
     if (!cudnn_launch_status.ok()) {
@@ -2063,163 +1911,14 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
-#if TENSORFLOW_USE_ROCM
-    // cudnn_use_autotune is applicable only the CUDA flow
-    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
-    // if we do not have a cached algorithm_config for this conv_parameters
-    cudnn_use_autotune_ = true;
-#endif
 
-    AlgorithmConfig algorithm_config;
-
-    if (cudnn_use_autotune_ && !AutotuneConv3dBwdFilter::GetInstance()->Find(
-                                   conv_parameters, &algorithm_config)) {
-      std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
-#if GOOGLE_CUDA
-      std::vector<AlgorithmDesc> algorithms;
-      std::vector<AlgorithmConfig> configs;
-      if (CudnnUseFrontend()) {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveExecutionPlans(
-                        se::dnn::ConvolutionKind::BACKWARD_FILTER,
-                        se::dnn::ToDataType<T>::value, stream, input_desc,
-                        filter_desc, output_desc, conv_desc, &plans),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
-        for (const auto& plan : plans) {
-          configs.push_back(AlgorithmConfig(
-              AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
-              plan->getWorkspaceSize()));
-        }
-      } else {
-        OP_REQUIRES(
-            context,
-            stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms),
-            errors::Unknown(
-                "Failed to get convolution execution plan. This is probably "
-                "because cuDNN failed to initialize, so try looking to see if "
-                "a warning log message was printed above."));
-        for (const auto& algorithm : algorithms) {
-          configs.push_back(AlgorithmConfig(algorithm));
-        }
-      }
-
-      std::vector<tensorflow::AutotuneResult> results;
-      for (auto& profile_config : configs) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                              context);
-        ProfileResult profile_result;
-        Status cudnn_launch_status;
-        if (CudnnUseFrontend()) {
-          cudnn_launch_status = stream->ConvolveBackwardFilterWithExecutionPlan(
-              input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-              filter_desc, &filter_backprop_ptr, &scratch_allocator,
-              profile_config, &profile_result);
-        } else {
-          cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
-              input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-              filter_desc, &filter_backprop_ptr, &scratch_allocator,
-              profile_config, &profile_result);
-        }
-
-        if (cudnn_launch_status.ok() && profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          if (CudnnUseFrontend()) {
-            result.mutable_cuda_conv_plan()->set_exec_plan_id(
-                profile_config.algorithm()->exec_plan_id());
-          } else {
-            result.mutable_conv()->set_algorithm(
-                profile_config.algorithm()->algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_config.algorithm()->tensor_ops_enabled());
-          }
-
-          result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-          *result.mutable_run_time() = proto_utils::ToDurationProto(
-              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-
-        } else if (CudnnUseFrontend()) {
-          // When CuDNN frontend APIs are used, we need to make sure the
-          // profiling results are one-to-one mapping of the "plans". So, we
-          // insert dummy results when the execution fails.
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-          result.mutable_failure()->set_msg(
-              absl::StrCat("Profiling failure on CUDNN engine: ",
-                           profile_config.algorithm()->exec_plan_id()));
-        }
-      }
-#elif TENSORFLOW_USE_ROCM
-      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                            context);
-      std::vector<ProfileResult> algorithms;
-      CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER,
-          se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
-          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, &scratch_allocator, &algorithms));
-
-      std::vector<tensorflow::AutotuneResult> results;
-      for (auto miopen_algorithm : algorithms) {
-        auto profile_algorithm = miopen_algorithm.algorithm();
-        ProfileResult profile_result;
-        auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
-            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-            filter_desc, &filter_backprop_ptr, &scratch_allocator,
-            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
-            &profile_result);
-        if (cudnn_launch_status.ok()) {
-          if (profile_result.is_valid()) {
-            results.emplace_back();
-            auto& result = results.back();
-            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_algorithm.tensor_ops_enabled());
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-            *result.mutable_run_time() = proto_utils::ToDurationProto(
-                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-          }
-        }
-      }
-#endif
-      LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
-                             se::dnn::ToDataType<T>::value, input_ptr,
-                             filter_backprop_ptr, out_backprop_ptr, input_desc,
-                             filter_desc, output_desc, conv_desc,
-                             stream->parent(), results);
-      if (CudnnUseFrontend()) {
-        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, &plans,
-                                                       &algorithm_config));
-      } else {
-        Status s = BestCudnnConvAlgorithm(results, nullptr, &algorithm_config);
-#if GOOGLE_CUDA
-        if (s.code() == error::NOT_FOUND) {
-          size_t version = cudnnGetVersion();
-          // For cuDNN 8.0.3 and 8.0.4, no cudnnConvolutionBwdFilterAlgo_t will
-          // work in certain cases. In such cases we improve the error message.
-          // This is fixed in cuDNN 8.0.5. For more context, see:
-          // https://github.com/tensorflow/tensorflow/issues/46589
-          if (version == 8003 || version == 8004) {
-            std::string version_str = (version == 8003 ? "8.0.3" : "8.0.4");
-            s = errors::NotFound(
-                "No algorithm worked! Please try upgrading to cuDNN 8.0.5. You "
-                "are using cuDNN ",
-                version_str, ", which has a bug causing this error.");
-          }
-        }
-#endif
-        OP_REQUIRES_OK(context, s);
-      }
-      AutotuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
-                                                     algorithm_config);
-    }
+    auto config_or = AutotuneUnfusedConv(
+        cudnn_use_autotune_, AutotuneConv3dBwdFilter::GetInstance(),
+        conv_parameters, context, se::dnn::ConvolutionKind::BACKWARD_FILTER,
+        input_desc, input_ptr, filter_desc, filter_backprop_ptr, conv_desc,
+        output_desc, out_backprop_ptr, ConvolveBackwardFilterScratchSize);
+    OP_REQUIRES_OK(context, config_or.status());
+    AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
 
     Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
@@ -2231,15 +1930,15 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       } else {
         VLOG(4) << "Convolution Autotune has been turned off";
       }
-      cudnn_launch_status = stream->ConvolveBackwardFilterWithExecutionPlan(
-          input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-          filter_desc, &filter_backprop_ptr, &scratch_allocator,
-          algorithm_config, nullptr);
+      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
+          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
+          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+          conv_desc, &scratch_allocator, algorithm_config, nullptr);
     } else {
-      cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
-          input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-          filter_desc, &filter_backprop_ptr, &scratch_allocator,
-          algorithm_config, nullptr);
+      cudnn_launch_status = stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
+          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+          conv_desc, &scratch_allocator, algorithm_config, nullptr);
     }
 
     if (!cudnn_launch_status.ok()) {

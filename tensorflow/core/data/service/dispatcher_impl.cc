@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
@@ -217,7 +218,8 @@ Status DataServiceDispatcherImpl::Start() {
   for (const auto& client_id : state_.ListActiveClientIds()) {
     // Conservatively pretend we just received a heartbeat from all clients, so
     // that we don't garbage collect jobs too early.
-    latest_client_heartbeats_us_[client_id] = env_->NowMicros();
+    latest_client_heartbeats_time_[client_id] =
+        absl::FromUnixMicros(env_->NowMicros());
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
@@ -719,7 +721,8 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
   acquire_job_client->set_job_client_id(job_client_id);
   acquire_job_client->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(Apply(update));
-  latest_client_heartbeats_us_[job_client_id] = env_->NowMicros();
+  // Does not release clients before they start to read from the dataset.
+  latest_client_heartbeats_time_[job_client_id] = absl::InfiniteFuture();
   return Status::OK();
 }
 
@@ -848,7 +851,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
-  latest_client_heartbeats_us_[request->job_client_id()] = env_->NowMicros();
+  latest_client_heartbeats_time_[request->job_client_id()] =
+      absl::FromUnixMicros(env_->NowMicros());
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
@@ -1048,8 +1052,9 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t now = env_->NowMicros();
   for (const auto& client_id : state_.ListActiveClientIds()) {
-    if (now > latest_client_heartbeats_us_[client_id] +
-                  config_.client_timeout_ms() * 1000) {
+    if (absl::FromUnixMicros(now) >
+        latest_client_heartbeats_time_[client_id] +
+            absl::Milliseconds(config_.client_timeout_ms())) {
       LOG(INFO) << "Releasing timed-out client with id " << client_id;
       Update update;
       ReleaseJobClientUpdate* release_client =

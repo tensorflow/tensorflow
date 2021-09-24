@@ -224,7 +224,9 @@ class PadOpTest(test.TestCase):
   def testInvalid(self):
     with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
-      with self.assertRaisesRegex(ValueError, "Unknown padding mode"):
+      with self.assertRaisesRegex(
+          ValueError,
+          "Value of argument `mode` expected to be .* Received `mode` = WEIRD"):
         self.evaluate(array_ops.pad(x, [[1, 0], [2, 1]], mode="weird"))
 
   def testPaddingTypes(self):

@@ -77,7 +77,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_deterministic_reductions(false);
 #else
   opts.set_xla_gpu_deterministic_reductions(true);
+<<<<<<< HEAD
 #endif
+=======
+  opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
+>>>>>>> 84c2ada135057760f94e5d393ad3d5d17457de18
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
@@ -140,6 +144,13 @@ static void AllocateFlags() {
   // argument passed in to the lambda.
   auto int32_setter_for = [](void (DebugOptions::*member_setter)(int32_t)) {
     return [member_setter](int32_t value) {
+      (flag_values->*member_setter)(value);
+      return true;
+    };
+  };
+
+  auto int64_setter_for = [](void (DebugOptions::*member_setter)(int64_t)) {
+    return [member_setter](int64_t value) {
       (flag_values->*member_setter)(value);
       return true;
     };
@@ -650,6 +661,12 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       flag_values->xla_gpu_enable_async_all_reduce(),
       "Converts synchronous all-reduce ops into asynchronous."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_all_reduce_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_all_reduce_combine_threshold_bytes),
+      flag_values->xla_gpu_all_reduce_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU all-reduce combiner."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_dump_disable_metadata",
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),

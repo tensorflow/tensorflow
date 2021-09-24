@@ -57,10 +57,6 @@ static LogicalResult verify(ExecuteOp op) {
   return fallback_common::VerifyExecuteOpCommon(op);
 }
 
-static LogicalResult verify(KNFBExecThinOp op) {
-  return fallback_common::VerifyExecuteOpCommon(op);
-}
-
 static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = false;
@@ -74,29 +70,7 @@ static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
       parser, builder, result, GetTensorType(&builder), parse_options);
 }
 
-static ParseResult parseKNFBExecThinOp(OpAsmParser &parser,
-                                       OperationState &result) {
-  fallback_common::ParseExecuteOpOptions parse_options;
-  parse_options.has_chain = false;
-  parse_options.has_key = false;
-  parse_options.has_device = false;
-  parse_options.has_func_attr = false;
-  parse_options.has_cost = false;
-
-  auto &builder = parser.getBuilder();
-  return fallback_common::ParseExecuteOpCommon(
-      parser, builder, result,
-      tfrt::fallback::TFTensorType::get(builder.getContext()), parse_options);
-}
-
 static void print(OpAsmPrinter &p, ExecuteOp op) {
-  p << " " << op->getAttr("op_name") << '(' << op.operands() << ')';
-
-  fallback_common::PrintExecuteOpCommon(p, op);
-  if (!op.results().empty()) p << " : " << op.results().size();
-}
-
-static void print(OpAsmPrinter &p, KNFBExecThinOp op) {
   p << " " << op->getAttr("op_name") << '(' << op.operands() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);

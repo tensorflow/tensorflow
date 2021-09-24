@@ -95,7 +95,8 @@ class SplitOpTest(test.TestCase):
     with self.session() as sess:
       with self.assertRaises(ValueError) as context:
         sess.run(array_ops.split(value, size_splits), {size_splits: [2, 2, 6]})
-      self.assertTrue("Cannot infer num from shape" in str(context.exception))
+      self.assertIn("Cannot infer argument `num` from shape",
+                    str(context.exception))
 
   @test_util.run_in_graph_and_eager_modes
   def testExplicitNum(self):

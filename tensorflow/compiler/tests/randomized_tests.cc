@@ -337,6 +337,16 @@ class OpTest : public ::testing::Test {
   // Choose spatial dimensions for a windowed op such as pooling or convolution.
   WindowedSpatialDims ChooseWindowedSpatialDims(int num_spatial_dims);
 
+  struct XlaDotArguments {
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    std::string dnums_encoded;
+    std::string precision_config_encoded;
+    DataType dtype;
+  };
+  // Choose arguments for tf.XlaDot operation.
+  XlaDotArguments ChooseXlaDotArguments();
+
   // Builds dimensions for a windowed op such as pooling or convolution,
   // including a batch and feature dimension.
   std::vector<int64_t> ImageDims(TensorFormat format, int batch, int feature,
@@ -672,6 +682,41 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
     } while (!s.ok());
   }
   return d;
+}
+
+OpTest::XlaDotArguments OpTest::ChooseXlaDotArguments() {
+  std::vector<int64_t> batch_dims = RandomDims(0, 2);
+  std::vector<int64_t> contracting_dims = RandomDims(0, 2);
+  std::vector<int64_t> lhs_outer_dims = RandomDims(0, 2);
+  std::vector<int64_t> rhs_outer_dims = RandomDims(0, 2);
+
+  XlaDotArguments a;
+  a.lhs_dims.insert(a.lhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), lhs_outer_dims.begin(),
+                    lhs_outer_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), rhs_outer_dims.begin(),
+                    rhs_outer_dims.end());
+
+  xla::DotDimensionNumbers dnums;
+  for (auto i = 0; i < batch_dims.size(); ++i) {
+    dnums.add_lhs_batch_dimensions(i);
+    dnums.add_rhs_batch_dimensions(i);
+  }
+  for (auto i = 0; i < contracting_dims.size(); ++i) {
+    dnums.add_lhs_contracting_dimensions(batch_dims.size() + i);
+    dnums.add_rhs_contracting_dimensions(batch_dims.size() + i);
+  }
+  dnums.SerializeToString(&a.dnums_encoded);
+
+  a.precision_config_encoded = "";
+
+  a.dtype = Choose<DataType>(kAllXlaTypes);
+  return a;
 }
 
 std::vector<int64_t> OpTest::ImageDims(
@@ -3414,44 +3459,29 @@ TEST_F(OpTest, TruncateMod) {
 
 TEST_F(OpTest, XlaDot) {
   Repeatedly([this]() {
-    auto type = Choose<DataType>({DT_INT32});
-    std::vector<int64_t> batch_dims = RandomDims(0, 2);
-    std::vector<int64_t> contracting_dims = RandomDims(0, 2);
-    std::vector<int64_t> lhs_outer_dims = RandomDims(0, 2);
-    std::vector<int64_t> rhs_outer_dims = RandomDims(0, 2);
-
-    xla::DotDimensionNumbers dnums;
-    for (auto i = 0; i < batch_dims.size(); ++i) {
-      dnums.add_lhs_batch_dimensions(i);
-      dnums.add_rhs_batch_dimensions(i);
-    }
-    for (auto i = 0; i < contracting_dims.size(); ++i) {
-      dnums.add_lhs_contracting_dimensions(batch_dims.size() + i);
-      dnums.add_rhs_contracting_dimensions(batch_dims.size() + i);
-    }
-    std::string dnums_data;
-    dnums.SerializeToString(&dnums_data);
-
-    std::vector<int64_t> lhs_dims;
-    std::vector<int64_t> rhs_dims;
-    lhs_dims.insert(lhs_dims.end(), batch_dims.begin(), batch_dims.end());
-    lhs_dims.insert(lhs_dims.end(), contracting_dims.begin(),
-                    contracting_dims.end());
-    lhs_dims.insert(lhs_dims.end(), lhs_outer_dims.begin(),
-                    lhs_outer_dims.end());
-    rhs_dims.insert(rhs_dims.end(), batch_dims.begin(), batch_dims.end());
-    rhs_dims.insert(rhs_dims.end(), contracting_dims.begin(),
-                    contracting_dims.end());
-    rhs_dims.insert(rhs_dims.end(), rhs_outer_dims.begin(),
-                    rhs_outer_dims.end());
-
+    const XlaDotArguments& a = ChooseXlaDotArguments();
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("XlaDot")
-            .RandomInput(type, lhs_dims)
-            .RandomInput(type, rhs_dims)
-            .Attr("dimension_numbers", dnums_data)
-            .Attr("precision_config", "")
-            .Attr("T", type));
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("T", a.dtype));
+  });
+}
+
+TEST_F(OpTest, XlaDotV2) {
+  Repeatedly([this]() {
+    const XlaDotArguments& a = ChooseXlaDotArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDotV2")
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("LhsT", a.dtype)
+            .Attr("RhsT", a.dtype)
+            .Attr("preferred_element_type", a.dtype));
   });
 }
 

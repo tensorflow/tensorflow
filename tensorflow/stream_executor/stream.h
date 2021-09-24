@@ -362,24 +362,6 @@ class Stream {
   }
 
   template <typename InputType, typename OutputType>
-  port::Status ConvolveForwardWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<InputType> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputType> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithAlgorithm(
-        dnn::ConvolutionKind::FORWARD, input_descriptor, input_data,
-        filter_descriptor, filter_data, output_descriptor, *output,
-        convolution_descriptor, scratch_allocator, algorithm_config,
-        output_profile_result);
-  }
-
-  template <typename InputType, typename OutputType>
   port::Status ConvolveWithExecutionPlan(
       dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<InputType> input_data,
@@ -404,24 +386,6 @@ class Stream {
     }
 #endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename InputType, typename OutputType>
-  port::Status ConvolveForwardWithExecutionPlan(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<InputType> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputType> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithExecutionPlan(
-        dnn::ConvolutionKind::FORWARD, input_descriptor, input_data,
-        filter_descriptor, filter_data, output_descriptor, *output,
-        convolution_descriptor, scratch_allocator, plan_config,
-        output_profile_result);
   }
 
   template <typename InputT, typename ScaleT, typename SideInputT,
@@ -491,82 +455,6 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardDataWithExecutionPlan(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<ElementType> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<ElementType> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithExecutionPlan(
-        dnn::ConvolutionKind::BACKWARD_DATA, input_descriptor,
-        *backward_input_data, filter_descriptor, filter_data, output_descriptor,
-        backward_output_data, convolution_descriptor, scratch_allocator,
-        plan_config, output_profile_result);
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<ElementType> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<ElementType> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithAlgorithm(
-        dnn::ConvolutionKind::BACKWARD_DATA, input_descriptor,
-        *backward_input_data, filter_descriptor, filter_data, output_descriptor,
-        backward_output_data, convolution_descriptor, scratch_allocator,
-        algorithm_config, output_profile_result);
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<ElementType> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithAlgorithm(
-        dnn::ConvolutionKind::BACKWARD_FILTER, input_descriptor, input_data,
-        filter_descriptor, *backward_filter_data, output_descriptor,
-        backward_output_data, convolution_descriptor, scratch_allocator,
-        algorithm_config, output_profile_result);
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardFilterWithExecutionPlan(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<ElementType> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-    return ConvolveWithExecutionPlan(
-        dnn::ConvolutionKind::BACKWARD_FILTER, input_descriptor, input_data,
-        filter_descriptor, *backward_filter_data, output_descriptor,
-        backward_output_data, convolution_descriptor, scratch_allocator,
-        plan_config, output_profile_result);
-  }
 
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -311,7 +312,7 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
       remove_task_requests_ TF_GUARDED_BY(mu_);
   // Map from client id to the time of the client's last heartbeat.
-  absl::flat_hash_map<int64_t, int64_t> latest_client_heartbeats_us_
+  absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_

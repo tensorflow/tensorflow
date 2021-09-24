@@ -612,6 +612,12 @@ class MklConvOp : public OpKernel {
       // Input tensors
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
+
+      OP_REQUIRES(
+          context, filter_tensor.NumElements() > 0,
+          errors::InvalidArgument("filter must not have zero elements "
+                                  "(i.e. all dimensions must be non-zero)"));
+
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, native_format);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape,

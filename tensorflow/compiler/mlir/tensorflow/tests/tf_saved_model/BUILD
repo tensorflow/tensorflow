@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:build_defs.bzl", "tf_saved_model_test")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     licenses = ["notice"],
@@ -31,32 +31,43 @@ filegroup(
     ],
 )
 
-# Drop trailing ".py" from all test file names.
-all_test_basenames = [py[:-3] for py in glob(
+test_files = glob(
     ["*.py"],
     exclude = [
         "common.py",
         "common_v1.py",
-        "keras.py",  # TODO(b/190855110)
     ],
-)]
+)
 
-# Instantiate all the tests.
-[tf_saved_model_test(
-    name = name,
-    data = [":test_utilities"],
-    tags = [
-        "no_mac",  # b/191167848
-        "no_oss",  # b/191167848
-        "no_pip",
-    ],
-) for name in all_test_basenames]
+[
+    py_binary(
+        name = file[:-3],
+        testonly = 1,
+        srcs = [file],
+        deps = [
+            "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common",
+            "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common_v1",
+        ],
+    )
+    for file in test_files
+]
 
-tf_saved_model_test(
-    name = "keras",
+glob_lit_tests(
     data = [":test_utilities"],
-    tags = [
+    default_tags = [
+        "no_mac",  # TODO(b/191167848)
         "no_oss",  # TODO(b/190855110)
         "no_pip",
+        "no_rocm",
     ],
+    driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        "common.py",
+        "common_v1.py",
+    ],
+    per_test_extra_data = {
+        file: [file[:-3]]
+        for file in test_files
+    },
+    test_file_exts = ["py"],
 )

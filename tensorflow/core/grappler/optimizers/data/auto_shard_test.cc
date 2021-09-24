@@ -39,6 +39,30 @@ using ::tensorflow::test::function::GDef;
 using ::tensorflow::test::function::NDef;
 using ::testing::UnorderedElementsAre;
 
+// Adds a MapDataset, a RebatchDataset, a PrefetchDataset and a fake sink that
+// are common to all graphs; and sets the fetch node to the fake sink.
+void FinishItem(GrapplerItem* item, const string& input_node_name) {
+  *item->graph.add_node() =
+      NDef("map_before_rebatch", "MapDataset", {input_node_name},
+           {{"f", "__inference_Dataset_map_normalize_8232"},
+            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() =
+      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
+  *item->graph.add_node() =
+      NDef("rebatch", "RebatchDataset", {"map_before_rebatch", "num_replicas"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() =
+      NDef("prefetch_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
+  *item->graph.add_node() =
+      NDef("prefetch", "PrefetchDataset", {"rebatch", "prefetch_count"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() = NDef("Sink", "Identity", {"prefetch"}, {});
+  item->fetch.push_back("Sink");
+}
+
 TEST(RewriteBatchTest, InfiniteSource) {
   GrapplerItem item;
   item.graph = GDef({
@@ -59,14 +83,8 @@ TEST(RewriteBatchTest, InfiniteSource) {
             {"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -93,14 +111,8 @@ TEST(RewriteBatchTest, FiniteSourceNoDropRemainder) {
             {"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -127,14 +139,8 @@ TEST(RewriteBatchTest, FiniteSourceDropRemainder) {
             {"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -162,14 +168,8 @@ TEST(RewriteBatchTest, UnknownCardinalitySourceDropRemainder) {
             {"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -196,14 +196,8 @@ TEST(RewriteBatchTest, FiniteSourceDropRemainderUnknown) {
             {"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -234,14 +228,8 @@ TEST(RewriteBatchTest, DropRemainderCardinalityNotAvailable) {
            {{"parallel_copy", false},
             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -272,14 +260,8 @@ TEST(RewriteBatchTest, OpNotSupported) {
             {"output_types", gtl::ArraySlice<DataType>{}}}),
       NDef("take_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       graph_tests_utils::MakeTakeNode("take", "batch", "take_count"),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"take", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "take");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -290,6 +272,61 @@ TEST(RewriteBatchTest, OpNotSupported) {
   EXPECT_THAT(ineligible_reason,
               UnorderedElementsAre("OP_NOT_SUPPORTED_TakeDataset",
                                    "BATCH_DROP_REMAINDER_NOT_INFINITE"));
+}
+
+TEST(RewriteBatchTest, BatchNotFound) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      graph_tests_utils::MakeTakeNode("take", "tf_record", "take_count"),
+      NDef("take_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+  });
+  FinishItem(&item, "take");
+
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_FALSE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                    &ineligible_reason));
+  EXPECT_THAT(ineligible_reason, UnorderedElementsAre("BATCH_NOT_FOUND"));
+}
+
+// This is a very rare case (OneDeviceStrategy).
+TEST(RewriteBatchTest, InfiniteSourceNoRebatch) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
+      NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}}),
+      NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+      NDef("drop_remainder", "Const", {},
+           {{"value", true}, {"dtype", DT_BOOL}}),
+      NDef("batch", "BatchDatasetV2",
+           {"repeat", "batch_size", "drop_remainder"},
+           {{"_cardinality", data::kInfiniteCardinality},
+            {"parallel_copy", false},
+            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}}),
+      NDef("Sink", "Identity", {"batch"}, {}),
+  });
+  item.fetch.push_back("Sink");
+
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_TRUE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                   &ineligible_reason))
+      << absl::StrJoin(ineligible_reason, ",");
 }
 
 }  // namespace

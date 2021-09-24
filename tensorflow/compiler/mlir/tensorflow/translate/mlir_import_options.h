@@ -26,9 +26,6 @@ struct MLIRImportOptions {
   // If true, functionalize the input graph before importing it into MLIR.
   bool upgrade_legacy = false;
 
-  // If true, run grappler over the input graph before importing it into MLIR.
-  bool enable_grappler = false;
-
   // Whether to unconditionally use the shape set via _output_shapes on import.
   bool unconditionally_use_set_output_shapes = false;
 };

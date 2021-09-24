@@ -68,7 +68,7 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     Value value;
     if (all_same_elems)
       value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
-    for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
+    for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
       Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);

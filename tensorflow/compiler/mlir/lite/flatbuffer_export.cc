@@ -1341,7 +1341,8 @@ Translator::GetQuantizationForQuantStatsOpOutput(
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
-  for (auto index_and_value : llvm::enumerate(min_max_attr.getFloatValues())) {
+  for (auto index_and_value :
+       llvm::enumerate(min_max_attr.getValues<llvm::APFloat>())) {
     const llvm::APFloat value = index_and_value.value();
     if (index_and_value.index() % 2 == 0) {
       mins.push_back(value.convertToFloat());

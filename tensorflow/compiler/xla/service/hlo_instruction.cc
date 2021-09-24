@@ -2906,6 +2906,11 @@ bool HloInstruction::IsElementwiseImpl(
   if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
+  if (opcode_ == HloOpcode::kBitcastConvert &&
+      primitive_util::BitWidth(shape_.element_type()) !=
+          primitive_util::BitWidth(operands_[0]->shape().element_type())) {
+    return false;
+  }
   return IsOpElementwise(opcode_);
 }
 

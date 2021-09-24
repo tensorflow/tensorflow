@@ -149,12 +149,13 @@ class SparseXentOpTestBase(test.TestCase):
         np.array([1.3862, 3.4420]), np_loss, rtol=1.e-3, atol=1.e-3)
 
   def testShapeMismatch(self):
-    with self.assertRaisesRegex(ValueError, ".*Rank mismatch:*"):
+    with self.assertRaisesRegex(
+        ValueError, "`labels.shape.rank` must equal `logits.shape.rank - 1`"):
       nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
           labels=[[0, 2]], logits=[[0., 1.], [2., 3.], [2., 3.]])
 
   def testScalar(self):
-    with self.assertRaisesRegex(ValueError, ".*Logits cannot be scalars*"):
+    with self.assertRaisesRegex(ValueError, "`logits` cannot be a scalar"):
       nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
           labels=constant_op.constant(0), logits=constant_op.constant(1.0))
 

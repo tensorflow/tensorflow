@@ -775,6 +775,21 @@ string BufferAssignment::ToString() const {
   return output;
 }
 
+string BufferAssignment::ToVerboseString() const {
+  string output =
+      absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
+  for (const BufferAllocation& allocation : allocations_) {
+    std::vector<string> buf_strs;
+    buf_strs.reserve(allocation.assigned_buffers().size());
+    for (const auto& instruction_and_offset : allocation.assigned_buffers()) {
+      buf_strs.push_back(instruction_and_offset.first->ToString());
+    }
+    absl::StrAppend(&output, "\n", allocation.ToString(),
+                    "contains:", absl::StrJoin(buf_strs, ","));
+  }
+  return output;
+}
+
 string BufferAssignment::BufferInfoString() const {
   string binfo;
   // Columns in buffer information:

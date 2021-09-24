@@ -868,7 +868,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
       auto reversal = window_reversalAttr();
-      return reversal && llvm::any_of(reversal.getBoolValues(),
+      return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }
   }];
@@ -1391,6 +1391,17 @@ def FusionOp : LHLO_Op<"fusion", [
         buffers.push_back(store.tensor());
       }
       return buffers;
+    }
+
+    SmallVector<Operation*> getFusionRoots() {
+      SmallVector<Operation*> roots;
+      for (auto value : getFusionResults()) {
+        Operation* op = value.getDefiningOp();
+        if (roots.empty() || roots.back() != op) {
+          roots.push_back(op);
+        }
+      }
+      return roots;
     }
   }];
 }

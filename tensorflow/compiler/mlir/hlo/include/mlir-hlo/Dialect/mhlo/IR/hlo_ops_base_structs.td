@@ -29,15 +29,6 @@ def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
   let summary = "Structure of dimension information for dot product";
 }
 
-def ScatterDimensionNumbers : StructAttr<
-    "ScatterDimensionNumbers", HLO_Dialect, [
-      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let summary = "Structure of dimension information for scatter";
-}
-
 def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   StructFieldAttr<"input_batch_dimension",I64Attr>,
   StructFieldAttr<"input_feature_dimension", I64Attr>,
@@ -50,14 +41,6 @@ def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
 
   let summary = "Structure of dimension information for conv op";
-}
-
-def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
-      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
-      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
-      StructFieldAttr<"start_index_map", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let summary = "Structure of dimension information for gather";
 }
 
 

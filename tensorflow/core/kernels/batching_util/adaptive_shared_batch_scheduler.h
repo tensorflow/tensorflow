@@ -209,6 +209,8 @@ class AdaptiveSharedBatchScheduler
 
   void MaybeScheduleClosedBatchesLockedFIFO() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  void MaybeAdjustInflightLimit() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Notifies scheduler of non-empty batch which is eligible for processing.
   void AddBatch(const internal::ASBSBatch<TaskType>* batch);
 
@@ -256,14 +258,22 @@ class AdaptiveSharedBatchScheduler
   // Fields controlling the dynamic adjustment of in_flight_batches_limit_.
   // Number of batches since the last in_flight_batches_limit_ adjustment.
   int64_t batch_count_ TF_GUARDED_BY(mu_) = 0;
-  // Sum of processing latency for batches counted by batch_count_.
-  int64_t batch_latency_sum_ TF_GUARDED_BY(mu_) = 0;
-  // Average batch latency for previous value of in_flight_batches_limit_.
-  double last_avg_latency_ms_ TF_GUARDED_BY(mu_) = 0;
-  // Did last_avg_latency_ms_ decrease from the previous last_avg_latency_ms_?
-  bool last_latency_decreased_ TF_GUARDED_BY(mu_) = false;
-  // Current direction (+-) to adjust in_flight_batches_limit_
-  int step_direction_ TF_GUARDED_BY(mu_) = 1;
+
+  struct DelayStats {
+    // Sum of processing latency for batches counted by batch_count_.
+    int64_t batch_latency_sum = 0;
+    // Average batch latency for previous value of in_flight_batches_limit_.
+    double last_avg_latency_ms = 0;
+    // Did last_avg_latency_ms decrease from the previous last_avg_latency_ms?
+    bool last_latency_decreased = false;
+    // Current direction (+-) to adjust in_flight_batches_limit_
+    int step_direction = 1;
+  };
+
+  // Delay stats between the creation of a batch and the completion of a
+  // batch.
+  DelayStats batch_delay_stats_ TF_GUARDED_BY(mu_);
+
   // Max adjustment size (as a fraction of in_flight_batches_limit_).
   constexpr static double kMaxStepSizeMultiplier = 0.125;  // 1/8;
   // Min adjustment size (as a fraction of in_flight_batches_limit_).
@@ -622,7 +632,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
       },
       profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
-  int64_t start_time = batch->creation_time_micros();
+  const int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
       const_cast<internal::ASBSBatch<TaskType>*>(batch)));
   int64_t end_time = GetEnv()->NowMicros();
@@ -634,21 +644,31 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
   }
   in_flight_batches_--;
   batch_count_++;
-  batch_latency_sum_ += end_time - start_time;
+  batch_delay_stats_.batch_latency_sum += end_time - start_time;
+
+  MaybeAdjustInflightLimit();
+
+  MaybeScheduleNextBatch();
+}
+
+template <typename TaskType>
+void AdaptiveSharedBatchScheduler<TaskType>::MaybeAdjustInflightLimit() {
   // Occasionally adjust in_flight_batches_limit_ to minimize average latency.
   // Although the optimal value may depend on the workload, the latency should
   // be a simple convex function of in_flight_batches_limit_, allowing us to
   // locate the global minimum relatively quickly.
   if (batch_count_ == options_.batches_to_average_over) {
-    double current_avg_latency_ms = (batch_latency_sum_ / 1000.) / batch_count_;
+    double current_avg_latency_ms =
+        (batch_delay_stats_.batch_latency_sum / 1000.) / batch_count_;
     bool current_latency_decreased =
-        current_avg_latency_ms < last_avg_latency_ms_;
+        current_avg_latency_ms < batch_delay_stats_.last_avg_latency_ms;
     if (current_latency_decreased) {
       // If latency improvement was because we're moving in the correct
       // direction, increase step_size so that we can get to the minimum faster.
       // If latency improvement was due to backtracking from a previous failure,
       // decrease step_size in order to refine our location.
-      step_size_multiplier_ *= (last_latency_decreased_ ? 2 : 0.5);
+      step_size_multiplier_ *=
+          (batch_delay_stats_.last_latency_decreased ? 2 : 0.5);
       step_size_multiplier_ =
           std::min(step_size_multiplier_, kMaxStepSizeMultiplier);
       step_size_multiplier_ =
@@ -656,22 +676,22 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     } else {
       // Return (nearly) to previous position and confirm that latency is better
       // there before decreasing step size.
-      step_direction_ = -step_direction_;
+      batch_delay_stats_.step_direction = -batch_delay_stats_.step_direction;
     }
-    in_flight_batches_limit_ +=
-        step_direction_ * in_flight_batches_limit_ * step_size_multiplier_;
+    in_flight_batches_limit_ += batch_delay_stats_.step_direction *
+                                in_flight_batches_limit_ *
+                                step_size_multiplier_;
     in_flight_batches_limit_ =
         std::min(in_flight_batches_limit_,
                  static_cast<double>(options_.num_batch_threads));
     in_flight_batches_limit_ =
         std::max(in_flight_batches_limit_,
                  static_cast<double>(options_.min_in_flight_batches_limit));
-    last_avg_latency_ms_ = current_avg_latency_ms;
-    last_latency_decreased_ = current_latency_decreased;
+    batch_delay_stats_.last_avg_latency_ms = current_avg_latency_ms;
+    batch_delay_stats_.last_latency_decreased = current_latency_decreased;
     batch_count_ = 0;
-    batch_latency_sum_ = 0;
+    batch_delay_stats_.batch_latency_sum = 0;
   }
-  MaybeScheduleNextBatch();
 }
 
 // ---------------- ASBSQueue ----------------

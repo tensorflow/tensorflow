@@ -335,6 +335,9 @@ message DebugOptions {
   // Convert synchronous all-reduces ops into asynchronous.
   bool xla_gpu_enable_async_all_reduce = 152;
 
+  // Size threshold (in bytes) for the GPU all-reduce combiner.
+  int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
@@ -347,7 +350,7 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 157
+  // Next id: 158
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

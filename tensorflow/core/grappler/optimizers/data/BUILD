@@ -410,7 +410,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ],
+    ] + tf_protos_all(),
 )
 
 cc_library(

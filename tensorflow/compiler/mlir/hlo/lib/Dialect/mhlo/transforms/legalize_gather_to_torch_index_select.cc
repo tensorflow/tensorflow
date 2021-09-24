@@ -49,8 +49,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     // We can use torch_index_select if the last dimension represents the
     // gather indices.
     auto dimension_numbers = gather.dimension_numbers();
-    if (dimension_numbers.index_vector_dim().getValue().getSExtValue() !=
-        index_vector_dim) {
+    if (dimension_numbers.getIndexVectorDim() != index_vector_dim) {
       return failure();
     }
 
@@ -61,11 +60,8 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     }
 
     // Only support the default case for start_index_map.
-    if (dimension_numbers.start_index_map().getType().getRank() != 1 ||
-        dimension_numbers.start_index_map()
-                .getValue(0)
-                .cast<IntegerAttr>()
-                .getValue() != 0) {
+    if (dimension_numbers.getStartIndexMap().size() != 1 ||
+        dimension_numbers.getStartIndexMap()[0] != 0) {
       return failure();
     }
 
@@ -75,18 +71,18 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     }
 
     // Offset dimensions should be the defaults.
-    if (dimension_numbers.offset_dims().getType().getNumElements() !=
+    if (dimension_numbers.getOffsetDims().size() !=
         result_ty.getRank() - index_vector_dim) {
       return failure();
     }
 
-    for (auto it : llvm::enumerate(dimension_numbers.offset_dims())) {
+    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if ((it.index() + index_vector_dim) != it.value()) {
         return failure();
       }
     }
 
-    for (auto it : llvm::enumerate(gather.slice_sizes().getIntValues())) {
+    for (auto it : llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {
@@ -108,10 +104,8 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
       index_select_shape.push_back(dim);
     }
 
-    if (!dimension_numbers.collapsed_slice_dims().getType().hasRank() ||
-        dimension_numbers.collapsed_slice_dims().getType().getNumElements() !=
-            1 ||
-        dimension_numbers.collapsed_slice_dims().getValue<int64_t>({0}) != 0) {
+    if (dimension_numbers.getCollapsedSliceDims().size() != 1 ||
+        dimension_numbers.getCollapsedSliceDims()[0] != 0) {
       return failure();
     }
 

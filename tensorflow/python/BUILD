@@ -2166,6 +2166,8 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",

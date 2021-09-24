@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -258,6 +259,14 @@ class HloModuleConfig {
     return &phase_ordering_config_;
   }
 
+  const absl::flat_hash_map<std::string, std::string>& flag_config() const {
+    return flag_config_;
+  }
+
+  absl::flat_hash_map<std::string, std::string>* mutable_flag_config() {
+    return &flag_config_;
+  }
+
   const int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
@@ -356,6 +365,10 @@ class HloModuleConfig {
   // This is the variable that stores state to allow us to use the same
   // config across functions during compilation.
   int phase_index_ = 0;
+
+  // Flag configuration to use instead of global flags. This allows multiple
+  // HLO modules to be compiled in parallel with different flag values.
+  absl::flat_hash_map<std::string, std::string> flag_config_;
 
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used

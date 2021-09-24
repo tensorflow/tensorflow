@@ -1732,3 +1732,63 @@ func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %4 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
   return %4: tensor<3xf32>
 }
+
+// -----
+
+// Test the mhlo.scatter attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<>
+module attributes{mhlo.scatter = #mhlo.scatter<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 2], index_vector_dim = 1>
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  scatter_dims_to_operand_dims = [0, 2],
+  inserted_window_dims = [0, 1],
+  update_window_dims = [1]
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  // expected-error @+1 {{duplicated `index_vector_dim` entry}}
+  index_vector_dim = 1,
+ >} {}
+
+// -----
+
+// Test the mhlo.gather attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<>
+module attributes{mhlo.gather = #mhlo.gather<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   index_vector_dim = 1,
+   offset_dims = [1],
+   start_index_map = [0],
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   // expected-error @+1 {{duplicated `collapsed_slice_dims` entry}}
+   collapsed_slice_dims = [0],
+ >} {}

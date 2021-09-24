@@ -16,6 +16,7 @@
 
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
@@ -48,10 +49,32 @@
 namespace xla {
 namespace gpu {
 
-namespace {
+static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
+    tfrt::Argument<tfrt::gpu::GpuContext> context,
+    const tfrt::ExecutionContext& exec_ctx) {
+  const GpuModuleData* gpu_module_data =
+      exec_ctx.request_ctx()->GetDataIfExists<GpuModuleData>();
+
+  if (gpu_module_data == nullptr) {
+    return tfrt::MakeStringError(
+        "No GpuModuleData resource found in the request context.");
+  }
+  llvm::StringRef blob = gpu_module_data->blob;
+
+  if (blob.empty() || blob.back() != 0)
+    return tfrt::MakeStringError("blob must be null-terminated");
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
+  if (!current) return current.takeError();
+
+  auto module = tfrt::gpu::wrapper::ModuleLoadData(*current, blob.data());
+  if (!module) return module.takeError();
+
+  return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
+}
 
 // TODO(hanbinyoon): Expose this in ccl_wrapper.h.
-llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
+static llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
   switch (data_type) {
     case ncclInt8:
     case ncclUint8:
@@ -74,9 +97,7 @@ llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
   }
 }
 
-}  // namespace
-
-tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
+static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
     const tfrt::ExecutionContext& exec_ctx) {
   auto* xccl_ctx = exec_ctx.request_ctx()->GetDataIfExists<XcclContext>();
@@ -216,7 +237,8 @@ static llvm::Error CustomCall(
   return llvm::Error::success();
 }
 
-void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
+static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
+  kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
   kernel_reg->AddKernel("xlir.ccl.collective_permute",
                         TFRT_KERNEL(CclCollectivePermute));
@@ -224,10 +246,7 @@ void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
 }
 
-namespace kernels {
-
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterXlirKernels);
 
-}  // namespace kernels
 }  // namespace gpu
 }  // namespace xla

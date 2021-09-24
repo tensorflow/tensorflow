@@ -407,6 +407,7 @@ REGISTER_OP("MutexLock")
     .Input("mutex: resource")
     .Output("mutex_lock: variant")
     .SetIsStateful()
+    .SetTypeConstructor(full_type::Nullary(TFT_MUTEX_LOCK))
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
       return Status::OK();

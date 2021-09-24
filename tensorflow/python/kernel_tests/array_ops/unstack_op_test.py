@@ -149,8 +149,8 @@ class UnstackOpTest(test.TestCase):
     # Testing unknown shape in graph mode.
     with ops.Graph().as_default():
       x = array_ops.placeholder(np.float32)
-      with self.assertRaisesRegex(ValueError,
-                                  r'Cannot infer num from shape <unknown>'):
+      with self.assertRaisesRegex(
+          ValueError, r'Cannot infer argument `num` from shape <unknown>'):
         array_ops.unstack(x)
 
   def testUnknownShapeOkWithNum(self):
@@ -164,7 +164,7 @@ class UnstackOpTest(test.TestCase):
     with ops.Graph().as_default():
       x = array_ops.placeholder(np.float32, shape=(None,))
       with self.assertRaisesRegex(
-          ValueError, r'Cannot infer num from shape \((\?|None),\)'):
+          ValueError, r'Cannot infer argument `num` from shape \((\?|None),\)'):
         array_ops.unstack(x)
 
   def testAgainstNumpy(self):
@@ -190,12 +190,14 @@ class UnstackOpTest(test.TestCase):
 
   def testAxisOutOfRange(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
-    with self.assertRaisesRegex(ValueError, r'axis = 2 not in \[-2, 2\)'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Argument `axis` = 2 not in range \[-2, 2\)'):
       array_ops.unstack(a, axis=2)
 
   def testAxisOutOfNegativeRange(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
-    with self.assertRaisesRegex(ValueError, r'axis = -3 not in \[-2, 2\)'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Argument `axis` = -3 not in range \[-2, 2\)'):
       array_ops.unstack(a, axis=-3)
 
   def testZeroLengthDim(self):
