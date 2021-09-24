@@ -22,11 +22,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
-// TODO(ptucker): Consider switching back to hash_set - I had trouble getting it
-// to work with string values.
-#include <set>
 #include <string>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -144,7 +142,7 @@ template <typename T>
 void OutputSparseTensor(
     OpKernelContext* ctx, const TensorShape& output_shape,
     const int64_t num_values,
-    const std::map<std::vector<int64>, absl::btree_set<T>>& sets) {
+    const absl::btree_map<std::vector<int64_t>, absl::btree_set<T>>& sets) {
   // Allocate 3 output tensors for sparse data.
   Tensor *out_indices_t, *out_values_t, *out_shape_t;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(
@@ -205,7 +203,7 @@ bool ValidateIndicesFromContext(OpKernelConstruction* ctx) {
 template <typename T>
 void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
                             const VarDimArray& input_strides,
-                            const std::vector<int64>& group_indices,
+                            const std::vector<int64_t>& group_indices,
                             absl::flat_hash_set<T>* result) {
   OP_REQUIRES(ctx, group_indices.size() == input_strides.size() - 1,
               errors::Internal("group_indices.size ", group_indices.size(),
@@ -470,7 +468,7 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   const auto set1_strides = Strides(shape1);
   const auto set2_strides = Strides(shape2);
 
-  std::map<std::vector<int64>, absl::btree_set<T>> group_sets;
+  absl::btree_map<std::vector<int64_t>, absl::btree_set<T>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
@@ -491,12 +489,12 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
     absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets[group_indices] = std::move(group_set);
     }
   }
 
@@ -526,7 +524,7 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   const ShapeArray set1_strides = Strides(TensorShapeToArray(set1_t.shape()));
 
-  std::map<std::vector<int64>, absl::btree_set<T>> group_sets;
+  absl::btree_map<std::vector<int64_t>, absl::btree_set<T>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
@@ -573,12 +571,12 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
     absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets[group_indices] = std::move(group_set);
     }
   }
 
@@ -647,7 +645,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
   const ShapeArray set1_strides = Strides(set1_st.shape());
   const ShapeArray set2_strides = Strides(set2_st.shape());
 
-  std::map<std::vector<int64>, absl::btree_set<T>> group_sets;
+  absl::btree_map<std::vector<int64_t>, absl::btree_set<T>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
@@ -664,16 +662,16 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
   // set for each row.
   while ((set1_group_it != set1_grouper.end()) ||
          (set2_group_it != set2_grouper.end())) {
-    const std::vector<int64>& set1_group_indices =
+    const std::vector<int64_t>& set1_group_indices =
         (set1_group_it == set1_grouper.end()) ? GROUP_ITER_END
                                               : (*set1_group_it).group();
-    const std::vector<int64>& set2_group_indices =
+    const std::vector<int64_t>& set2_group_indices =
         (set2_group_it == set2_grouper.end()) ? GROUP_ITER_END
                                               : (*set2_group_it).group();
 
     int64_t compare_groups;
     CompareGroups(ctx, set1_group_indices, set2_group_indices, &compare_groups);
-    const std::vector<int64>* group_indices = nullptr;
+    const std::vector<int64_t>* group_indices = nullptr;
 
     // Get values from set1, if applicable.
     set1_group_set.clear();
@@ -696,12 +694,12 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
     absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[*group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets[*group_indices] = std::move(group_set);
     }
   }
 
