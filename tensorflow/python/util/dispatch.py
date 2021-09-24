@@ -1008,8 +1008,8 @@ def _update_docstring_with_api_list(target, api_list):
     name = tf_export_lib.get_canonical_name_for_symbol(
         func, add_prefix_to_v1_names=True)
     if name is not None:
-      signature = tf_inspect.signature(func)
-      lines.append(f"  * `tf.{name}{signature}`")
+      params = tf_inspect.signature(func).parameters.keys()
+      lines.append(f"  * `tf.{name}({', '.join(params)})`")
   lines.sort()
   target.__doc__ = target.__doc__.replace("  <<API_LIST>>", "\n".join(lines))
 
