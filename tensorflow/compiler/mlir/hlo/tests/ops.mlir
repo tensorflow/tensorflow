@@ -1739,7 +1739,7 @@ func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-// Test the mhlo.scatter attribute printing/parsing.
+// Test custom attribute printing/parsing.
 // We really just need one op as holder, use module: this is the simplest top-level.
 
 // CHECK: module
@@ -1773,14 +1773,12 @@ module attributes{
 module attributes{
  mhlo.scatter = #mhlo.scatter<
   index_vector_dim = 1,
-  // expected-error @+1 {{duplicated `index_vector_dim` entry}}
+  // expected-error@+2 {{duplicated `index_vector_dim` entry}}
+  // expected-error@+1 {{failed parsing scatter dimension numbers}}
   index_vector_dim = 1,
  >} {}
 
 // -----
-
-// Test the mhlo.gather attribute printing/parsing.
-// We really just need one op as holder, use module: this is the simplest top-level.
 
 // CHECK: module
 // CHECK-SAME: mhlo.gather = #mhlo.gather<>
@@ -1803,6 +1801,105 @@ module attributes{
 module attributes{
  mhlo.gather = #mhlo.gather<
    collapsed_slice_dims = [0],
+   // expected-error @+2 {{failed parsing gather dimension numbers}}
    // expected-error @+1 {{duplicated `collapsed_slice_dims` entry}}
    collapsed_slice_dims = [0],
  >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3]
+  >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3],
+  >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      rhs_contracting_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+  >} {}
+
+// -----
+
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      // expected-error@+2 {{duplicated `rhs_batching_dimensions` entry}}
+      // expected-error@+1 {{failed parsing dot dimension numbers}}
+      rhs_batching_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+  >} {}
+
+// -----
+
+module attributes {
+  // expected-error@+4 {{expected '>'}}
+  // expected-error@+3 {{failed parsing dot dimension numbers}}
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1]
+      rhs_contracting_dimensions = [3]
+      lhs_contracting_dimensions = [2]
+      lhs_batching_dimensions = [0]
+  >} {}
+
+
+// -----
+
+module attributes {
+  // expected-error@+2 {{expected one of: `lhs_batching_dimensions`, `rhs_batching_dimensions`, `lhs_contracting_dimensions`, `rhs_contracting_dimensions`}}
+  // expected-error@+1 {{failed parsing dot dimension numbers}}
+  mhlo.dot = #mhlo.dot<foo = [0]>
+} {}
+
+// -----
+
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      rhs_contracting_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+      // expected-error@+2 {{expected one of: `lhs_batching_dimensions`, `rhs_batching_dimensions`, `lhs_contracting_dimensions`, `rhs_contracting_dimensions`}}
+      // expected-error@+1 {{failed parsing dot dimension numbers}}
+      foo = [0]
+  >} {}
+
