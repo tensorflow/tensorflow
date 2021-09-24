@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
@@ -245,11 +246,15 @@ Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
                   bool use_implicit_batch, int batch_size) {
   bool ret = false;
   if (use_implicit_batch) {
+    auto startTime = std::chrono::high_resolution_clock::now();
     ret = execution_context->enqueue(batch_size, &buffers[0], stream, nullptr);
-    VLOG(1) << "Called IExecutionContext::enqueue";
+    float duration = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - startTime).count();
+    VLOG(1) << "Called IExecutionContext::enqueue in " << duration << " seconds";
   } else {
+    auto startTime = std::chrono::high_resolution_clock::now();
     ret = execution_context->enqueueV2(&buffers[0], stream, nullptr);
-    VLOG(1) << "Called IExecutionContext::enqueueV2";
+    float duration = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - startTime).count();
+    VLOG(1) << "Called IExecutionContext::enqueueV2 in " << duration << " seconds";
   }
   if (!ret) {
     return errors::Internal("Failed to enqueue batch for TRT engine");
