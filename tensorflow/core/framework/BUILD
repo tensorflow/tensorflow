@@ -157,6 +157,7 @@ exports_files(
         "op.h",
         "op_def_builder.h",
         "full_type_util.h",
+        "full_type_inference_util.h",
         "op_def_util.h",
         "shape_inference.h",
     ],
@@ -185,6 +186,7 @@ filegroup(
         "device.h",
         "device_base.h",
         "device_factory.h",
+        "full_type_inference_util.h",
         "full_type_util.h",
         "function.h",
         "function_handle_cache.h",
@@ -359,6 +361,8 @@ filegroup(
         "device_base.h",
         "device_factory.cc",
         "device_factory.h",
+        "full_type_inference_util.cc",
+        "full_type_inference_util.h",
         "full_type_util.cc",
         "full_type_util.h",
         "function.cc",
@@ -1031,10 +1035,17 @@ cc_library(
     ],
 )
 
+# TODO(mdan): Move these into a separate directory.
 cc_library(
     name = "full_type_util",
-    srcs = ["full_type_util.cc"],
-    hdrs = ["full_type_util.h"],
+    srcs = [
+        "full_type_inference_util.cc",
+        "full_type_util.cc",
+    ],
+    hdrs = [
+        "full_type_inference_util.h",
+        "full_type_util.h",
+    ],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",
@@ -1259,6 +1270,7 @@ tf_cc_tests(
         "dataset_test.cc",
         "device_base_test.cc",
         "disable_jit_test.cc",
+        "full_type_inference_util_test.cc",
         "function_test.cc",
         "graph_def_util_test.cc",
         "graph_to_functiondef_test.cc",
