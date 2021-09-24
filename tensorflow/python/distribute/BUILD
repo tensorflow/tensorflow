@@ -2160,3 +2160,41 @@ distribute_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+distribute_py_test(
+    name = "distributed_table_test",
+    srcs = ["distributed_table_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "notsan",  # Tsan failure doesn't seem to be caused by TF.
+    ],
+    deps = [
+        ":combinations",
+        ":device_util",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
+        ":ps_values",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/distribute/coordinator:coordinator_context",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/keras/saving",
+        "//tensorflow/python/module",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training:server_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
