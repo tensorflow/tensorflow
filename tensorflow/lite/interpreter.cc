@@ -349,23 +349,23 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
                              i);
         return kTfLiteError;
       case kTfLiteDelegateError:
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
             "Error in applying the default TensorFlow Lite delegate indexed "
             "at %zu, and all previously applied delegates are reverted.",
             i);
         return kTfLiteDelegateError;
       case kTfLiteApplicationError:
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
             "Failed to apply the default TensorFlow Lite delegate indexed at "
             "%zu because of incompatibility between runtime and delegate. "
             "Ignoring the error, and continuing anyway.",
             i);
         return kTfLiteApplicationError;
       case kTfLiteUnresolvedOps:
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
             "Failed to apply the default TensorFlow Lite delegate indexed at "
             "%zu because of unresolved ops (which could be resolved by "
             "another delegate). Ignoring the error, and continuing anyway.",
