@@ -761,7 +761,7 @@ HloSharding ScatterDataSharding(const HloSharding& index_sharding,
   const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
   std::vector<int64_t> data_tile_assignment_dims;
   std::vector<int64_t> relevant_index_dims;
-  for (int64_t i = 0, index_dim = 0; i < hlo->shape().rank(); ++i) {
+  for (int64_t i = 0, index_dim = 0; i < hlo->operand(2)->shape().rank(); ++i) {
     if (absl::c_binary_search(dnums.update_window_dims(), i)) {
       data_tile_assignment_dims.push_back(1);
     } else {

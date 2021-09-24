@@ -4487,6 +4487,56 @@ ENTRY entry {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ScatterIndexToUpdate2_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = bf16[15,8] parameter(0),
+    sharding={replicated metadata={op_name="a"}}
+  %indices = s32[8,1,1] parameter(1),
+    sharding={devices=[2,1,1,4]0,1,2,3,4,5,6,7
+      last_tile_dim_replicate metadata={op_name="b"}}
+  %p2 = bf16[8,1,8] parameter(2),
+    sharding={replicated metadata={op_name="c"}}
+  %updates = bf16[8,1,8] copy(%p2)
+  ROOT %scatter = bf16[15,8]{1,0} scatter(bf16[15,8] %input,
+    s32[8,1,1] %indices, bf16[8,1,8] %updates),
+    update_window_dims={2},
+    inserted_window_dims={0},
+    scatter_dims_to_operand_dims={0}, index_vector_dim=2, to_apply=%add,
+      sharding={replicated metadata={op_name="d"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "updates");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding(
+          "{devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, PartialShardingOnElementwise) {
   const char* const hlo_string = R"(
 HloModule module
