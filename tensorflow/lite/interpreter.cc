@@ -356,11 +356,21 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         return kTfLiteDelegateError;
       case kTfLiteApplicationError:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Ignoring failed application of the default "
-                             "TensorFlow Lite delegate indexed at %zu.",
-                             i);
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of incompatibility between runtime and delegate. "
+            "Ignoring the error, and continuing anyway.",
+            i);
         return kTfLiteApplicationError;
+      case kTfLiteUnresolvedOps:
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of unresolved ops (which could be resolved by "
+            "another delegate). Ignoring the error, and continuing anyway.",
+            i);
+        return kTfLiteUnresolvedOps;
       default:
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Unknown status (%d) after applying the default "

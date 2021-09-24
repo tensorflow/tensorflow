@@ -607,10 +607,13 @@ class Subgraph {
   // restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
-  // incompatibility with the TfLite runtime, e.g., the model graph is already
+  // incompatibility with the TF Lite runtime, e.g., the model graph is already
   // immutable when applying the delegate. However, the Subgraph is still in a
   // invokable state.
-  // 4. kTfLiteError: Unexpected/runtime failure.
+  // 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  // operator that cannot be resolved. This can happen when the op is not
+  // registered or built with the TF Lite framework.
+  // 5. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains

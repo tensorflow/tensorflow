@@ -520,7 +520,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following four status codes:
+  /// Returns one of the following status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate, or the delegate parameter was null. The Interpreter has been
@@ -530,7 +530,10 @@ class Interpreter {
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
   /// immutable when applying the delegate. However, the interpreter could still
   /// be invoked.
-  /// 4. kTfLiteError: Unexpected/runtime failure.
+  /// 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  /// operator that cannot be resolved. This can happen when the op is not
+  /// registered or built with the TF Lite framework.
+  /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
