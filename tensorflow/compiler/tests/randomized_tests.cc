@@ -1250,6 +1250,7 @@ TEST_F(OpTest, AvgPool3DGrad) {
 }
 
 TEST_F(OpTest, BatchMatMul) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> output_dims = RandomDims(2, 5, 0, 7);
@@ -1451,6 +1452,7 @@ TEST_F(OpTest, Cast) {
 }
 
 TEST_F(OpTest, CastBF16) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     DataType src_type, dst_type;
     src_type = Choose<DataType>({DT_FLOAT});
@@ -1608,6 +1610,7 @@ TEST_F(OpTest, RFFT3D) {
 }
 
 TEST_F(OpTest, IRFFT) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1, kDefaultMaxRank, 3);
     int64_t orig_size = dims[dims.size() - 1];
@@ -2342,6 +2345,7 @@ TEST_F(OpTest, MatMul) {
 }
 
 TEST_F(OpTest, MatrixDiag) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiag")
@@ -2351,6 +2355,7 @@ TEST_F(OpTest, MatrixDiag) {
 }
 
 TEST_F(OpTest, MatrixDiagPart) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiagPart")
@@ -2554,6 +2559,7 @@ TEST_F(OpTest, OneHot) {
 }
 
 TEST_F(OpTest, OnesLike) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
@@ -2794,6 +2800,7 @@ TEST_F(OpTest, ResizeBilinearGrad) {
 }
 
 TEST_F(OpTest, Reverse) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1);
     auto type = Choose<DataType>(kAllXlaTypes);
@@ -3281,6 +3288,7 @@ TEST_F(OpTest, Sum) {
 }
 
 TEST_F(OpTest, StridedSlice) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
@@ -3488,6 +3496,7 @@ TEST_F(OpTest, XlaDotV2) {
 }
 
 TEST_F(OpTest, ZerosLike) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
