@@ -906,14 +906,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tpu_xla_ops_gen",
+    name = "tpu_partition_ops_gen",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/tpu/ops",
+        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
     ],
 )
 
