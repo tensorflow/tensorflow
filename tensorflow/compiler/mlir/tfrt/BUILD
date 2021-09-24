@@ -131,6 +131,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
+        "@tf_runtime//backends/cpu:cpurt",
     ],
 )
 

@@ -129,7 +129,8 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = executable->InitializeCallFrame(operands, &call_frame))
+  if (auto err =
+          executable->InitializeCallFrame(operands, &call_frame, nullptr))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto s : state) {
