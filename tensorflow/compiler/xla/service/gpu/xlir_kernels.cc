@@ -70,6 +70,25 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   auto module = tfrt::gpu::wrapper::ModuleLoadData(*current, blob.data());
   if (!module) return module.takeError();
 
+  // Resolve constants.
+  for (const auto& constant : gpu_module_data->constants) {
+    if (constant.content.empty()) continue;
+
+    auto global = tfrt::gpu::wrapper::ModuleGetGlobal(
+        module->get(), constant.symbol_name.data());
+    if (!global) return global.takeError();
+
+    const void* constant_content =
+        static_cast<const void*>(constant.content.data());
+    tfrt::gpu::GpuPointer constant_content_ptr(
+        const_cast<void*>(constant_content), current->platform());
+
+    if (auto error = tfrt::gpu::wrapper::MemcpyAsync(
+            *current, global->base, constant_content_ptr, global->size_bytes,
+            tfrt::gpu::wrapper::Stream(nullptr, current->platform()))) {
+      return error;
+    }
+  }
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 

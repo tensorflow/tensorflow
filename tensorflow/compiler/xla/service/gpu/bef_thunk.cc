@@ -151,7 +151,7 @@ class BefThunk : public Thunk {
   // The module data will be set in the execution context for kernel thunk to
   // use during execution.
   tensorflow::mutex mutex_;
-  absl::optional<llvm::StringRef> gpu_module_data_ TF_GUARDED_BY(mutex_);
+  absl::optional<GpuModuleData> gpu_module_data_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace
@@ -410,11 +410,9 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
   // Construct the TFRT module and convert it to BEF.
   mlir::MLIRContext mlir_context;
-  mlir_context
-      .loadDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect>();
+  mlir_context.loadDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
+                           xla::gpu::XlirDialect>();
 
-  // TODO(changhuilin): For the whole program lowering, we will need to feed the
-  // right module key into the TFRT module in a pass.
   mlir::OwningOpRef<mlir::ModuleOp> tfrt_module = CreateTfrtKernelLaunchModule(
       &mlir_context, kernel_name, args.size(), launch_dimensions);
 
@@ -592,21 +590,19 @@ GetCollectivePermuteSourceTarget(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateKernelExecutionContext(absl::optional<llvm::StringRef> gpu_module_data) {
+CreateKernelExecutionContext(absl::optional<GpuModuleData> gpu_module_data) {
   if (!gpu_module_data.has_value()) {
     return tensorflow::errors::Internal(
         "GPU module data is not set for the kernel thunk.");
   }
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
       CreateExecutionContext(
           [&](tfrt::RequestContextBuilder& request_context_builder) {
             request_context_builder.context_data().emplace<GpuModuleData>(
-                GpuModuleData{*gpu_module_data});
+                *gpu_module_data);
             return Status::OK();
           }));
-
   return std::move(exec_ctx);
 }
 
@@ -631,11 +627,17 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
   // Save the module data for kernel thunk to use during execution.
   if (kind() == Thunk::kKernel) {
     tensorflow::mutex_lock lock(mutex_);
-    // The module data should be null-terminated, so the length of the inserted
-    // data is incremented by 1 to include '\0'.
     if (!gpu_module_data_.has_value()) {
-      gpu_module_data_ = llvm::StringRef(executable.text().c_str(),
+      GpuModuleData module_data;
+      // The module data should be null-terminated, so the length of the
+      // inserted data is incremented by 1 to include '\0'.
+      module_data.blob = llvm::StringRef(executable.text().c_str(),
                                          executable.text().size() + 1);
+      for (const auto& constant : executable.constants()) {
+        module_data.constants.push_back(GpuModuleData::ConstantInfo{
+            .symbol_name = constant.symbol_name, .content = constant.content});
+      }
+      gpu_module_data_ = module_data;
     }
   }
   return Status::OK();

@@ -3232,9 +3232,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                                 std::string(kernel->getName()),
                                 ir_emitter_context_->llvm_module());
 
-  return {absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
-                                         std::string(kernel->getName()),
-                                         launch_dimensions)};
+  if (IsBefThunkEnabled()) {
+    return CreateBefKernelThunk(thunk_info, non_constant_buffers,
+                                std::string(kernel->getName()),
+                                launch_dimensions);
+  } else {
+    return {absl::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
+                                           std::string(kernel->getName()),
+                                           launch_dimensions)};
+  }
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(

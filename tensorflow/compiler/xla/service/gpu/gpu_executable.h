@@ -144,6 +144,8 @@ class GpuExecutable : public Executable {
     return allocations_;
   }
 
+  const std::vector<ConstantInfo>& constants() const { return constants_; }
+
  private:
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
