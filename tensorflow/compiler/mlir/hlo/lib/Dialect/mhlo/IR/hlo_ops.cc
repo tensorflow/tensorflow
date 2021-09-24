@@ -3702,9 +3702,32 @@ static LogicalResult SortDropEmptyUseArgs(SortOp op,
   return success();
 }
 
+/// Set the sorting dimension to the last dimension if it's not set and the rank
+/// is known.
+static LogicalResult SortOpInferDefaultDimension(SortOp op,
+                                                 PatternRewriter& rewriter) {
+  auto ty = op.getResultTypes()[0].dyn_cast<ShapedType>();
+  if (!ty) {
+    return failure();
+  }
+  if (op.dimension() != -1) {
+    return failure();
+  }
+
+  IntegerAttr dim = rewriter.getI64IntegerAttr(ty.getRank() - 1);
+  auto new_op = rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(),
+                                        op.operands(), dim, op.is_stableAttr());
+  Region& region = new_op.comparator();
+  rewriter.inlineRegionBefore(op.comparator(), region, region.end());
+  rewriter.replaceOp(op, new_op.getResults());
+
+  return success();
+}
+
 void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                          MLIRContext* /*context*/) {
   results.insert(SortDropEmptyUseArgs);
+  results.insert(SortOpInferDefaultDimension);
 }
 
 //===----------------------------------------------------------------------===//
