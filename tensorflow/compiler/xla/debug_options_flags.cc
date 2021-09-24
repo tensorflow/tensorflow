@@ -77,11 +77,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_deterministic_reductions(false);
 #else
   opts.set_xla_gpu_deterministic_reductions(true);
-<<<<<<< HEAD
 #endif
-=======
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
->>>>>>> 84c2ada135057760f94e5d393ad3d5d17457de18
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
