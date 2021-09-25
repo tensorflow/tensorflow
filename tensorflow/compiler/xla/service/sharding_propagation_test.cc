@@ -2215,6 +2215,35 @@ ENTRY %entry {
                                    "9,10,11,12,13,14,15}"));
 }
 
+TEST_P(ParameterizedMetadataTest, DoNotPassThroughConcatAtFirstIteration2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = bf16[16,2048,768] parameter(0),
+    sharding={devices=[1,2,1,8]0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15 last_tile_dim_replicate}
+  %concat = bf16[32,2048,768] concatenate(%p0, %p0), dimensions={0}
+  %add = bf16[32,2048,768] add(%concat, %concat),
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %result = bf16[32,2048,768] copy(%add)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* kernel = FindInstruction(module.get(), "concat");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_THAT(kernel, op::Sharding("{devices=[8,1,2]0,1,2,3,4,5,6,7,8,"
+                                   "9,10,11,12,13,14,15}"));
+}
+
 TEST_P(ParameterizedMetadataTest,
        DoNotPassThroughDynamicSliceAtFirstIteration) {
   const char* const hlo_string = R"(
