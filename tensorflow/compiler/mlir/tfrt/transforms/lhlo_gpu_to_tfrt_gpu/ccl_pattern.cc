@@ -30,7 +30,7 @@
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {

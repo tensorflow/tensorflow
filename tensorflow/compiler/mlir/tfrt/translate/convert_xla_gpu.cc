@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime

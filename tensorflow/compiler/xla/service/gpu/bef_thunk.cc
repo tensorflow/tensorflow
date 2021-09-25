@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
