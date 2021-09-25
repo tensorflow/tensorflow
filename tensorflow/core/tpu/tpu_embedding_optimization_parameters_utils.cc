@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "google/protobuf/wrappers.pb.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -410,27 +409,6 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kUserDefinedProgram,
       OptimizationAlgorithm::kAssign,
   };
-}
-
-bool NontrivialClippingLimits(const ClippingLimits& clipping_limits) {
-  return LowerClippingLimit(clipping_limits) !=
-             -std::numeric_limits<float>::infinity() ||
-         UpperClippingLimit(clipping_limits) !=
-             std::numeric_limits<float>::infinity();
-}
-
-float LowerClippingLimit(const ClippingLimits& clipping_limit) {
-  if (clipping_limit.has_lower()) {
-    return clipping_limit.lower().value();
-  }
-  return -std::numeric_limits<float>::infinity();
-}
-
-float UpperClippingLimit(const ClippingLimits& clipping_limit) {
-  if (clipping_limit.has_upper()) {
-    return clipping_limit.upper().value();
-  }
-  return std::numeric_limits<float>::infinity();
 }
 
 Status LoadOpShapeFunction::operator()(
