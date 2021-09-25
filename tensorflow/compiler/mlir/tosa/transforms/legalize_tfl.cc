@@ -145,6 +145,7 @@ DECL_CONVERT_OP(Custom);
 DECL_CONVERT_OP(ReverseV2);
 DECL_CONVERT_OP(Quantize);
 DECL_CONVERT_OP(Dequantize);
+DECL_CONVERT_OP(Const);
 DECL_CONVERT_OP(QConst);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
@@ -1476,6 +1477,8 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
       tfl_shape_op.input().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return failure();
 
+  if (!input_type.hasStaticShape()) return failure();
+
   auto input_shape = input_type.getShape();
 
   SmallVector<int32_t> shape_arr;
@@ -1861,7 +1864,7 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
   auto tfl_pack_op = cast<TFL::PackOp>(op);
 
   SmallVector<Value> inputs(tfl_pack_op.values());
-  assert(inputs.size() >= 2);
+  assert(inputs.size() >= 1);
 
   IntegerAttr axis_attr;
   {
@@ -2670,20 +2673,45 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
   return failure();
 }
 
-LogicalResult ConvertTFLQConstOp::matchAndRewrite(
+LogicalResult ConvertTFLConstOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_qconst_op = cast<TFL::QConstOp>(op);
+  auto tfl_qconst_op = cast<TFL::ConstOp>(op);
 
-  RankedTensorType output_type =
-      tfl_qconst_op.getResult().getType().dyn_cast<RankedTensorType>();
-
-  // Not a ranked tensor output
+  ShapedType output_type =
+      tfl_qconst_op.getResult().getType().dyn_cast<ShapedType>();
   if (!output_type) return failure();
 
   ElementsAttr elements = tfl_qconst_op.value();
   Type element_type = elements.getType().getElementType();
   if (output_type.getElementType().isa<quant::QuantizedType>()) {
     output_type = RankedTensorType::get(output_type.getShape(), element_type);
+  }
+
+  if (!output_type.hasRank()) {
+    output_type = elements.getType().cast<ShapedType>().clone(element_type);
+  }
+
+  rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, output_type, elements);
+
+  return success();
+}
+
+LogicalResult ConvertTFLQConstOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_qconst_op = cast<TFL::QConstOp>(op);
+
+  ShapedType output_type =
+      tfl_qconst_op.getResult().getType().dyn_cast<ShapedType>();
+  if (!output_type) return failure();
+
+  ElementsAttr elements = tfl_qconst_op.value();
+  Type element_type = elements.getType().getElementType();
+  if (output_type.getElementType().isa<quant::QuantizedType>()) {
+    output_type = RankedTensorType::get(output_type.getShape(), element_type);
+  }
+
+  if (!output_type.hasRank()) {
+    output_type = elements.getType().cast<ShapedType>().clone(element_type);
   }
 
   rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, output_type, elements);
@@ -2710,6 +2738,12 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
     e_type = rewriter.getIntegerType(48);
     attr = attr.cast<DenseIntOrFPElementsAttr>().mapValues(
         e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
+  }
+
+  if (!output_type.hasRank()) {
+    if (auto attr_type = attr.getType().dyn_cast<ShapedType>()) {
+      output_type = attr_type.clone(e_type);
+    }
   }
 
   output_type = output_type.clone(e_type);
@@ -2905,6 +2939,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLReverseV2);
   DEF_PATTERN_INSERT(TFLQuantize);
   DEF_PATTERN_INSERT(TFLDequantize);
+  DEF_PATTERN_INSERT(TFLConst);
   DEF_PATTERN_INSERT(TFLQConst);
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
@@ -2913,7 +2948,9 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLOneHot);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
     signalPassFailure();
   }
 
