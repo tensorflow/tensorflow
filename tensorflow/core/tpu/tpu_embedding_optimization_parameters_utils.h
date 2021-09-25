@@ -96,6 +96,15 @@ inline float GradientAccumulatorInitialValue() {
   return absl::bit_cast<float, uint32>(1);
 }
 
+// Whether the clipping limits cover a limited range of floating point numbers.
+bool NontrivialClippingLimits(const ClippingLimits &clipping_limits);
+
+// Returns the value of the lower clipping limit
+float LowerClippingLimit(const ClippingLimits &clipping_limit);
+
+// Returns the value of the upper clipping limit
+float UpperClippingLimit(const ClippingLimits &clipping_limit);
+
 // Generic shape function for per-optimization-algorithm load ops.
 class LoadOpShapeFunction {
  public:

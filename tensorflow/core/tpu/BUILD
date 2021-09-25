@@ -32,6 +32,7 @@ cc_library(
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//google/protobuf:wrappers_cc_proto",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
