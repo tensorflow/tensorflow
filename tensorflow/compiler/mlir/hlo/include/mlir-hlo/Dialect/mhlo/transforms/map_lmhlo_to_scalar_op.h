@@ -246,12 +246,12 @@ struct isComplexType {
   bool operator()(Type t) { return t.isa<ComplexType>(); }
 };
 
-template <template <typename T> typename MapTy, typename OpTy,
+template <template <typename T> class MapTy, typename OpTy,
           typename PredTy = llvm::is_detected<MapTy, OpTy>>
 struct MapableIf {
   using type = void;
 };
-template <template <typename T> typename MapTy, typename OpTy>
+template <template <typename T> class MapTy, typename OpTy>
 struct MapableIf<MapTy, OpTy, std::true_type> {
   using type = MapTy<OpTy>;
 };
