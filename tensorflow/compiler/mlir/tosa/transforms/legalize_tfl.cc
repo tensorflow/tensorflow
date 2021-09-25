@@ -1861,7 +1861,7 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
   auto tfl_pack_op = cast<TFL::PackOp>(op);
 
   SmallVector<Value> inputs(tfl_pack_op.values());
-  assert(inputs.size() >= 2);
+  assert(!inputs.empty());
 
   IntegerAttr axis_attr;
   {

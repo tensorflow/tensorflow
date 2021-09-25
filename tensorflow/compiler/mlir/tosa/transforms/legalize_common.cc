@@ -1944,7 +1944,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis > 0 && axis < input_shape.size());
+  assert(axis >= 0 && axis < input_shape.size());
   assert((input_shape[axis] % num_split) == 0);
   assert(num_split > 0);
 
@@ -2005,7 +2005,7 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis > 0 && axis < input_shape.size());
+  assert(axis >= 0 && axis < input_shape.size());
   int32_t size_split_sum = 0;
   for (int i = 0; i < size_split.size(); i++) {
     size_split_sum += size_split[i];
