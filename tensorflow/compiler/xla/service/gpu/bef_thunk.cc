@@ -635,7 +635,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
                                          executable.text().size() + 1);
       for (const auto& constant : executable.constants()) {
         module_data.constants.push_back(GpuModuleData::ConstantInfo{
-            .symbol_name = constant.symbol_name, .content = constant.content});
+            constant.symbol_name, constant.content});
       }
       gpu_module_data_ = module_data;
     }
