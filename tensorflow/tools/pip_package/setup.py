@@ -91,7 +91,9 @@ REQUIRED_PACKAGES = [
     'protobuf >= 3.9.2',
     'six ~= 1.15.0',
     'termcolor ~= 1.1.0',
-    'typing_extensions ~= 3.7.4',
+    # Some packages like black and pylint require typing-extensions >= 3.10, so
+    # we allow higher typing-extensions versions here to prevent conflicts
+    'typing-extensions >= 3.7, < 3.11',
     'wheel ~= 0.35',
     'wrapt ~= 1.12.1',
     # These packages need to be pinned exactly as newer versions are
