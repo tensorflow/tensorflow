@@ -466,10 +466,10 @@ Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
                ArrayAttr precision_config, OpBuilder *builder) {
   auto batch_dimensions =
       llvm::to_vector<4>(llvm::seq<int64_t>(0, num_batch_dims));
-  auto lhs_contracting_dimensions =
-      llvm::makeArrayRef({transpose_lhs ? num_batch_dims : num_batch_dims + 1});
-  auto rhs_contracting_dimensions =
-      llvm::makeArrayRef({transpose_rhs ? num_batch_dims + 1 : num_batch_dims});
+  auto lhs_contracting_dimensions = llvm::to_vector<1>(llvm::makeArrayRef(
+      {transpose_lhs ? num_batch_dims : num_batch_dims + 1}));
+  auto rhs_contracting_dimensions = llvm::to_vector<1>(llvm::makeArrayRef(
+      {transpose_rhs ? num_batch_dims + 1 : num_batch_dims}));
   auto dimension_numbers = DotDimensionNumbersAttr::get(
       builder->getContext(),
       /*lhs_batching_dimensions=*/batch_dimensions,
