@@ -34,7 +34,7 @@ class TfReductionTest(googletest.TestCase):
           return %0 : tensor<?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', codegen_reductions=True)
+    compiled = cpurt.compile(mlir_function, 'test', codegen_strategy=True)
 
     arg0 = np.random.uniform(0.0, 10.0, size=(8, 10)).astype(np.float32)
 
@@ -51,7 +51,7 @@ class TfReductionTest(googletest.TestCase):
           return %0 : tensor<8xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', codegen_reductions=True)
+    compiled = cpurt.compile(mlir_function, 'test', codegen_strategy=True)
 
     arg0 = np.random.uniform(0.0, 10.0, size=(8, 8)).astype(np.float32)
 

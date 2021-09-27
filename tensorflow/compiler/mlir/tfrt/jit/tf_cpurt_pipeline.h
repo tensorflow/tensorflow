@@ -23,14 +23,9 @@ namespace tensorflow {
 
 struct TfCpuRtPipelineOptions
     : public mlir::PassPipelineOptions<TfCpuRtPipelineOptions> {
-  Option<bool> codegen_reductions{
-      *this, "codegen-reductions",
-      llvm::cl::desc("Enable codegen strategy for reductions."),
-      llvm::cl::init(false)};
-  Option<bool> codegen_cwise{
-      *this, "codegen-cwise",
-      llvm::cl::desc("Enable codegen strategy for elemenwise ops."),
-      llvm::cl::init(false)};
+  Option<bool> codegen_strategy{*this, "codegen-strategy",
+                                llvm::cl::desc("Enable codegen strategy."),
+                                llvm::cl::init(false)};
 };
 
 // Creates a pipeline that lowers modules from the Tensorflow dialect to

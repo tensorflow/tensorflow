@@ -110,8 +110,9 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
   // Codegen strategy for reductions.
-  if (options.codegen_reductions) {
+  if (options.codegen_strategy) {
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
@@ -152,7 +153,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
   pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
-  if (options.codegen_reductions) {
+  if (options.codegen_strategy) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::createConvertLinalgTiledLoopsToSCFPass());
   }
