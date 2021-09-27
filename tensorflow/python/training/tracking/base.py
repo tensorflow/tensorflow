@@ -275,12 +275,10 @@ class CheckpointPosition(object):
       checkpoint.object_by_proto_id[self._proto_id] = trackable
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
-        trackable._create_or_restore_slot_variable(  # pylint: disable=protected-access
-            slot_variable_position=CheckpointPosition(
-                checkpoint=checkpoint,
-                proto_id=deferred_slot_restoration.slot_variable_id),
-            variable=deferred_slot_restoration.original_variable,
-            slot_name=deferred_slot_restoration.slot_name)
+        self._queue_slot_variable_for_restoration(
+            trackable, deferred_slot_restoration.original_variable,
+            deferred_slot_restoration.slot_variable_id,
+            deferred_slot_restoration.slot_name)
       for slot_restoration in checkpoint.slot_restorations.pop(
           self._proto_id, ()):
         optimizer_object = checkpoint.object_by_proto_id.get(
@@ -300,12 +298,9 @@ class CheckpointPosition(object):
         # it would not have the optimizer's `_create_or_restore_slot_variable`
         # method.
         elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
-          optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
-              slot_variable_position=CheckpointPosition(
-                  checkpoint=checkpoint,
-                  proto_id=slot_restoration.slot_variable_id),
-              variable=trackable,
-              slot_name=slot_restoration.slot_name)
+          self._queue_slot_variable_for_restoration(
+              optimizer_object, trackable, slot_restoration.slot_variable_id,
+              slot_restoration.slot_name)
       return True  # New assignment
     else:
       # The object was already mapped for this checkpoint load, which means
@@ -485,6 +480,44 @@ class CheckpointPosition(object):
       if serialized_tensor.name == VARIABLE_VALUE_KEY:
         return self._checkpoint.shape_map[serialized_tensor.checkpoint_key]
     return None
+
+  def _queue_slot_variable_for_restoration(self, optimizer_object, variable,
+                                           slot_variable_id, slot_name):
+    """Adds a slot variable onto the restoration queue.
+
+    See comment on slot_restoration_tensor_saveables in
+    _CheckpointRestoreCoordinator.__init__ for more information.
+
+    Args:
+      optimizer_object: Optimizer that owns the slot variable.
+      variable: Variable associated with the slot variable.
+      slot_variable_id: ID of the slot variable.
+      slot_name: Name of the slot variable.
+    """
+    slot_variable_position = CheckpointPosition(
+        checkpoint=self.checkpoint, proto_id=slot_variable_id)
+    # pylint: disable=protected-access
+    slot_variable = optimizer_object._create_or_restore_slot_variable(
+        slot_variable_position=slot_variable_position,
+        variable=variable,
+        slot_name=slot_name)
+    # pylint: enable=protected-access
+    if slot_variable is None:
+      # The optimizer returns None if the restore should not be done (yet).
+      return
+    slot_variable_position.checkpoint.object_by_proto_id[
+        slot_variable_id] = slot_variable
+    # pylint: disable=protected-access
+    slot_variable._maybe_initialize_trackable()
+    slot_variable._self_update_uid = self.checkpoint.restore_uid
+    # pylint: enable=protected-access
+    # Since this is a slot variable, there will be no new python_saveables, so
+    # ignore that return value.
+    new_restore_ops, new_tensor_saveables, _ = (
+        slot_variable_position.gather_ops_or_named_saveables())
+    self.checkpoint.new_restore_ops(new_restore_ops)
+    self.checkpoint.slot_restoration_tensor_saveables.update(
+        new_tensor_saveables)
 
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
@@ -983,6 +1016,20 @@ class Trackable(object):
     restore_ops.extend(
         current_position.checkpoint.restore_saveables(
             tensor_saveables, python_saveables))
+    # It is faster to restore slot variables separately because the file reader
+    # (BundleReader) assumes that variables are stored on disk in alphabetical
+    # order. However, slot variables are stored in their own groups after other
+    # variables, and while each group is alphabetically sorted, merging them
+    # into 1 read would cause lots of back and forth seeking, e.g.
+    #   variable/1 @ offset 0,
+    #   variable/1/slot/1 @ offset 100,
+    #   variable/1/slot/2 @ offset 200,
+    #   variable/2 @ offset 1,
+    #   variable/2/slot/1 @ offset 101, ...
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(
+            current_position.checkpoint.slot_restoration_tensor_saveables, []))
+    current_position.checkpoint.slot_restoration_tensor_saveables.clear()
     return restore_ops
 
   def _single_restoration_from_checkpoint_position(self, checkpoint_position,
