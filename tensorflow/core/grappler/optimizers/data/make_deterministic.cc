@@ -67,10 +67,11 @@ constexpr std::array<const char*, 7> kDeterministicStatefulOps = {
 // nondeterminism when run in parallel. All legacy random ops can be put on this
 // list, since the state in internal to the op itself, and so there is no risk
 // of ops outside the dataset reading or modifying the state.
-constexpr std::array<const char*, 12> kDeterministicStatefulOpsWhenAsync = {
+constexpr std::array<const char*, 15> kDeterministicStatefulOpsWhenAsync = {
     "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
     "ParameterizedTruncatedNormal", "TruncatedNormal", "RandomShuffle",
     "Multinomial", "RandomGamma", "RandomGammaGrad", "RandomPoisson",
+    "RandomCrop", "SampleDistortedBoundingBox", "SampleDistortedBoundingBoxV2",
     // Because Print and Assert are on this list, the order of Print and Assert
     // ops may not be deterministic when there is asynchrony. This is
     // acceptable, as it doesn't affect model outputs or weights or other
@@ -338,11 +339,22 @@ bool FunctionMayIntroduceNondeterminism(
     }
     bool is_function_op = op_reg_data->is_function_op;
 
-    // Rewrite nondeterministic stateful ops. Function ops are skipped, since we
-    // instead look at the ops within the function.
-    if (function_utils::IsNodeStateful(library, node_def,
-                                       /*skip_assert=*/false) &&
-        !is_function_op && !IsStatefulPartitionedCall((node_def)) &&
+    bool is_stateful = false;
+    if (!is_function_op) {
+      const OpDef* op_def;
+      s = OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def);
+      if (!s.ok()) {
+        VLOG(2) << "Could not look up op " << node_def.op()
+                << " in OpRegistry, so rewriting op to be safe";
+        return true;
+      }
+      is_stateful = op_def->is_stateful();
+    }
+
+    // Rewrite nondeterministic stateful ops. Function ops and If/While ops are
+    // skipped, since we instead look at the ops within the function(s).
+    if (is_stateful && !IsStatefulPartitionedCall((node_def)) &&
+        !IsIf(node_def) && !IsWhile(node_def) &&
         !IsDeterministicStatefulOp(nondeterminism_type, node_def.op())) {
       VLOG(2) << "Will rewrite due to op: " << node_def.op();
       return true;
