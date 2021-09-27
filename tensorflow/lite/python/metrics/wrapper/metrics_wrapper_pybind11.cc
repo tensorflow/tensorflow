@@ -16,7 +16,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/lite/python/metrics_wrapper/metrics_wrapper.h"
+#include "tensorflow/lite/python/metrics/wrapper/metrics_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;

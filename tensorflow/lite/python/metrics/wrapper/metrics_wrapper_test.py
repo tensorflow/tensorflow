@@ -18,7 +18,7 @@ import tensorflow as tf
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import ConverterError
-from tensorflow.lite.python.metrics_wrapper import metrics_wrapper
+from tensorflow.lite.python.metrics.wrapper import metrics_wrapper
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 

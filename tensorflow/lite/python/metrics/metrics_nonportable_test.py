@@ -26,10 +26,10 @@ import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
-from tensorflow.lite.python import metrics_nonportable as metrics
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import register_custom_opdefs
-from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
+from tensorflow.lite.python.metrics import converter_error_data_pb2
+from tensorflow.lite.python.metrics import metrics_nonportable as metrics
 from tensorflow.python.client import session
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import convert_to_constants
@@ -494,7 +494,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(
-        'testdata/control_flow_v1_saved_model')
+        '../testdata/control_flow_v1_saved_model')
     converter = lite.TFLiteConverterV2.from_saved_model(filename)
     self.convert_and_check_location_info(
         converter, converter_error_data_pb2.ConverterErrorData.UNKNOWNLOC)
@@ -523,7 +523,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
         expected_sources=[
-            'tensorflow/lite/python/metrics_nonportable_test.py',
+            'tensorflow/lite/python/metrics/metrics_nonportable_test.py',
         ])
 
   def test_location_from_saved_model(self):
@@ -549,13 +549,13 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
           converter,
           converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
           expected_sources=[
-              'tensorflow/lite/python/metrics_nonportable_test.py',
+              'tensorflow/lite/python/metrics/metrics_nonportable_test.py',
           ])
 
   @parameterized.named_parameters(
       ('_WithoutLoweringToSavedModel', False, None),
       ('_WithLoweringToSavedModel', True,
-       'tensorflow/lite/python/metrics_nonportable_test.py'))
+       'tensorflow/lite/python/metrics/metrics_nonportable_test.py'))
   def test_location_from_keras_model(self, lower_to_saved_model,
                                      expected_source):
     input_tensor1 = tf.keras.layers.Input(

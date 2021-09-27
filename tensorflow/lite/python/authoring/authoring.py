@@ -42,7 +42,7 @@ import functools
 # pylint: disable=g-import-not-at-top
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
-from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
+from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 

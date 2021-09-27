@@ -16,17 +16,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/python/metrics_wrapper/metrics_wrapper.h"
-
-namespace tensorflow {
-namespace monitoring {
-class MetricsExporter {
- public:
-  MetricsExporter() {}
-  void ExportMetrics() {}
-};
-}  // namespace monitoring
-}  // namespace tensorflow
+#include "learning/brain/google/monitoring/metrics_exporter.h"
+#include "tensorflow/lite/python/metrics/wrapper/metrics_wrapper.h"
 
 namespace tflite {
 namespace metrics_wrapper {
@@ -38,7 +29,19 @@ MetricsWrapper::~MetricsWrapper() {}
 
 MetricsWrapper* MetricsWrapper::CreateMetricsWrapper(
     const std::string& session_id) {
-  std::unique_ptr<MetricsExporter> exporter(new MetricsExporter());
+  MetricsExporter::Options options;
+  options.export_at_exit = false;
+  {
+    // Add session_id to root label list.
+    std::vector<streamz::Entity::Label> root_labels;
+    streamz::Entity::Label session_id_label;
+    session_id_label.set_key("session_id");
+    session_id_label.set_string_value(session_id);
+    root_labels.push_back(session_id_label);
+    options.entity_labels = root_labels;
+  }
+
+  std::unique_ptr<MetricsExporter> exporter(new MetricsExporter(options));
 
   MetricsWrapper* wrapper = new MetricsWrapper(std::move(exporter));
   return wrapper;
@@ -54,7 +57,6 @@ PyObject* MetricsWrapper::ExportMetrics() {
 
   Py_RETURN_NONE;
 }
-
 
 }  // namespace metrics_wrapper
 }  // namespace tflite

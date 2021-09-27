@@ -99,9 +99,9 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # pylint: disable=g-import-not-at-top
 try:
-  from tensorflow.lite.python import metrics_portable as metrics
+  from tensorflow.lite.python.metrics import metrics_portable as metrics
 except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
+  from tensorflow.lite.python.metrics import metrics_nonportable as metrics
 # pylint: enable=g-import-not-at-top
 
 

@@ -1,6 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
@@ -27,8 +26,8 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":metrics",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -181,10 +180,10 @@ py_library(
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
-        ":metrics",
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/lite/tools/optimize/debugging/python:debugger",
         "//tensorflow/python/client:session",
@@ -382,7 +381,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
-        "//tensorflow/lite/python/metrics_wrapper",
+        "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -492,14 +491,6 @@ py_library(
     ],
 )
 
-pytype_strict_library(
-    name = "metrics_interface",
-    srcs = ["metrics_interface.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-)
-
 # Use py_library since the metrics module is imported in a try-except block,
 # which doesn't work with the pytype_strict_library.
 py_library(
@@ -508,75 +499,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        ":metrics",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
     ],
-)
-
-pytype_strict_library(
-    name = "metrics_nonportable",
-    srcs = ["metrics_nonportable.py"],
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
-        "//tensorflow/python/eager:monitoring",
-    ],
-)
-
-py_test(
-    name = "metrics_nonportable_test",
-    srcs = ["metrics_nonportable_test.py"],
-    data = [
-        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
-    ],
-    python_version = "PY3",
-    tags = ["no_oss"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lite",
-        ":metrics_nonportable",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-pytype_strict_library(
-    name = "metrics_portable",
-    srcs = ["metrics_portable.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metrics_interface",
-    ],
-)
-
-py_test(
-    name = "metrics_portable_test",
-    srcs = ["metrics_portable_test.py"],
-    python_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":metrics_portable",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-pytype_strict_library(
-    name = "metrics",
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/lite:__subpackages__"],
-    deps = if_portable(
-        if_false = [":metrics_nonportable"],
-        if_true = [":metrics_portable"],
-    ),
 )
 
 py_library(

@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python metrics helpr TFLiteMetrics check."""
-from tensorflow.lite.python import metrics_portable as metrics
+from tensorflow.lite.python.metrics import metrics_portable as metrics
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 

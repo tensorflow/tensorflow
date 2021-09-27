@@ -17,9 +17,9 @@
 from typing import Optional, Text
 import uuid
 
-from tensorflow.lite.python import metrics_interface
-from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
-from tensorflow.lite.python.metrics_wrapper import metrics_wrapper
+from tensorflow.lite.python.metrics import converter_error_data_pb2
+from tensorflow.lite.python.metrics import metrics_interface
+from tensorflow.lite.python.metrics.wrapper import metrics_wrapper
 from tensorflow.python.eager import monitoring
 
 _counter_debugger_creation = monitoring.Counter(

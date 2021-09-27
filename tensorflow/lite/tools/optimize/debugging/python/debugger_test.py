@@ -17,10 +17,9 @@
 import csv
 import io
 import re
-
 from unittest import mock
-from absl.testing import parameterized
 
+from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
@@ -33,9 +32,9 @@ from tensorflow.python.training.tracking import tracking
 
 # pylint: disable=g-import-not-at-top
 try:
-  from tensorflow.lite.python import metrics_portable as metrics
+  from tensorflow.lite.python.metrics import metrics_portable as metrics
 except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
+  from tensorflow.lite.python.metrics import metrics_nonportable as metrics
 # pylint: enable=g-import-not-at-top
 
 

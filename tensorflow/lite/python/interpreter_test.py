@@ -40,10 +40,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 try:
-  from tensorflow.lite.python import metrics_portable
+  from tensorflow.lite.python.metrics import metrics_portable
   metrics = metrics_portable
 except ImportError:
-  from tensorflow.lite.python import metrics_nonportable
+  from tensorflow.lite.python.metrics import metrics_nonportable
   metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
