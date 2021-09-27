@@ -2178,7 +2178,8 @@ struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
     }
     Type result_type = op.getResult().getType();
     auto pad_tensor_op = linalg::PadTensorOp::createPadScalarOp(
-        result_type, adaptor.operand(), padding_val, low, high, loc, rewriter);
+        result_type, adaptor.operand(), padding_val, low, high,
+        /*packing=*/false, loc, rewriter);
     rewriter.replaceOp(op, pad_tensor_op.getResult());
     return success();
   }
