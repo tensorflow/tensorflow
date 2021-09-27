@@ -324,11 +324,11 @@ void State::PauseTiming() { ::tensorflow::testing::StopTiming(); }
 
 void State::ResumeTiming() { ::tensorflow::testing::StartTiming(); }
 
-void State::SetBytesProcessed(::tensorflow::int64 bytes) {
+void State::SetBytesProcessed(int64_t bytes) {
   ::tensorflow::testing::BytesProcessed(bytes);
 }
 
-void State::SetItemsProcessed(::tensorflow::int64 items) {
+void State::SetItemsProcessed(int64_t items) {
   ::tensorflow::testing::ItemsProcessed(items);
 }
 

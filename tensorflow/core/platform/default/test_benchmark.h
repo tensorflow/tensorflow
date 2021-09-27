@@ -194,13 +194,13 @@ class State {
   // execution.  This routine is typically called once at the end of a
   // throughput oriented benchmark.  If this routine is called with a
   // value > 0, then bytes processed per second is also reported.
-  void SetBytesProcessed(::tensorflow::int64 bytes);
+  void SetBytesProcessed(int64_t bytes);
 
   // If this routine is called with items > 0, then an items/s
   // label is printed on the benchmark report line for the currently
   // executing benchmark. It is typically called at the end of a processing
   // benchmark where a processing items/second output is desired.
-  void SetItemsProcessed(::tensorflow::int64 items);
+  void SetItemsProcessed(int64_t items);
 
   // If this method is called, the specified label is printed at the
   // end of the benchmark report line for the currently executing
