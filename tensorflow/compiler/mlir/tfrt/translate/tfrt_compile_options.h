@@ -67,6 +67,10 @@ struct TfrtCompileOptions {
   // in order to saved TPU memory usage. This option is experimental.
   bool tpu_move_resource_gather_to_host = false;
 
+  // If true, fallback executeops that produce inputs to tpu program will use
+  // tpu host allocator. This options is experimental.
+  bool use_tpu_host_allocator_for_inputs = false;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.

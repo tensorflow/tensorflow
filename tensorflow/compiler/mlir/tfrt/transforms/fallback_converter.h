@@ -32,6 +32,10 @@ class FallbackConverter : public mlir::TypeConverter {
 
   void RegisterFallbackOp(mlir::Operation *op) { fallback_ops_.push_back(op); }
 
+  void ReplaceFallbackOp(int64_t key, mlir::Operation *op) {
+    fallback_ops_[key] = op;
+  }
+
   llvm::ArrayRef<mlir::Operation *> GetFallbackOps() const {
     return fallback_ops_;
   }
