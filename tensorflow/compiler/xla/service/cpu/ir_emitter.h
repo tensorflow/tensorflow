@@ -480,8 +480,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm_ir::AliasAnalysis alias_analysis_;
 
-  // The number of root instruction outer dimensions used in parallel loop
-  // emission (ParallelLoopEmitter).
+  // The number of outer dimensions of the root instruction's shape that
+  // will be partitioned when emitting parallel loops. (See
+  // ParallelLoopEmitter).
   int64_t num_dynamic_loop_bounds_ = 0;
 
   // Returns whether the given instruction should be emitted as a parallel loop.
