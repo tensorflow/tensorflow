@@ -360,6 +360,21 @@ cc_library(
 )
 
 cc_library(
+    name = "approx_topk",
+    srcs = ["approx_topk.cc"],
+    hdrs = ["approx_topk.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "slicing",
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
