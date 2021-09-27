@@ -37,20 +37,12 @@ struct CustomCallRewritePattern
   using tfrt::gpu::GpuAsyncOpConversionPattern<
       lmhlo::CustomCallOp>::GpuAsyncOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      lmhlo::CustomCallOp op, Value chain, Value stream,
-      ArrayRef<Value> operands,
+      lmhlo::CustomCallOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
+    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
-    if (operands.size() != op.args().size() + op.output().size()) {
-      return rewriter.notifyMatchFailure(
-          op,
-          "Number of buffer operands does not match the number of op inputs "
-          "and outputs.");
-    }
 
     int64_t target_args_count, target_results_count;
     llvm::SmallVector<int64_t, 4> args_to_target_args,
@@ -80,7 +72,7 @@ struct CustomCallRewritePattern
     auto out_chain =
         rewriter
             .create<xla::gpu::CustomCallOp>(
-                op.getLoc(), chain_type, stream, chain, operands,
+                op.getLoc(), chain_type, stream, chain, adaptor.getOperands(),
                 rewriter.getI64ArrayAttr(args_to_target_args),
                 op.backend_config().str(),
                 rewriter.getI64ArrayAttr(results_to_target_results),

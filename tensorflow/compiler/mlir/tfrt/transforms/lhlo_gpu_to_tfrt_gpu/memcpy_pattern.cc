@@ -59,20 +59,16 @@ struct MemcpyRewritePattern
       mlir::gpu::MemcpyOp>::GpuAsyncOpConversionPattern;
 
   FailureOr<Value> matchAndRewriteOp(
-      mlir::gpu::MemcpyOp op, Value chain, Value stream,
-      ArrayRef<Value> operands,
+      mlir::gpu::MemcpyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    mlir::gpu::MemcpyOpAdaptor adaptor =
-        mlir::gpu::MemcpyOpAdaptor(operands, op->getAttrDictionary());
     if (!adaptor.src().getType().isa<tfrt::gpu::BufferType>() ||
         !adaptor.dst().getType().isa<tfrt::gpu::BufferType>()) {
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
     }
     rewriter.eraseOp(op);
-    return rewriter
-        .create<tfrt::gpu::MemCopyOp>(op.getLoc(), adaptor.dst(), adaptor.src(),
-                                      stream, chain)
-        .getResult();
+    auto copy_op = rewriter.create<tfrt::gpu::MemCopyOp>(
+        op.getLoc(), adaptor.dst(), adaptor.src(), stream, chain);
+    return copy_op.getResult();
   }
 };
 

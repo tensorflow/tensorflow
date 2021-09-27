@@ -34,7 +34,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -129,34 +129,28 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
   llvm_unreachable("unsupported type");
 }
 
-mlir::Value MaybeCopyBiasToOutput(lmhlo_gpu::GEMMOp op, mlir::Value chain,
-                                  mlir::Value stream, mlir::OpBuilder& builder,
-                                  mlir::BlockAndValueMapping& mapping) {
-  return chain;
-}
+FloatAttr GetBeta(lmhlo_gpu::GEMMOp op) { return nullptr; }
+Value GetBias(lmhlo_gpu::GEMMOpAdaptor op) { return nullptr; }
 
-mlir::Value MaybeCopyBiasToOutput(lmhlo_gpu::GEMM_BiasOp op, mlir::Value chain,
-                                  mlir::Value stream, mlir::OpBuilder& builder,
-                                  mlir::BlockAndValueMapping& mapping) {
-  return builder
-      .create<tfrt::gpu::MemCopyOp>(op.getLoc(), mapping.lookup(op.output()),
-                                    mapping.lookup(op.bias()), stream, chain)
-      .getResult();
-}
+FloatAttr GetBeta(lmhlo_gpu::GEMM_BiasOp op) { return op.betaAttr(); }
+Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.bias(); }
 
 // Create all the Ops necessary for the GEMM operation, including the GEMM
 // operation itself.
-template <class GemmOpType>
+template <class GemmOp>
 FailureOr<Value> CreateTfrtOps(
-    GemmOpType srcOp, mlir::Value chain, mlir::Value stream, int64_t batch_size,
-    mlir::Type element_type, MatrixDescriptor lhs_matrix,
-    MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix,
-    Complex<llvm::APFloat> alpha, Complex<llvm::APFloat> beta,
-    cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder,
-    mlir::BlockAndValueMapping& mapping) {
-  chain = MaybeCopyBiasToOutput(srcOp, chain, stream, builder, mapping);
-
-  mlir::Location loc = srcOp.getLoc();
+    GemmOp op, typename GemmOp::Adaptor adaptor, mlir::Value chain,
+    mlir::Value stream, int64_t batch_size, mlir::Type element_type,
+    MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+    MatrixDescriptor output_matrix, Complex<llvm::APFloat> alpha,
+    Complex<llvm::APFloat> beta, cublasGemmAlgo_t algorithm,
+    mlir::OpBuilder& builder) {
+  auto loc = op.getLoc();
+  if (auto bias = GetBias(adaptor)) {
+    auto copy_op = builder.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(),
+                                                        bias, stream, chain);
+    chain = copy_op.getResult();
+  }
 
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
@@ -228,31 +222,27 @@ FailureOr<Value> CreateTfrtOps(
       .getResult();
 }
 
-template <class GemmOpType>
-FailureOr<Value> GemmOpConversionRewrite(
-    GemmOpType srcOp, Value chain, Value stream,
-    mlir::BlockAndValueMapping& mapping, mlir::OpBuilder& builder,
-    absl::optional<llvm::APFloat> beta_arg = absl::nullopt) {
-  mlir::Type element_type = srcOp.output()
-                                .getType()
-                                .template cast<mlir::MemRefType>()
-                                .getElementType();
+template <class GemmOp>
+FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
+                                         typename GemmOp::Adaptor adaptor,
+                                         Value chain, Value stream,
+                                         mlir::OpBuilder& builder) {
+  auto get_element_type = [](Value value) {
+    return value.getType().cast<mlir::MemRefType>().getElementType();
+  };
+  mlir::Type element_type = get_element_type(op.output());
   // Ensure the types of all elements are the same.
-  if (element_type !=
-      srcOp.lhs().getType().template cast<mlir::MemRefType>().getElementType())
-    return mlir::failure();
-  if (element_type !=
-      srcOp.rhs().getType().template cast<mlir::MemRefType>().getElementType())
-    return mlir::failure();
+  if (element_type != get_element_type(op.lhs())) return mlir::failure();
+  if (element_type != get_element_type(op.rhs())) return mlir::failure();
   const mlir::mhlo::DotDimensionNumbersAttr dim_nums =
-      srcOp.dot_dimension_numbers();
+      op.dot_dimension_numbers();
 
   // The row and column dimensions are the last two dimensions. All the
   // dimensions before them are batching dimensions.
   int64_t row_dim = dim_nums.getLhsBatchingDimensions().size();
   int64_t col_dim = dim_nums.getLhsBatchingDimensions().size() + 1;
 
-  int64_t batch_size = srcOp.batch_size();
+  int64_t batch_size = op.batch_size();
 
   // Check that the batch dims don't cover the last two dims.
   for (auto batch_dim : dim_nums.getLhsBatchingDimensions()) {
@@ -262,9 +252,9 @@ FailureOr<Value> GemmOpConversionRewrite(
 
   // Verify that the non-batch dimensions are minor-most. This is required for
   // efficient access.
-  const xla::Shape& lhs_shape = xla::TypeToShape(srcOp.lhs().getType());
-  const xla::Shape& rhs_shape = xla::TypeToShape(srcOp.rhs().getType());
-  const xla::Shape& output_shape = xla::TypeToShape(srcOp.output().getType());
+  xla::Shape lhs_shape = xla::TypeToShape(op.lhs().getType());
+  xla::Shape rhs_shape = xla::TypeToShape(op.rhs().getType());
+  xla::Shape output_shape = xla::TypeToShape(op.output().getType());
   for (const auto* shape : {&lhs_shape, &rhs_shape, &output_shape}) {
     if (shape->layout().minor_to_major(row_dim) >= 2) return mlir::failure();
     if (shape->layout().minor_to_major(col_dim) >= 2) return mlir::failure();
@@ -304,23 +294,20 @@ FailureOr<Value> GemmOpConversionRewrite(
   };
 
   MatrixDescriptor lhs_matrix =
-      make_descriptor(lhs_shape, mapping.lookup(srcOp.lhs()),
+      make_descriptor(lhs_shape, adaptor.lhs(),
                       dim_nums.getLhsContractingDimensions()[0] == row_dim);
   MatrixDescriptor rhs_matrix =
-      make_descriptor(rhs_shape, mapping.lookup(srcOp.rhs()),
+      make_descriptor(rhs_shape, adaptor.rhs(),
                       dim_nums.getRhsContractingDimensions()[0] == col_dim);
   MatrixDescriptor output_matrix = MatrixDescriptor{
-      mapping.lookup(srcOp.output()), /*transpose=*/false,
-      output_shape.dimensions(row_dim), output_shape.dimensions(col_dim)};
+      adaptor.output(), /*transpose=*/false, output_shape.dimensions(row_dim),
+      output_shape.dimensions(col_dim)};
 
-  Complex<llvm::APFloat> alpha{srcOp.alpha_real(), srcOp.alpha_imag()};
-  // If no beta_arg is supplied, we copy alpha and then zero it out to ensure
-  // beta has the same float semantics (IEEE single, IEEE double, ...) as alpha.
-  llvm::APFloat beta_real = beta_arg.has_value()
-                                ? beta_arg.value()
-                                : APFloat::getZero(alpha.real.getSemantics());
-  Complex<llvm::APFloat> beta{beta_real,
-                              APFloat::getZero(alpha.imag.getSemantics())};
+  Complex<llvm::APFloat> alpha{op.alpha_real(), op.alpha_imag()};
+  // Use zero with alpha's semantic if no beta_arg is supplied.
+  llvm::APFloat fp_zero = APFloat::getZero(alpha.real.getSemantics());
+  Complex<llvm::APFloat> beta{fp_zero, fp_zero};
+  if (auto attr = GetBeta(op)) beta.real = attr.getValue();
 
   if (xla::LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
@@ -328,41 +315,31 @@ FailureOr<Value> GemmOpConversionRewrite(
   }
 
   auto algorithm = static_cast<cublasGemmAlgo_t>(
-      srcOp.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
+      op.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
 
-  return CreateTfrtOps(srcOp, chain, stream, batch_size, element_type,
+  return CreateTfrtOps(op, adaptor, chain, stream, batch_size, element_type,
                        lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
-                       algorithm, builder, mapping);
-}
-
-absl::optional<llvm::APFloat> GetBeta(lmhlo_gpu::GEMMOp op) {
-  return absl::nullopt;
-}
-
-absl::optional<llvm::APFloat> GetBeta(lmhlo_gpu::GEMM_BiasOp op) {
-  return op.beta();
+                       algorithm, builder);
 }
 
 template <class GemmOpType>
 struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
+  using typename tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType>::OpAdaptor;
   using tfrt::gpu::GpuAsyncOpConversionPattern<
       GemmOpType>::GpuAsyncOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      GemmOpType op, Value chain, Value stream, ArrayRef<Value> operands,
+      GemmOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
+    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
 
-    BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(op->getOperands(), operands))
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
+    auto result = GemmOpConversionRewrite(op, adaptor, chain, stream, rewriter);
+    if (failed(result)) return failure();
 
     rewriter.eraseOp(op);
-
-    return GemmOpConversionRewrite(op, chain, stream, mapping, rewriter,
-                                   GetBeta(op));
+    return result;
   }
 };
 

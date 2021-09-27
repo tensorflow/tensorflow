@@ -252,33 +252,34 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
 
 template <class CclOpType>
 LogicalResult BufferOperandsEqualsOpArguments(CclOpType op,
-                                              ArrayRef<Value> operands) {
+                                              ValueRange operands) {
   if (operands.size() != op.operands().size() + op.results().size()) {
     return mlir::failure();
   }
   return mlir::success();
 }
 
-template <>
 LogicalResult BufferOperandsEqualsOpArguments(lmhlo::CollectivePermuteOp op,
-                                              ArrayRef<Value> operands) {
+                                              ValueRange operands) {
   // lmhlo::CollectivePermuteOp's input and output count are not variable.
   return mlir::success();
 }
 
 template <class CclOpType>
 struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
+  using typename tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType>::OpAdaptor;
   using tfrt::gpu::GpuAsyncOpConversionPattern<
       CclOpType>::GpuAsyncOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      CclOpType op, Value chain, Value stream, ArrayRef<Value> operands,
+      CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
+    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
 
-    if (mlir::failed(BufferOperandsEqualsOpArguments(op, operands))) {
+    if (mlir::failed(
+            BufferOperandsEqualsOpArguments(op, adaptor.getOperands()))) {
       return rewriter.notifyMatchFailure(
           op,
           "Number of buffer operands does not match the number of op inputs "
@@ -286,7 +287,7 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     }
 
     BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(op->getOperands(), operands))
+    for (auto pair : llvm::zip_first(op->getOperands(), adaptor.getOperands()))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
     auto context =
