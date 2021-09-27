@@ -739,6 +739,7 @@ cc_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:managed_stack_trace",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )

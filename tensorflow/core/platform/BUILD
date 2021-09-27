@@ -585,6 +585,22 @@ cc_library(
     hdrs = ["refcount.h"],
     deps = [
         ":logging",
+        ":mutex",
+        ":thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "refcount_test",
+    size = "small",
+    srcs = [
+        "refcount_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
