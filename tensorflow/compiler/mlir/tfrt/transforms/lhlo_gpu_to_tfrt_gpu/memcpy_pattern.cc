@@ -33,6 +33,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -61,20 +62,16 @@ struct MemcpyRewritePattern
       mlir::gpu::MemcpyOp op, Value chain, Value stream,
       ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
+    mlir::gpu::MemcpyOpAdaptor adaptor =
+        mlir::gpu::MemcpyOpAdaptor(operands, op->getAttrDictionary());
+    if (!adaptor.src().getType().isa<tfrt::gpu::BufferType>() ||
+        !adaptor.dst().getType().isa<tfrt::gpu::BufferType>()) {
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
-    BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(op->getOperands(), operands))
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
-
+    }
     rewriter.eraseOp(op);
-
     return rewriter
-        .create<tfrt::gpu::MemCopyOp>(op.getLoc(), mapping.lookup(op.dst()),
-                                      mapping.lookup(op.src()), stream, chain)
+        .create<tfrt::gpu::MemCopyOp>(op.getLoc(), adaptor.dst(), adaptor.src(),
+                                      stream, chain)
         .getResult();
   }
 };
