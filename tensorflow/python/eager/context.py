@@ -79,6 +79,11 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
+    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
+
 
 # This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
@@ -89,17 +94,24 @@ def enable_run_eager_op_as_function():
   TF2 programs in the runtime, thereby improving consistency (in terms of
   optimizations and rewrites for instance) and maintainability.
   """
-  context_safe().run_eager_op_as_function = True
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = True
 
 
-# This method should only be called after the context has beein initialized.
+# This method should only be called after the context has been initialized.
 def disable_run_eager_op_as_function():
-  context_safe().run_eager_op_as_function = False
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = False
 
 
-# This method should only be called after the context has beein initialized.
 def run_eager_op_as_function_enabled():
-  return context_safe().run_eager_op_as_function
+  if context_safe() is not None:
+    return context_safe().run_eager_op_as_function
+  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -445,8 +457,7 @@ class Context(object):
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
-    self._run_eager_op_as_function = os.getenv(
-        "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
+    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None

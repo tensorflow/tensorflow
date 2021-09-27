@@ -1120,8 +1120,7 @@ def enable_eager_op_as_function(fn):
 
   def wrapper(*args, **kwargs):
     # If `run_eager_op_as_function` is already enabled do nothing.
-    if (context.context_safe() is None or
-        context.run_eager_op_as_function_enabled()):
+    if context.run_eager_op_as_function_enabled():
       return fn(*args, **kwargs)
 
     context.enable_run_eager_op_as_function()
@@ -1175,8 +1174,7 @@ def with_eager_op_as_function(cls=None, only_as_function=False):
   """
 
   def decorator(cls):
-    if (context.context_safe() is None or
-        context.run_eager_op_as_function_enabled()):
+    if context.run_eager_op_as_function_enabled():
       return cls
 
     for name, value in cls.__dict__.copy().items():
