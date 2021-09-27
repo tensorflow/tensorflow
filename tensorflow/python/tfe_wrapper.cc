@@ -917,6 +917,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
                                       status.get());
   });
+  m.def("TFE_ContextSetRunEagerOpAsFunction", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetRunEagerOpAsFunction(tensorflow::InputTFE_Context(ctx),
+                                       enable, status.get());
+  });
 
   // TFE_Executor logic
   m.def(

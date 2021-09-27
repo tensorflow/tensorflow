@@ -79,12 +79,8 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-# This flag and the associated environment var are transient and will eventually
-# be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
-    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
 
-
+# This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
   """Execute elementary eager ops (non-function) wrapped in a call op.
 
@@ -93,19 +89,17 @@ def enable_run_eager_op_as_function():
   TF2 programs in the runtime, thereby improving consistency (in terms of
   optimizations and rewrites for instance) and maintainability.
   """
-  # Must be called before context is actually built.
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+  context_safe().run_eager_op_as_function = True
 
 
+# This method should only be called after the context has beein initialized.
 def disable_run_eager_op_as_function():
-  # Must be called before context is actually built.
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+  context_safe().run_eager_op_as_function = False
 
 
+# This method should only be called after the context has beein initialized.
 def run_eager_op_as_function_enabled():
-  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  return context_safe().run_eager_op_as_function
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -451,7 +445,8 @@ class Context(object):
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
-    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
+    self._run_eager_op_as_function = os.getenv(
+        "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -1775,6 +1770,16 @@ class Context(object):
 
     self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
+
+  @property
+  def run_eager_op_as_function(self):
+    return self._run_eager_op_as_function
+
+  @run_eager_op_as_function.setter
+  def run_eager_op_as_function(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
+    self._run_eager_op_as_function = enable
 
   @property
   def device_policy(self):
