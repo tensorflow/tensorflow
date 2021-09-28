@@ -87,6 +87,7 @@ RunParams = collections.namedtuple(
         "test_name",
         # Is this test for TF 2.0?
         "is_v2",
+        "dynamic_shape",
     ])
 
 FP32 = "FP32"
@@ -160,8 +161,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
     self._trt_test_params = None
     self._disable_non_trt_optimizers = False
-    self._use_implicit_batch = True
-    self._profile_strategy = "Unknown"
+    self._profile_strategy = "ImplicitBatchModeCompatible"
 
   def setUp(self):
     """Setup method."""
@@ -265,10 +265,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def DisableNonTrtOptimizers(self):
     self._disable_non_trt_optimizers = True
-
-  def SetDynamicShapeModeAndProfileStrategy(self, profile_strategy="Range"):
-    self._use_implicit_batch = False
-    self._profile_strategy = profile_strategy
 
   def GetParams(self):
     """Returns a TfTrtIntegrationTestParams for the test."""
@@ -457,7 +453,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
           conversion_params=conversion_params,
-          use_dynamic_shape=not self._use_implicit_batch,
+          use_dynamic_shape=run_params.dynamic_shape,
           dynamic_shape_profile_strategy=self._profile_strategy)
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
@@ -516,12 +512,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                       conversion_params)
     converter.convert()
 
-    if not self._use_implicit_batch and self._ShouldConverterBuild(run_params):
+    if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
 
       def _BuildInputFn():
         for shapes in self._GetParamsCached().input_dims:
-          yield [np.zeros(x).astype(np.float32) for x in shapes]
+          yield [
+              array_ops.zeros(x, dtype=spec.dtype)
+              for (x, spec) in zip(shapes,
+                                   self._GetParamsCached().input_specs)
+          ]
 
       converter.build(input_fn=_BuildInputFn)
 
@@ -886,7 +886,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           all_op_names.append(node.name)
           if node.op == "TRTEngineOp":
             trt_op_names.append(node.name)
-            if not self._use_implicit_batch:
+            if run_params.dynamic_shape:
               self.assertEqual(
                   self._ToString(node.attr["profile_strategy"].s).lower(),
                   self._profile_strategy.lower())
@@ -1066,6 +1066,7 @@ def _GetTestConfigsV1():
   convert_online, convert_offline = True, False
   dynamic_engine, static_engine = True, False
   use_calibration, no_calibration = True, False
+  implicit_batch = False
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1073,10 +1074,12 @@ def _GetTestConfigsV1():
   # Note: INT8 without calibration behaves like FP32/FP16.
   opts = list(
       itertools.product([FP32, FP16, INT8], [convert_online, convert_offline],
-                        [dynamic_engine, static_engine], [no_calibration]))
+                        [dynamic_engine, static_engine], [no_calibration],
+                        [implicit_batch]))
   # We always run calibration with offline tool.
   # TODO(aaroey): static calibration engine is not supported yet.
-  opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  opts.append(
+      (INT8, convert_offline, dynamic_engine, use_calibration, implicit_batch))
   return opts
 
 
@@ -1099,7 +1102,7 @@ def _GetTestConfigsV2():
   # - INT8 without calibration behaves like FP32/FP16.
   opts = list(
       itertools.product([FP32, FP16, INT8], [convert_offline], [dynamic_engine],
-                        [no_calibration]))
+                        [no_calibration], [False, True]))
   # We always run calibration with offline tool.
   # TODO(aaroey): INT8+calibration is not supported yet in V2.
   # opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
@@ -1112,9 +1115,10 @@ def _GetTest(run_params):
   def _Test(self):
     logging.info(
         "Running test %s with parameters: convert_online=%s, "
-        "precision_mode=%s, dynamic_engine=%s", run_params.test_name,
-        run_params.convert_online, run_params.precision_mode,
-        run_params.dynamic_engine)
+        "precision_mode=%s, dynamic_engine=%s, dynamic_shape_mode%s",
+        run_params.test_name, run_params.convert_online,
+        run_params.precision_mode, run_params.dynamic_engine,
+        run_params.dynamic_shape)
     self.RunTest(run_params)
 
   return _Test
@@ -1123,20 +1127,23 @@ def _GetTest(run_params):
 def _AddTestsFor(test_class, is_v2):
   """Adds test methods to TfTrtIntegrationTestBase for specific TF version."""
   opts = _GetTestConfigsV2() if is_v2 else _GetTestConfigsV1()
-  for (precision_mode, convert_online, dynamic_engine, use_calibration) in opts:
+  for (precision_mode, convert_online, dynamic_engine, use_calibration,
+       dynamic_shape) in opts:
     conversion = "OnlineConversion" if convert_online else "OfflineConversion"
     engine_type = "DynamicEngine" if dynamic_engine else "StaticEngine"
     calibration_type = "UseCalibration" if use_calibration else "NoCalibration"
-    test_name = "%s_%s_%s_%s_%s" % ("testTfTrtV2" if is_v2 else "testTfTrt",
-                                    conversion, engine_type, precision_mode,
-                                    calibration_type)
+    dynamic_shape_type = "DynamicShape" if dynamic_shape else "ImplicitBatch"
+    test_name = "%s_%s_%s_%s_%s_%s" % ("testTfTrtV2" if is_v2 else "testTfTrt",
+                                       conversion, engine_type, precision_mode,
+                                       calibration_type, dynamic_shape_type)
     run_params = RunParams(
         convert_online=convert_online,
         precision_mode=precision_mode,
         dynamic_engine=dynamic_engine,
         test_name=test_name,
         use_calibration=use_calibration,
-        is_v2=is_v2)
+        is_v2=is_v2,
+        dynamic_shape=dynamic_shape)
     if is_v2:
       setattr(test_class, test_name,
               test_util.run_v2_only(_GetTest(run_params)))

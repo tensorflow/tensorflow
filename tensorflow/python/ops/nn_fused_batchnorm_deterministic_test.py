@@ -162,5 +162,5 @@ class FusedBatchNormalizationDeterministicTest(test.TestCase):
 
 if __name__ == '__main__':
   # TODO(reedwm): Merge this file with nn_fused_batchnorm_test.py
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

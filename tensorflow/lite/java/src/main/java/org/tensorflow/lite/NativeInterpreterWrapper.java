@@ -72,7 +72,28 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     this.errorHandle = errorHandle;
     this.modelHandle = modelHandle;
+    // First create the interpreter without delegates.
+    // We need this in order to figure out whether the model contains any unresolved flex ops.
+    // (Alternatively, we could determine this without needing to recreate the interpreter
+    // by passing the tflite::Model in to here, and then traversing that?)
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
+    addDelegates(options);
+    // TODO(b/187920750): uncomment this when createInterpreter is modified to use
+    // InterpreterBuilder::AddDelegate.
+    // if (!delegates.isEmpty()) {
+    //   // If there are any delegates enabled, recreate the interpreter with those delegates.
+    //   delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
+    //   this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    // }
+    if (options.allowFp16PrecisionForFp32 != null) {
+      allowFp16PrecisionForFp32(
+          interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
+    }
+    applyDelegates(options);
+    if (options.allowBufferHandleOutput != null) {
+      allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
+    }
     if (options.allowCancellation != null && options.allowCancellation) {
       this.cancellationFlagHandle = createCancellationFlag(interpreterHandle);
     }
@@ -85,7 +106,6 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (options.allowBufferHandleOutput != null) {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
-    applyDelegates(options);
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
   }
@@ -464,34 +484,30 @@ class NativeInterpreterWrapper implements AutoCloseable {
     setCancelled(interpreterHandle, cancellationFlagHandle, value);
   }
 
-  private void applyDelegates(InterpreterImpl.Options options) {
-    // First apply the flex delegate if necessary. This ensures the graph is fully resolved before
+  // Add all the delegates specified in the options (other than XNNPACK) to this.delegates.
+  private void addDelegates(InterpreterImpl.Options options) {
+    // First add the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
-    boolean originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     if (originalGraphHasUnresolvedFlexOp) {
       Delegate optionalFlexDelegate = maybeCreateFlexDelegate(options.delegates);
       if (optionalFlexDelegate != null) {
         ownedDelegates.add((AutoCloseable) optionalFlexDelegate);
-        applyDelegate(interpreterHandle, errorHandle, optionalFlexDelegate.getNativeHandle());
+        delegates.add(optionalFlexDelegate);
       }
     }
-
-    // Now apply the user-supplied delegates.
-    for (Delegate delegate : options.delegates) {
-      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-      delegates.add(delegate);
-    }
+    // Now add the user-supplied delegates.
+    delegates.addAll(options.delegates);
     if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
       NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
       ownedDelegates.add(optionalNnApiDelegate);
-      applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
+      delegates.add(optionalNnApiDelegate);
     }
-    // Finally apply the XNNPACK delegate if enabled.
-    maybeUseXNNPACK(options);
+    // Finally add the XNNPACK delegate if enabled.
+    maybeAddXnnpackDelegate(options);
   }
 
-  // Optionally apply the XNNPACK delegate.
-  private void maybeUseXNNPACK(InterpreterImpl.Options options) {
+  // Optionally add the XNNPACK delegate.
+  private void maybeAddXnnpackDelegate(InterpreterImpl.Options options) {
     // Simply use "-1" to represent the default mode.
     int applyXNNPACKMode = -1;
     if (options.useXNNPACK != null) {
@@ -501,7 +517,17 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
     // enabled for C++ TfLite library on Android platform.
     if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
-      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+      XnnpackDelegate xnnpackDelegate =
+          createXNNPACKDelegate(
+              interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+      delegates.add(xnnpackDelegate);
+    }
+  }
+
+  // Apply all the delegates specified in this.delegates.
+  private void applyDelegates(InterpreterImpl.Options options) {
+    for (Delegate delegate : delegates) {
+      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
     }
   }
 
@@ -564,6 +590,9 @@ class NativeInterpreterWrapper implements AutoCloseable {
   // Whether subgraph's tensor memory space is allocated.
   private boolean isMemoryAllocated = false;
 
+  // Whether the model has any Flex custom ops that can't be resolved by the OpResolver.
+  private boolean originalGraphHasUnresolvedFlexOp = false;
+
   // As the Java Delegate owns the native delegate instance, we keep a strong ref to any injected
   // delegates for safety.
   private final List<Delegate> delegates = new ArrayList<>();
@@ -605,7 +634,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
 
-  private static native void useXNNPACK(
+  private static native XnnpackDelegate createXNNPACKDelegate(
       long interpreterHandle, long errorHandle, int state, int numThreads);
 
   private static native long createErrorReporter(int size);

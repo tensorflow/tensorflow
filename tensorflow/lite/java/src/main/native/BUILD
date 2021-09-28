@@ -17,18 +17,6 @@ alias_with_tflite(
 
 # Native code needed for TF Lite Java API, including experimental APIs;
 # but only the framework code, no ops.
-filegroup(
-    name = "native_experimental_only_srcs",
-    srcs = [
-        "nativeinterpreterwrapperexperimental_jni.cc",
-    ],
-)
-
-filegroup(
-    name = "native_hdrs",
-    srcs = ["jni_utils.h"],
-)
-
 cc_library_with_tflite(
     name = "native_experimental_framework_only",
     srcs = [
@@ -45,6 +33,18 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "native_experimental_only_srcs",
+    srcs = [
+        "nativeinterpreterwrapperexperimental_jni.cc",
+    ],
+)
+
+filegroup(
+    name = "native_hdrs",
+    srcs = ["jni_utils.h"],
+)
+
 # Native code needed for TF Lite Java API, excluding experimental APIs;
 # but only the framework code, no ops.
 filegroup(
@@ -55,6 +55,7 @@ filegroup(
         "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
+        "xnnpackdelegate_jni.cc",
     ],
 )
 

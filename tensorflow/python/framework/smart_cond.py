@@ -46,9 +46,10 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
   if not callable(true_fn):
-    raise TypeError("`true_fn` must be callable.")
+    raise TypeError(f"Argument `true_fn` must be callable. Received {true_fn}")
   if not callable(false_fn):
-    raise TypeError("`false_fn` must be callable.")
+    raise TypeError(
+        f"Argument `false_fn` must be callable. Received {false_fn}")
 
   pred_value = smart_constant_value(pred)
   if pred_value is not None:
@@ -86,8 +87,9 @@ def smart_constant_value(pred):
   elif isinstance(pred, bool):
     pred_value = pred
   else:
-    raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
-                    "Found instead: %s" % type(pred))
+    raise TypeError("Argument `pred` must be a Tensor, or a Python bool, or 1 "
+                    f"or 0. Received: pred={pred} of type "
+                    f"{type(pred).__name__}")
 
   return pred_value
 

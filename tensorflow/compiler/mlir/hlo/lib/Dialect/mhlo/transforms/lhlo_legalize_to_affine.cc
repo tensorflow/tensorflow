@@ -60,15 +60,15 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
 
     // We don't currently support batching dimensions, or multiple contraction
     // dimensions.
-    mhlo::DotDimensionNumbers dot_dimension_numbers =
+    mhlo::DotDimensionNumbersAttr dot_dimension_numbers =
         op.dot_dimension_numbers();
-    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
-        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+    if (!dot_dimension_numbers.getLhsBatchingDimensions().empty() ||
+        !dot_dimension_numbers.getRhsBatchingDimensions().empty())
       return failure();
-    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
-        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
+    if (dot_dimension_numbers.getLhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getLhsContractingDimensions().begin() != 1 ||
+        dot_dimension_numbers.getRhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getRhsContractingDimensions().begin() != 0) {
       return failure();
     }
 
@@ -263,35 +263,17 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         !start_indices_type.hasStaticShape() || !output_type.hasStaticShape())
       return rewriter.notifyMatchFailure(op, "only static shaped type allowed");
 
-    mhlo::GatherDimensionNumbers gather_dim = op.dimension_numbersAttr();
+    mhlo::GatherDimensionNumbersAttr gather_dim = op.dimension_numbers();
 
-    // Collapsed_slice_dim.
-    DenseIntElementsAttr collapsed_slice_dims_attr =
-        gather_dim.collapsed_slice_dims();
-    SmallVector<int64_t, 4> collapsed_slice_dims;
-    for (const APInt& dim : collapsed_slice_dims_attr.getIntValues())
-      collapsed_slice_dims.push_back(dim.getSExtValue());
-
-    // Offset_dim.
-    DenseIntElementsAttr offset_dims_attr = gather_dim.offset_dims();
-    SmallVector<int64_t, 4> offset_dims;
-    for (const APInt& dim : offset_dims_attr.getIntValues())
-      offset_dims.push_back(dim.getSExtValue());
-
-    // Start_index_map.
-    DenseIntElementsAttr start_index_map_attr = gather_dim.start_index_map();
-    SmallVector<int64_t, 4> start_index_map;
-    for (const APInt& dim : start_index_map_attr.getIntValues())
-      start_index_map.push_back(dim.getSExtValue());
-
-    // Index_vector_dim.
-    IntegerAttr index_vector_dim_attr = gather_dim.index_vector_dim();
-    int64_t index_vector_dim = index_vector_dim_attr.getValue().getSExtValue();
+    auto collapsed_slice_dims = gather_dim.getCollapsedSliceDims();
+    auto offset_dims = gather_dim.getOffsetDims();
+    auto start_index_map = gather_dim.getStartIndexMap();
+    int64_t index_vector_dim = gather_dim.getIndexVectorDim();
 
     // Slice_sizes.
     DenseIntElementsAttr slice_sizes_attr = op.slice_sizesAttr();
     SmallVector<int64_t, 4> slice_sizes;
-    for (const APInt& dim : slice_sizes_attr.getIntValues())
+    for (const APInt& dim : slice_sizes_attr.getValues<APInt>())
       slice_sizes.push_back(dim.getSExtValue());
 
     // Creating constants with 0 value. We need the Integer type constant value
@@ -526,7 +508,6 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
     ArrayRef<int64_t> shape = inputType.getShape();
 
     SmallVector<Value, 4> induction_vars;
-    Location loc = op.getLoc();
 
     LogicalResult map_status = success();
     auto body_builder = [&](OpBuilder& builder, Location loc,

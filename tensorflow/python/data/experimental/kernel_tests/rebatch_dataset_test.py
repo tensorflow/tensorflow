@@ -446,8 +446,7 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
   def testScalarInputError(self):
     dataset = dataset_ops.Dataset.range(1024)
     distribute._LegacyRebatchDataset(dataset.batch(4), num_replicas=4)
-    with self.assertRaisesRegex(ValueError, ("You can fix the issue "
-                                             "by adding the `batch`")):
+    with self.assertRaises(ValueError):
       distribute._LegacyRebatchDataset(dataset, num_replicas=4)
 
   @combinations.generate(

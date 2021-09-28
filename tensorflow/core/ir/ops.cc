@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -532,7 +533,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   // for the control dependency.
   if (parser.parseLParen()) return failure();
   Type control_ty = ControlType::get(builder.getContext());
-  SmallVector<std::string> control_operand_names;
+  SmallVector<std::unique_ptr<std::string>> control_operand_names;
 
   // Helper to parse a single argument and its attributes.
   auto parse_argument = [&]() -> ParseResult {
@@ -554,8 +555,9 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
     OpAsmParser::OperandType control_operand = entry_args.back();
-    control_operand_names.emplace_back((control_operand.name + ".ctl").str());
-    control_operand.name = control_operand_names.back();
+    control_operand_names.emplace_back(
+        std::make_unique<std::string>((control_operand.name + ".ctl").str()));
+    control_operand.name = *control_operand_names.back();
     entry_args.push_back(control_operand);
     arg_types.push_back(control_ty);
     arg_attrs.push_back(DictionaryAttr::get(context));

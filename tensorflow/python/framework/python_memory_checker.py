@@ -109,8 +109,8 @@ class _PythonMemoryChecker(object):
       object_list_to_print = '\n'.join(
           [' - ' + name for name in leaking_object_names])
       raise AssertionError(
-          'These Python objects were allocated every snapshot '
-          'possibly except one.\n\n{}'.format(object_list_to_print))
+          'These Python objects were allocated in every snapshot possibly '
+          f'except one.\n\n{object_list_to_print}')
 
   @traceme_wrapper
   def assert_no_new_objects(self, threshold=None):
@@ -124,17 +124,15 @@ class _PythonMemoryChecker(object):
     count_diff.subtract(collections.Counter(threshold))
 
     if max(count_diff.values() or [0]) > 0:
-      raise AssertionError('New Python objects exceeded the threshold.\n'
-                           'Python object threshold:\n'
-                           '{}\n\n'
-                           'New Python objects:\n{}'.format(
-                               threshold, original_count_diff.most_common()))
+      raise AssertionError('New Python objects created exceeded the threshold.'
+                           '\nPython object threshold:\n'
+                           f'{threshold}\n\nNew Python objects:\n'
+                           f'{original_count_diff.most_common()}')
     elif min(count_diff.values(), default=0) < 0:
-      logging.warning('New Python objects were less than the threshold.\n'
-                      'Python object threshold:\n'
-                      '{}\n\n'
-                      'New Python objects:\n'
-                      '{}'.format(threshold, original_count_diff.most_common()))
+      logging.warning('New Python objects created were less than the threshold.'
+                      '\nPython object threshold:\n'
+                      f'{threshold}\n\nNew Python objects:\n'
+                      f'{original_count_diff.most_common()}')
 
   @traceme_wrapper
   def _snapshot_diff(self, old_index, new_index):

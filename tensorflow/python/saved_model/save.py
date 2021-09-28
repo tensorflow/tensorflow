@@ -24,6 +24,7 @@ import gc
 import os
 import re
 import sys
+import traceback
 
 from absl import logging
 import numpy
@@ -752,9 +753,10 @@ def _trace_gradient_functions(graph, saveable_view):
             def_function.function(custom_gradient).get_concrete_function(
                 None, *op.inputs))
       except Exception as exc:
+        traceback.print_exc()
         raise ValueError(
             "Error when tracing gradients for SavedModel.\n\n"
-            "See the stack trace above to see the error that was raised when "
+            "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
             "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
@@ -1003,7 +1005,9 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   registered_name = registration.get_registered_name(obj)
   if registered_name:
     proto.registered_name = registered_name
-    proto.serialized_user_proto.Pack(obj._serialize_to_proto())  # pylint: disable=protected-access
+    serialized_user_proto = obj._serialize_to_proto()  # pylint: disable=protected-access
+    if serialized_user_proto is not None:
+      proto.serialized_user_proto.Pack(serialized_user_proto)
 
 
 def _export_debug_info(exported_graph, export_dir):
@@ -1264,8 +1268,8 @@ def save_and_return_nodes(obj,
         experimental_io_device=options.experimental_io_device)
     object_saver.save(
         utils_impl.get_variables_path(export_dir), options=ckpt_options)
-    builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
-                                                export_dir)
+  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
+                                              export_dir)
   # Note that this needs to be the last file operation when saving the
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.

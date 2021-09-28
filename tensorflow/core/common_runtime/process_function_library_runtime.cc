@@ -500,6 +500,13 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
           std::vector<string> colo_slice = {colocation_group};
           node->AddAttr(kColocationAttrName, colo_slice);
         } else if (!src_device->empty() && can_use_src_node_device) {
+          // Do not copy device from src node for variants, unless it is a no-op
+          // forward from input to output. This gets handled in
+          // colocation_graph.cc which has special logic for correctly placing
+          // _Retvals for various variant types.
+          if (dtype == DT_VARIANT && !src_node->IsArg()) {
+            continue;
+          }
           // src_device can be a partially specified device. Find the
           // matching device in the device_set.
           DeviceNameUtils::ParsedName parsed;

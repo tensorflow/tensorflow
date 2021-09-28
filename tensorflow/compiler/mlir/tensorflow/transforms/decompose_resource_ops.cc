@@ -127,7 +127,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
       return rewriter.notifyMatchFailure(op, "expected alg to be a scalar");
     }
 
-    uint64_t alg_value = ((*alg_constant.int_value_begin()).getZExtValue());
+    uint64_t alg_value = ((*alg_constant.value_begin<APInt>()).getZExtValue());
     tensorflow::Algorithm alg;
     if (tensorflow::RNG_ALG_PHILOX == alg_value) {
       alg = tensorflow::RNG_ALG_PHILOX;

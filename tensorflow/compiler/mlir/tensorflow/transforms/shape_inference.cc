@@ -810,6 +810,9 @@ void ShapeInference::EnqueueCallers(FuncOp fn) {
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
                                                              Value result) {
+  // No changes needed if the new type is unchanged.
+  if (new_type == result.getType()) return false;
+
   Operation* cast_op = nullptr;
   // First insert cast back for uses that need a cast and then
   // update the type.
@@ -1251,7 +1254,7 @@ ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
             LLVM_DEBUG(llvm::dbgs() << "Unexpected number of elements\n");
             return {};
           }
-          int64_t val = (*dea.getIntValues().begin()).getSExtValue();
+          int64_t val = (*dea.getValues<APInt>().begin()).getSExtValue();
           dims[i] = ic->MakeDim(val);
         }
       }

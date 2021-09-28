@@ -262,13 +262,26 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
+    dnn::ConvolutionKind kind,
     std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveAlgorithms(
-      GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+  switch (kind) {
+    default:
+      return false;
+    case dnn::ConvolutionKind::FORWARD:
+    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
+      return dnn_support->GetConvolveAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+    case dnn::ConvolutionKind::BACKWARD_DATA:
+      return dnn_support->GetConvolveBackwardDataAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+    case dnn::ConvolutionKind::BACKWARD_FILTER:
+      return dnn_support->GetConvolveBackwardFilterAlgorithms(
+          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+  }
 }
 
 bool StreamExecutor::GetConvolveExecutionPlans(
@@ -313,26 +326,6 @@ bool StreamExecutor::GetRnnAlgorithms(
     return false;
   }
   return dnn_support->GetRnnAlgorithms(out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetConvolveBackwardDataAlgorithms(
-      GetDeviceDescription().cuda_compute_capability(), out_algorithms);
-}
-
-bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
-    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
-  dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetConvolveBackwardFilterAlgorithms(
-      GetDeviceDescription().cuda_compute_capability(), out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(

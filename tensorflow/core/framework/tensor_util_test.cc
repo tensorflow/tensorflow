@@ -606,5 +606,82 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
   }
 }
 
+TEST(TensorProtoUtil, CompressTensorProtoNegatizeZero) {
+  TensorProto tensor_proto;
+  {
+    // Double
+    Tensor tensor(-0.0);
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.double_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.double_val(0)));
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_EQ(tensor_proto.double_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.double_val(0)));
+  }
+  {
+    // Float
+    Tensor tensor(-0.0f);
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.float_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.float_val(0)));
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_EQ(tensor_proto.float_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.float_val(0)));
+  }
+  {
+    // Half
+    Tensor tensor(Eigen::half(-0.0f));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.half_val(0), 0x8000);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    ASSERT_EQ(tensor.scalar<Eigen::half>()(), static_cast<Eigen::half>(0.0f));
+    ASSERT_TRUE(
+        std::signbit(static_cast<float>(tensor.scalar<Eigen::half>()())));
+  }
+  {
+    // Double Complex -0.0, -0.0
+    Tensor tensor(std::complex<double>(-0.0, -0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), -0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), -0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.imag()));
+  }
+  {
+    // Double Complex 0.0, -0.0
+    Tensor tensor(std::complex<double>(0.0, -0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), 0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), -0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), 0.0f);
+    ASSERT_FALSE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.imag()));
+  }
+  {
+    // Double Complex -0.0, 0.0
+    Tensor tensor(std::complex<double>(-0.0, 0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), -0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), 0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), 0.0f);
+    ASSERT_FALSE(std::signbit(value.imag()));
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

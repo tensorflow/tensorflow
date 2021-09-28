@@ -45,6 +45,25 @@ constexpr char kHasSplitProvider[] = "has_split_provider";
 constexpr char kSlash[] = "/";
 constexpr char kSplitProvider[] = "split_provider";
 
+Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
+                          std::vector<Tensor>* out_tensors, int64 value) {
+  switch (output_dtypes[0]) {
+#define HANDLE_TYPE(type)                                \
+  case DataTypeToEnum<type>::value: {                    \
+    out_tensors->emplace_back(static_cast<type>(value)); \
+    break;                                               \
+  }
+    TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
+    default:
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(output_dtypes[0]));
+  }
+  return Status::OK();
+}
+
+int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
+
 // Class which produces the elements of `range(start, stop, step)`. Threadsafe.
 class RangeCounter {
  public:
@@ -164,7 +183,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t Cardinality() const override {
-    if (step_ > 0) {
+    // If start_ == stop_ or if the sign of stop_ - start_ and step do not agree
+    // (or are zero), return zero.
+    if (sgn(stop_ - start_) * sgn(step_) <= 0) {
+      return 0;
+    } else if (step_ > 0) {
       return std::max(int64_t{0}, (stop_ - start_ - 1) / step_ + 1);
     } else {
       return std::max(int64_t{0}, (start_ - stop_ - 1) / -step_ + 1);
@@ -184,6 +207,13 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return ConvertOutputTypes(output_dtypes(), out_tensors,
+                              start_ + (index * step_));
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -234,20 +264,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         }
       }
       out_tensors->reserve(1);
-      switch (dataset()->output_dtypes()[0]) {
-#define HANDLE_TYPE(type)                                \
-  case DataTypeToEnum<type>::value: {                    \
-    out_tensors->emplace_back(static_cast<type>(value)); \
-    break;                                               \
-  }
-        TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
-#undef HANDLE_TYPE
-        default:
-          return errors::InvalidArgument(
-              "Unsupported data type: ",
-              DataTypeString(dataset()->output_dtypes()[0]));
-      }
-      return Status::OK();
+      return ConvertOutputTypes(output_dtypes(), out_tensors, value);
     }
 
    protected:

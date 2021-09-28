@@ -190,5 +190,5 @@ class SparseXentOpDeterministicTest(
 
 if __name__ == "__main__":
   # TODO(reedwm): Merge this test with sparse_xent_op_test.py.
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

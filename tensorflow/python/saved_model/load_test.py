@@ -31,7 +31,6 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
-from google.protobuf import wrappers_pb2
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import compat
@@ -69,7 +68,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
-from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
@@ -2130,36 +2128,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
-  def test_load_registered(self, cycles):
-
-    @registration.register_serializable(name=f"Module{cycles}")
-    class Module(tracking.AutoTrackable):
-
-      def __init__(self, name="module"):
-        self.v = variables.Variable(1.)
-        self.name = name
-
-      def _serialize_to_proto(self, **unused_kwargs):
-        return wrappers_pb2.StringValue(value=self.name)
-
-      @classmethod
-      def _deserialize_from_proto(cls, proto, **unused_kwargs):
-        if proto.Is(wrappers_pb2.StringValue.DESCRIPTOR):
-          unpacked = wrappers_pb2.StringValue()
-          proto.Unpack(unpacked)
-          return cls(name=unpacked.value)
-        raise AssertionError(
-            "Did not receive proto of correct type during deserialization. "
-            f"Expected type {wrappers_pb2.StringValue.DESCRIPTOR.full_name}, "
-            f"got {proto.TypeName()}")
-
-    m = Module("a")
-    m.v.assign(5)
-    loaded = cycle(m, cycles)
-    self.assertIsInstance(loaded, Module)
-    self.assertEqual(5, loaded.v.numpy())
-    self.assertEqual("a", loaded.name)
-
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2531,6 +2499,48 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     weight_size = 1024
     export_dir = create_and_save_module(weight_size)
     load_and_run_module(export_dir, weight_size)
+
+  def _make_asset(self, contents):
+    filename = tempfile.mktemp(prefix=self.get_temp_dir())
+    with open(filename, "w") as f:
+      f.write(contents)
+    return filename
+
+  def test_assets(self):
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save_and_return_nodes(
+        root, save_dir, experimental_skip_checkpoint=True)
+    file_io.delete_file(vocab_file)
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    imported = load.load(
+        load_dir,
+        options=load_options.LoadOptions(experimental_skip_checkpoint=True))
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
 
 if __name__ == "__main__":

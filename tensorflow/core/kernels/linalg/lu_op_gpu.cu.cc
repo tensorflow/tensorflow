@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -108,7 +108,7 @@ class LuOpGpu : public AsyncOpKernel {
     permutation_indices_shape.AddDim(num_rows);
 
     const GPUDevice& device = context->eigen_device<GPUDevice>();
-    auto solver = absl::make_unique<CudaSolver>(context);
+    auto solver = absl::make_unique<GpuSolver>(context);
 
     // We output the packed triangular factors in a dense form.
     // The lower triangular factor L corresponds to the strictly lower
@@ -251,8 +251,8 @@ class LuOpGpu : public AsyncOpKernel {
       done();
     };
 
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 };
 

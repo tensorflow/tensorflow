@@ -464,11 +464,11 @@ class DeterministicOpsTest(test.TestCase):
   def setUp(self):
     super().setUp()
     random_seed.set_random_seed(None)
-    config.enable_deterministic_ops(True)
+    config.enable_op_determinism()
 
   def tearDown(self):
     super().tearDown()
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
 
   def testDeterministicOpsErrors(self):
     with self.assertRaisesRegex(

@@ -1493,14 +1493,14 @@ func @dot_dot(%arg0: tensor<?xf32>,
 func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
                   %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
-      dot_dimension_numbers = {
-          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-      },
-      precision_config = ["DEFAULT", "DEFAULT"],
-      someattr
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = ["DEFAULT", "DEFAULT"],
+    someattr
   } : (tensor<?x?x3xf32>, tensor<?x3x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
 }
@@ -1524,13 +1524,13 @@ func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
                   %arg1: tensor<?x3x?xi8>) -> tensor<?x?x?xi32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
-      dot_dimension_numbers = {
-          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-      },
-      precision_config = ["DEFAULT", "DEFAULT"]
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = ["DEFAULT", "DEFAULT"]
   } : (tensor<?x?x3xi8>, tensor<?x3x?xi8>) -> tensor<?x?x?xi32>
   return %0 : tensor<?x?x?xi32>
 }
@@ -1553,13 +1553,13 @@ func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
                   %arg1: tensor<?x3x?xi16>) -> tensor<?x?x?xi32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
-      dot_dimension_numbers = {
-          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-      },
-      precision_config = ["DEFAULT", "DEFAULT"]
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = ["DEFAULT", "DEFAULT"]
   } : (tensor<?x?x3xi16>, tensor<?x3x?xi16>) -> tensor<?x?x?xi32>
   return %0 : tensor<?x?x?xi32>
 }
@@ -1582,11 +1582,12 @@ func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 func @dot_general_batch_matmul_large
   (%arg0: tensor<2x16x32xf32>, %arg1: tensor<2x32x32xf32>) -> tensor<2x16x32xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
-    dot_dimension_numbers = {
-      lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-      lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-      rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-      rhs_contracting_dimensions = dense<1> : tensor<1xi64>},
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
     precision_config = ["DEFAULT", "DEFAULT"]}
     : (tensor<2x16x32xf32>, tensor<2x32x32xf32>) -> tensor<2x16x32xf32>
   return %0 : tensor<2x16x32xf32>
@@ -3079,8 +3080,8 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK-SAME:   %[[VAL_0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_2:[a-zA-Z0-9_]*]]
-// CHECK:           %[[VAL_3:.*]] = constant 0 : index
-// CHECK:           %[[VAL_4:.*]] = constant 0 : index
+// CHECK-DAG:       %[[VAL_3:.*]] = constant 0 : index
+// CHECK-DAG:       %[[VAL_4:.*]] = constant 0 : index
 // CHECK:           %[[VAL_5:.*]] = tensor.dim %[[VAL_0]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_6:.*]] = constant 1 : index
 // CHECK:           %[[VAL_7:.*]] = tensor.dim %[[VAL_0]], %[[VAL_6]] : tensor<?x?xi32>
@@ -3140,8 +3141,8 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-DAG:      %[[A_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[A_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:      %[[B_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[B_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK-DAG:      %[[C_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[C_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK:          %[[VAL_3:.*]] = constant 0 : index
-// CHECK:          %[[VAL_4:.*]] = constant 0 : index
+// CHECK-DAG:      %[[VAL_3:.*]] = constant 0 : index
+// CHECK-DAG:      %[[VAL_4:.*]] = constant 0 : index
 // CHECK:          %[[VAL_5:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_6:.*]] = constant 1 : index
 // CHECK:          %[[VAL_7:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_6]] : tensor<?x?xi32>
@@ -3253,12 +3254,12 @@ func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
     "mhlo.return"(%arg4) : (tensor<i32>) -> ()
   }) {
     indices_are_sorted = false,
-    scatter_dimension_numbers = {
-      index_vector_dim = 1 : i64,
-      inserted_window_dims = dense<0> : tensor<1xi64>,
-      scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-      update_window_dims = dense<> : tensor<0xi64>
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [],
+      inserted_window_dims = [0],
+      scatter_dims_to_operand_dims = [0],
+      index_vector_dim = 1,
+    >,
     unique_indices = false
   } : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
   return %0 : tensor<3xi32>
@@ -3293,12 +3294,12 @@ func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
     "mhlo.return"(%arg4) : (tensor<i32>) -> ()
   }) {
     indices_are_sorted = false,
-    scatter_dimension_numbers = {
-      index_vector_dim = 1 : i64,
-      inserted_window_dims = dense<0> : tensor<1xi64>,
-      scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-      update_window_dims = dense<1> : tensor<1xi64>
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0],
+      scatter_dims_to_operand_dims = [0],
+      index_vector_dim = 1,
+    >,
     unique_indices = false
   } : (tensor<6x3xi32>, tensor<2x1xi32>, tensor<2x3xi32>) -> tensor<6x3xi32>
   return %0 : tensor<6x3xi32>

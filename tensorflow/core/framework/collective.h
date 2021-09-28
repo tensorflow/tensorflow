@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -57,6 +58,12 @@ struct CollGroupRuntimeDetails {
   string ToString() const;
 };
 
+struct CollGroupMember {
+  DeviceAttributes device;
+  string task;
+  bool is_local;
+};
+
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
@@ -64,10 +71,8 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
-  // Devices in this group, in default rank order.
-  std::vector<DeviceAttributes> devices;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
+  // Members in this group, in default rank order.
+  std::vector<CollGroupMember> members;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
   // Task -> number of devices on that task.
@@ -129,18 +134,10 @@ struct CollInstanceParams {
   std::vector<int> permutation;
 };
 
-// Data common to all instance members in the same task.
-struct CollTaskParams {
-  // True for devices that are local to the process, i.e. no RPC needed.
-  std::vector<bool> is_local;
-  string ToString() const;
-};
-
 // Unique to a single CollectiveOp node.
 struct CollectiveParams : public core::RefCounted {
   CollGroupParams group;
   CollInstanceParams instance;
-  CollTaskParams task;
 
   string name = "";        // node name used only for log or error messages
   int default_rank = -1;   // index of this op within device_names
@@ -151,6 +148,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* merge_op = nullptr;  // reduction only
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
+  bool run_group_initialization = true;
 };
 
 class CollectiveExecutor;
@@ -319,6 +317,14 @@ class CollectiveExecutor : public core::RefCounted {
     done(errors::Internal(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
+  }
+
+  virtual void CompleteGroupAsync(const DeviceAttributes& device,
+                                  CollGroupParams* group_params,
+                                  CancellationManager* cancel_mgr,
+                                  StatusCallback done) {
+    return cem_->GetParamResolver()->CompleteGroupAsync(device, group_params,
+                                                        cancel_mgr, done);
   }
 
   // Runs the potentially-blocking closure/expensive callback.

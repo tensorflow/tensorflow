@@ -211,21 +211,21 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        RankedTensorType output_type,
+                                        Operation* op, ShapedType output_type,
                                         Value input_value, double scale,
                                         int64_t zeropoint);
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
-llvm::Optional<Value> convertDequantizeOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ArrayRef<float> scale, ArrayRef<float> zeropoint,
-    int64_t dim);
+llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input_value,
+                                          ArrayRef<float> scale,
+                                          ArrayRef<float> zeropoint,
+                                          int64_t dim);
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
+                                         Operation* op, ShapedType output_type,
                                          Value input_value, double min,
                                          double max, int64_t num_bits,
                                          bool narrow_range);

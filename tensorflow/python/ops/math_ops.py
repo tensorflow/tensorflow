@@ -1611,6 +1611,11 @@ def div_no_nan(x, y, name=None):
   >>> tf.math.divide_no_nan(3.0, 0.0)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
+  Note that 0 is returned if `y` is 0 even if `x` is nonfinite:
+
+  >>> tf.math.divide_no_nan(np.nan, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     y: A `Tensor` whose dtype is compatible with `x`.
@@ -1631,6 +1636,9 @@ def div_no_nan(x, y, name=None):
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+
+  Note this is noncommutative: if y is NaN or infinite and x is 0, the result
+  will be NaN.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1703,14 +1711,14 @@ floormod = gen_math_ops.floor_mod
 def _add_dispatch(x, y, name=None):
   """The operation invoked by the `Tensor.__add__` operator.
 
-    Purpose in the API:
+  Purpose in the API:
 
-      This method is exposed in TensorFlow's API so that library developers
-      can register dispatching for `Tensor.__add__` to allow it to handle
-      custom composite tensors & other custom objects.
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__add__` to allow it to handle
+    custom composite tensors & other custom objects.
 
-      The API symbol is not intended to be called by users directly and does
-      appear in TensorFlow's generated documentation.
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     x: The left-hand side of the `+` operator.
@@ -4098,9 +4106,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
     raise TypeError(
-        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of type "
-        f"{inputs[0].dtype}. These must be equal. Try casting the input to the "
-        f"desired type.")
+        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of "
+        f"type {inputs[0].dtype}. These must be equal. Try casting the input "
+        f"to the desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
@@ -5580,4 +5588,3 @@ dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
 dispatch.register_unary_elementwise_api(gen_math_ops.square)
 dispatch.register_unary_elementwise_api(gen_math_ops.tan)
 dispatch.register_unary_elementwise_api(gen_math_ops.tanh)
-

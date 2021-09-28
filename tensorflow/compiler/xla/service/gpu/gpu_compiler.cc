@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -163,7 +164,7 @@ limitations under the License.
 
 #if BEF_EXECUTABLE
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
@@ -255,6 +256,56 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  // Save proto state before optimizations if we want a snapshot.
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    hlo_proto_ = absl::make_unique<HloProto>();
+    *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
+  }
+
+  if (hlo_module->config().use_spmd_partitioning()) {
+    HloPassPipeline spmd_pipeline("spmd-partitioner");
+    const int64_t num_partitions = hlo_module->config().num_partitions();
+    if (num_partitions > 1) {
+      // Run some IR cleanup passes before running the SPMD partitioning
+      // passes.
+      spmd_pipeline.AddInvariantChecker<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
+      spmd_pipeline.AddPass<CallInliner>();
+      spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+      spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+      HloPassPipeline& spmd_simplify =
+          spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
+
+      AlgebraicSimplifierOptions options;
+      options.set_replace_transpose_with_bitcast(false);
+      options.set_enable_conv_operand_swap(false);
+      spmd_simplify.AddPass<AlgebraicSimplifier>(options);
+
+      spmd_simplify.AddPass<SortSimplifier>();
+      spmd_simplify.AddPass<TupleSimplifier>();
+      spmd_simplify.AddPass<WhileLoopConstantSinking>();
+      spmd_simplify.AddPass<WhileLoopSimplifier>();
+
+      spmd_simplify.AddPass<ReshapeMover>();
+      spmd_simplify.AddPass<HloConstantFolding>();
+      spmd_simplify.AddPass<ConditionalSimplifier>();
+      spmd_simplify.AddPass<HloDCE>();
+
+      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<GpuSpmdPartitioner>(
+          num_partitions, hlo_module->config().replica_count());
+    } else {
+      // Remove redundant sharding ops when partition_count == 1.
+      spmd_pipeline.AddPass<ShardingRemover>();
+      spmd_pipeline.AddPass<HloDCE>();
+    }
+    TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
+  }
+
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -308,7 +359,7 @@ Status GpuCompiler::OptimizeHloModule(
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
     // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-    if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+    if (debug_options.xla_gpu_use_cudnn_batchnorm()) {
       // Since BatchNorm inference is essentially pointwise operations, it is
       // always advantageous to use kernel fusion rather than cudnn.
       pipeline.AddPass<BatchNormExpander>(
@@ -359,6 +410,7 @@ Status GpuCompiler::OptimizeHloModule(
       options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
       pipeline.AddPass<AlgebraicSimplifier>(options);
+      pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pipeline.AddPass<DotDecomposer>();
       // Only merge "smallish" dots.  This threshold was not set carefully, but
@@ -399,21 +451,6 @@ Status GpuCompiler::OptimizeHloModule(
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  if (hlo_module->config().use_spmd_partitioning()) {
-    HloPassPipeline spmd_pipeline("spmd-partitioner");
-    const int64_t num_partitions = hlo_module->config().num_partitions();
-    if (num_partitions > 1) {
-      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
-      spmd_pipeline.AddPass<GpuSpmdPartitioner>(
-          num_partitions, hlo_module->config().replica_count());
-    } else {
-      // Remove redundant sharding ops when partition_count == 1.
-      spmd_pipeline.AddPass<ShardingRemover>();
-      spmd_pipeline.AddPass<HloDCE>();
-    }
-    TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
 
   // Optimize collectives generated by SPMD partitioning. Enable these passes
@@ -501,15 +538,13 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
         /*combine_threshold_count=*/256);
     pipeline.AddPass<AllReduceCombiner>(
-        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        debug_options.xla_gpu_all_reduce_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<ReduceScatterCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
 
-    if (hlo_module->config()
-            .debug_options()
-            .xla_gpu_enable_async_all_reduce()) {
+    if (debug_options.xla_gpu_enable_async_all_reduce()) {
       pipeline.AddPass<AsyncCollectiveCreator>(
           AsyncCollectiveCreator::CollectiveCreatorConfig{
               /*convert_all_reduce=*/true,
@@ -1146,8 +1181,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
        std::move(compile_module_results.output_info),
        compile_module_results.module_name, compile_module_results.output_shape,
        std::move(compile_module_results.allocations),
-       std::move(buffer_assignment_proto), std::move(module), profile_index,
-       std::move(profile_printer), std::move(profile_index_map)});
+       std::move(buffer_assignment_proto),
+       compile_module_results.buffer_assignment->ToVerboseString(),
+       std::move(module), profile_index, std::move(profile_printer),
+       std::move(profile_index_map)});
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -1156,8 +1193,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // Dump computation proto state and buffer assignment for debug and test, if
   // dump is enabled.
   if (DumpingEnabledForHloModule(gpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    auto hlo_proto = absl::make_unique<HloProto>(*hlo_proto_);
     *hlo_proto->mutable_buffer_assignment() =
         compile_module_results.buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));

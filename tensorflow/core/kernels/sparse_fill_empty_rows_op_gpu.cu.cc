@@ -28,13 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_solvers.h"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif

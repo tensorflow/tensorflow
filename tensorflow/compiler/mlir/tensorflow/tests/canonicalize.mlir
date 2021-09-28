@@ -878,8 +878,8 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 func @addNWithZerosFloat(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
   %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
-  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>}
-  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>}
+  // CHECK-DAG: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>}
+  // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>}
   // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
   // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
   %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -893,8 +893,8 @@ func @addNWithZerosFloat(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>,
 func @addNWithZerosInt(%arg0: tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) {
   %0 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>}
-  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>}
+  // CHECK-DAG: [[ZERO:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>}
+  // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>}
   // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
   // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
   %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>

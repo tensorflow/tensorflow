@@ -33,6 +33,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -41,7 +42,7 @@
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
@@ -58,24 +59,16 @@ struct MemcpyRewritePattern
       mlir::gpu::MemcpyOp>::GpuAsyncOpConversionPattern;
 
   FailureOr<Value> matchAndRewriteOp(
-      mlir::gpu::MemcpyOp op, Value chain, Value stream,
-      ArrayRef<Value> operands,
+      mlir::gpu::MemcpyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
+    if (!adaptor.src().getType().isa<tfrt::gpu::BufferType>() ||
+        !adaptor.dst().getType().isa<tfrt::gpu::BufferType>()) {
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
-    BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(op->getOperands(), operands))
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
-
+    }
     rewriter.eraseOp(op);
-
-    return rewriter
-        .create<tfrt::gpu::MemCopyOp>(op.getLoc(), mapping.lookup(op.dst()),
-                                      mapping.lookup(op.src()), stream, chain)
-        .getResult();
+    auto copy_op = rewriter.create<tfrt::gpu::MemCopyOp>(
+        op.getLoc(), adaptor.dst(), adaptor.src(), stream, chain);
+    return copy_op.getResult();
   }
 };
 

@@ -176,8 +176,6 @@ class ResourceHandle {
   std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
   absl::optional<ManagedStackTrace> definition_stack_trace_;
-
- private:
   // A smart pointer to the actual resource. When this field is not empty, the
   // handle is in a "ref-counting" mode, owning the resource; otherwise it's in
   // a "weak-ref" mode, only containing the name of the resource (conceptually a

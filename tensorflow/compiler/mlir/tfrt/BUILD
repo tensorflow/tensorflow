@@ -115,6 +115,7 @@ cc_library(
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToSCF",
     ],
     alwayslink = 1,
 )
@@ -130,6 +131,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
+        "@tf_runtime//backends/cpu:cpurt",
     ],
 )
 
@@ -305,6 +307,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_clustering",

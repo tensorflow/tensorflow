@@ -89,7 +89,8 @@ class GpuExecutable : public Executable {
     std::string module_name;
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
-    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
+    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
+    std::string verbose_buffer_assignment_string = "";
     std::unique_ptr<HloModule> debug_module = nullptr;
     size_t entry_computation_profile_index = 0;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
@@ -142,6 +143,8 @@ class GpuExecutable : public Executable {
   absl::Span<const BufferAllocation> GetAllocations() const {
     return allocations_;
   }
+
+  const std::vector<ConstantInfo>& constants() const { return constants_; }
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -214,6 +217,7 @@ class GpuExecutable : public Executable {
   const std::vector<BufferAllocation> allocations_;
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+  std::string verbose_buffer_assignment_string_;
 
   size_t entry_computation_profile_index_ = -1;
 

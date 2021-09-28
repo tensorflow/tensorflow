@@ -446,7 +446,7 @@ static void ExecuteImpl(Executable& executable,
   for (auto& t : operands)
     ctx->tensor_operands.insert({t.tensor().data(), &t.tensor()});
 
-  // Tensorflow -> CPURT only supportes returning Memrefs as Tensors.
+  // Tensorflow -> CPURT only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, std::move(ctx));
   converter.AddConversion(ReturnAsyncStridedMemref<ConvertTensor>);
   converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
@@ -460,6 +460,8 @@ static void ExecuteImpl(Executable& executable,
   // Override async runtime worker threads with fallback Eigen thread pool.
   Executable::ExecuteOpts opts;
   opts.async_runtime_worker_threads = *worker_threads;
+  // Pass kernel context pointer to be emitted in the compiled function.
+  opts.kernel_context = &converter.context();
 
   // Error propagation happens in the result converter.
   if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) return;
@@ -518,7 +520,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (executable.IsError()) {
       EmitErrors(results, executable.GetError(), exec_ctx);
@@ -575,7 +577,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
       EmitErrors(results, jit_executable.GetError(), exec_ctx);

@@ -620,20 +620,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
 
-  def test_error_inner_capture(self):
-
-    @def_function.function
-    def f(inputs):
-      num_steps, _ = inputs.shape[:2]
-      outputs = []
-      for t in math_ops.range(num_steps):
-        outputs.append(inputs[t])
-      return outputs
-
-    with self.assertRaisesRegex(errors.InaccessibleTensorError,
-                                'defined in another function or code block'):
-      f(array_ops.zeros(shape=(8, 42, 3)))
-
   def testRuntimeErrorNotSticky(self):
 
     @def_function.function
@@ -709,9 +695,39 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         _ = a + a
 
     with self.assertRaisesRegex(
-        TypeError,
-        re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
+        TypeError, re.compile('def_function_test.*out of scope', re.DOTALL)):
       failing_function()
+
+  def testSymbolicTensorIllegalCaptureCallTimeError(self):
+    x = None
+
+    @def_function.function
+    def f1(a):
+      nonlocal x
+      x = a
+      return a
+
+    @def_function.function
+    def f2(b):
+      return b + x
+
+    f1(constant_op.constant(1))
+    with self.assertRaisesRegex(
+        TypeError, re.compile('def_function_test.*out of scope', re.DOTALL)):
+      f2(constant_op.constant(2))
+
+  def testSymbolicTensorIllegalCaptureTraceTimeError(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegex(errors.InaccessibleTensorError, 'out of scope'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testNonUniqueNamesGetConcreteFunction(self):
     @def_function.function

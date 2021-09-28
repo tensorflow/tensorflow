@@ -343,6 +343,15 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
       HloInstruction* dot_operand, absl::Span<const int64_t> batch_dimensions,
       absl::Span<const int64_t> contracting_dimensions);
 
+  // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)) (or
+  // transpose(dot(a,b)) if only the batch dims are transposed).
+  //
+  // Requires the dot has been canonicalized by DotDecomposer into
+  //
+  //   LHS [batch dims..., non-contracting dim, contracting dim]
+  //   RHS [batch dims..., contracting dim, non-contracting dim].
+  StatusOr<bool> RemoveTransposesFromDotOperands(HloInstruction* dot);
+
   // Helper method to perform and add reduction on a list of dimensions.
   HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64_t> dims,
                             PrimitiveType type);
@@ -442,6 +451,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //
   // Assumes that the input is conjunction.
   StatusOr<bool> TrySimplifyTautologicalCompare(HloInstruction* conjunction);
+
+  // Tries to simlplify (bitcast-convert (concat (bitcast-convert A) ...)) where
+  // the types of inner and outer bitcast-convert cancel out.
+  StatusOr<bool> TrySimplifyTautologicalBitcastConvert(HloInstruction* bitcast);
 
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);

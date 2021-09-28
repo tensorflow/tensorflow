@@ -43,6 +43,16 @@ struct OpData {
   int output_shift;
 };
 
+inline bool IsQuantizedPerChannel(const TfLiteTensor* input) {
+  if (input->quantization.type == kTfLiteAffineQuantization &&
+      input->quantization.params) {
+    auto* quant_params =
+        reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+    return (quant_params->scale && quant_params->scale->size > 1);
+  }
+  return false;
+}
+
 namespace {
 template <KernelType kernel_type, typename output_type>
 static inline void AffineQuantize(const tflite::QuantizationParams& op_params,
@@ -102,15 +112,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
-  // TODO(b/128934713): Add support for fixed-point per-channel quantization.
-  // Currently this only support affine per-layer quantization.
+  // Currently this only support affine quantization.
   TF_LITE_ENSURE_EQ(context, output->quantization.type,
                     kTfLiteAffineQuantization);
-  const auto* affine_quantization =
-      static_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  TF_LITE_ENSURE(context, affine_quantization);
-  TF_LITE_ENSURE(context, affine_quantization->scale);
-  TF_LITE_ENSURE(context, affine_quantization->scale->size == 1);
 
   if (input->type == kTfLiteFloat32) {
     // Quantize use case.
@@ -160,29 +164,66 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       // Float to int8, uint8, int16.
-      tflite::QuantizationParams op_params;
-      op_params.zero_point = output->params.zero_point;
-      op_params.scale = output->params.scale;
       const float* input_data = GetTensorData<float>(input);
-      switch (output->type) {
-        case kTfLiteInt8:
-          AffineQuantize<kernel_type>(op_params, input_shape, input_data,
-                                      output_shape,
-                                      GetTensorData<int8_t>(output));
-          return kTfLiteOk;
-        case kTfLiteUInt8:
-          AffineQuantize<kernel_type>(op_params, input_shape, input_data,
-                                      output_shape,
-                                      GetTensorData<uint8_t>(output));
-          return kTfLiteOk;
-        case kTfLiteInt16:
-          AffineQuantize<kernel_type>(op_params, input_shape, input_data,
-                                      output_shape,
-                                      GetTensorData<int16_t>(output));
-          return kTfLiteOk;
-        default:
-          ReportError(context, input->type, output->type);
-          return kTfLiteError;
+
+      if (IsQuantizedPerChannel(output)) {
+        // Per-channel quantization: one scale and zero point for each channel.
+        const auto* quantization_params =
+            reinterpret_cast<const TfLiteAffineQuantization*>(
+                output->quantization.params);
+        PerChannelQuantizationParams per_channel_op_params;
+        per_channel_op_params.quantized_dimension =
+            quantization_params->quantized_dimension;
+        per_channel_op_params.scale = quantization_params->scale->data;
+        per_channel_op_params.zero_point =
+            quantization_params->zero_point->data;
+
+        switch (output->type) {
+          case kTfLiteInt8:
+            reference_ops::PerChannelQuantize(
+                per_channel_op_params, input_shape, input_data, output_shape,
+                GetTensorData<int8_t>(output));
+            return kTfLiteOk;
+          case kTfLiteUInt8:
+            reference_ops::PerChannelQuantize(
+                per_channel_op_params, input_shape, input_data, output_shape,
+                GetTensorData<uint8_t>(output));
+            return kTfLiteOk;
+          case kTfLiteInt16:
+            reference_ops::PerChannelQuantize(
+                per_channel_op_params, input_shape, input_data, output_shape,
+                GetTensorData<int16_t>(output));
+            return kTfLiteOk;
+          default:
+            ReportError(context, input->type, output->type);
+            return kTfLiteError;
+        }
+      } else {
+        // Per-node quantization: single scale and zero point for all channels.
+        tflite::QuantizationParams op_params;
+        op_params.zero_point = output->params.zero_point;
+        op_params.scale = output->params.scale;
+
+        switch (output->type) {
+          case kTfLiteInt8:
+            AffineQuantize<kernel_type>(op_params, input_shape, input_data,
+                                        output_shape,
+                                        GetTensorData<int8_t>(output));
+            return kTfLiteOk;
+          case kTfLiteUInt8:
+            AffineQuantize<kernel_type>(op_params, input_shape, input_data,
+                                        output_shape,
+                                        GetTensorData<uint8_t>(output));
+            return kTfLiteOk;
+          case kTfLiteInt16:
+            AffineQuantize<kernel_type>(op_params, input_shape, input_data,
+                                        output_shape,
+                                        GetTensorData<int16_t>(output));
+            return kTfLiteOk;
+          default:
+            ReportError(context, input->type, output->type);
+            return kTfLiteError;
+        }
       }
     }
     case kTfLiteInt16: {

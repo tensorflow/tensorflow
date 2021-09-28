@@ -2,9 +2,9 @@
 
 // CHECK-LABEL:  func @while_with_variadic(
 // CHECK-SAME:                             %arg0: tensor<3xf32>) -> tensor<3xf32> {
-// CHECK:          %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
-// CHECK:          %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
 // CHECK:          %[[WHILE_0:.*]]:4 = "mhlo.while"(%[[CST_0]], %[[CST_1]], %[[CST_2]], %arg0) ( {
 // CHECK:          ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
 // CHECK:            %[[SLICE_0:.*]] = "mhlo.slice"(%arg2) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -38,9 +38,9 @@ func @while_with_variadic(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 }
 
 // CHECK-LABEL:  func @while_with_tuple(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-// CHECK:          %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
-// CHECK:          %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
 // CHECK:          %[[WHILE_0:.*]]:4 = "mhlo.while"(%[[CST_0]], %[[CST_1]], %[[CST_2]], %arg0) ( {
 // CHECK:          ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
 // CHECK:            %[[SLICE_0:.*]] = "mhlo.slice"(%arg2) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -83,9 +83,9 @@ func @while_with_tuple(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 }
 
 // CHECK-LABEL:  func @while_with_mix_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-// CHECK:          %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
-// CHECK:          %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
 // CHECK:          %[[WHILE_0:.*]]:4 = "mhlo.while"(%[[CST_0]], %[[CST_1]], %[[CST_2]], %arg0) ( {
 // CHECK:          ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
 // CHECK:            %[[SLICE_0:.*]] = "mhlo.slice"(%arg2) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -133,9 +133,9 @@ func @while_with_mix_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 }
 
 // CHECK-LABEL:  func @while_with_nested_tuple(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-// CHECK:          %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
-// CHECK:          %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
-// CHECK:          %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK-DAG:      %[[CST_0:.*]] = constant dense<0> : tensor<1xi32>
+// CHECK-DAG:      %[[CST_1:.*]] = constant dense<100> : tensor<2xi32>
+// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
 // CHECK:          %[[WHILE_0:.*]]:4 = "mhlo.while"(%[[CST_0]], %[[CST_1]], %[[CST_2]], %arg0) ( {
 // CHECK:          ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
 // CHECK:            %[[SLICE_0:.*]] = "mhlo.slice"(%arg2) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -228,10 +228,10 @@ func @while_generate_tuple_for_operands(%arg0: tuple<tensor<i32>, tuple<tensor<i
 }
 
 // CHECK-LABEL:  func @while_with_nonlocal_constants_in_regions() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-// CHECK:          %[[CONSTANT_0:.*]] = mhlo.constant dense<1> : tensor<i32>
-// CHECK:          %[[CONSTANT_1:.*]] = mhlo.constant dense<0> : tensor<i32>
-// CHECK:          %[[CONSTANT_2:.*]] = mhlo.constant dense<1000> : tensor<i32>
-// CHECK:          %[[CONSTANT_3:.*]] = mhlo.constant dense<100> : tensor<i32>
+// CHECK-DAG:      %[[CONSTANT_0:.*]] = mhlo.constant dense<1> : tensor<i32>
+// CHECK-DAG:      %[[CONSTANT_1:.*]] = mhlo.constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CONSTANT_2:.*]] = mhlo.constant dense<1000> : tensor<i32>
+// CHECK-DAG:      %[[CONSTANT_3:.*]] = mhlo.constant dense<100> : tensor<i32>
 // CHECK:          %[[WHILE_0:.*]]:3 = "mhlo.while"(%[[CONSTANT_1]], %[[CONSTANT_0]], %[[CONSTANT_2]]) ( {
 // CHECK:          ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
 // CHECK:            %[[COMPARE_0:.*]] = "mhlo.compare"(%arg0, %[[CONSTANT_3]]) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>

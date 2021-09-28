@@ -248,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "//third_party/eigen3",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:stringpiece",

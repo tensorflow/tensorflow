@@ -995,14 +995,14 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    with self.assertRaisesRegex(TypeError, 'Graph tensors'):
+    with self.assertRaises(TypeError):
       math_ops.matmul(x1, x2)
 
   def test_mixing_numpy_arrays_and_graph_tensors(self):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = np.ones((3, 3), dtype='float32')
-    with self.assertRaisesRegex(TypeError, 'Graph tensors'):
+    with self.assertRaises(TypeError):
       math_ops.matmul(x1, x2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))

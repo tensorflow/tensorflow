@@ -128,34 +128,25 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
       ExecutionInput& input = (*arguments)[alias->parameter_number];
       MaybeOwningDeviceMemory* device_memory =
           input.MutableBuffer(alias->parameter_index);
-      const bool valid = InputShapeValidForAlias(
-          ShapeUtil::GetSubshape(input.shape(), alias->parameter_index),
-          stream);
-      if (valid) {
-        if (auto owning = device_memory->Release()) {
-          // If the caller passes the ownership of the device memory, reuse it
-          // as the output buffer. It is up to the caller whether or not to
-          // donate a buffer; the aliasing information describes which buffers
-          // may alias, not buffers that must alias.
-          se::DeviceMemoryBase device_memory_base = owning->Release();
-          *device_memory = device_memory_base;
-          result_buffer = device_memory_base;
-          reused_buffer_bytes += allocation_bytes;
-          // The caller is giving us the input buffer, but in case of error of
-          // the execute call, we should not be releasing it as it contains
-          // valid data (for example, it is a parameter which the user wants us
-          // to alias, in a gradient update computation). So we store the index
-          // into the result in the aliased vactor, which will be fed to the
-          // ExecutionOutput, which will be using the indices to drop the
-          // addresses from its own ScopedShapedBuffer result, if the
-          // ExecutionOutput is not committed.
-          result.AddAliasedIndex(result_index);
-        } else {
-          VLOG(2) << "An input was not reused since it is not donated "
-                  << alias->ToString();
-        }
+      if (auto owning = device_memory->Release()) {
+        // If the caller passes the ownership of the device memory, reuse it
+        // as the output buffer. It is up to the caller whether or not to
+        // donate a buffer; the aliasing information describes which buffers
+        // may alias, not buffers that must alias.
+        se::DeviceMemoryBase device_memory_base = owning->Release();
+        *device_memory = device_memory_base;
+        result_buffer = device_memory_base;
+        reused_buffer_bytes += allocation_bytes;
+        // The caller is giving us the input buffer, but in case of error of the
+        // execute call, we should not be releasing it as it contains valid data
+        // (for example, it is a parameter which the user wants us to alias, in
+        // a gradient update computation). So we store the index into the result
+        // in the aliased vactor, which will be fed to the ExecutionOutput,
+        // which will be using the indices to drop the addresses from its own
+        // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(result_index);
       } else {
-        VLOG(2) << "An input was not reused since it is invalid for aliasing "
+        VLOG(2) << "An input was not reused since it is not donated "
                 << alias->ToString();
       }
     }

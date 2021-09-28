@@ -327,27 +327,21 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
-    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jint state,
-    jint num_threads) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jint state, jint num_threads) {
+  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
   // If not using xnnpack, simply don't apply the delegate.
-  if (state == 0) {
-    return;
-  }
+  if (state == 0) return 0;
 
-  Interpreter* interpreter = convertLongToInterpreter(env, handle);
-  if (interpreter == nullptr) {
-    return;
-  }
+  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) return 0;
 
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) {
-    return;
-  }
+  if (error_reporter == nullptr) return 0;
 
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   // TODO(b/173022832): Implement support for XNNPack unconditionally.
@@ -357,10 +351,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
     TF_LITE_REPORT_ERROR(error_reporter,
                          "WARNING: Not applying XNNPACK delegate by default "
                          "because it isn't supported in this module.\n");
+    return 0;
   } else {
     // In this case, XNNPACK was explicitly requested, so we throw an exception.
     ThrowException(env, tflite::jni::kUnsupportedOperationException,
                    "Not supported: XNNPACK delegate");
+    return 0;
   }
 #else
   // We use dynamic loading to avoid taking a hard dependency on XNNPack.
@@ -380,20 +376,22 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
     if (num_threads > 0) {
       options.num_threads = num_threads;
     }
-    Interpreter::TfLiteDelegatePtr delegate(xnnpack_create(&options),
-                                            xnnpack_delete);
-    auto delegation_status =
-        interpreter->ModifyGraphWithDelegate(std::move(delegate));
-    // kTfLiteApplicationError occurs in cases where delegation fails but
-    // the runtime is invokable (eg. another delegate has already been applied).
-    // We don't throw an Exception in that case.
-    // TODO(b/166483905): Add support for multiple delegates when model allows.
-    if (delegation_status != kTfLiteOk &&
-        delegation_status != kTfLiteApplicationError) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Failed to apply XNNPACK delegate: %s",
-                     error_reporter->CachedErrorMessage());
+    TfLiteDelegate* delegate = xnnpack_create(&options);
+    jlong delegate_handle = reinterpret_cast<jlong>(delegate);
+    jlong delete_handle = reinterpret_cast<jlong>(xnnpack_delete);
+
+    jclass xnnpack_delegate_class =
+        env->FindClass("org/tensorflow/lite/XnnpackDelegate");
+    if (xnnpack_delegate_class == nullptr) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: "
+                     "Can't find org/tensorflow/lite/XnnpackDelegate class");
     }
+    jmethodID constructor =
+        env->GetMethodID(xnnpack_delegate_class, "<init>", "(JJ)V");
+    jobject xnnpack_delegate = env->NewObject(
+        xnnpack_delegate_class, constructor, delegate_handle, delete_handle);
+    return reinterpret_cast<jlong>(xnnpack_delegate);
   } else if (state == -1) {
     // Instead of throwing an exception, we tolerate the missing of such
     // dependencies because we try to apply XNNPACK delegate by default.
@@ -401,10 +399,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
         error_reporter,
         "WARNING: Missing necessary XNNPACK delegate dependencies to apply it "
         "by default.\n");
+    return 0;
   } else {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Failed to load XNNPACK delegate from current runtime. "
                    "Have you added the necessary dependencies?");
+    return 0;
   }
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }

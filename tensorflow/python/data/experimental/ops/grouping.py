@@ -290,9 +290,11 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     if not self._key_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
       raise ValueError(
-          "`key_func` must return a single tf.int64 tensor. "
-          "Got type=%s and shape=%s"
-          % (self._key_func.output_types, self._key_func.output_shapes))
+          f"Invalid `key_func`. Expected `key_func` to return a scalar "
+          f"tf.int64 tensor, but instead `key_func` has output "
+          f"types={self._key_func.output_types} "
+          f"and shapes={self._key_func.output_shapes}."
+      )
 
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
@@ -325,18 +327,20 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           nest.flatten(state_classes)):
         if not issubclass(new_state_class, state_class):
           raise TypeError(
-              "The element classes for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (self._state_classes, wrapped_func.output_classes))
+              f"Invalid `reducer`. The output class of the "
+              f"`reducer.reduce_func` {wrapped_func.output_classes}, "
+              f"does not match the class of the reduce state "
+              f"{self._state_classes}.")
 
       # Extract and validate type information from the returned values.
       for new_state_type, state_type in zip(
           nest.flatten(wrapped_func.output_types), nest.flatten(state_types)):
         if new_state_type != state_type:
           raise TypeError(
-              "The element types for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (self._init_func.output_types, wrapped_func.output_types))
+              f"Invalid `reducer`. The element types for the new state "
+              f"{wrapped_func.output_types} do not match the element types "
+              f"of the old state {self._init_func.output_types}."
+          )
 
       # Extract shape information from the returned values.
       flat_state_shapes = nest.flatten(state_shapes)

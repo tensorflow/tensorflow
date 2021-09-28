@@ -38,4 +38,13 @@ def TFTensorType : DialectType<Fallback_Dialect,
   }];
 }
 
+// This corresponds to tensorflow::Allocator.
+def TFAllocatorType : DialectType<Fallback_Dialect,
+    CPred<"$_self.isa<::tfrt::fallback::TFAllocatorType>()">, "!tfrt_fallback.tf_allocator type">,
+    BuildableType<"$_builder.getType<::tfrt::fallback::TFAllocatorType>()"> {
+  let description = [{
+    `!tfrt_fallback.tf_tensor type` represents a tensorflow::Tensor.
+  }];
+}
+
 #endif

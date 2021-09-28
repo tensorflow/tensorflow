@@ -377,7 +377,7 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The new generator.
     """
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       raise RuntimeError('"from_non_deterministic_state" cannot be called when '  # pylint: disable=g-doc-exception
                          "determinism is enabled.")
     if alg is None:
@@ -985,7 +985,7 @@ def get_global_generator():
   """
   global global_generator
   if global_generator is None:
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       raise RuntimeError('"get_global_generator" cannot be called if '  # pylint: disable=g-doc-exception
                          "determinism is enabled, unless "
                          '"set_global_generator" has already been called. '

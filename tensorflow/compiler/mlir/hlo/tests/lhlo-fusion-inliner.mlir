@@ -3,9 +3,9 @@
 // CHECK-LABEL: @fusion_after_codegen
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?xf32>, %[[ARG1:.*]]: memref<?xf32>, %[[ARG2:.*]]: memref<3xi32>, %[[ARG3:.*]]: memref<?xf32>, %[[ARG4:.*]]: memref<?x?x?xf32>) -> memref<?x?x?xf32>
 func @fusion_after_codegen(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<3xi32>, %arg3: memref<?xf32>, %arg4: memref<?x?x?xf32>) -> memref<?x?x?xf32> {
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %c2 = constant 2 : index

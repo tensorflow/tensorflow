@@ -1210,7 +1210,7 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
 }
 
 def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
-    [NoSideEffect, SameOperandsAndResultShape]> {
+    [NoSideEffect]> {
   let summary = "BitcastConvert operator";
   let description = [{
     Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast
@@ -1429,7 +1429,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
       auto reversal = window_reversalAttr();
-      return reversal && llvm::any_of(reversal.getBoolValues(),
+      return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }
   }];
@@ -1602,6 +1602,14 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
 }
 
 def HLO_GatherOp: HLO_ShapedInterfaceOp<"gather", [NoSideEffect]> {
+  let summary = "Gather operator";
+  let description = [{
+    Stitches together several slices of `operand` from offsets specified in
+    `start_indices` (each slice at a potentially different runtime offset).
+
+    See https://www.tensorflow.org/xla/operation_semantics#gather.
+  }];
+
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,

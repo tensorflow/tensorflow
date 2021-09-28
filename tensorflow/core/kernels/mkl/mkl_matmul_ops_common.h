@@ -32,18 +32,19 @@ using mkldnn::prop_kind;
 using mkldnn::stream;
 
 namespace tensorflow {
+static Eigen::internal::CacheSizes cache_sizes = Eigen::internal::CacheSizes();
 
-#define L1_SIZE 32 * 1024
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-inline bool ExecuteSingleThreadedGemm(int m, int n, int k) {
+inline bool ExecuteSingleThreadedGemm(int m, int n, int k, int bytes) {
   // Ideally we would like to determine blocking and then come up with
   // a heuristic but what we are targeting are very small models whose
-  // total size is < few L1's. So we will do this simple calculation
+  // total size is < L2. So we will do this simple calculation
   // to determine if the matrix multiplication should be run on a single thread.
-  constexpr int kHeuristicMultiplier = 8;
-  return ((sizeof(float) * (m * n + k * (m + n))) <
-          L1_SIZE * kHeuristicMultiplier);
+  ptrdiff_t l2_size = cache_sizes.m_l2;
+  constexpr int kHeuristicMultiplier = 1;
+  const int mul_size = bytes * (m * n + k * (m + n));
+  const int l2_heur = l2_size * kHeuristicMultiplier;
+  return mul_size < l2_heur;
 }
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
@@ -56,6 +57,9 @@ struct MklDnnMatMulFwdParams {
   memory::format_tag weight_format;
   memory::format_tag dst_format;
   string dtypes = string("");
+#ifdef DNNL_AARCH64_USE_ACL
+  void* weight_address = nullptr;
+#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -352,6 +356,9 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dst_dims);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dtypes);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_format);
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_address);
+#endif
 
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {

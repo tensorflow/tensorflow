@@ -1312,8 +1312,10 @@ class CopyRemover {
   // live range interference is introduced by the copy's elimination. If
   // elision is possible, then the internal state (value lists) are updated,
   // and true is returned. Returns false otherwise.
-  bool TryElideCopy(const HloInstruction* copy, int64_t region_analysis_limit) {
+  bool TryElideCopy(const HloInstruction* copy,
+                    int64_t* region_analysis_limit) {
     VLOG(2) << "Trying to remove " << copy->name();
+    CHECK_NE(region_analysis_limit, nullptr);
 
     if (!ContainsKey(copy_map_, copy)) {
       VLOG(2) << copy->name() << " is not removable";
@@ -1340,8 +1342,9 @@ class CopyRemover {
     // are cheap and are later removed by replicating the broadcasts.
     bool use_region_analysis =
         copy->operand(0)->opcode() != HloOpcode::kBroadcast &&
-        (region_analysis_limit < 0 ||
-         live_range_size1 * live_range_size2 <= region_analysis_limit);
+        (*region_analysis_limit < 0 ||
+         live_range_size1 * live_range_size2 <= *region_analysis_limit);
+    *region_analysis_limit = 0;
     VLOG(3) << copy->name() << " copies value "
             << copy_node.src->value->ToShortString();
     VLOG(3) << "Source buffer values: " << ValueListToString(copy_node.src);
@@ -1369,6 +1372,7 @@ class CopyRemover {
         VLOG(2) << "Configured to not use region-based analysis.\n";
         return true;
       }
+      *region_analysis_limit += live_range_size1 * live_range_size2;
       if (ValuesInterfere(src, dest, option)) {
         VLOG(2) << "Region-based interference is true. \n";
         return true;
@@ -1964,7 +1968,6 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
   XLA_VLOG_LINES(4, module->ToString());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
-
   CopyRemover copy_remover(*module, *alias_analysis, ordering,
                            check_live_range_ordering);
   if (VLOG_IS_ON(3)) {
@@ -1980,6 +1983,11 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
   int64_t num_existing_copies = GetNumExistingCopies(module);
   bool changed = true;
   int64_t num_iterations = -1;
+  constexpr int64_t region_analysis_allowance_cap = 30000;
+  VLOG(6) << "Copy Insertion analyzing module with instructino count = "
+          << module->instruction_count() << "\n";
+  int64_t region_analysis_allowance =
+      std::max(region_analysis_allowance_cap, module->instruction_count() / 10);
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -1989,13 +1997,29 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
       VLOG(2) << "computation:" << computation->name() << "\n";
       for (HloInstruction* instruction : computation->instructions()) {
         VLOG(2) << instruction->ToString() << "\n";
-        if (instruction->opcode() == HloOpcode::kCopy &&
-            copy_remover.TryElideCopy(instruction,
-                                      use_region_based_live_range_analysis_)) {
-          changed = true;
-          TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
-          TF_RETURN_IF_ERROR(
-              instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+        // The region_analysis_cost_now is always set to
+        // use_region_based_live_range_analysis_ if it is < 0, in which case the
+        // analysis is always performed.
+        int64_t region_analysis_cost_now = std::min(
+            region_analysis_allowance, use_region_based_live_range_analysis_);
+        if (instruction->opcode() == HloOpcode::kCopy) {
+          if (copy_remover.TryElideCopy(instruction,
+                                        &region_analysis_cost_now)) {
+            changed = true;
+            TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
+            TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+                instruction->mutable_operand(0)));
+            VLOG(6) << "succeeded in eliminating copy.\n";
+          }
+          if (region_analysis_allowance > 0 && region_analysis_cost_now > 0) {
+            VLOG(6) << "Copy Insertion analyzing module cost: "
+                    << region_analysis_cost_now << "\n";
+            VLOG(6) << "instruction:" << instruction->ToString() << "\n";
+            region_analysis_allowance -= region_analysis_cost_now;
+            if (region_analysis_allowance < 0) {
+              region_analysis_allowance = 0;
+            }
+          }
         }
       }
     }

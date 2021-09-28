@@ -1422,12 +1422,14 @@ func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
 
 func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
   // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
-  %0 = "mhlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
-    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
-    rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   return
 }
 
@@ -1435,12 +1437,14 @@ func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 
 func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
   // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
-  %0 = "mhlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
-    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    lhs_contracting_dimensions = dense<[]> : tensor<0xi64>,
-    rhs_batching_dimensions = dense<0> : tensor<1xi64>,
-    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
-  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   return
 }
 
@@ -1478,6 +1482,107 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 4,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{slice_sizes.rank != 1}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[[1, 1, 8]]> : tensor<1x3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{slice_sizes size (2) not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 8]> : tensor<2xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
 }
 
 // -----
@@ -1732,3 +1837,170 @@ func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %4 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
   return %4: tensor<3xf32>
 }
+
+// -----
+
+// Test custom attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<>
+module attributes{mhlo.scatter = #mhlo.scatter<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 2], index_vector_dim = 1>
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  scatter_dims_to_operand_dims = [0, 2],
+  inserted_window_dims = [0, 1],
+  update_window_dims = [1]
+ >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1]>
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  inserted_window_dims = [0, 1],
+  update_window_dims = [1]
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  // expected-error@+2 {{duplicated `index_vector_dim` entry}}
+  // expected-error@+1 {{failed parsing scatter dimension numbers}}
+  index_vector_dim = 1,
+ >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<>
+module attributes{mhlo.gather = #mhlo.gather<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   index_vector_dim = 1,
+   offset_dims = [1],
+   start_index_map = [0],
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   // expected-error @+2 {{failed parsing gather dimension numbers}}
+   // expected-error @+1 {{duplicated `collapsed_slice_dims` entry}}
+   collapsed_slice_dims = [0],
+ >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3]
+  >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3],
+  >} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.dot = #mhlo.dot<
+// CHECK-SAME:       lhs_batching_dimensions = [0],
+// CHECK-SAME:       rhs_batching_dimensions = [1],
+// CHECK-SAME:       lhs_contracting_dimensions = [2],
+// CHECK-SAME:       rhs_contracting_dimensions = [3]
+// CHECK-SAME:     >
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      rhs_contracting_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+  >} {}
+
+// -----
+
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      // expected-error@+2 {{duplicated `rhs_batching_dimensions` entry}}
+      // expected-error@+1 {{failed parsing dot dimension numbers}}
+      rhs_batching_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+  >} {}
+
+// -----
+
+module attributes {
+  // expected-error@+4 {{expected '>'}}
+  // expected-error@+3 {{failed parsing dot dimension numbers}}
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1]
+      rhs_contracting_dimensions = [3]
+      lhs_contracting_dimensions = [2]
+      lhs_batching_dimensions = [0]
+  >} {}
+
+
+// -----
+
+module attributes {
+  // expected-error@+2 {{expected one of: `lhs_batching_dimensions`, `rhs_batching_dimensions`, `lhs_contracting_dimensions`, `rhs_contracting_dimensions`}}
+  // expected-error@+1 {{failed parsing dot dimension numbers}}
+  mhlo.dot = #mhlo.dot<foo = [0]>
+} {}
+
+// -----
+
+module attributes {
+  mhlo.dot = #mhlo.dot<
+      rhs_batching_dimensions = [1],
+      rhs_contracting_dimensions = [3],
+      lhs_contracting_dimensions = [2],
+      lhs_batching_dimensions = [0],
+      // expected-error@+2 {{expected one of: `lhs_batching_dimensions`, `rhs_batching_dimensions`, `lhs_contracting_dimensions`, `rhs_contracting_dimensions`}}
+      // expected-error@+1 {{failed parsing dot dimension numbers}}
+      foo = [0]
+  >} {}
+

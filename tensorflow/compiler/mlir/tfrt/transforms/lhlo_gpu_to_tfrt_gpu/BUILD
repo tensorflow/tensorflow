@@ -65,6 +65,8 @@ cc_library(
         "gpu_passes.cc",
         "memcpy_pattern.cc",
         "memcpy_pattern.h",
+        "memset_pattern.cc",
+        "memset_pattern.h",
     ],
     hdrs = ["gpu_passes.h"],
     tags = [

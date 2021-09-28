@@ -101,7 +101,8 @@ class SaveModelForMultipleWorkers(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_two_cpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
             strategy_combinations.tpu_strategy,
         ],
         mode="eager",
@@ -308,7 +309,10 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
 
 @combinations.generate(
     combinations.combine(
-        strategy=[strategy_combinations.mirrored_strategy_with_gpu_and_cpu],
+        strategy=[
+            strategy_combinations.mirrored_strategy_with_two_cpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
+        ],
         mode="eager",
     ))
 class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
@@ -685,5 +689,4 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # TODO(b/172304955): enable logical devices.
-  test_util.main(config_logical_devices=False)
+  test_util.main()

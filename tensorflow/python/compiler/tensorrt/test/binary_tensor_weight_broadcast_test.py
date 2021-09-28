@@ -60,7 +60,10 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_%d" % i for i in range(16)]
+    # The final reshape op is converted only in dynamic shape mode. This op is
+    # placed into a new engine due to the preceding trt_incompatible_ops.
+    num_engines = 17 if run_params.dynamic_shape else 16
+    return ["TRTEngineOp_%d" % i for i in range(num_engines)]
 
   # TODO(b/176540862): remove this routine to disallow native segment execution
   # for TensorRT 7+.

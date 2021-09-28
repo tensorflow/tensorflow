@@ -326,19 +326,19 @@ class _ResourceSummaryWriter(SummaryWriter):
   def set_as_default(self, step=None):
     """See `SummaryWriter.set_as_default`."""
     if context.executing_eagerly() and self._closed:
-      raise RuntimeError("SummaryWriter is already closed")
+      raise RuntimeError(f"SummaryWriter {self!r} is already closed")
     super().set_as_default(step)
 
   def as_default(self, step=None):
     """See `SummaryWriter.as_default`."""
     if context.executing_eagerly() and self._closed:
-      raise RuntimeError("SummaryWriter is already closed")
+      raise RuntimeError(f"SummaryWriter {self!r} is already closed")
     return super().as_default(step)
 
   def init(self):
     """See `SummaryWriter.init`."""
     if context.executing_eagerly() and self._closed:
-      raise RuntimeError("SummaryWriter is already closed")
+      raise RuntimeError(f"SummaryWriter {self!r} is already closed")
     return self._init_op
 
   def flush(self):
@@ -485,7 +485,8 @@ def initialize(
   if session is None:
     session = ops.get_default_session()
     if session is None:
-      raise ValueError("session must be passed if no default session exists")
+      raise ValueError("Argument `session must be passed if no default "
+                       "session exists")
   session.run(summary_writer_initializer_op())
   if graph is not None:
     data = _serialize_graph(graph)
@@ -517,7 +518,7 @@ def create_file_writer_v2(logdir,
     A SummaryWriter object.
   """
   if logdir is None:
-    raise ValueError("logdir cannot be None")
+    raise ValueError("Argument `logdir` cannot be None")
   inside_function = ops.inside_function()
   with ops.name_scope(name, "create_file_writer") as scope, ops.device("cpu:0"):
     # Run init inside an init_scope() to hoist it out of tf.functions.
@@ -620,7 +621,7 @@ def create_noop_writer():
 
 def _cleanse_string(name, pattern, value):
   if isinstance(value, six.string_types) and pattern.search(value) is None:
-    raise ValueError("%s (%s) must match %s" % (name, value, pattern.pattern))
+    raise ValueError(f"{name} ({value}) must match {pattern.pattern}")
   return ops.convert_to_tensor(value, dtypes.string)
 
 
@@ -749,7 +750,8 @@ def write(tag, tensor, step=None, metadata=None, name=None):
     def record():
       """Record the actual summary and return True."""
       if step is None:
-        raise ValueError("No step set via 'step' argument or "
+        raise ValueError("No step set. Please specify one either through the "
+                         "`step` argument or through "
                          "tf.summary.experimental.set_step()")
 
       # Note the identity to move the tensor to the CPU.
@@ -802,7 +804,8 @@ def write_raw_pb(tensor, step=None, name=None):
     if step is None:
       step = get_step()
       if step is None:
-        raise ValueError("No step set via 'step' argument or "
+        raise ValueError("No step set. Please specify one either through the "
+                         "`step` argument or through "
                          "tf.summary.experimental.set_step()")
 
     def record():
@@ -992,8 +995,9 @@ def graph_v1(param, step=None, name=None):
     TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
   if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
-    raise TypeError("graph() needs a tf.Tensor (e.g. tf.placeholder) in graph "
-                    "mode, but was: %s" % type(param))
+    raise TypeError("graph() needs a argument `param` to be tf.Tensor "
+                    "(e.g. tf.placeholder) in graph mode, but received "
+                    f"param={param} of type {type(param).__name__}.")
   writer = _summary_state.writer
   if writer is None:
     return control_flow_ops.no_op()
@@ -1062,7 +1066,9 @@ def graph(graph_data):
       tensor = ops.convert_to_tensor(
           _serialize_graph(graph_data), dtypes.string)
     else:
-      raise ValueError("'graph_data' is not tf.Graph or tf.compat.v1.GraphDef")
+      raise ValueError("Argument 'graph_data' is not tf.Graph or "
+                       "tf.compat.v1.GraphDef. Received graph_data="
+                       f"{graph_data} of type {type(graph_data).__name__}.")
 
     gen_summary_ops.write_graph_summary(
         writer._resource,  # pylint: disable=protected-access
@@ -1162,14 +1168,14 @@ def _check_create_file_writer_args(inside_function, **kwargs):
     if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tf_type(arg):
       if inside_function:
         raise ValueError(
-            "Invalid graph Tensor argument \"%s=%s\" to create_file_writer() "
-            "inside an @tf.function. The create call will be lifted into the "
-            "outer eager execution context, so it cannot consume graph tensors "
-            "defined inside the function body." % (arg_name, arg))
+            f"Invalid graph Tensor argument '{arg_name}={arg}' to "
+            "create_file_writer() inside an @tf.function. The create call will "
+            "be lifted into the outer eager execution context, so it cannot "
+            "consume graph tensors defined inside the function body.")
       else:
         raise ValueError(
-            "Invalid graph Tensor argument \"%s=%s\" to eagerly executed "
-            "create_file_writer()." % (arg_name, arg))
+            f"Invalid graph Tensor argument '{arg_name}={arg}' to eagerly "
+            "executed create_file_writer().")
 
 
 def run_metadata(name, data, step=None):
@@ -1339,10 +1345,11 @@ def trace_export(name, step=None, profiler_outdir=None):
 
   with _current_trace_context_lock:
     if _current_trace_context is None:
-      raise ValueError("Must enable trace before export.")
+      raise ValueError("Must enable trace before export through "
+                       "tf.summary.trace_on.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
     if profiler and profiler_outdir is None:
-      raise ValueError("Required profiler_outdir is not specified")
+      raise ValueError("Argument `profiler_outdir` is not specified.")
 
   run_meta = context.context().export_run_metadata()
 

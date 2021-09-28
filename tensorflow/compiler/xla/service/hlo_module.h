@@ -329,6 +329,11 @@ class HloModule {
                                   /*preserve_entry_layouts=*/true);
   }
 
+  void SetAndUniquifyInstrName(HloInstruction* instr, absl::string_view name) {
+    instr->SetAndSanitizeName(name);
+    instr->UniquifyName(&instruction_name_uniquer_);
+  }
+
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for

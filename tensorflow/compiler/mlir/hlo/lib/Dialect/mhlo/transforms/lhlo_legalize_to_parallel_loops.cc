@@ -231,7 +231,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       lmhlo::ReduceOp reduce_op, ConversionPatternRewriter* rewriter) const {
     auto loc = reduce_op.getLoc();
     DenseSet<int> reducing_dims;
-    for (const auto& rdim : reduce_op.dimensions().getIntValues()) {
+    for (const auto& rdim : reduce_op.dimensions().getValues<APInt>()) {
       reducing_dims.insert(rdim.getSExtValue());
     }
 
@@ -561,7 +561,7 @@ class SelectAndScatterOpConverter
     OpBuilder::InsertPoint ip;
     WindowLoops result;
     for (const auto& window_dim :
-         s_and_s_op.window_dimensions()->getIntValues()) {
+         s_and_s_op.window_dimensions()->getValues<APInt>()) {
       Value upper = b->create<ConstantIndexOp>(loc, window_dim.getSExtValue());
       result.inner_loop =
           b->create<scf::ForOp>(loc, zero, upper, one, iter_args);

@@ -258,7 +258,7 @@ class XentOpTestBase(test.TestCase):
       err = gradient_checker.compute_gradient_error(logits, [12], gradients,
                                                     [12])
 
-      if not config.deterministic_ops_enabled():
+      if not config.is_op_determinism_enabled():
         # Check how second derivative is calculated.
         # (it is equivalent to a `BatchMatMul` op being in the graph because of
         # the implementation in SoftmaxCrossEntropyWithLogitsGrad)

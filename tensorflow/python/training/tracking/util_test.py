@@ -874,7 +874,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.NotFoundError,
-        "Failed to restore from checkpoint or SavedModel"):
+        "Error when restoring from checkpoint or SavedModel"):
       load_checkpoint.restore(saved_model_dir + "no").expect_partial()
 
     load_checkpoint.restore(saved_model_dir).expect_partial()

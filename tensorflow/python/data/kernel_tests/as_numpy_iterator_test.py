@@ -73,7 +73,7 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def _testInvalidElement(self, element):
     ds = dataset_ops.Dataset.from_tensors(element)
     with self.assertRaisesRegex(TypeError,
-                                '.*does not support datasets containing.*'):
+                                'is not supported for datasets that'):
       ds.as_numpy_iterator()
 
   @combinations.generate(test_base.eager_only_combinations())

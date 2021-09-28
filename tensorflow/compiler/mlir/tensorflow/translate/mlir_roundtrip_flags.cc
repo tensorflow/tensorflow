@@ -58,6 +58,8 @@ std::string GraphImportConfig::str() const {
   ss << "\nrestrict_functionalization_to_tpu_nodes: "
      << restrict_functionalization_to_tpu_nodes;
   ss << "\nenable_shape_inference: " << enable_shape_inference;
+  ss << "\nunconditionally_use_set_output_shapes: "
+     << unconditionally_use_set_output_shapes;
 
   return ss.str();
 }

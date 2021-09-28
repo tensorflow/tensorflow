@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
@@ -403,6 +404,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
   }();
+  pipeline.AddPass<BitcastDtypesExpander>();
 
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
     return sort->operand(0)->shape().element_type() == F32;
@@ -486,6 +488,11 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                  llvm::TargetMachine* target_machine) {
+  if (DumpingEnabledForHloModule(*module)) {
+    hlo_proto_ = absl::make_unique<HloProto>();
+    *hlo_proto_->mutable_hlo_module() = module->ToProto();
+  }
+
   LLVMTargetMachineFeatures target_machine_features(target_machine);
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
                                                    &target_machine_features));
@@ -824,11 +831,14 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // Dump computation proto state and buffer assignment for debug and test, if
   // dump is enabled.
   if (DumpingEnabledForHloModule(cpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
-    *hlo_proto->mutable_buffer_assignment() =
+    if (!hlo_proto_) {
+      hlo_proto_ = absl::make_unique<HloProto>();
+      *hlo_proto_->mutable_hlo_module() = cpu_executable->module().ToProto();
+    }
+
+    *hlo_proto_->mutable_buffer_assignment() =
         cpu_executable->buffer_assignment().ToProto();
-    cpu_executable->set_hlo_proto(std::move(hlo_proto));
+    cpu_executable->set_hlo_proto(std::move(hlo_proto_));
   }
 
   cpu_executable->set_debug_info(

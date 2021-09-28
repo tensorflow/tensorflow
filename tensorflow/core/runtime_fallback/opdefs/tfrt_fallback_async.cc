@@ -85,6 +85,9 @@ static LogicalResult verify(ExecuteOp op) {
 static LogicalResult verify(ExecuteOpSeq op) {
   return fallback_common::VerifyFallbackExecuteOp(op);
 }
+static LogicalResult verify(ExecuteOpWithAllocator op) {
+  return fallback_common::VerifyExecuteOpCommon(op);
+}
 static LogicalResult verify(BatchFunctionOp op) {
   return fallback_common::VerifyExecuteOpCommon(op);
 }
@@ -134,6 +137,31 @@ static ParseResult parseExecuteOpSeq(OpAsmParser &parser,
   parse_options.has_cost = true;
 
   auto &builder = parser.getBuilder();
+  return fallback_common::ParseExecuteOpCommon(
+      parser, builder, result, builder.getType<fallback::TFTensorType>(),
+      parse_options);
+}
+static ParseResult parseExecuteOpWithAllocator(OpAsmParser &parser,
+                                               OperationState &result) {
+  auto &builder = parser.getBuilder();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 1> allocator;
+  if (parser.parseOperandList(allocator,
+                              /*requiredOperandCount=*/1,
+                              mlir::OpAsmParser::Delimiter::Paren))
+    return mlir::failure();
+
+  if (parser.resolveOperands(allocator.front(),
+                             builder.getType<fallback::TFAllocatorType>(),
+                             result.operands))
+    return mlir::failure();
+
+  fallback_common::ParseExecuteOpOptions parse_options;
+  parse_options.has_chain = false;
+  parse_options.has_key = true;
+  parse_options.has_device = true;
+  parse_options.has_func_attr = true;
+  parse_options.has_cost = true;
+
   return fallback_common::ParseExecuteOpCommon(
       parser, builder, result, builder.getType<fallback::TFTensorType>(),
       parse_options);
@@ -217,6 +245,18 @@ static void print(OpAsmPrinter &p, ExecuteOp op) {
 
 static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
   p << "(" << op.in_op_chain() << ") key("
+    << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
+    << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
+    << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
+    << '(' << op.operands() << ')';
+
+  fallback_common::PrintExecuteOpCommon(p, op);
+  fallback_common::PrintExecuteOpFuncAttribute(p, op);
+  if (!op.results().empty()) p << " : " << op.results().size();
+}
+
+static void print(OpAsmPrinter &p, ExecuteOpWithAllocator op) {
+  p << "(" << op.allocator() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")

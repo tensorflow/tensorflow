@@ -52,7 +52,8 @@ def all_cluster_configurations():
 def _make_worker(dispatcher_address,
                  data_transfer_protocol,
                  shutdown_quiet_period_ms=0,
-                 port=0):
+                 port=0,
+                 worker_tags=None):
   """Creates a worker server."""
   defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
   config_proto = service_config_pb2.WorkerConfig(
@@ -60,6 +61,7 @@ def _make_worker(dispatcher_address,
       worker_address=defaults.worker_address,
       port=port,
       protocol=PROTOCOL,
+      worker_tags=worker_tags,
       heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
       data_transfer_protocol=data_transfer_protocol,
@@ -72,12 +74,18 @@ def _make_worker(dispatcher_address,
 class TestWorker(object):
   """A tf.data service worker."""
 
-  def __init__(self, dispatcher_address, shutdown_quiet_period_ms,
-               data_transfer_protocol=None):
+  def __init__(self,
+               dispatcher_address,
+               shutdown_quiet_period_ms,
+               data_transfer_protocol=None,
+               worker_tags=None):
     self._dispatcher_address = dispatcher_address
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
-    self._server = _make_worker(dispatcher_address, data_transfer_protocol,
-                                shutdown_quiet_period_ms)
+    self._server = _make_worker(
+        dispatcher_address,
+        data_transfer_protocol,
+        shutdown_quiet_period_ms,
+        worker_tags=worker_tags)
     self._running = False
     self._data_transfer_protocol = data_transfer_protocol
 

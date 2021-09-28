@@ -26,9 +26,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 
 
-def squeeze(input, axis=None, name=None):  # pylint: disable=redefined-builtin
+@dispatch.dispatch_for_api(array_ops.squeeze_v2)
+def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Ragged compatible squeeze.
 
   If `input` is a `tf.Tensor`, then this calls `tf.squeeze`.
@@ -120,3 +123,13 @@ def squeeze(input, axis=None, name=None):  # pylint: disable=redefined-builtin
       squeezed_rt = array_ops.squeeze(squeezed_rt, [0], name)
 
     return squeezed_rt
+
+
+@dispatch.dispatch_for_api(array_ops.squeeze)
+def _ragged_squeeze_v1(input: ragged_tensor.Ragged,  # pylint: disable=redefined-builtin
+                       axis=None,
+                       name=None,
+                       squeeze_dims=None):
+  axis = deprecation.deprecated_argument_lookup('axis', axis, 'squeeze_dims',
+                                                squeeze_dims)
+  return squeeze(input, axis, name)

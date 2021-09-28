@@ -2551,6 +2551,66 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   return %0#0 : tensor<i32>
 }
 
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
+  return %0, %1 : tensor<*xi32>, tensor<*xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
+  // expected-error @+1 {{number of arguments in condition function does not match number of arguments in body function}}
+  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<*xi32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+    %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+    "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
+  }) : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<2xf32>, %arg2: tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
+  return %0, %1, %arg2 : tensor<*xi32>, tensor<2xf32>, tensor<1xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i32> {
+  // expected-error @+1 {{condition function's argument type does not match body function's argument type}}
+  %0:3 = "tfl.while"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):  // no predecessors
+    %1:3 = call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
+    "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> ()
+  }) : (tensor<i32>, tensor<1xf32>, tensor<2xf32>) -> (tensor<i32>, tensor<2xf32>, tensor<1xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
 func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tfl.if"(%arg0) ( {
     "tfl.yield"(%arg1) : (tensor<1xf32>) -> ()
@@ -2562,6 +2622,7 @@ func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 }
 
 func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error @+1 {{'tfl.if' op expected 2 regions}}
   %0 = "tfl.if"(%arg0) ( {
     %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     "tfl.yield"(%1) : (tensor<1xf32>) -> ()

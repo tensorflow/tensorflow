@@ -468,6 +468,9 @@ class BufferAssignment {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
   string ToString() const;
+  // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
+  // every buffer associated with each allocation.
+  string ToVerboseString() const;
   string BufferInfoString() const;
   BufferAssignmentProto ToProto() const;
 

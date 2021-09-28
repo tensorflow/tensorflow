@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -62,7 +63,12 @@ class BaseLookupTableTest(test.TestCase):
     if tf2.enabled():
       return lookup_ops.StaticHashTable
     else:
-      return lookup_ops.StaticHashTableV1
+
+      def f(*args, **kwargs):
+        kwargs.pop("experimental_is_anonymous", None)
+        return lookup_ops.StaticHashTableV1(*args, **kwargs)
+
+      return f
 
   def getVocabularyTable(self):
     if tf2.enabled():
@@ -75,14 +81,19 @@ class BaseLookupTableTest(test.TestCase):
       self.evaluate(table.initializer)
 
 
-class StaticHashTableTest(BaseLookupTableTest):
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
+class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
-  def testStaticHashTable(self):
+  def testStaticHashTable(self, is_anonymous):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
+    self.assertEqual(table._is_anonymous, is_anonymous and tf2.enabled())
     self.initialize_table(table)
 
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -100,12 +111,14 @@ class StaticHashTableTest(BaseLookupTableTest):
                           self.evaluate(exported_keys_tensor))
     self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
-  def testStaticHashTableFindHighRank(self):
+  def testStaticHashTableFindHighRank(self, is_anonymous):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -117,13 +130,15 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([[0, 1], [-1, -1]], result)
 
-  def testStaticHashTableInitWithPythonArrays(self):
+  def testStaticHashTableInitWithPythonArrays(self, is_anonymous):
     default_val = -1
     keys = ["brain", "salad", "surgery"]
     values = [0, 1, 2]
     table = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(
-            keys, values, value_dtype=dtypes.int64), default_val)
+            keys, values, value_dtype=dtypes.int64),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -134,12 +149,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testStaticHashTableInitWithNumPyArrays(self):
+  def testStaticHashTableInitWithNumPyArrays(self, is_anonymous):
     default_val = -1
     keys = np.array(["brain", "salad", "surgery"], dtype=np.str_)
     values = np.array([0, 1, 2], dtype=np.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -150,17 +167,23 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testMultipleStaticHashTables(self):
+  def testMultipleStaticHashTables(self, is_anonymous):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
 
     table1 = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     table2 = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     table3 = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.initialize_table(table1)
     self.initialize_table(table2)
@@ -179,12 +202,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, -1], out2)
     self.assertAllEqual([0, 1, -1], out3)
 
-  def testStaticHashTableWithTensorDefault(self):
+  def testStaticHashTableWithTensorDefault(self, is_anonymous):
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     input_string = constant_op.constant(["brain", "salad", "tank"])
@@ -193,12 +218,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testStaticHashTableGetItem(self):
+  def testStaticHashTableGetItem(self, is_anonymous):
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-        keys, values), default_val)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     input_string = constant_op.constant(["brain", "salad", "tank"])
@@ -207,12 +234,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testStaticHashTableWithSparseTensorInput(self):
+  def testStaticHashTableWithSparseTensorInput(self, is_anonymous):
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     sp_indices = [[0, 0], [0, 1], [1, 0]]
@@ -229,12 +258,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual(sp_indices, out_indices)
     self.assertAllEqual(sp_shape, out_shape)
 
-  def testStaticHashTableWithRaggedTensorInput(self):
+  def testStaticHashTableWithRaggedTensorInput(self, is_anonymous):
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     row_splits = [0, 2, 3]
@@ -248,12 +279,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, -1], out.values)
     self.assertAllEqual(row_splits, out.row_splits)
 
-  def testSignatureMismatch(self):
+  def testSignatureMismatch(self, is_anonymous):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     # Ref types do not produce a lookup signature mismatch.
@@ -267,23 +300,28 @@ class StaticHashTableTest(BaseLookupTableTest):
 
     with self.assertRaises(TypeError):
       self.getHashTable()(
-          lookup_ops.KeyValueTensorInitializer(keys, values), "UNK")
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          "UNK",
+          experimental_is_anonymous=is_anonymous)
 
-  def testDTypes(self):
+  def testDTypes(self, is_anonymous):
     default_val = -1
     with self.assertRaises(TypeError):
       self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(["a"], [1], [dtypes.string],
-                                               dtypes.int64), default_val)
+                                               dtypes.int64),
+          default_val,
+          experimental_is_anonymous=is_anonymous)
 
   @test_util.run_v1_only("(Cached) Sessions not available in TF2.0")
-  def testNotInitialized(self):
+  def testNotInitialized(self, is_anonymous):
     with self.cached_session():
       default_val = -1
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(["a"], [1],
                                                value_dtype=dtypes.int64),
-          default_val)
+          default_val,
+          experimental_is_anonymous=is_anonymous)
 
       input_string = constant_op.constant(["brain", "salad", "surgery"])
       output = table.lookup(input_string)
@@ -292,18 +330,20 @@ class StaticHashTableTest(BaseLookupTableTest):
         self.evaluate(output)
 
   @test_util.run_v1_only("(Cached) Sessions not available in TF2.0")
-  def testInitializeTwice(self):
+  def testInitializeTwice(self, is_anonymous):
     with self.cached_session():
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = self.getHashTable()(
-          lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          default_val,
+          experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
       # Make sure that initializing twice doesn't throw any errors.
       self.initialize_table(table)
 
-  def testInitializationWithInvalidDimensions(self):
+  def testInitializationWithInvalidDimensions(self, is_anonymous):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2, 3, 4], dtypes.int64)
@@ -313,10 +353,12 @@ class StaticHashTableTest(BaseLookupTableTest):
       raised_error = errors_impl.InvalidArgumentError
     with self.assertRaises(raised_error):
       self.getHashTable()(
-          lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          default_val,
+          experimental_is_anonymous=is_anonymous)
 
   @test_util.run_v1_only("Sessions not available in TF2.0")
-  def testMultipleSessions(self):
+  def testMultipleSessions(self, is_anonymous):
     # Start a server
     server = server_lib.Server({"local0": ["localhost:0"]},
                                protocol="grpc",
@@ -331,7 +373,8 @@ class StaticHashTableTest(BaseLookupTableTest):
     table = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(keys, values),
         default_val,
-        name="t1")
+        name="t1",
+        experimental_is_anonymous=is_anonymous)
 
     # Init the table in the first session.
     with session1:
@@ -345,7 +388,7 @@ class StaticHashTableTest(BaseLookupTableTest):
       self.assertAllEqual(3, self.evaluate(table.size()))
 
   @test_util.run_v2_only
-  def testImportedHashTable(self):
+  def testImportedHashTable(self, is_anonymous):
     g = ops.Graph()
     with g.as_default():
       t = lookup_ops.StaticHashTable(
@@ -365,12 +408,14 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.evaluate(pruned_init_fn())
     self.assertAllEqual([1], wrapped())
 
-  def testStaticHashTableInt32String(self):
+  def testStaticHashTableInt32String(self, is_anonymous):
     default_val = "n/a"
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
     table = self.getHashTable()(
-        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     input_tensor = constant_op.constant([0, 1, -1])
@@ -379,13 +424,15 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
 
-  def testTableUseInFunction(self):
+  def testTableUseInFunction(self, is_anonymous):
     if not context.executing_eagerly():
       self.skipTest("Only Eager mode test.")
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
-    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-        keys, values), "n/a")
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        "n/a",
+        experimental_is_anonymous=is_anonymous)
 
     @function.defun()
     def lookup_table_func(k):
@@ -396,7 +443,7 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = lookup_table_func(constant_op.constant([2, -1, 1]))
     self.assertAllEqual([b"surgery", b"n/a", b"salad"], result)
 
-  def testTableCreatedInFunction(self):
+  def testTableCreatedInFunction(self, is_anonymous):
     if not context.executing_eagerly():
       self.skipTest("Only Eager mode test.")
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
@@ -404,8 +451,10 @@ class StaticHashTableTest(BaseLookupTableTest):
 
     @function.defun()
     def lookup_table_func(k):
-      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-          keys, values), "n/a")
+      table = self.getHashTable()(
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          "n/a",
+          experimental_is_anonymous=is_anonymous)
       return table.lookup(k)
 
     result = lookup_table_func(constant_op.constant([0, 1, -1]))
@@ -413,21 +462,25 @@ class StaticHashTableTest(BaseLookupTableTest):
     result = lookup_table_func(constant_op.constant([2, -1, 1]))
     self.assertAllEqual([b"surgery", b"n/a", b"salad"], result)
 
-  def testTwoTablesInControlFlow(self):
+  def testTwoTablesInControlFlow(self, is_anonymous):
     keys = constant_op.constant([1, 2, 3], dtypes.int32)
     values = constant_op.constant([5, 10, 15], dtypes.int32)
 
     def table_func1(x):
-      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-          keys, values), -1)
+      table = self.getHashTable()(
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          -1,
+          experimental_is_anonymous=is_anonymous)
       return table.lookup(x)
 
     elems = np.array([2, 4, 1], dtype=np.int32)
     result1 = map_fn.map_fn(table_func1, elems, dtype=dtypes.int32)
 
     def table_func2(x):
-      table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-          keys, values), -1)
+      table = self.getHashTable()(
+          lookup_ops.KeyValueTensorInitializer(keys, values),
+          -1,
+          experimental_is_anonymous=is_anonymous)
       return table.lookup(x)
 
     elems = np.array([2, 4, 1], dtype=np.int32)
@@ -439,10 +492,13 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([10, -1, 5], self.evaluate(result2))
 
   @test_util.enable_control_flow_v2
-  def testLookupTableInWhileV2(self):
-    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-        constant_op.constant([2, 5], dtype=dtypes.int64),
-        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+  def testLookupTableInWhileV2(self, is_anonymous):
+    lookup = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant([2, 5], dtype=dtypes.int64),
+            constant_op.constant([-10.0, 1], dtype=dtypes.float32)),
+        -1,
+        experimental_is_anonymous=is_anonymous)
 
     beta = variables.Variable(1.0, trainable=True)
 
@@ -459,10 +515,13 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertIsNone(tape.gradient(loss, beta))
 
   @test_util.enable_control_flow_v2
-  def testLookupTableInCondV2(self):
-    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-        constant_op.constant([2, 5], dtype=dtypes.int64),
-        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+  def testLookupTableInCondV2(self, is_anonymous):
+    lookup = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant([2, 5], dtype=dtypes.int64),
+            constant_op.constant([-10.0, 1], dtype=dtypes.float32)),
+        -1,
+        experimental_is_anonymous=is_anonymous)
 
     beta = variables.Variable(1.0, trainable=True)
 
@@ -485,10 +544,13 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
 
-  def testExportShapeInference(self):
-    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
-        constant_op.constant([2, 5], dtype=dtypes.int64),
-        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+  def testExportShapeInference(self, is_anonymous):
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(
+            constant_op.constant([2, 5], dtype=dtypes.int64),
+            constant_op.constant([-10.0, 1], dtype=dtypes.float32)),
+        -1,
+        experimental_is_anonymous=is_anonymous)
     actual_shapes = [t.shape for t in table.export()]
     inferred_shapes = []
 
@@ -504,45 +566,54 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
 
-  def test_string(self):
+  def test_string(self, is_anonymous):
     init = lookup_ops.KeyValueTensorInitializer(
         ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
-    table = self.getHashTable()(init, default_value=-1)
+    table = self.getHashTable()(
+        init, default_value=-1, experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
-  def test_multiple_tables(self):
+  def test_multiple_tables(self, is_anonymous):
     with ops.name_scope("table_scope"):
       init1 = lookup_ops.KeyValueTensorInitializer(
           ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
-      table1 = self.getHashTable()(init1, default_value=-1)
+      table1 = self.getHashTable()(
+          init1, default_value=-1, experimental_is_anonymous=is_anonymous)
       if not context.executing_eagerly():
         self.assertEqual("hash_table", table1.name)
         self.assertEqual("table_scope/hash_table",
                          table1.resource_handle.op.name)
       init2 = lookup_ops.KeyValueTensorInitializer(
           ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
-      table2 = self.getHashTable()(init2, default_value=-1)
+      table2 = self.getHashTable()(
+          init2, default_value=-1, experimental_is_anonymous=is_anonymous)
       if not context.executing_eagerly():
         self.assertEqual("hash_table_1", table2.name)
         self.assertEqual("table_scope/hash_table_1",
                          table2.resource_handle.op.name)
 
-  def test_int64(self):
+  def test_int64(self, is_anonymous):
     init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                 dtypes.int64, dtypes.int64)
-    table = self.getHashTable()(init, default_value=-1)
+    table = self.getHashTable()(
+        init, default_value=-1, experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
-  def test_int32(self):
+  def test_int32(self, is_anonymous):
     init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                 dtypes.int32, dtypes.int64)
     with self.assertRaises(errors_impl.OpError):
-      table = self.getHashTable()(init, default_value=-1)
+      table = self.getHashTable()(
+          init, default_value=-1, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
 
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class InitializeTableFromFileOpTest(BaseLookupTableTest):
 
   def _createVocabFile(self, basename, values=("brain", "salad", "surgery")):
@@ -551,14 +622,15 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
-  def testInitializeStringTable(self):
+  def testInitializeStringTable(self, is_anonymous):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
     default_value = -1
     init = lookup_ops.TextFileInitializer(
         vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
         dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
     self.assertIn("one_column_1.txt_-2_-1", init._shared_name)
-    table = self.getHashTable()(init, default_value)
+    table = self.getHashTable()(
+        init, default_value, experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
@@ -566,7 +638,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testInitializeInt64Table(self):
+  def testInitializeInt64Table(self, is_anonymous):
     vocabulary_file = self._createVocabFile(
         "one_column_int64.txt", values=("42", "1", "-1000"))
 
@@ -576,7 +648,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           vocabulary_file, dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertIn("one_column_int64.txt_-2_-1", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
       output = table.lookup(
@@ -585,7 +658,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
-  def testInitializeIndexTable(self):
+  def testInitializeIndexTable(self, is_anonymous):
     vocabulary_file = self._createVocabFile("one_column_2.txt")
 
     with self.cached_session():
@@ -595,7 +668,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       init = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.int64, key_index, dtypes.string, value_index)
       self.assertIn("one_column_2.txt_-1_-2", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
@@ -604,7 +678,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       result = self.evaluate(output)
       self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], result)
 
-  def testMultiColumn(self):
+  def testMultiColumn(self, is_anonymous):
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
     with open(vocabulary_file, "w") as f:
       f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
@@ -617,7 +691,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       init = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, key_index, dtypes.int64, value_index)
       self.assertIn("three_columns.txt_1_2", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
       input_string = constant_op.constant(["brain", "salad", "surgery"])
@@ -626,7 +701,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       result = self.evaluate(output)
       self.assertAllEqual([1, 5, 6], result)
 
-  def testInvalidDataTypeInMultiColumn(self):
+  def testInvalidDataTypeInMultiColumn(self, is_anonymous):
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
     with open(vocabulary_file, "w") as f:
       f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
@@ -639,10 +714,11 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           vocabulary_file, dtypes.string, key_index, dtypes.int64, value_index)
       self.assertIn("three_columns.txt_2_1", init._shared_name)
       with self.assertRaisesOpError("is not a valid"):
-        table = self.getHashTable()(init, default_value)
+        table = self.getHashTable()(
+            init, default_value, experimental_is_anonymous=is_anonymous)
         self.initialize_table(table)
 
-  def testInvalidDataType(self):
+  def testInvalidDataType(self, is_anonymous):
     vocabulary_file = self._createVocabFile("one_column_3.txt")
 
     with self.cached_session():
@@ -655,9 +731,10 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
                                               key_index, dtypes.string,
                                               value_index)
         self.assertIn("one_column_3.txt_-2_-1", init._shared_name)
-        self.getHashTable()(init, default_value)
+        self.getHashTable()(
+            init, default_value, experimental_is_anonymous=is_anonymous)
 
-  def testInvalidIndex(self):
+  def testInvalidIndex(self, is_anonymous):
     vocabulary_file = self._createVocabFile("one_column_4.txt")
     with self.cached_session():
       default_value = -1
@@ -668,10 +745,11 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertIn("one_column_4.txt_1_-1", init._shared_name)
 
       with self.assertRaisesOpError("Invalid number of columns"):
-        table = self.getHashTable()(init, default_value)
+        table = self.getHashTable()(
+            init, default_value, experimental_is_anonymous=is_anonymous)
         self.initialize_table(table)
 
-  def testInitializeSameTableWithMultipleNodes(self):
+  def testInitializeSameTableWithMultipleNodes(self, is_anonymous):
     vocabulary_file = self._createVocabFile("one_column_5.txt")
 
     with self.cached_session():
@@ -680,17 +758,20 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertIn("one_column_5.txt_-2_-1", init1._shared_name)
-      table1 = self.getHashTable()(init1, default_value)
+      table1 = self.getHashTable()(
+          init1, default_value, experimental_is_anonymous=is_anonymous)
       init2 = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertIn("one_column_5.txt_-2_-1", init2._shared_name)
-      table2 = self.getHashTable()(init2, default_value)
+      table2 = self.getHashTable()(
+          init2, default_value, experimental_is_anonymous=is_anonymous)
       init3 = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertIn("one_column_5.txt_-2_-1", init3._shared_name)
-      table3 = self.getHashTable()(init3, default_value)
+      table3 = self.getHashTable()(
+          init3, default_value, experimental_is_anonymous=is_anonymous)
 
       self.evaluate(lookup_ops.tables_initializer())
 
@@ -705,15 +786,18 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
 
-  def testInitializeTableWithNoFilename(self):
+  def testInitializeTableWithNoFilename(self, is_anonymous):
     with self.cached_session():
       default_value = -1
       with self.assertRaises(ValueError):
-        self.getHashTable()(lookup_ops.TextFileInitializer(
-            "", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
-            dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER), default_value)
+        self.getHashTable()(
+            lookup_ops.TextFileInitializer(
+                "", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+                dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
+            default_value,
+            experimental_is_anonymous=is_anonymous)
 
-  def testInitializeWithVocabSize(self):
+  def testInitializeWithVocabSize(self, is_anonymous):
     with self.cached_session():
       default_value = -1
       vocab_size = 3
@@ -726,7 +810,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           lookup_ops.TextFileIndex.LINE_NUMBER,
           vocab_size=vocab_size)
       self.assertIn("one_column6.txt_3_-2_-1", init1._shared_name)
-      table1 = self.getHashTable()(init1, default_value)
+      table1 = self.getHashTable()(
+          init1, default_value, experimental_is_anonymous=is_anonymous)
 
       # Initialize from file.
       self.initialize_table(table1)
@@ -743,7 +828,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           vocab_size=vocab_size)
       self.assertIn("one_column7.txt_5_-2_-1", init2._shared_name)
       with self.assertRaisesOpError("Invalid vocab_size"):
-        table2 = self.getHashTable()(init2, default_value)
+        table2 = self.getHashTable()(
+            init2, default_value, experimental_is_anonymous=is_anonymous)
         self.initialize_table(table2)
 
       vocab_size = 1
@@ -756,14 +842,15 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           lookup_ops.TextFileIndex.LINE_NUMBER,
           vocab_size=vocab_size)
       self.assertIn("one_column3.txt_1_-2_-1", init3._shared_name)
-      table3 = self.getHashTable()(init3, default_value)
+      table3 = self.getHashTable()(
+          init3, default_value, experimental_is_anonymous=is_anonymous)
 
       # Smaller vocab size reads only vocab_size records.
       self.initialize_table(table3)
       self.assertEqual(vocab_size, self.evaluate(table3.size()))
 
   @test_util.run_v1_only("placeholder usage")
-  def testFeedVocabularyName(self):
+  def testFeedVocabularyName(self, is_anonymous):
     vocabulary_file = self._createVocabFile("feed_vocabulary.txt")
 
     with self.cached_session():
@@ -772,7 +859,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
           "old_file.txt", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertIn("old_file.txt_-2_-1", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
 
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
@@ -789,7 +877,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
-  def testInvalidFilenames(self):
+  def testInvalidFilenames(self, is_anonymous):
     vocabulary_file = self._createVocabFile("filename_shape.txt")
 
     with self.cached_session():
@@ -798,28 +886,35 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       # Invalid data type
       other_type = constant_op.constant(1)
       with self.assertRaises(Exception) as cm:
-        self.getHashTable()(lookup_ops.TextFileInitializer(
-            other_type, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
-            dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER), default_value)
+        self.getHashTable()(
+            lookup_ops.TextFileInitializer(
+                other_type, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+                dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
+            default_value,
+            experimental_is_anonymous=is_anonymous)
       self.assertIsInstance(cm.exception, (ValueError, TypeError))
 
       # Non-scalar filename
       filenames = constant_op.constant([vocabulary_file, vocabulary_file])
       if not context.executing_eagerly():
         with self.assertRaises(Exception) as cm:
-          self.getHashTable()(lookup_ops.TextFileInitializer(
-              filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
-              dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
-                              default_value)
+          self.getHashTable()(
+              lookup_ops.TextFileInitializer(
+                  filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+                  dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
+              default_value,
+              experimental_is_anonymous=is_anonymous)
         self.assertIsInstance(cm.exception, (ValueError, TypeError))
       else:
         with self.assertRaises(errors_impl.InvalidArgumentError):
-          self.getHashTable()(lookup_ops.TextFileInitializer(
-              filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
-              dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
-                              default_value)
+          self.getHashTable()(
+              lookup_ops.TextFileInitializer(
+                  filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+                  dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
+              default_value,
+              experimental_is_anonymous=is_anonymous)
 
-  def testIdToStringTable(self):
+  def testIdToStringTable(self, is_anonymous):
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     with self.cached_session():
       default_value = "UNK"
@@ -827,7 +922,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       init = lookup_ops.TextFileStringTableInitializer(
           vocab_file, vocab_size=vocab_size)
       self.assertTrue("feat_to_id_1.txt_3_-1_-2", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
 
       self.initialize_table(table)
 
@@ -838,7 +934,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
                           self.evaluate(out))
       self.assertEqual(vocab_size, self.evaluate(table.size()))
 
-  def testStringToIdTable(self):
+  def testStringToIdTable(self, is_anonymous):
     vocab_file = self._createVocabFile("feat_to_id_2.txt")
     with self.cached_session():
       default_value = -1
@@ -846,7 +942,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       init = lookup_ops.TextFileIdTableInitializer(
           vocab_file, vocab_size=vocab_size)
       self.assertTrue("feat_to_id_2.txt_3_-1_-2", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
@@ -855,7 +952,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertAllEqual([0, 1, 2, -1], self.evaluate(out))
       self.assertEqual(vocab_size, self.evaluate(table.size()))
 
-  def testInt64ToIdTable(self):
+  def testInt64ToIdTable(self, is_anonymous):
     vocab_file = self._createVocabFile(
         "feat_to_id_3.txt", values=("42", "1", "-1000"))
     with self.cached_session():
@@ -864,7 +961,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       init = lookup_ops.TextFileIdTableInitializer(
           vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64)
       self.assertTrue("feat_to_id_3.txt_3_-1_-2", init._shared_name)
-      table = self.getHashTable()(init, default_value)
+      table = self.getHashTable()(
+          init, default_value, experimental_is_anonymous=is_anonymous)
       self.initialize_table(table)
 
       out = table.lookup(

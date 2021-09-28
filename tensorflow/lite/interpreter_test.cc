@@ -1989,7 +1989,13 @@ class TestLazyDelegateProvider : public InterpreterTest {
             std::unique_ptr<SimpleDelegateInterface>(
                 new DummyLazyDelegate(return_error))),
         TfLiteDelegateFactory::DeleteSimpleDelegate);
-    mutable_lazy_delegate_providers()->push_back(std::move(delegate));
+    mutable_lazy_delegate_providers()->push_back([=](int /*num_threads*/) {
+      return Interpreter::TfLiteDelegatePtr(
+          TfLiteDelegateFactory::CreateSimpleDelegate(
+              std::unique_ptr<SimpleDelegateInterface>(
+                  new DummyLazyDelegate(return_error))),
+          TfLiteDelegateFactory::DeleteSimpleDelegate);
+    });
 
     if (create_dyanmic_tensor) {
       // Mark the output as dynamic tensor.

@@ -695,6 +695,14 @@ bool Translator::EstimateArithmeticCount(int64_t* count) {
   module_->walk([&](mlir::TFL::TflArithmeticCountOpInterface op) {
     int64_t mac_count = op.GetArithmeticCount(op);
     if (mac_count < 0) {
+      std::string out_str;
+      llvm::raw_string_ostream os(out_str);
+      os << "Cannot get mac count for ";
+      op.print(os);
+      os << "\n";
+      os.flush();
+      LOG(WARNING) << out_str;
+      std::cout << out_str;
       encounter_undetermined_mac = true;
       return;
     }
@@ -1341,7 +1349,8 @@ Translator::GetQuantizationForQuantStatsOpOutput(
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
-  for (auto index_and_value : llvm::enumerate(min_max_attr.getFloatValues())) {
+  for (auto index_and_value :
+       llvm::enumerate(min_max_attr.getValues<llvm::APFloat>())) {
     const llvm::APFloat value = index_and_value.value();
     if (index_and_value.index() % 2 == 0) {
       mins.push_back(value.convertToFloat());

@@ -33,6 +33,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
+        "//learning/brain/tfrt/tpu_runner/...",
         "//learning/pathways/data_parallel/serving/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
@@ -1670,6 +1671,10 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

@@ -65,10 +65,10 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
   int64_t q_fixed = IntegerFrExp(double_multiplier, shift);
 #else   // TFLITE_EMULATE_FLOAT
   const double q = std::frexp(double_multiplier, shift);
-  auto q_fixed = static_cast<int64_t>(TfLiteRound(q * (1ll << 31)));
+  auto q_fixed = static_cast<int64_t>(TfLiteRound(q * (1LL << 31)));
 #endif  // TFLITE_EMULATE_FLOAT
-  TFLITE_CHECK(q_fixed <= (1ll << 31));
-  if (q_fixed == (1ll << 31)) {
+  TFLITE_CHECK(q_fixed <= (1LL << 31));
+  if (q_fixed == (1LL << 31)) {
     q_fixed /= 2;
     ++*shift;
   }
@@ -285,12 +285,12 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
   shift += (31 - input_integer_bits);
   double input_beta_real_multiplier =
       DoubleFromFractionAndShift(fraction, shift);
-  if (IntegerDoubleCompare(input_beta_real_multiplier, (1ll << 31) - 1.0) > 0) {
-    input_beta_real_multiplier = (1ll << 31) - 1.0;
+  if (IntegerDoubleCompare(input_beta_real_multiplier, (1LL << 31) - 1.0) > 0) {
+    input_beta_real_multiplier = (1LL << 31) - 1.0;
   }
 #else   // TFLITE_EMULATE_FLOAT
   const double input_beta_real_multiplier = std::min<double>(
-      beta * input_scale * (1 << (31 - input_integer_bits)), (1ll << 31) - 1.0);
+      beta * input_scale * (1 << (31 - input_integer_bits)), (1LL << 31) - 1.0);
 #endif  // TFLITE_EMULATE_FLOAT
 
   QuantizeMultiplierGreaterThanOne(input_beta_real_multiplier,
@@ -324,8 +324,8 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift,
 #else   // TFLITE_EMULATE_FLOAT
   const double max_input_rescaled =
       1.0 * ((1 << input_integer_bits) - 1) *
-      (1ll << (total_signed_bits - input_integer_bits)) /
-      (1ll << input_left_shift);
+      (1LL << (total_signed_bits - input_integer_bits)) /
+      (1LL << input_left_shift);
   // Tighten bound using floor.  Suppose that we could use the exact value.
   // After scaling the difference, the result would be at the maximum.  Thus we
   // must ensure that our value has lower magnitude.

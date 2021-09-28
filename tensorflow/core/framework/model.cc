@@ -1963,7 +1963,8 @@ Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
 Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
                    OptimizationParams* optimization_params) {
   ModelProto model_proto;
-  TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), fname, &model_proto));
+  TF_RETURN_IF_ERROR(
+      ReadTextOrBinaryProto(Env::Default(), fname, &model_proto));
   TF_RETURN_IF_ERROR(FromProto(model_proto, model));
   const OptimizationParams restored_optimization_params =
       model_proto.optimization_params();

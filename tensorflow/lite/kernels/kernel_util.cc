@@ -409,6 +409,7 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape) {
@@ -427,8 +428,6 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
   *output_shape = shape.release();
   return kTfLiteOk;
 }
-
-#ifndef TF_LITE_STATIC_MEMORY
 
 // TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
 // build results in a 6KB size increase, even though the function is unsused for

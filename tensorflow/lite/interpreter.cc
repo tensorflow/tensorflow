@@ -313,7 +313,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   if (lazy_delegate_providers_.empty() || IsFullyDelegated()) return kTfLiteOk;
 
   // We only apply lazy delegate providers once.
-  std::vector<TfLiteDelegatePtr> delegate_providers;
+  TfLiteDelegateCreators delegate_providers;
   delegate_providers.swap(lazy_delegate_providers_);
 
   TFLITE_LOG(TFLITE_LOG_INFO,
@@ -323,7 +323,13 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
-    auto status = ModifyGraphWithDelegate(std::move(delegate_providers[i]));
+    auto delegate_ptr =
+        delegate_providers[i](context_->recommended_num_threads);
+    // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
+    // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
+    // Therefore, we simply continue with the next one.
+    if (delegate_ptr == nullptr) continue;
+    auto status = ModifyGraphWithDelegate(std::move(delegate_ptr));
     switch (status) {
       case kTfLiteOk:
         TFLITE_LOG(
@@ -343,18 +349,28 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
                              i);
         return kTfLiteError;
       case kTfLiteDelegateError:
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
             "Error in applying the default TensorFlow Lite delegate indexed "
             "at %zu, and all previously applied delegates are reverted.",
             i);
         return kTfLiteDelegateError;
       case kTfLiteApplicationError:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Ignoring failed application of the default "
-                             "TensorFlow Lite delegate indexed at %zu.",
-                             i);
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of incompatibility between runtime and delegate. "
+            "Ignoring the error, and continuing anyway.",
+            i);
         return kTfLiteApplicationError;
+      case kTfLiteUnresolvedOps:
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of unresolved ops (which could be resolved by "
+            "another delegate). Ignoring the error, and continuing anyway.",
+            i);
+        return kTfLiteUnresolvedOps;
       default:
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Unknown status (%d) after applying the default "

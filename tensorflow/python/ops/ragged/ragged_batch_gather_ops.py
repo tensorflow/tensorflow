@@ -18,13 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import dispatch
 
 
 #===============================================================================
 # ragged.batch_gather
 #===============================================================================
-def batch_gather(params, indices, name=None):
+@dispatch.dispatch_for_api(array_ops.batch_gather)
+def batch_gather(params: ragged_tensor.RaggedOrDense,
+                 indices: ragged_tensor.RaggedOrDense,
+                 name=None):
   """Gathers slices from `params` according to `indices` with batch dims.
 
   This operation is similar to `gather`, but it assumes that the leading `N`

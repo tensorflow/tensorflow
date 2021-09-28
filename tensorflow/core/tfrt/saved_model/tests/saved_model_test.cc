@@ -470,6 +470,55 @@ TEST(SavedModelTest, CustomWorkQueue) {
               testing::ElementsAreArray({6}));
 }
 
+// Verifies the savedmodel runs correctly with work queues specified in
+// RunOptions.
+TEST(SavedModelTest, RunOptionsWorkQueue) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = tensorflow::tfrt_stub::Runtime::Create();
+
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  tfrt::tf::RunHandlerThreadWorkQueue::Options queue_options;
+  queue_options.num_complementary_threads = 1;
+  queue_options.num_main_threads = 1;
+  queue_options.init_timeout_ms = 100;
+
+  tfrt::tf::RunHandlerThreadWorkQueue run_handler_queue(queue_options);
+
+  tfrt::SavedModel::RunOptions run_options;
+  run_options.work_queue = &run_handler_queue;
+
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              testing::ElementsAreArray({6}));
+
+  // Run one more time to check per-request state is correct set up.
+  outputs.clear();
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              testing::ElementsAreArray({6}));
+}
+
 TEST(SavedModelTest, FunctionMetadata) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");

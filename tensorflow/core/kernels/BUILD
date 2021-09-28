@@ -78,7 +78,7 @@ load(
 #   # for CPU tests
 #   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
 #   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
+#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmark_filter=..
 #
 package(
     default_visibility = ["//visibility:public"],
@@ -565,8 +565,10 @@ tf_cuda_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
     ]),
 )
 
@@ -985,6 +987,8 @@ tf_kernel_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -1341,8 +1345,10 @@ tf_kernel_library(
         "where_op_gpu_impl_7.cu.cc",
         "where_op_gpu_impl_8.cu.cc",
     ],
-    deps = if_cuda_or_rocm([
+    deps = if_cuda([
                "//tensorflow/core/util:cuda_solvers",
+           ]) + if_rocm([
+               "//tensorflow/core/util:rocm_solvers",
            ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
 )
@@ -2417,6 +2423,31 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "while_op_test",
+    srcs = ["while_op_test.cc"],
+    deps = [
+        ":control_flow_ops",
+        "//tensorflow/c/experimental/stream_executor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:functional_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 tf_kernel_library(
     name = "ctc_ops",
     prefix = "ctc",
@@ -2894,6 +2925,7 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -3357,6 +3389,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "lookup_ops_test",
+    size = "small",
+    srcs = ["lookup_ops_test.cc"],
+    deps = [
+        ":lookup_table_op",
+        ":ops_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
@@ -3558,7 +3603,10 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
+    ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]),
 )
 
@@ -4016,6 +4064,7 @@ tf_kernel_library(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
     ] + if_cuda([
@@ -6188,6 +6237,7 @@ filegroup(
         "sparse_xent_op.h",
         "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
+        "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",

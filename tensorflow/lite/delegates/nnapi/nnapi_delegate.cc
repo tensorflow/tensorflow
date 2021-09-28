@@ -592,6 +592,35 @@ bool HasZeroes(TfLiteIntArrayView array) {
   return false;
 }
 
+// In SPLIT_V, it is legal to specify -1 in size_splits representing an unknown
+// split size taking as many values as possible. This function computes and
+// returns the actual value of this unknown size, or returns -1 if all split
+// sizes are known. The caller is responsible for making sure the size_splits
+// and axis tensor are constants.
+int ComputeSplitVUnknownSplitSize(const TfLiteContext* context,
+                                  const TfLiteNode* node) {
+  const auto& input = context->tensors[node->inputs->data[0]];
+  const auto& size_splits_tensor = context->tensors[node->inputs->data[1]];
+  const auto& axis_tensor = context->tensors[node->inputs->data[2]];
+
+  const auto* size_splits = size_splits_tensor.data.i32;
+  int num_splits = size_splits_tensor.dims->data[0];
+  bool has_unknown_split_size = false;
+  int sum_of_known_split_sizes = 0;
+  for (int i = 0; i < num_splits; i++) {
+    if (size_splits[i] == -1) {
+      has_unknown_split_size = true;
+    } else {
+      sum_of_known_split_sizes += size_splits[i];
+    }
+  }
+
+  int axis = axis_tensor.data.i32[0];
+  axis = axis < 0 ? axis + input.dims->size : axis;
+  int total_size = input.dims->data[axis];
+  return has_unknown_split_size ? total_size - sum_of_known_split_sizes : -1;
+}
+
 // Bit mask for tensor flags.
 enum {
   NN_TENSOR_FLAG_SCALAR_AS_TENSOR = 1U << 0,
@@ -1206,6 +1235,140 @@ class NNAPIOpBuilder {
     // Reshape the output tensor
     TF_LITE_ENSURE_STATUS(AppendReshape(
         concat_output_ann_index, node->outputs->data[0], lite_node_index));
+    return kTfLiteOk;
+  }
+
+  // Lower SPLIT_V into SLICEs.
+  TfLiteStatus TransformSplitVIntoSupportedOps(int lite_node_index,
+                                               TfLiteNode* node,
+                                               TfLiteRegistration* reg) {
+    auto& input = context_->tensors[node->inputs->data[0]];
+    int input_rank = input.dims->size;
+
+    const auto& size_splits_tensor = context_->tensors[node->inputs->data[1]];
+    const auto* size_splits = size_splits_tensor.data.i32;
+    int num_splits = size_splits_tensor.dims->data[0];
+    int axis = context_->tensors[node->inputs->data[2]].data.i32[0];
+    axis = axis < 0 ? axis + input_rank : axis;
+    TF_LITE_ENSURE(context_, axis >= 0);
+    TF_LITE_ENSURE(context_, axis < input_rank);
+    int unknown_split_size = ComputeSplitVUnknownSplitSize(context_, node);
+
+    // Keep track of the start index of a slice.
+    int slice_begin_index = 0;
+    for (int split_index = 0; split_index < num_splits; split_index++) {
+      int split_size = size_splits[split_index] == -1
+                           ? unknown_split_size
+                           : size_splits[split_index];
+      TF_LITE_ENSURE(context_, split_size > 0);
+
+      // Parameters of SLICE.
+      std::vector<int> begin_indices(input_rank);
+      std::vector<int> slice_sizes(input_rank);
+      for (int i = 0; i < input_rank; i++) {
+        if (i == axis) {
+          // Take only the splitted size.
+          begin_indices[i] = slice_begin_index;
+          slice_sizes[i] = split_size;
+        } else {
+          // Take the full size.
+          begin_indices[i] = 0;
+          slice_sizes[i] = input.dims->data[i];
+        }
+      }
+      slice_begin_index += split_size;
+
+      // Build NNAPI SLICE inputs and output.
+      TF_LITE_ENSURE_STATUS(AddTensorInput(
+          node->inputs->data[0],
+          /*hybrid_op=*/false, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_STATUS(
+          AddVectorInt32Operand(begin_indices.data(), begin_indices.size()));
+      TF_LITE_ENSURE_STATUS(
+          AddVectorInt32Operand(slice_sizes.data(), slice_sizes.size()));
+      int lite_output_index = node->outputs->data[split_index];
+      TF_LITE_ENSURE_STATUS(AddTensorOutput(
+          lite_output_index, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+
+      TF_LITE_ENSURE_STATUS(
+          FinalizeAddOperation(ANEURALNETWORKS_SLICE, lite_node_index));
+    }
+    return kTfLiteOk;
+  }
+
+  // Lower SQUARED_DIFFERENCE into SUB and MUL.
+  TfLiteStatus TransformSquaredDifferenceIntoSupportedOps(
+      int lite_node_index, TfLiteNode* node, TfLiteRegistration* reg) {
+    const TfLiteTensor& lhs = context_->tensors[node->inputs->data[0]];
+    const TfLiteTensor& output = context_->tensors[node->outputs->data[0]];
+
+    // Stage1 : diff = lhs - rhs
+    int diff_out_ann_index = 0;
+    {
+      // For quantized data type, choose a proper scale and zero point based on
+      // the output range.
+      float max_output = 0.f;
+      int diff_output_zero_point = 0;
+      int diff_output_nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+      switch (lhs.type) {
+        case kTfLiteFloat32:
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+          break;
+        case kTfLiteInt32:
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_INT32;
+          break;
+        case kTfLiteUInt8:
+          max_output = (255 - output.params.zero_point) * output.params.scale;
+          diff_output_zero_point = 128;
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
+          break;
+        case kTfLiteInt8:
+          max_output = (127 - output.params.zero_point) * output.params.scale;
+          diff_output_zero_point = 0;
+          diff_output_nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
+          break;
+        default:
+          return kTfLiteError;
+      }
+      // Final output range: [0, max_output], and output = diff^2,
+      // -> diff range: [-sqrt(max_output), sqrt(max_output)]
+      // This range corresponds to [1, 255] for uint8 with zero_point = 128,
+      // or [-127, 127] for int8 with zero_point = 0.
+      float diff_output_scale = 2.0f * std::sqrt(max_output) / 254.0f;
+
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
+                                   NN_TENSOR_FLAG_SCALAR_AS_TENSOR |
+                                       NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[1], /*hybrid_op=*/false,
+                                   NN_TENSOR_FLAG_SCALAR_AS_TENSOR |
+                                       NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              output.dims->size, reinterpret_cast<uint32_t*>(output.dims->data),
+              diff_output_nn_type, diff_output_scale, diff_output_zero_point,
+              &diff_out_ann_index));
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SUB, lite_node_index));
+    }
+
+    // Stage2 : out = diff * diff
+    {
+      augmented_inputs_.push_back(diff_out_ann_index);
+      augmented_inputs_.push_back(diff_out_ann_index);
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+      TF_LITE_ENSURE_OK(context_,
+                        AddTensorOutput(node->outputs->data[0],
+                                        NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_MUL, lite_node_index));
+    }
+
     return kTfLiteOk;
   }
 
@@ -2874,6 +3037,39 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
+    case kTfLiteBuiltinSplitV: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+      // Tensor indices: value: 0, size_splits: 1, axis: 2
+      const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
+      const TfLiteTensor& size_splits = context->tensors[node->inputs->data[1]];
+      const TfLiteTensor& axis = context->tensors[node->inputs->data[2]];
+      EXPECT_INPUT_TYPE_IN(input.type, kTfLiteFloat32, kTfLiteUInt8,
+                           kTfLiteInt8, kTfLiteInt32);
+      bool size_splits_is_int32_const_vector =
+          size_splits.type == kTfLiteInt32 && size_splits.dims->size == 1 &&
+          size_splits.allocation_type == kTfLiteMmapRo;
+      bool axis_is_int32_const =
+          axis.type == kTfLiteInt32 && axis.allocation_type == kTfLiteMmapRo;
+      Expect(size_splits_is_int32_const_vector,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI only supports constant int32 size_splits vector.",
+             &val_ctx);
+      Expect(axis_is_int32_const,
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI only supports constant int32 axis tensor.", &val_ctx);
+      if (size_splits_is_int32_const_vector && axis_is_int32_const) {
+        Expect(std::all_of(size_splits.data.i32,
+                           size_splits.data.i32 + size_splits.dims->data[0],
+                           [](auto size) { return size != 0; }),
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "NNAPI only supports non-zero split sizes.", &val_ctx);
+        Expect(ComputeSplitVUnknownSplitSize(context, node) != 0,
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "NNAPI only supports non-zero split sizes.", &val_ctx);
+      }
+    } break;
     case kTfLiteBuiltinLogSoftmax: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
@@ -3020,6 +3216,27 @@ bool NNAPIDelegateKernel::Validate(
                      context->tensors[node->inputs->data[0]].dims->size,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support axis being the last dimension", &val_ctx);
+    } break;
+    case kTfLiteBuiltinSquaredDifference: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
+                                 &val_ctx);
+      const auto input0_type = context->tensors[node->inputs->data[0]].type;
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8,
+                             kTfLiteInt8, kTfLiteInt32);
+      } else if (android_sdk_version >= kMinSdkVersionForNNAPI12) {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32, kTfLiteUInt8);
+      } else {
+        EXPECT_INPUT_TYPE_IN(input0_type, kTfLiteFloat32);
+      }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "NNAPI does not support input rank greater than 4", &val_ctx);
     } break;
     default:
       // All other operators are not mapped.
@@ -4724,6 +4941,18 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (reg->builtin_code == kTfLiteBuiltinPack) {
       TF_LITE_ENSURE_STATUS(
           builder.TransformPackIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
+    // Delegate SPLIT_V by lowering it into SLICEs.
+    if (reg->builtin_code == kTfLiteBuiltinSplitV) {
+      TF_LITE_ENSURE_STATUS(
+          builder.TransformSplitVIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
+    // Delegate SQUARED_DIFFERENCE by lowering it into SUB + MUL.
+    if (reg->builtin_code == kTfLiteBuiltinSquaredDifference) {
+      TF_LITE_ENSURE_STATUS(builder.TransformSquaredDifferenceIntoSupportedOps(
+          node_index, node, reg));
       continue;
     }
     // Fully quantized full LSTM.

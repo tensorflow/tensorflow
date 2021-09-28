@@ -36,61 +36,67 @@ namespace gpu {
 
 class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction *reduce) override {
+  Status HandleReduce(HloInstruction *hlo) override {
+    auto reduce = Cast<HloReduceInstruction>(hlo);
+
     VLOG(4) << "Input: " << reduce->ToString();
 
-    if (!reduce->shape().IsArray()) {
-      // TODO(cheshire): Handle variadic reduction.
-      return Status::OK();
-    }
-
-    std::vector<int64_t> new_grouped_dims;
+    absl::InlinedVector<HloInstruction *, 2> reduce_inputs_grouped;
     std::vector<int64_t> reduced_dims_grouped;
-    HloInstruction *operand = reduce->mutable_operand(0);
-    const Shape &shape = operand->shape();
-    CHECK(shape == LayoutUtil::GetWithDefaultLayout(shape))
-        << "Default layout should be enforced on reduction operand";
-    auto is_reduced = [&](int dim) {
-      return absl::c_linear_search(reduce->dimensions(), dim);
-    };
 
-    bool changed = false;
-    int64_t next_dim_size = 1;
+    int idx = -1;
+    for (HloInstruction *operand : reduce->inputs()) {
+      idx++;
+      std::vector<int64_t> new_grouped_dims;
+      const Shape &shape = operand->shape();
+      CHECK(shape == LayoutUtil::GetWithDefaultLayout(shape))
+          << "Default layout should be enforced on reduction operand";
+      auto is_reduced = [&](int dim) {
+        return absl::c_linear_search(reduce->dimensions(), dim);
+      };
 
-    // Since we have enforced the standard layout, iteration over logical
-    // dimensions is equivalent to iteration over the major-to-minor order.
-    for (int logical_dim = 0; logical_dim < shape.rank(); logical_dim++) {
-      VLOG(5) << "Processing dimension " << logical_dim << " of size "
-              << shape.dimensions(logical_dim);
-      if (is_reduced(logical_dim) && logical_dim < shape.rank() - 1 &&
-          is_reduced(logical_dim + 1)) {
-        VLOG(5) << "This and consecutive dimension are reduced, merging";
-        changed = true;
-        next_dim_size *= shape.dimensions(logical_dim);
-        continue;
+      bool changed = false;
+      int64_t next_dim_size = 1;
+
+      // Since we have enforced the standard layout, iteration over logical
+      // dimensions is equivalent to iteration over the major-to-minor order.
+      for (int logical_dim = 0; logical_dim < shape.rank(); logical_dim++) {
+        VLOG(5) << "Processing dimension " << logical_dim << " of size "
+                << shape.dimensions(logical_dim);
+        if (is_reduced(logical_dim) && logical_dim < shape.rank() - 1 &&
+            is_reduced(logical_dim + 1)) {
+          VLOG(5) << "This and consecutive dimension are reduced, merging";
+          changed = true;
+          next_dim_size *= shape.dimensions(logical_dim);
+          continue;
+        }
+
+        if (is_reduced(logical_dim)) {
+          new_grouped_dims.push_back(next_dim_size *
+                                     shape.dimensions(logical_dim));
+          if (idx == 0) {
+            // Only populate for first argument.
+            reduced_dims_grouped.push_back(new_grouped_dims.size() - 1);
+          }
+          next_dim_size = 1;
+        } else {
+          new_grouped_dims.push_back(shape.dimensions(logical_dim));
+        }
       }
 
-      if (is_reduced(logical_dim)) {
-        new_grouped_dims.push_back(next_dim_size *
-                                   shape.dimensions(logical_dim));
-        reduced_dims_grouped.push_back(new_grouped_dims.size() - 1);
-        next_dim_size = 1;
-      } else {
-        new_grouped_dims.push_back(shape.dimensions(logical_dim));
+      if (!changed) {  // Since all inputs have same shape dimensions.
+        return Status::OK();
       }
-    }
 
-    if (!changed) {
-      return Status::OK();
+      Shape grouped_shape =
+          ShapeUtil::MakeShape(shape.element_type(), new_grouped_dims);
+      reduce_inputs_grouped.push_back(reduce->parent()->AddInstruction(
+          HloInstruction::CreateBitcast(grouped_shape, operand)));
+      VLOG(5) << "Adding bitcast: " << reduce_inputs_grouped.back()->ToString();
     }
-
-    Shape grouped_shape =
-        ShapeUtil::MakeShape(shape.element_type(), new_grouped_dims);
-    HloInstruction *reduce_input_grouped = reduce->parent()->AddInstruction(
-        HloInstruction::CreateBitcast(grouped_shape, operand));
 
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
-        reduce->shape(), reduce_input_grouped, reduce->mutable_operand(1),
+        reduce->shape(), reduce_inputs_grouped, reduce->init_values(),
         reduced_dims_grouped, reduce->to_apply());
     VLOG(5) << "Generated new reduction: " << new_reduce->ToString();
     return ReplaceWithNewInstruction(reduce, std::move(new_reduce));

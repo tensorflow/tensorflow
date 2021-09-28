@@ -60,7 +60,7 @@ KEYWORD_ONLY = tf_inspect.Parameter.KEYWORD_ONLY
 class MaskedTensorV1(extension_type.ExtensionType):
   """Example subclass of ExtensionType, used for testing."""
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
 
 class MaskedTensorV2(extension_type.ExtensionType):
@@ -73,7 +73,7 @@ class MaskedTensorV2(extension_type.ExtensionType):
   __name__ = 'tf.test.MaskedTensorV2'
 
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
   def __repr__(self):
     if hasattr(self.values, 'numpy') and hasattr(self.mask, 'numpy'):
@@ -119,17 +119,24 @@ def _masked_array_repr(values, mask):
   return '[%s]' % ', '.join(items)
 
 
-class MaskedTensorV3(extension_type.ExtensionType):
+class MaskedTensorV3(extension_type.BatchableExtensionType):
   """Example subclass of ExtensionType, used for testing.
 
   This version adds Keras required properties to MaskedTensor and its Spec
   class, to test Keras integration.
   """
+  __name__ = 'tf.test.MaskedTensorV3.Spec'
 
-  values: ops.Tensor
-  mask: ops.Tensor
+  values: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
+  mask: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
 
   def __init__(self, values, mask):
+    if isinstance(values, ragged_tensor.RaggedTensor):
+      assert isinstance(mask, ragged_tensor.RaggedTensor)
+      assert mask.dtype == dtypes.bool
+    else:
+      values = ops.convert_to_tensor(values)
+      mask = ops.convert_to_tensor(mask, dtypes.bool)
     self.values = values
     self.mask = mask
 
@@ -142,17 +149,12 @@ class MaskedTensorV3(extension_type.ExtensionType):
   def dtype(self):
     return self.values.dtype
 
+  class Spec:
 
-class MaskedTensorV3Spec(MaskedTensorV3.Spec):
-
-  # Required by KerasTensor.shape in keras/engine/keras_tensor.py
-  @property
-  def _shape(self):
-    return self.values._shape
-
-
-MaskedTensorV3.Spec = MaskedTensorV3Spec
-type_spec.register('tf.test.MaskedTensorV3.Spec')(MaskedTensorV3.Spec)
+    # Required by KerasTensor.shape in keras/engine/keras_tensor.py
+    @property
+    def _shape(self):
+      return self.values._shape
 
 
 class ForwardRefA(extension_type.ExtensionType):
@@ -232,16 +234,13 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
         tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
         tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
-        tf_inspect.Parameter(
-            'y',
-            POSITIONAL_OR_KEYWORD,
-            annotation=tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)),
+        tf_inspect.Parameter('y', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
         tf_inspect.Parameter(
             'z',
             POSITIONAL_OR_KEYWORD,
@@ -789,8 +788,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(fields[0].value_type, ops.Tensor)
       self.assertEqual(fields[0].default, fields[0].NO_DEFAULT)
       self.assertEqual(fields[1].name, 'mask')
-      self.assertEqual(fields[1].value_type,
-                       tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool))
+      self.assertEqual(fields[1].value_type, ops.Tensor)
       self.assertEqual(fields[1].default, fields[0].NO_DEFAULT)
 
   def testHasExtensionTypeField(self):
@@ -1006,13 +1004,39 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     ds = dataset_ops.DatasetV2.from_tensors(mt)
     self.assertEqual(next(iter(ds)), mt)
 
-    # TODO(b/195884675) Support batch and unbatch.
-    # Broken: 'MaskedTensorV3Spec' object has no attribute
-    # '_to_batched_tensor_list'
-    # _ = ds.unbatch()
-    # Broken: 'MaskedTensorV3Spec' object has no attribute '_batch'
-    # _ = ds.batch(1)
+  @test_util.run_v2_only
+  def testDatasetBatch(self):
+    xs = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
 
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  @test_util.run_v2_only
+  def testDatasetBatchRagged(self):
+    xs = MaskedTensorV3(
+        ragged_factory_ops.constant([[1], [2, 3], [4]]),
+        ragged_factory_ops.constant([[True], [False], [True]]))
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
+
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  # TODO(edloper): Move this test to Keras.
   @test_util.run_v2_only
   def testKerasModel(self):
     mt_spec = MaskedTensorV3.Spec(
@@ -1026,11 +1050,6 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     self.assertEqual(model(mt), mt)
     ds = dataset_ops.DatasetV2.from_tensors(mt)
     self.assertEqual(model.predict(ds), mt)
-
-    # TODO(b/195884675) Support batch and unbatch.
-    # Broken: 'MaskedTensorV3Spec' object has no attribute
-    # '_to_batched_tensor_list'
-    # self.assertEqual(model.predict(mt), mt)
 
     with self.subTest('keras save'):
       path = self.create_tempdir().full_path
@@ -1072,7 +1091,7 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
@@ -1248,11 +1267,12 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
 
   def testNestedSpecMayNotHaveBaseClasses(self):
     with self.assertRaisesRegex(
-        ValueError, r'BrokenExtensionType\.Spec may not have base classes.'):
+        ValueError, r'BrokenExtensionType\.Spec must be directly subclassed '
+        'from tf.TypeSpec.'):
 
       class BrokenExtensionType(extension_type.ExtensionType):
 
-        class Spec(type_spec.TypeSpec):
+        class Spec(type_spec.BatchableTypeSpec):
           pass
 
       del BrokenExtensionType
@@ -1343,13 +1363,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor, got None'
-      ],
-      [
-          lambda: extension_type.AnonymousExtensionType(
-              values=constant_op.constant([[1, 2], [3, 4]]),
-              mask=ragged_factory_ops.constant([[1, 2], [3]])), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor'
+          'mask: expected a Tensor, got None'
       ],
       [
           lambda: extension_type.AnonymousExtensionType(

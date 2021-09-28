@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -257,6 +258,13 @@ class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          ctx, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "Determinism is not yet supported in GPU implementation of "
+              "DenseBincount."));
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {

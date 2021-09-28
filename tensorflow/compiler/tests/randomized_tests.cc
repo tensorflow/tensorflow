@@ -50,6 +50,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -83,6 +84,7 @@ int64_t tf_xla_max_tensor_size = 10000LL;
 string* tf_xla_test_device_ptr;       // initial value set in main()
 string* tf_xla_reference_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
+bool tf_xla_test_use_mlir = false;
 
 string LocalDeviceToFullDeviceName(const string& device) {
   return absl::StrCat("/job:localhost/replica:0/task:0/device:", device);
@@ -336,6 +338,16 @@ class OpTest : public ::testing::Test {
   };
   // Choose spatial dimensions for a windowed op such as pooling or convolution.
   WindowedSpatialDims ChooseWindowedSpatialDims(int num_spatial_dims);
+
+  struct XlaDotArguments {
+    std::vector<int64_t> lhs_dims;
+    std::vector<int64_t> rhs_dims;
+    std::string dnums_encoded;
+    std::string precision_config_encoded;
+    DataType dtype;
+  };
+  // Choose arguments for tf.XlaDot operation.
+  XlaDotArguments ChooseXlaDotArguments();
 
   // Builds dimensions for a windowed op such as pooling or convolution,
   // including a batch and feature dimension.
@@ -672,6 +684,41 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
     } while (!s.ok());
   }
   return d;
+}
+
+OpTest::XlaDotArguments OpTest::ChooseXlaDotArguments() {
+  std::vector<int64_t> batch_dims = RandomDims(0, 2);
+  std::vector<int64_t> contracting_dims = RandomDims(0, 2);
+  std::vector<int64_t> lhs_outer_dims = RandomDims(0, 2);
+  std::vector<int64_t> rhs_outer_dims = RandomDims(0, 2);
+
+  XlaDotArguments a;
+  a.lhs_dims.insert(a.lhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.lhs_dims.insert(a.lhs_dims.end(), lhs_outer_dims.begin(),
+                    lhs_outer_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), batch_dims.begin(), batch_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), contracting_dims.begin(),
+                    contracting_dims.end());
+  a.rhs_dims.insert(a.rhs_dims.end(), rhs_outer_dims.begin(),
+                    rhs_outer_dims.end());
+
+  xla::DotDimensionNumbers dnums;
+  for (auto i = 0; i < batch_dims.size(); ++i) {
+    dnums.add_lhs_batch_dimensions(i);
+    dnums.add_rhs_batch_dimensions(i);
+  }
+  for (auto i = 0; i < contracting_dims.size(); ++i) {
+    dnums.add_lhs_contracting_dimensions(batch_dims.size() + i);
+    dnums.add_rhs_contracting_dimensions(batch_dims.size() + i);
+  }
+  dnums.SerializeToString(&a.dnums_encoded);
+
+  a.precision_config_encoded = "";
+
+  a.dtype = Choose<DataType>(kAllXlaTypes);
+  return a;
 }
 
 std::vector<int64_t> OpTest::ImageDims(
@@ -1203,6 +1250,7 @@ TEST_F(OpTest, AvgPool3DGrad) {
 }
 
 TEST_F(OpTest, BatchMatMul) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> output_dims = RandomDims(2, 5, 0, 7);
@@ -1404,6 +1452,7 @@ TEST_F(OpTest, Cast) {
 }
 
 TEST_F(OpTest, CastBF16) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     DataType src_type, dst_type;
     src_type = Choose<DataType>({DT_FLOAT});
@@ -1561,6 +1610,7 @@ TEST_F(OpTest, RFFT3D) {
 }
 
 TEST_F(OpTest, IRFFT) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1, kDefaultMaxRank, 3);
     int64_t orig_size = dims[dims.size() - 1];
@@ -2295,6 +2345,7 @@ TEST_F(OpTest, MatMul) {
 }
 
 TEST_F(OpTest, MatrixDiag) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiag")
@@ -2304,6 +2355,7 @@ TEST_F(OpTest, MatrixDiag) {
 }
 
 TEST_F(OpTest, MatrixDiagPart) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiagPart")
@@ -2507,6 +2559,7 @@ TEST_F(OpTest, OneHot) {
 }
 
 TEST_F(OpTest, OnesLike) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
@@ -2747,6 +2800,7 @@ TEST_F(OpTest, ResizeBilinearGrad) {
 }
 
 TEST_F(OpTest, Reverse) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1);
     auto type = Choose<DataType>(kAllXlaTypes);
@@ -3234,6 +3288,7 @@ TEST_F(OpTest, Sum) {
 }
 
 TEST_F(OpTest, StridedSlice) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
@@ -3412,7 +3467,36 @@ TEST_F(OpTest, TruncateMod) {
   });
 }
 
+TEST_F(OpTest, XlaDot) {
+  Repeatedly([this]() {
+    const XlaDotArguments& a = ChooseXlaDotArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDot")
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("T", a.dtype));
+  });
+}
+
+TEST_F(OpTest, XlaDotV2) {
+  Repeatedly([this]() {
+    const XlaDotArguments& a = ChooseXlaDotArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("XlaDotV2")
+            .RandomInput(a.dtype, a.lhs_dims)
+            .RandomInput(a.dtype, a.rhs_dims)
+            .Attr("dimension_numbers", a.dnums_encoded)
+            .Attr("precision_config", a.precision_config_encoded)
+            .Attr("LhsT", a.dtype)
+            .Attr("RhsT", a.dtype)
+            .Attr("preferred_element_type", a.dtype));
+  });
+}
+
 TEST_F(OpTest, ZerosLike) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
@@ -3423,6 +3507,7 @@ TEST_F(OpTest, ZerosLike) {
 // Example failing run:
 //   --tf_xla_reference_device=GPU:0
 //   --tf_xla_test_use_jit=true --tf_xla_test_device=GPU:0
+//   --tf_xla_test_use_mlir=true
 //   --tf_xla_test_repetitions=2
 //   --gunit_filter='OpTest.FusedBatchNormTraining'
 //   --tf_xla_random_seed=2838146746
@@ -3476,6 +3561,9 @@ int main(int argc, char** argv) {
                        "Tensorflow device type to use for reference"),
       tensorflow::Flag("tf_xla_test_use_jit", &tensorflow::tf_xla_test_use_jit,
                        "Use JIT compilation for the operator under test"),
+      tensorflow::Flag(
+          "tf_xla_test_use_mlir", &tensorflow::tf_xla_test_use_mlir,
+          "Use MLIR legalization kernels for the operator under test"),
   };
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -3501,5 +3589,8 @@ int main(int argc, char** argv) {
       << "Unknown test device (" << *tensorflow::tf_xla_test_device_ptr
       << "). Did you build in the right configuration (e.g., is CUDA enabled)?";
 
+  if (tensorflow::tf_xla_test_use_mlir)
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge =
+        tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
   return RUN_ALL_TESTS();
 }

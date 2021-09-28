@@ -65,7 +65,7 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
     if op not in reached_ops:
       reached_ops.add(op)
       for output in op.outputs:
-        if _IsBackpropagatable(output):
+        if backprop_util.IsTrainable(output):
           queue.extend(_Consumers(output, func_graphs))
 
 
@@ -224,13 +224,6 @@ def _DefaultGradYs(grad_ys,
         new_grad_ys.append(array_ops.identity(grad_y, name="grad_ys_%d" % i))
 
   return new_grad_ys
-
-
-def _IsBackpropagatable(tensor):
-  if backprop_util.IsTrainable(tensor):
-    return True
-  dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype == dtypes.bfloat16
 
 
 def _VerifyGeneratedGradients(grads, op):

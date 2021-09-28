@@ -200,5 +200,5 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
 
 
 if __name__ == "__main__":
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

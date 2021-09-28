@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -79,7 +80,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #include "tensorflow/core/graph/mkl_graph_util.h"
@@ -465,6 +466,12 @@ Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
   for (auto& name_len : attr_to_len) {
     absl::StrAppend(&fname, "_", name_len.first, "_", name_len.second);
   }
+  // The NodeDef in the FunctionDef gets placed on `op-DeviceName()` to ensure
+  // placement consistency with eager mode.
+  // TODO(b/200153278): Ideally we would just forward the call op's device at
+  // runtime but currently there is no way to do it so we incur the cost of
+  // creating extra FunctionDefs.
+  absl::StrAppend(&fname, "_device_", op->DeviceName());
   *name = fname;
   return Status::OK();
 }
@@ -760,9 +767,14 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     for (const auto& attr : opdef.attr()) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
+    // Set the device of this node to be the exact same one that eager mode
+    // would have used.
+    // TODO(b/200153278): Ideally we would just forward the call op's device at
+    // runtime but currently there is no way to do it.
+    ndef->set_device(op->DeviceName());
 
 #ifdef INTEL_MKL
-    if (IsMklEnabled() &&
+    if (IsMKLEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
       // All MKL eager ops have `_kernel` private attribute that needs to be set
       // to a fixed label.
@@ -805,6 +817,12 @@ Status GetOrCreateKernelAndDevice(
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
   cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+
+  // Include run_eager_op_as_function policy in cache key since the execution
+  // strategy can change and affect which kernel is picked.
+  VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
+  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
+
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
   cache_key =
@@ -882,15 +900,6 @@ Status GetOrCreateKernelAndDevice(
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
   if (kernel == nullptr) {
-    EagerOperation* original_op = op;
-    if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
-      EagerOperation* wrapped_op = nullptr;
-      TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
-      DCHECK(wrapped_op);
-      DCHECK(wrapped_op->is_function());
-      wrapped_op_releaser.reset(wrapped_op);
-      op = wrapped_op;
-    }
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
     bool run_function_with_flr = false;
@@ -912,7 +921,6 @@ Status GetOrCreateKernelAndDevice(
 
     VLOG(2) << op->Name() << " function_outputs_on_op_device: "
             << function_outputs_on_op_device;
-    const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       // Here in local execute, set preferred device to be on the local task to
       // avoid placing op on a remote device with higher priority.
@@ -925,16 +933,43 @@ Status GetOrCreateKernelAndDevice(
       // place the wrapped op on a GPU (if one is available) which leads to
       // errors because placer pins the function output nodes to GPU thereby
       // forcing a H2D copy of the dataset variant which is not supported.
-      const NodeDef& ndef = original_op->MutableAttrs()->BuildNodeDef();
+      const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
       TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
       VLOG(1) << "PreferredDevice " << op->Name() << ": " << preferred_device;
       VLOG(1) << "Placer place op [" << op->Name()
               << "] on device: " << device->name();
-      VLOG(4) << "Available kernels for " << original_op->Name() << " are"
-              << KernelsRegisteredForOp(original_op->Name());
+      VLOG(4) << "Available kernels for " << op->Name() << " are"
+              << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
+    } else {
+      VLOG(1) << "Device for [" << op->Name()
+              << "] already set to: " << device->name();
     }
+
+    // Note: We wrap the eager op AFTER the device has been inferred to ensure
+    // that placement of the NodeDef in the function is exactly the same as in
+    // eager mode. This is specially important for cases where the
+    // preferred device is not the actual device on which the op is run.
+    // E.g. the preferred device for a `RangeDataset` op could be set to `GPU`
+    // but `ctx->SelectDevice` would still place it on CPU. Placer on the other
+    // hand would throw an error.
+    //
+    // Note: The wrapped function is never jit compiled but rather run via the
+    // FLR. This is needed because certain ops e.g. `VarHandleOp` can not be
+    // jit compiled. Ideally we would run this via the jit compiled path and
+    // expect unsupported ops to be outside compiled but that is not supported
+    // on GPUs right now.
+    if (ctx.RunEagerOpAsFunction() && !op->is_function()) {
+      EagerOperation* wrapped_op = nullptr;
+      TF_RETURN_IF_ERROR(WrapInCallOp(op, &wrapped_op));
+      DCHECK(wrapped_op);
+      DCHECK(wrapped_op->is_function());
+      wrapped_op_releaser.reset(wrapped_op);
+      op = wrapped_op;
+      run_function_with_flr = true;
+    }
+    const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
 
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
@@ -1147,6 +1182,13 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   core::RefCountPtr<KernelAndDevice> kernel;
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
 
+  if (IsMKLEnabled() && kernel != nullptr && !ctx.RunEagerOpAsFunction() &&
+      op->Device() == kVariantDeviceNull) {
+    // oneDNN optimization pass relies on the op's assigned device to determine
+    // whether it can be rewritten.
+    op->SetDevice(kernel->device());
+  }
+
   // Run all the registered rewrite pass after the placement, regardless whether
   // the placement is successful or not. The passes can either create new ops
   // (without placement) or update some fields of the input op.
@@ -1181,6 +1223,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     for (int i = 0, end = num_outputs; i < end; ++i) {
       if (retvals[i] != nullptr) {
         retvals[i]->Unref();
+        retvals[i] = nullptr;
       }
     }
   }
@@ -1415,6 +1458,9 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (!s.ok()) {
     for (size_t i = 0; i < num_outputs; ++i) {
       retvals[i]->Unref();
+      // Ensure that any smart pointers created to wrap results become noops
+      // rather than operating on invalid memory.
+      retvals[i] = nullptr;
     }
   }
 
@@ -1648,6 +1694,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   // allocated.
   if (!s.ok()) {
     (*result)->Unref();
+    *result = nullptr;
   }
 
   return s;
@@ -1741,6 +1788,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {
       result[0]->Unref();
+      result[0] = nullptr;
     }
     return s;
 #endif  // !IS_MOBILE_PLATFORM
@@ -1874,6 +1922,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
           for (int i = 0, end = num_outputs; i < end; ++i) {
             if (retvals[i] != nullptr) {
               retvals[i]->Unref();
+              retvals[i] = nullptr;
             }
           }
         }

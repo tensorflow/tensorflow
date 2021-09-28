@@ -31,7 +31,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -477,6 +479,32 @@ class GatherTest(test.TestCase, parameterized.TestCase):
                     axis=None):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
+
+    # Test gradients
+    f64_params = math_ops.cast(params, dtypes.float64)
+    def gather(params):
+      return array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        gather, [f64_params])
+    self.assertAllClose(theoretical, numerical)
+
+    # Test gradients when input shapes are unknown
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float64),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+    ])
+    def gather_unknown_shapes(params, indices):
+      return array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    if batch_dims is None or batch_dims >= 0:
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda p: gather_unknown_shapes(p, indices), [f64_params])
+      self.assertAllClose(theoretical, numerical)
+    else:
+      with self.assertRaisesRegex(
+          ValueError,
+          "Currently, it is unsupported to take the gradient of tf.gather"):
+        gradient_checker_v2.compute_gradient(
+            lambda p: gather_unknown_shapes(p, indices), [f64_params])
 
     # Test the gradients shape.
     with backprop.GradientTape() as tape:
