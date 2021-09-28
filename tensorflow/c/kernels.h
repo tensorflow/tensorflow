@@ -184,6 +184,10 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Returns the serialized NodeDef protocol buffer for the kernel
+TF_CAPI_EXPORT extern TF_Buffer* TF_OpKernelConstruction_GetNodeDef(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
 // Get the list_size and total_size of the attribute `attr_name` of `oper`.
 // list_size - the length of the list.
 // total_size - total size of the list.

@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -228,6 +228,38 @@ class TestKernelAttr : public ::testing::Test {
     ASSERT_TRUE(delete_called);
   }
 };
+
+TEST_F(TestKernelAttr, GetNodeDef) {
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    TF_Status* status = TF_NewStatus();
+    TF_Buffer* node_def_buf = TF_OpKernelConstruction_GetNodeDef(ctx, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    NodeDef node_def;
+    node_def.ParseFromArray(node_def_buf->data, node_def_buf->length);
+    EXPECT_EQ(node_def.op(), "TestKernelAttrGetNodeDef");
+    EXPECT_EQ(node_def.name(), "FakeNode");
+    EXPECT_EQ(node_def.device(), "FakeDevice");
+    EXPECT_EQ(node_def.attr_size(), 1);
+    const ::tensorflow::AttrValue& value = node_def.attr().at("Attr");
+    EXPECT_TRUE(value.value_case() == ::tensorflow::AttrValue::ValueCase::kI);
+    EXPECT_EQ(value.i(), 1234);
+    TF_DeleteBuffer(node_def_buf);
+    TF_DeleteStatus(status);
+    return static_cast<void*>(s);
+  };
+
+  REGISTER_OP("TestKernelAttrGetNodeDef")
+      .Attr("Attr: int")
+      .SetShapeFn(tensorflow::shape_inference::UnknownShape);
+
+  AttrValue v;
+  v.set_i(1234);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrGetNodeDef", v);
+}
 
 TEST_F(TestKernelAttr, String) {
   auto my_create_func = [](TF_OpKernelConstruction* ctx) {
