@@ -253,14 +253,31 @@ jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
   * Deprecate `tflite::OpResolver::GetDelegates`. The list returned by TfLite's `BuiltinOpResolver::GetDelegates` is now always empty. Instead, recommend using new method `tflite::OpResolver::GetDelegateCreators` in order to achieve lazy initialization on TfLite delegate instances.
 
 * TF Core:
-    *   `tf.Graph.get_name_scope()` now always returns a string, as documented. Previously, when called within `name_scope("")` or `name_scope(None)` contexts, it returned `None`; now it returns the empty string.
-    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is isomorphic to GraphDef and will be used to replace GraphDef-based (e.g., Grappler) optimizations.
-    *   Deprecated and removed `attrs()` function in shape inference. All attributes should be queried by name now (rather than range returned) to enable changing the underlying storage there.
-    *   The following Python symbols were accidentally added in earlier versions of TensorFlow and now are removed. Each symbol has a replacement that should be used instead, but note the replacement's argument names are different.
-        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow 2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
-        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use `tf.linalg.matmul` instead.
-        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow 2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling this op is typically not necessary, as it is automatically used when computing the gradient of `tf.sparse.segment_sum`.
-    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former is an alias for the latter) which could result in needing to regenerate selective op registration headers else execution would fail with unregistered kernels error.
+    *  `tf.Graph.get_name_scope()` now always returns a string, as documented.
+        Previously, when called within `name_scope("")` or `name_scope(None)`
+        contexts, it returned `None`; now it returns the empty string.
+    *  `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+        isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
+        Grappler) optimizations.
+    *  Deprecated and removed `attrs()` function in shape inference. All
+        attributes should be queried by name now (rather than range returned)
+        to enable changing the underlying storage there.
+    *  The following Python symbols were accidentally added in earlier versions
+        of TensorFlow and now are removed. Each symbol has a replacement that
+        should be used instead, but note the replacement's argument names are
+        different.
+        * `tf.quantize_and_dequantize_v4` (accidentally introduced in TensorFlow
+        2.4): Use `tf.quantization.quantize_and_dequantize_v2` instead.
+        * `tf.batch_mat_mul_v3` (accidentally introduced in TensorFlow 2.6): Use
+        `tf.linalg.matmul` instead.
+        * `tf.sparse_segment_sum_grad` (accidentally introduced in TensorFlow
+        2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
+        this op is typically not necessary, as it is automatically used when
+        computing the gradient of `tf.sparse.segment_sum`.
+    *  Renaming of tensorflow::int64 to int_64_t in numerous places (the former
+        is an alias for the latter) which could result in needing to regenerate
+        selective op registration headers else execution would fail with
+        unregistered kernels error.
 
 * Modular File System Migration:
     *   Support for S3 and HDFS file systems has been migrated to a modular file systems based approach and is now available in https://github.com/tensorflow/io. The `tensorflow-io` python package should be installed for S3 and HDFS support with tensorflow.
@@ -364,17 +381,17 @@ jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Add an experimental session config `tf.experimental.disable_functional_ops_lowering` which disables functional control flow op lowering optimization. This is useful when executing within a portable runtime where control flow op kernels may not be loaded due to selective registration.
     * Add a new experimental argument `experimental_is_anonymous` to `tf.lookup.StaticHashTable.__init__` to create the table in anonymous mode. In this mode, the table resource can only be accessed via resource handles (not resource names) and will be deleted automatically when all resource handles pointing to it are gone.
 *   `tf.data`:
-    * Introduce the `tf.data.experimental.at` API which provides random access for input pipelines that consist of transformations that support random access. The initial set of transformations that support random access includes: `tf.data.Dataset.from_tensor_slices`,`tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`, and `tf.data.Dataset.range`.
+    *  Introduce the `tf.data.experimental.at` API which provides random access for input pipelines that consist of transformations that support random access. The initial set of transformations that support random access includes: `tf.data.Dataset.from_tensor_slices`,`tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`, and `tf.data.Dataset.range`.
     *   Promote `tf.data.Options.experimental_deterministic` API to `tf.data.Options.deterministic` and deprecate the experimental
         endpoint.
-    * Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for
+    *  Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
-    * Add support for user-defined names of tf.data core Python API, which
+    *  Add support for user-defined names of tf.data core Python API, which
         can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     * Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental
         endpoint.
-    * Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
-    * Added a flag `stateful` to `numpy_function` to give a
+    *  Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
+    *  Added a flag `stateful` to `numpy_function` to give a
         guarantee to the runtime that the function is stateless,
         which in terms allows for more optimizations in the graph.
 *   TF SavedModel:
