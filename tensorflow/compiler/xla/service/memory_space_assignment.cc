@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -1218,6 +1219,10 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
 }
 
 HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
+  if (options_.autotuning_config.has_value()) {
+    CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
+  }
+
   AllocateReservedScopedAllocations();
   if (options_.enable_cross_program_prefetch) {
     absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
@@ -1232,6 +1237,8 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
 
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
+  memory_space_assignment::CustomizeSortedBufferInterval(
+      options_.autotuning_config, sorted_buffer_intervals);
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
