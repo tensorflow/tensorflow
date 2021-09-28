@@ -20,6 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
+// This test suite should be run with
+// --//third_party/tensorflow/compiler/xla/service/gpu:enable_bef_executable=true
+// to test the BEF-mode GpuExecutable.
+
 namespace xla {
 namespace gpu {
 
