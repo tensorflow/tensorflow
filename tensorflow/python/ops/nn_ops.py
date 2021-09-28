@@ -5813,6 +5813,13 @@ def fractional_max_pool(value,
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if config.is_op_determinism_enabled() and (not seed or not seed2 or
+                                             not deterministic):
+    raise ValueError(
+        'tf.compat.v1.nn.fractional_max_pool requires "seed" and '
+        '"seed2" to be non-zero and "deterministic" to be true when op '
+        'determinism is enabled. Please pass in such values, e.g. by passing'
+        '"seed=1, seed2=1, deterministic=True"')
   return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                         overlapping, deterministic, seed, seed2,
                                         name)
@@ -5914,6 +5921,11 @@ def fractional_max_pool_v2(value,
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
+    if config.is_op_determinism_enabled():
+      raise ValueError(
+          'tf.nn.fractional_max_pool requires a non-zero seed to be passed in '
+          'when determinism is enabled. Please pass in a non-zero seed, e.g. '
+          'by passing "seed=1".')
     return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                           overlapping, deterministic=False,
                                           seed=0, seed2=0, name=name)
