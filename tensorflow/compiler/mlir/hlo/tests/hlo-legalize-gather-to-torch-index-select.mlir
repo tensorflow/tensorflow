@@ -22,28 +22,6 @@ func @gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>)
   return %0 : tensor<1x3x4xf32>
 }
 
-// CHECK-LABEL: @scalar_gather_to_index_select
-func @scalar_gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<i32>) -> tensor<1x4xf32> {
-  // CHECK: [[TIS:%.+]] = "mhlo.torch_index_select"(%arg0, %arg1) {
-  // CHECK-SAME:   batch_dims = 0 : i64,
-  // CHECK-SAME:   dim = 0 : i64
-  // CHECK-SAME: } : (tensor<5x4xf32>, tensor<i32>) -> tensor<4xf32>
-  // CHECK: [[RES:%.+]] = "mhlo.reshape"([[TIS]])
-  %0 = "mhlo.gather"(%arg0, %arg1) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0],
-      index_vector_dim = 0,
-      offset_dims = [0, 1],
-      start_index_map = [0],
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 4]> : tensor<2xi64>
-  } : (tensor<5x4xf32>, tensor<i32>) -> tensor<1x4xf32>
-
-  // CHECK: return [[RES]]
-  return %0 : tensor<1x4xf32>
-}
-
 // CHECK-LABEL: @gather_no_lowering_subslice
 func @gather_no_lowering_subslice(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>) -> tensor<1x3x3xf32> {
   // CHECK: "mhlo.gather"
@@ -68,7 +46,7 @@ func @gather_no_lowering_multidim(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x2x
       collapsed_slice_dims = [0],
       index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0],
+      start_index_map = [0, 1],
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 4]> : tensor<2xi64>

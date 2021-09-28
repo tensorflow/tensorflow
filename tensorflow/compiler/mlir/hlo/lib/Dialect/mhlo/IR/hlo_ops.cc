@@ -467,6 +467,64 @@ LogicalResult GatherOp::reifyReturnTypeShapes(
   return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
 }
 
+static LogicalResult Verify(GatherOp op) {
+  GatherDimensionNumbersAttr dimensionNumbers = op.dimension_numbers();
+
+  auto operandTy = op.operand().getType().cast<ShapedType>();
+  auto startIndicesTy = op.start_indices().getType().cast<ShapedType>();
+  DenseIntElementsAttr sliceSizes = op.slice_sizes();
+  int64_t indexVectorDim = dimensionNumbers.getIndexVectorDim();
+
+  // This should probably be a custom attr.
+  if (sliceSizes.getType().getRank() != 1) {
+    return op.emitOpError() << "slice_sizes.rank != 1";
+  }
+
+  if (startIndicesTy.hasRank()) {
+    // index_vector_dim == start_indices.rank implies a trailing 1 on the shape
+    // of start_indices.
+    if (indexVectorDim > startIndicesTy.getRank())
+      return op.emitOpError()
+             << "index_vector_dim " << indexVectorDim
+             << " is out of bounds for start indices with rank "
+             << startIndicesTy.getRank();
+
+    bool impliedTrailingDim = indexVectorDim == startIndicesTy.getRank();
+    if (impliedTrailingDim || !startIndicesTy.isDynamicDim(indexVectorDim)) {
+      int64_t effectiveDimSize;
+      if (impliedTrailingDim)
+        effectiveDimSize = 1;
+      else
+        effectiveDimSize = startIndicesTy.getDimSize(indexVectorDim);
+      if (effectiveDimSize != dimensionNumbers.getStartIndexMap().size())
+        return op.emitOpError() << "start_index_map size ("
+                                << dimensionNumbers.getStartIndexMap().size()
+                                << ") is not equal to size of index dimension ("
+                                << indexVectorDim << ") of start_indices ("
+                                << effectiveDimSize << ")";
+    }
+  }
+
+  if (operandTy.hasRank()) {
+    int64_t operandRank = operandTy.getRank();
+    if (dimensionNumbers.getOffsetDims().size() +
+            dimensionNumbers.getCollapsedSliceDims().size() !=
+        operandRank)
+      return op.emitOpError()
+             << "offset_dims size (" << dimensionNumbers.getOffsetDims().size()
+             << ") plus collapse_slice_dims size ("
+             << dimensionNumbers.getCollapsedSliceDims().size()
+             << ") is not equal to operand rank (" << operandRank << ")";
+
+    if (sliceSizes.size() != operandRank)
+      return op.emitOpError()
+             << "slice_sizes size (" << sliceSizes.size()
+             << ") not equal to operand rank (" << operandRank << ")";
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicGatherOp
 //===----------------------------------------------------------------------===//

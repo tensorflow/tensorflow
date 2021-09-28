@@ -5349,14 +5349,14 @@ func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> ten
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   offset_dims = [0, 1]
   // CHECK-SAME:   collapsed_slice_dims = [0]
-  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   start_index_map = [0, 1]
   // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
-  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<10x1x300xf32>
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<10x1x300xf32>
   return %0 : tensor<10x1x300xf32>
 }
 
@@ -5366,14 +5366,14 @@ func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) ->
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   offset_dims = [0, 1]
   // CHECK-SAME:   collapsed_slice_dims = [0]
-  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   start_index_map = [0, 1]
   // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
-  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<10x1x300xf32>
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<10x1x300xf32>
   return %0 : tensor<10x1x300xf32>
 }
 

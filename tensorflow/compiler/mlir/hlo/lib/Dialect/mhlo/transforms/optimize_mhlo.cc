@@ -63,52 +63,46 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
         !gather.operand().getType().cast<ShapedType>().hasStaticShape() ||
         !gather.start_indices().getType().cast<ShapedType>().hasRank() ||
         !gather.start_indices().getType().cast<ShapedType>().hasStaticShape()) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather,
+                                         "non-static operand or start_indices");
     }
 
     if (dimension_numbers.getIndexVectorDim() != 0) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "non-zero index_vector_dim");
     }
 
     // TODO(suderman): Handle start index map != {0}.
     if (dimension_numbers.getStartIndexMap().empty() ||
         dimension_numbers.getStartIndexMap().size() != 1 ||
         dimension_numbers.getStartIndexMap()[0] != 0) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather,
+                                         "start_index_map not empty or [0]");
     }
 
     auto result_ty = gather.getResult().getType().dyn_cast<RankedTensorType>();
 
-    // Requires a ranked output.
     if (!result_ty) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "unranked result");
     }
     if (dimension_numbers.getOffsetDims().size() != result_ty.getRank()) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather,
+                                         "offset_dims.size != operand.rank");
     }
     for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if (it.index() != it.value()) {
-        return failure();
+        return rewriter.notifyMatchFailure(gather,
+                                           "offset_dims != [0, result.rank)");
       }
     }
 
-    // Verify the gather slice sizes are correct.
-    if (gather.slice_sizes().getNumElements() !=
-        gather.operand().getType().cast<ShapedType>().getRank()) {
-      return failure();
-    }
-
-    // Validate the slice sizes are correct.
-    if (gather.slice_sizes().getType().cast<ShapedType>().getNumElements() <
-        result_ty.getShape().size() + 1) {
-      return failure();
+    if (gather.slice_sizes().size() <= result_ty.getRank()) {
+      return rewriter.notifyMatchFailure(gather,
+                                         "slices_size.size > result.rank");
     }
 
     for (auto it : llvm::enumerate(result_ty.getShape())) {
-      if (gather.slice_sizes()
-              .getValue(it.index() + 1)
-              .cast<IntegerAttr>()
-              .getValue() != it.value()) {
+      if (gather.slice_sizes().getValue<int64_t>(it.index() + 1) !=
+          it.value()) {
         return failure();
       }
     }
@@ -136,14 +130,10 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
         slice_start_indices.push_back(reshaped);
       }
     } else {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "start_indices.rank > 1");
     }
 
-    auto sliceSizes = gather.slice_sizes();
-    auto sliceSizesTy = sliceSizes.getType();
-    if (sliceSizesTy.getRank() != 1) {
-      return failure();
-    }
+    auto sliceSizesTy = gather.slice_sizes().getType();
 
     // Start indices have implicit zeros when not specified. This is because
     // Gather occurs similar to slicing where full slices are inferred. Add any

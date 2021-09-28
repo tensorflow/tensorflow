@@ -1486,6 +1486,107 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 
 // -----
 
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 4,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{slice_sizes.rank != 1}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[[1, 1, 8]]> : tensor<1x3xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{slice_sizes size (2) not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 8]> : tensor<2xi64>
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x2x3xi32>
+  return %res : tensor<1x2x3xi32>
+}
+
+// -----
+
 func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
   // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
   %size = "mhlo.get_dimension_size"(%I) {dimension = 3 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>

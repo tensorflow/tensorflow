@@ -1168,7 +1168,7 @@ func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [2],
       index_vector_dim = 0,
-      offset_dims = [0, 1, 2],
+      offset_dims = [0, 1],
       start_index_map = [0, 2],
     >,
     indices_are_sorted = false,

@@ -1602,6 +1602,14 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
 }
 
 def HLO_GatherOp: HLO_ShapedInterfaceOp<"gather", [NoSideEffect]> {
+  let summary = "Gather operator";
+  let description = [{
+    Stitches together several slices of `operand` from offsets specified in
+    `start_indices` (each slice at a potentially different runtime offset).
+
+    See https://www.tensorflow.org/xla/operation_semantics#gather.
+  }];
+
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
