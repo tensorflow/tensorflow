@@ -18,10 +18,8 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -523,18 +521,16 @@ tf_cuda_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/stream_executor/gpu:gpu_activation_header",
         "@llvm-project//mlir:IR",
-    ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ]) + if_rocm([
-        "//tensorflow/stream_executor/rocm:rocm_activation",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-    ]) + if_gpu_is_configured([
+    ] + if_gpu_is_configured([
         ":virtual_nccl_utils",
     ]) + if_cuda_is_configured([
         ":virtual_nccl",
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ]) + if_rocm_is_configured([
         ":virtual_rccl",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
     ]),
 )
 
