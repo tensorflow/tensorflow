@@ -364,12 +364,19 @@ jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Add an experimental session config `tf.experimental.disable_functional_ops_lowering` which disables functional control flow op lowering optimization. This is useful when executing within a portable runtime where control flow op kernels may not be loaded due to selective registration.
     * Add a new experimental argument `experimental_is_anonymous` to `tf.lookup.StaticHashTable.__init__` to create the table in anonymous mode. In this mode, the table resource can only be accessed via resource handles (not resource names) and will be deleted automatically when all resource handles pointing to it are gone.
 *   `tf.data`:
-    *   Introduce the `tf.data.experimental.at` API which provides random access for input pipelines that consist of transformations that support random access. The initial set of transformations that support random access includes: `tf.data.Dataset.from_tensor_slices`,`tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`, and `tf.data.Dataset.range`.
-    *   Promote `tf.data.Options.experimental_deterministic` API to `tf.data.Options.deterministic` and deprecate the experimental endpoint.
-    *   Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for `tf.data.Options.experimental_optimization.autotune_buffers`.
-    *   Add support for user-defined names of tf.data core Python API, which can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
-    *   Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental endpoint.
-    *   Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
+    * Introduce the `tf.data.experimental.at` API which provides random access for input pipelines that consist of transformations that support random access. The initial set of transformations that support random access includes: `tf.data.Dataset.from_tensor_slices`,`tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`, and `tf.data.Dataset.range`.
+    *   Promote `tf.data.Options.experimental_deterministic` API to `tf.data.Options.deterministic` and deprecate the experimental
+        endpoint.
+    * Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for
+        `tf.data.Options.experimental_optimization.autotune_buffers`.
+    * Add support for user-defined names of tf.data core Python API, which
+        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
+    * Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental
+        endpoint.
+    * Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
+    * Added a flag `stateful` to `numpy_function` to give a
+        guarantee to the runtime that the function is stateless,
+        which in terms allows for more optimizations in the graph.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
     *   The saved_model_cli's `--input_examples` inputs are now restricted to
