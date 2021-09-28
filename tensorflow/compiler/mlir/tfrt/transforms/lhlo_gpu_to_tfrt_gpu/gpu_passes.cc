@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/custom_call_pattern.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gemm_pattern.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memcpy_pattern.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memset_pattern.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -77,6 +78,7 @@ struct LmhloGpuAsyncConversionPass
     populateCustomCallConversionPattern(patterns);
     populateGemmConversionPattern(patterns);
     populateMemcpyConversionPattern(patterns);
+    populateMemsetConversionPattern(patterns);
     populateFuncOpTypeConversionPattern(patterns, converter);
 
     ConversionTarget wrap_target(*context);
