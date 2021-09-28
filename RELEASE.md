@@ -67,9 +67,6 @@
         is an alias for the latter) which could result in needing to regenerate
         selective op registration headers else execution would fail with
         unregistered kernels error.
-    * Adding a flag `stateful` to `numpy_function`, allowing to give the
-        guarantee to the runtime that the function call is stateless,
-        which allows for more optimizations in the graph.
 
 ## Known Caveats
 
@@ -191,26 +188,29 @@
       executing within a portable runtime where control flow op kernels may not 
       be loaded due to selective registration.
 *   `tf.data`:
-    *   Promoting `tf.data.Options.experimental_deterministic` API to
+    * Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
-    *   Moving autotuning options from
+    * Moving autotuning options from
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
-    *   Added support for user-defined names of tf.data core Python API, which
+    * Added support for user-defined names of tf.data core Python API, which
         can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
-    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
+    * Added the ability for `TensorSliceDataset` to identify and handle inputs
         that are files. This will enable creating hermetic SavedModels when
         using datasets created from files.
-    *   Promoting
+    * Promoting
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
         endpoint.
-    *   Promoting
+    * Promoting
         `tf.data.experimental.choose_from_datasets` API to
         `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
         endpoint.
+    * Added a flag `stateful` to `numpy_function` to give a
+        guarantee to the runtime that the function is stateless,
+        which in terms allows for more optimizations in the graph.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
 *   XLA:
@@ -229,7 +229,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+jonas-eschle,<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.6.0
 
