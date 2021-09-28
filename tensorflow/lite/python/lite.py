@@ -55,6 +55,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -96,13 +97,6 @@ from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_deb
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python.metrics import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
 
 
 @_tf_export("lite.Optimize")

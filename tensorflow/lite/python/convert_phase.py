@@ -25,13 +25,7 @@ import functools
 from typing import Text
 
 from tensorflow.lite.python.metrics import converter_error_data_pb2
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python.metrics import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
+from tensorflow.lite.python.metrics import metrics
 
 
 class Component(enum.Enum):

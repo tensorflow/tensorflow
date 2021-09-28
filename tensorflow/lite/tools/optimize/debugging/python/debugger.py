@@ -23,14 +23,8 @@ import numpy as np
 
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import interpreter as _interpreter
+from tensorflow.lite.python.metrics import metrics as metrics_stub  # type: ignore
 from tensorflow.python.util import tf_export
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python.metrics import metrics_nonportable as metrics_stub  # type: ignore
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_portable as metrics_stub  # type: ignore
-# pylint: enable=g-import-not-at-top
 
 
 # TODO(b/198099651): move converter implementation out of lite.py
