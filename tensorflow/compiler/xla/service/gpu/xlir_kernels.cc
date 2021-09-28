@@ -92,30 +92,6 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
-// TODO(hanbinyoon): Expose this in ccl_wrapper.h.
-static llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
-  switch (data_type) {
-    case ncclInt8:
-    case ncclUint8:
-      return 1;
-    case ncclFloat16:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
-    case ncclBfloat16:
-#endif
-      return 2;
-    case ncclInt32:
-    case ncclUint32:
-    case ncclFloat32:
-      return 4;
-    case ncclInt64:
-    case ncclUint64:
-    case ncclFloat64:
-      return 8;
-    default:
-      return tfrt::MakeStringError("Unknown ncclDataType_t: ", data_type);
-  }
-}
-
 static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -161,7 +137,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
       xccl_ctx->collective_permute_source_target.target_peer;
 
   auto type = static_cast<ncclDataType_t>(*data_type);
-  auto width = ToWidthInBytes(type);
+  auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);
   if (!width)
     return tfrt::MakeErrorAsyncValueRef(llvm::toString(width.takeError()));
   assert(*width != 0);
