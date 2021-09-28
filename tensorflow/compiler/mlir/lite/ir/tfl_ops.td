@@ -2266,12 +2266,35 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   }];
 
   let arguments = (ins
-    TFL_FpTensor:$x
+    TFL_TensorOf<[F32, QI8, QI16]>:$x
   );
 
   let results = (outs
-    TFL_FpTensor:$y
+    TFL_TensorOf<[F32, QI8, QI16]>:$y
   );
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = y().getType();
+    // zero_point = 0
+    // scale = 1.0
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0, /*zero_point=*/0);
+  }
+  }];
 }
 
 def TFL_SliceOp : TFL_Op<"slice", [

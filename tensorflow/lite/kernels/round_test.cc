@@ -86,7 +86,7 @@ TEST(RoundOpTest, Int8MultiDims) {
   model.Invoke();
   EXPECT_THAT(
       model.template GetDequantizedOutput<int8_t>(),
-      ElementsAreArray({-4, -3, -4, 1, 1, 3, 5, 1, 4, 1, 1, 1, 0, 1, 0, -1}));
+      ElementsAreArray({-4, -4, -5, 1, 1, 3, 5, 1, 4, 1, 1, 1, 0, 1, 0, -1}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 8}));
 }
 
@@ -103,7 +103,7 @@ TEST(RoundOpTest, Int16MultiDims) {
   model.Invoke();
   EXPECT_THAT(
       model.template GetDequantizedOutput<int16_t>(),
-      ElementsAreArray({-4, -4, -4, 1, 1, 3, 5, 1, 4, 1, 1, 1, 0, 1, 0, -1}));
+      ElementsAreArray({-4, -4, -5, 1, 1, 3, 5, 1, 4, 1, 1, 1, 0, 1, 0, -1}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 8}));
 }
 
