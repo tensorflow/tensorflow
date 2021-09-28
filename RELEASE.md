@@ -1,7 +1,5 @@
 # Release 2.7.0
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
 ## Breaking Changes
 
 * `tf.keras`:
