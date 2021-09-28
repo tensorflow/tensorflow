@@ -967,9 +967,11 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   }
 
   Value unquantized_bias = tfl_conv2d_op.bias();
+  Type bias_ety = output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
+  if (unquantized_bias) bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv2d_op.input(),
+      rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv2d_op.input(),
       tfl_conv2d_op.filter(), unquantized_bias, pad, stride, dilation);
 
   Value conv2d_output;
@@ -1104,9 +1106,10 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   }
 
   if (!zero_bias) return failure();
+  Type bias_ety = zero_bias->getType().cast<ShapedType>().getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv_op.input(),
+      rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv_op.input(),
       tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride, dilation,
       output_shape);
 
@@ -1227,9 +1230,11 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       rewriter.getI64ArrayAttr(a2_reshape_dims));
 
   Value unquantized_bias = tfl_conv2d_op.bias();
+  Type bias_ety = output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
+  if (unquantized_bias) bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
 
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv2d_op.input(),
+      rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv2d_op.input(),
       a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride,
       dilation);
 
@@ -1348,9 +1353,11 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     bias_val = tfl_fc_op.bias();
   }
 
+  Type bias_ety = bias_val.getType().cast<ShapedType>().getElementType();
+
   auto fc_op = CreateOpAndInfer<tosa::FullyConnectedOp>(
-      rewriter, op->getLoc(), output_type, input_val, tfl_fc_op.filter(),
-      bias_val);
+      rewriter, op->getLoc(), output_type.clone(bias_ety), input_val,
+      tfl_fc_op.filter(), bias_val);
 
   Value fc_output;
   if (input_is_qtype) {
