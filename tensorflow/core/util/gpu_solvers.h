@@ -250,6 +250,19 @@ class GpuSolver {
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
                       const int ldb, int* lapack_info, const int batch_count);
 
+  // Cholesky factorization
+  // Computes the Cholesky factorization A = L * L^H for a single matrix.
+  template <typename Scalar>
+  Status Potrf(rocblas_fill uplo, int n, Scalar* dev_A, int lda,
+               int* dev_lapack_info);
+
+  // Computes the Cholesky factorization A = L * L^H for a batch of small
+  // matrices.
+  template <typename Scalar>
+  Status PotrfBatched(rocblas_fill uplo, int n,
+                      const Scalar* const host_a_dev_ptrs[], int lda,
+                      DeviceLapackInfo* dev_lapack_info, int batch_size);
+
   template <typename Scalar>
   Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,

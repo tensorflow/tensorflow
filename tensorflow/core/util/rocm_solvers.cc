@@ -243,6 +243,20 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 
 TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
 
+#define POTRF_INSTANCE(Scalar, type_prefix)                                    \
+  template <>                                                                  \
+  Status GpuSolver::Potrf<Scalar>(rocblas_fill uplo, int n, Scalar* dev_A,     \
+                                  int lda, int* dev_lapack_info) {             \
+    mutex_lock lock(handle_map_mutex);                                         \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(                  \
+        rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
+        dev_lapack_info));                                                     \
+    return Status::OK();                                                       \
+  }
+
+TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
+
 #define GETRS_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
   Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,   \
@@ -280,14 +294,37 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 
 TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
 
+#define POTRF_BATCHED_INSTANCE(Scalar, type_prefix)                           \
+  template <>                                                                 \
+  Status GpuSolver::PotrfBatched<Scalar>(                                     \
+      rocblas_fill uplo, int n, const Scalar* const host_a_dev_ptrs[],        \
+      int lda, DeviceLapackInfo* dev_lapack_info, int batch_size) {           \
+    rocblas_stride stride = n;                                                \
+    mutex_lock lock(handle_map_mutex);                                        \
+    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
+    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
+        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
+    if (!CopyHostToDevice(context_, dev_a.mutable_data(), host_a_dev_ptrs,    \
+                          dev_a.bytes())) {                                   \
+      return errors::Internal("PotrfBatched: Failed to copy ptrs to device"); \
+    }                                                                         \
+    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf_batched, type_prefix)(         \
+        rocm_blas_handle_, uplo, n,                                           \
+        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
+        dev_lapack_info->mutable_data(), batch_size));                        \
+    return Status::OK();                                                      \
+  }
+
+TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
+
 #define GETRS_BATCHED_INSTANCE(Scalar, type_prefix)                            \
   template <>                                                                  \
   Status GpuSolver::GetrsBatched<Scalar>(                                      \
       const rocblas_operation trans, int n, int nrhs, Scalar** A, int lda,     \
       int* dev_pivots, Scalar** B, const int ldb, int* host_lapack_info,       \
       const int batch_size) {                                                  \
-    mutex_lock lock(handle_map_mutex);                                         \
     rocblas_stride stride = n;                                                 \
+    mutex_lock lock(handle_map_mutex);                                         \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
     ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                  \
         sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);             \
