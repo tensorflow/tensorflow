@@ -68,6 +68,13 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_comm_;
 };
 
+// Retrieves the original loop bound. If fail, return a default value.
+// This function is more opportunistic than ComputeWhileLoopTripCount in
+// the while loop analysis as it may return a constant found in a compare
+// expression when if it is not an actual bound.
+int64_t GetLoopBound(const HloInstruction& while_hlo,
+                     const int64_t default_loop_count);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_
