@@ -111,7 +111,7 @@ to perform image classification with the Pi Camera and TensorFlow Lite.
 If you're using a Coral ML accelerator, check out the
 [Coral examples on GitHub](https://github.com/google-coral/tflite/tree/master/python/examples).
 
-To convert other TensorFlow models to TensorFlow Lite, read about the
+To convert other TensorFlow models to TensorFlow Lite, read about 
 the [TensorFlow Lite Converter](../convert/).
 
 If you want to build `tflite_runtime` wheel, read
