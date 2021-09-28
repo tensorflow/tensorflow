@@ -1840,15 +1840,9 @@ static Status BuildGeneralDeviceAssignment(
 
   // Checks num_replicas is sane first to avoid integer overflow.
   if (num_replicas > num_tpu_devices) {
-#ifdef PLATFORM_CLOUD_TPU
     return errors::InvalidArgument("Requested num_replicas=", num_replicas,
                                    " but there are only ", num_tpu_devices,
                                    " cores in the TPU topology.");
-#else
-    return errors::InvalidArgument("Requested num_replicas=", num_replicas,
-                                   " but there are only ", num_tpu_devices,
-                                   " cores in the TPU topology.");
-#endif
   }
   if (num_replicas * num_cores_per_replica > num_tpu_devices) {
     return errors::InvalidArgument(
