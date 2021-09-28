@@ -3,6 +3,18 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 licenses(["notice"])
 
 py_strict_test(
+    name = "multiple_results_test",
+    srcs = ["multiple_results_test.py"],
+    python_version = "PY3",
+    tags = ["nomsan"],
+    deps = [
+        # copybara:uncomment "//testing/pybase",
+        "//third_party/py/numpy",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+    ],
+)
+
+py_strict_test(
     name = "tf_binary_bcast_test",
     srcs = ["tf_binary_bcast_test.py"],
     python_version = "PY3",
