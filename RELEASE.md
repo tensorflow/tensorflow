@@ -129,7 +129,8 @@
 *  Keras:
   *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
       This method can be used to simplify the implementation of Conv subclasses.
-      There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+      There are two primary ways to use this new method.  The first is to use the 
+      method directly in your own `call` method:
       ```
         class StandardizedConv2D(tf.keras.layers.Conv2D):
           def call(self, inputs):
@@ -210,9 +211,13 @@
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
     * Random number generation (RNG) system
-        *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
-        *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
-        *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.ParameterServerStrategy` and `tf.distribute.experimental.CentralStorageStrategy`.
+        *   Added argument `alg` to `tf.random.stateless_*` functions to 
+            explicitly select the RNG algorithm.
+        *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of 
+            `tf.nn.dropout`.
+        *   `tf.random.Generator` now can be created inside the scope of 
+            `tf.distribute.experimental.ParameterServerStrategy` and 
+            `tf.distribute.experimental.CentralStorageStrategy`.
     * Added an experimental session config
       `tf.experimental.disable_functional_ops_lowering` which disables
       functional control flow op lowering optimization. This is useful when
@@ -249,7 +254,8 @@
         `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
         endpoint.
 *   TF SavedModel:
-    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` 
+        to disable this.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
