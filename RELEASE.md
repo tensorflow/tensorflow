@@ -52,10 +52,10 @@
     *  `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
         isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
         Grappler) optimizations.
-    *  Deprecated and removed attrs() function in shape inference. All
+    *   Deprecated and removed attrs() function in shape inference. All
         attributes should be queried by name now (rather than range returned)
         to enable changing the underlying storage there.
-    *  The following Python symbols were accidentally added in earlier versions
+    *   The following Python symbols were accidentally added in earlier versions
         of TensorFlow and now are removed. Each symbol has a replacement that
         should be used instead, but note the replacement's argument names are
         different.
@@ -67,7 +67,7 @@
         2.6): Use `tf.raw_ops.SparseSegmentSumGrad` instead. Directly calling
         this op is typically not necessary, as it is automatically used when
         computing the gradient of `tf.sparse.segment_sum`.
-    *  Renaming of tensorflow::int64 to int_64_t in numerous places (the former
+    *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former
         is an alias for the latter) which could result in needing to regenerate
         selective op registration headers else execution would fail with
         unregistered kernels error.
@@ -220,7 +220,7 @@
       handles (not resource names) and will be deleted automatically when all
       resource handles pointing to it are gone.
 *   `tf.data`:
-    *  Introducing the `tf.data.experimental.at` API which provides random
+    *   Introducing the `tf.data.experimental.at` API which provides random
         access for input pipelines that consist of transformations that support
         random access. The initial set of transformations that support random
         access includes: `tf.data.Dataset.from_tensor_slices`,
@@ -230,21 +230,21 @@
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
-    *  Moving autotuning options from
+    *   Moving autotuning options from
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
-    *  Added support for user-defined names of tf.data core Python API, which
+    *   Added support for user-defined names of tf.data core Python API, which
         can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
-    *  Promoting
+    *   Promoting
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
         endpoint.
-    *  Promoting
+    *   Promoting
         `tf.data.experimental.choose_from_datasets` API to
         `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
         endpoint.
-    *  Added a flag `stateful` to `numpy_function` to give a
+    *   Added a flag `stateful` to `numpy_function` to give a
         guarantee to the runtime that the function is stateless,
         which in terms allows for more optimizations in the graph.
 *   TF SavedModel:
