@@ -307,7 +307,7 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type"),
-                        VariableShapeOp<int64>);
+                        VariableShapeOp<int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_DEFAULT)
@@ -320,7 +320,7 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("output")
                             .HostMemory("input"),
-                        VariableShapeOp<int64>);
+                        VariableShapeOp<int64_t>);
 
 DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {

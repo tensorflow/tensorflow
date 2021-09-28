@@ -84,7 +84,7 @@ struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
@@ -152,7 +152,7 @@ struct LaunchGrouped {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     DCHECK(data_format == FORMAT_NHWC)
         << "Grouped conv implementation only "
@@ -242,7 +242,7 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(errors::Unimplemented(

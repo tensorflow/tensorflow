@@ -272,7 +272,7 @@ void RecordTFDataFilename(const string& name, const string& filename) {
 
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
-  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
+  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
   tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
 }

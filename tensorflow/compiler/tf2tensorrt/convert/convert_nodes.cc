@@ -208,9 +208,10 @@ string TFAttrs::get<string>(const string& key) const {
 }
 
 template <>
-std::vector<int64> TFAttrs::get<std::vector<int64>>(const string& key) const {
+std::vector<int64_t> TFAttrs::get<std::vector<int64_t>>(
+    const string& key) const {
   auto attr = this->at(key)->list().i();
-  return std::vector<int64>(attr.begin(), attr.end());
+  return std::vector<int64_t>(attr.begin(), attr.end());
 }
 
 template <>
@@ -242,7 +243,7 @@ bool TFAttrs::get<bool>(const string& key) const {
 }
 
 template <>
-int64 TFAttrs::get<int64>(const string& key) const {
+int64 TFAttrs::get<int64_t>(const string& key) const {
   return this->at(key)->i();
 }
 
@@ -2167,7 +2168,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   int c_index = (data_format == "NHWC") ? 3 : 1;
   int h_index = (data_format == "NHWC") ? 1 : 2;
   int w_index = (data_format == "NHWC") ? 2 : 3;
-  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
+  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
   if (tf_dilations.size() != 4) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 4 dimensions, at ",
@@ -2185,7 +2186,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         ", at ", node_def.name());
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != 4) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 4 dimensions, at ",
@@ -2717,7 +2718,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
   TFAttrs attrs(node_def);
-  auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
+  auto squeeze_dims = attrs.get<std::vector<int64_t>>("squeeze_dims");
   if (squeeze_dims.empty()) {
     if (params->use_implicit_batch || !HasStaticShape(dims)) {
       return errors::Unimplemented(
@@ -2922,20 +2923,20 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   }
   TFAttrs attrs(node_def);
   // New_axis_mask is not supported. TODO(tfeher): Support this by expanddims.
-  const int32 new_axis_mask = attrs.get<int64>("new_axis_mask");
+  const int32 new_axis_mask = attrs.get<int64_t>("new_axis_mask");
   if (new_axis_mask != 0) {
     return errors::Unimplemented(
         "new_axis_mask is not supported for StridedSlice, at ",
         node_def.name());
   }
-  const int32 begin_mask = attrs.get<int64>("begin_mask");
-  const int32 end_mask = attrs.get<int64>("end_mask");
-  const int32 ellipsis_mask = attrs.get<int64>("ellipsis_mask");
-  const int32 shrink_axis_mask = attrs.get<int64>("shrink_axis_mask");
+  const int32 begin_mask = attrs.get<int64_t>("begin_mask");
+  const int32 end_mask = attrs.get<int64_t>("end_mask");
+  const int32 ellipsis_mask = attrs.get<int64_t>("ellipsis_mask");
+  const int32 shrink_axis_mask = attrs.get<int64_t>("shrink_axis_mask");
 
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
-  std::vector<int64> input_dims(dims.d, dims.d + dims.nbDims);
+  std::vector<int64_t> input_dims(dims.d, dims.d + dims.nbDims);
   // Add batch dimension so that indexes line up properly. Set it to -1 if it's
   // unknown, so ValidateStridedSliceOp() can handle it correctly below.
   if (params->use_implicit_batch) {
@@ -3092,7 +3093,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   const int h_index = is_ndhwc ? 2 : 3;
   const int w_index = is_ndhwc ? 3 : 4;
   const int c_index = is_ndhwc ? 4 : 1;
-  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
+  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
   if (tf_dilations.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 5 dimensions, at ",
@@ -3115,7 +3116,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
         ", at ", node_def.name());
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 5 dimensions, at ",
@@ -3285,7 +3286,7 @@ Status ConvertPool3D(OpConverterParams* params) {
   const int d_index = is_ndhwc ? 1 : 2;
   const int h_index = is_ndhwc ? 2 : 3;
   const int w_index = is_ndhwc ? 3 : 4;
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != kNumDims) {
     return errors::InvalidArgument(
         "Pooling strides field must specify 5 dimensions, at ",
@@ -3296,7 +3297,7 @@ Status ConvertPool3D(OpConverterParams* params) {
         "stride must be 1 for batch and channel dimensions, at ",
         node_def.name());
   }
-  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  const auto tf_kernel = attrs.get<std::vector<int64_t>>("ksize");
   if (tf_kernel.size() != kNumDims) {
     return errors::InvalidArgument(
         "Pooling ksize field must specify 5 dimensions, at ", node_def.name());
@@ -3372,7 +3373,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   int c_index = (data_format == "NHWC") ? 3 : 1;
   int h_index = (data_format == "NHWC") ? 1 : 2;
   int w_index = (data_format == "NHWC") ? 2 : 3;
-  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
+  auto tf_dilations = attrs.get<std::vector<int64_t>>("dilations");
   if (tf_dilations.size() != 4) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 4 dimensions, at ",
@@ -3385,7 +3386,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   }
   const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
 
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   if (tf_stride.size() != 4) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 4 dimensions, at ",
@@ -3525,10 +3526,10 @@ Status ConvertPool(OpConverterParams* params) {
         tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64_t>>("strides");
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
 
-  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  const auto tf_kernel = attrs.get<std::vector<int64_t>>("ksize");
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
 
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
@@ -4332,7 +4333,7 @@ Status ConvertPack(OpConverterParams* params) {
   const auto& node_def = params->node_def;
 
   TFAttrs attrs(node_def);
-  const int num_inputs = attrs.get<int64>("N");
+  const int num_inputs = attrs.get<int64_t>("N");
   if (num_inputs != inputs.size()) {
     return errors::InvalidArgument(
         "Number of inputs for Pack is inconsistent with N attribute, at ",
@@ -4378,7 +4379,7 @@ Status ConvertPack(OpConverterParams* params) {
   }
   const nvinfer1::Dims dims = inputs.at(idx).GetTrtDims();
   // Convert axis from the TensorFlow format to TensorRT format.
-  const int64 tf_axis = attrs.get<int64>("axis");
+  const int64 tf_axis = attrs.get<int64_t>("axis");
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(),
                                  params->use_implicit_batch, &trt_axis));
@@ -4677,7 +4678,7 @@ Status ConvertSplit(OpConverterParams* params) {
                                              }));
   int tf_axis = inputs.at(0).weights().GetSpan<int>()[0];
   TFAttrs attrs(node_def);
-  const int num_split = attrs.get<int64>("num_split");
+  const int num_split = attrs.get<int64_t>("num_split");
 
   return ConvertSplitHelper(params, inputs.at(1), tf_axis, num_split, false);
 }
@@ -4698,8 +4699,8 @@ Status ConvertUnpack(OpConverterParams* params) {
         node_def.name());
   }
   TFAttrs attrs(node_def);
-  const int tf_axis = attrs.get<int64>("axis");
-  const int num = attrs.get<int64>("num");
+  const int tf_axis = attrs.get<int64_t>("axis");
+  const int num = attrs.get<int64_t>("num");
 
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
@@ -4748,7 +4749,7 @@ Status ConvertConcat(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
   // Get number of tensor inputs.
-  const int num_inputs = attrs.get<int64>("N");
+  const int num_inputs = attrs.get<int64_t>("N");
   if (num_inputs != static_cast<int>(inputs.size()) - 1) {
     return errors::InvalidArgument(
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
@@ -6175,7 +6176,7 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
   TFAttrs attrs(node_def);
-  const int block_size = attrs.get<int64>("block_size");
+  const int block_size = attrs.get<int64_t>("block_size");
   if (block_size < 2) {
     return errors::InvalidArgument("Block size must be 2 or greater, at ",
                                    node_def.name());
@@ -6734,7 +6735,7 @@ Status ConvertAddN(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   TFAttrs attrs(node_def);
-  const int num_inputs = attrs.get<int64>("N");
+  const int num_inputs = attrs.get<int64_t>("N");
   if (num_inputs < 2) {
     return errors::InvalidArgument("AddN requires at least two inputs, at ",
                                    node_def.name());

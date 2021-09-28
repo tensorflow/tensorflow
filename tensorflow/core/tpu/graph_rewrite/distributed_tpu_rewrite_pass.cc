@@ -3046,7 +3046,7 @@ Status ComputeShardedArgShapes(TensorShape* shape,
     sharded_rank--;
   }
   for (int dim_idx = 0; dim_idx < sharded_rank; ++dim_idx) {
-    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64>(
+    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64_t>(
         shape->dim_size(dim_idx), sharding.tile_assignment_dimensions(dim_idx));
     shape->set_dim(dim_idx, sharded_dim);
   }

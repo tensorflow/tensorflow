@@ -73,10 +73,10 @@ class RangeOp : public OpKernel {
     }
     int64_t size = 0;
     if (std::is_integral<T>::value) {
-      size = static_cast<int64>(
+      size = static_cast<int64_t>(
           (std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta));
     } else {
-      size = static_cast<int64>(std::ceil(std::abs((limit - start) / delta)));
+      size = static_cast<int64_t>(std::ceil(std::abs((limit - start) / delta)));
     }
     TensorShape shape;
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));

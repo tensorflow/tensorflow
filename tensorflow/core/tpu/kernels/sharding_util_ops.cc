@@ -379,7 +379,7 @@ class XlaSplitNDBaseOp : public OpKernel {
     const auto& shape = input->shape().dim_sizes();
     const Device& device = ctx->eigen_device<Device>();
     if (num_slices_ == 1) {
-      Eigen::array<Eigen::IndexPair<int64>, Rank> tensor_paddings;
+      Eigen::array<Eigen::IndexPair<int64_t>, Rank> tensor_paddings;
       TensorShape output_shape;
       for (int i = 0; i < Rank; ++i) {
         tensor_paddings[i] = {0, paddings_[i]};
@@ -410,7 +410,7 @@ class XlaSplitNDBaseOp : public OpKernel {
       int num_complete_pad_dims = 0;
       int num_partial_pad_dims = 0;
       TensorShape non_padded_slice_shape;
-      Eigen::array<Eigen::IndexPair<int64>, Rank> slice_paddings;
+      Eigen::array<Eigen::IndexPair<int64_t>, Rank> slice_paddings;
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
           GetSliceIndices<Rank>(num_splits_, output_slice_shape_dsizes, i);
 

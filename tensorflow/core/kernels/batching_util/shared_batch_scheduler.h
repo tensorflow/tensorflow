@@ -973,7 +973,7 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      static_cast<int64>(options_.max_enqueued_batches) -
+      static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =

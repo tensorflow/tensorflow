@@ -87,7 +87,8 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DataTypeToEnum<int8>::value,
-        TensorShape({static_cast<int64>(temp_storage_bytes)}), &temp_storage));
+        TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+        &temp_storage));
 
     void* d_temp_storage = temp_storage.flat<int8>().data();
     // The second HistogramEven is to actual run with d_temp_storage

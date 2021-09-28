@@ -584,7 +584,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         } else {
           Tensor* method_output_signatures_t;
           auto method_output_shape = TensorShape(
-              {static_cast<int64>(response->registered_methods_size())});
+              {static_cast<int64_t>(response->registered_methods_size())});
           OP_REQUIRES_OK_ASYNC(
               ctx,
               ctx->allocate_output(1, method_output_shape,
@@ -772,7 +772,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       [ctx, done, handle](const Status& status, const CallResponse& response) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
-        error_code.scalar<int64>()() = status.code();
+        error_code.scalar<int64_t>()() = status.code();
         error_message.scalar<tstring>()() = status.error_message();
 
         ctx->set_output(0, error_code);
