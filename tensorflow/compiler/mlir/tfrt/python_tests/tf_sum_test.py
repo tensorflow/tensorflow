@@ -58,6 +58,39 @@ class TfReductionTest(googletest.TestCase):
     [res] = cpurt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, np.sum(arg0, axis=1), atol=1)
 
+  def test_2d_row_reduction(self):
+    mlir_function = """
+        func @test(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[0]> : tensor<1xi32>}
+             : () -> tensor<1xi32>
+          %0 = "tf.Sum"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+          return %0 : tensor<?xf32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test', codegen_strategy=True)
+
+    arg0 = np.random.uniform(0.0, 10.0, size=(8, 10)).astype(np.float32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, np.sum(arg0, axis=0), atol=0.01)
+
+  def test_2d_row_reduction_static(self):
+    mlir_function = """
+        func @test(%input: tensor<8x8xf32>) -> tensor<8xf32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[0]> : tensor<1xi32>}
+             : () -> tensor<1xi32>
+          %0 = "tf.Sum"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<8x8xf32>, tensor<1xi32>) -> tensor<8xf32>
+          return %0 : tensor<8xf32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test', codegen_strategy=True)
+
+    arg0 = np.random.uniform(0.0, 10.0, size=(8, 8)).astype(np.float32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, np.sum(arg0, axis=0), atol=1)
 
 if __name__ == '__main__':
   googletest.main()
