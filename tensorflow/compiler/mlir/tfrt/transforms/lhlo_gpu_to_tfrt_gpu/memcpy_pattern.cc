@@ -1,4 +1,4 @@
-// Copyright 2020 The TensorFlow Runtime Authors
+// Copyright 2021 The TensorFlow Runtime Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,45 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//===- memcpy_pattern.cc
-//---------------------------------------------------------===//
-//
-// Pattern to lower mlir::gpu::memcpy Ops to tfrt cuda dialect.
-//
-//===----------------------------------------------------------------------===//
+// Pattern to lower gpu.memcpy ops to tfrt_gpu.mem.copy.
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memcpy_pattern.h"
 
-#include <assert.h>
-#include <stdint.h>
-
-#include <type_traits>
-#include <utility>
-
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
-#include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
-#include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
-#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {
-
-using llvm::ArrayRef;
 
 // Creates tfrt::gpu::MemCopyOp from mlir::gpu::MemcpyOp.
 struct MemcpyRewritePattern
