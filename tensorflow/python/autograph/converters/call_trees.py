@@ -20,10 +20,6 @@ that is the caller's responsibility.
 Requires function_scopes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.core import converter

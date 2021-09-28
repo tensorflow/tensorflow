@@ -15,10 +15,6 @@
 """Ops to use variables as resources."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import weakref

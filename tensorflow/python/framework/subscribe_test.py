@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf.subscribe."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.python.framework import constant_op

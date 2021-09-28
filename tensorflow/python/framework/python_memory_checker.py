@@ -17,10 +17,6 @@
 Please don't use this class directly.  Instead, use `MemoryChecker` wrapper.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import gc

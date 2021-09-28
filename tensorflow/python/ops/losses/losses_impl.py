@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of Loss operations for use in neural networks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

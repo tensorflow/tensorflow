@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """File IO methods that wrap the C++ FileSystem API."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import os
 from posixpath import join as urljoin

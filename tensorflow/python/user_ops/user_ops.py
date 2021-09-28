@@ -15,10 +15,6 @@
 
 """All user ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.user_ops.ops import gen_user_ops as _gen_user_ops
 
 # go/tf-wildcard-import

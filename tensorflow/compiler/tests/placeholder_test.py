@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for xla handling of placeholder_with_default."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops

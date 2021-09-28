@@ -15,10 +15,6 @@
 
 """Tests for tensorflow.python.ops.control_flow_util_v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util

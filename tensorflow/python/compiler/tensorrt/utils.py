@@ -14,10 +14,6 @@
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from distutils import version
 
 from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils

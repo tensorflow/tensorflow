@@ -17,10 +17,6 @@
 # This file was originally under tf/python/feature_column, and was moved to
 # Keras package in order to remove the reverse dependency from TF to Keras.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 

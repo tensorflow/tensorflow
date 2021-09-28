@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python API for executing a tf.data.Dataset using a tf.data service."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import six

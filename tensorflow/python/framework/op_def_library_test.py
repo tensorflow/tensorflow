@@ -15,10 +15,6 @@
 
 """Tests for tensorflow.python.ops.op_def_library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes

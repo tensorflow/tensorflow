@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.image_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import colorsys
 import contextlib
 import functools

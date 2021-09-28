@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Unified APIs' python bindings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import timeit
 
 from absl.testing import parameterized

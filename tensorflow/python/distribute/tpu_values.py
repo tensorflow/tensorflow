@@ -18,10 +18,6 @@ Note that the tests are in values_test.py .
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 from tensorflow.python.distribute import packed_distributed_variable as packed

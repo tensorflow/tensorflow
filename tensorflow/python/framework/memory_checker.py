@@ -14,10 +14,6 @@
 # ==============================================================================
 """Memory leak detection utility."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework.python_memory_checker import _PythonMemoryChecker
 from tensorflow.python.profiler.traceme import TraceMe
 from tensorflow.python.profiler.traceme import traceme_wrapper

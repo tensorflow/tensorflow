@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Tests for the currently experimental in-graph batch ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 import time
 import numpy as np

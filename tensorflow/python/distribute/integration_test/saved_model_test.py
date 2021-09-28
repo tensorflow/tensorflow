@@ -25,9 +25,6 @@ This file is not intended to provide exhaustive test coverage. Exhaustive tests
 using Keras models are in keras*_test.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import os
 from absl.testing import parameterized
 
