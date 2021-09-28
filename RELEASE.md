@@ -46,10 +46,10 @@
     lazy initialization on TfLite delegate instances.
 
 * TF Core:
-    *  `tf.Graph.get_name_scope()` now always returns a string, as documented.
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
         Previously, when called within `name_scope("")` or `name_scope(None)`
         contexts, it returned None; now it returns the empty string.
-    *  `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
+    *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
         isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
         Grappler) optimizations.
     *   Deprecated and removed attrs() function in shape inference. All
