@@ -181,6 +181,32 @@ EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
 }
 #endif
 
+#if defined(EIGEN_VECTORIZE_NEON)
+// Return a packet with the first value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_first<Packet4f>(const Packet4f& a) {
+  return vdupq_laneq_f32(a, 0);
+}
+
+// Return a packet with the second value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_second<Packet4f>(const Packet4f& a) {
+  return vdupq_laneq_f32(a, 1);
+}
+
+// Return a packet with the third value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_third<Packet4f>(const Packet4f& a) {
+  return vdupq_laneq_f32(a, 2);
+}
+
+// Return a packet with the fourth value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
+  return vdupq_laneq_f32(a, 3);
+}
+#endif
+
 #ifdef EIGEN_VECTORIZE_SSE2
 // For PacketSize of 4 floats the Packet is not modified
 template <>
