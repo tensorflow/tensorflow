@@ -88,7 +88,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
 
-  // Transform HLO operations to LinAlg and fuse them.
+  // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
@@ -109,8 +109,8 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
-  // Codegen strategy for reductions.
-  if (options.codegen_strategy) {
+  // Perform tiling-padding-vectorization if vectorization is enabled.
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
@@ -153,7 +153,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
   pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
-  if (options.codegen_strategy) {
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::createConvertLinalgTiledLoopsToSCFPass());
   }

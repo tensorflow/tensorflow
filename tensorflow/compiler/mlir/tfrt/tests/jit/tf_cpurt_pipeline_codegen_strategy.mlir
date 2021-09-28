@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -tf-cpurt-pipeline=codegen-strategy %s |\
+// RUN: tf-tfrt-opt -split-input-file -tf-cpurt-pipeline=vectorize %s |\
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @reduce_column_sum_2d_dynamic

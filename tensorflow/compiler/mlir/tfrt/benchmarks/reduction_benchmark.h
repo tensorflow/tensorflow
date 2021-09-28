@@ -93,7 +93,7 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
   auto mlir_input = GetIR(spec.op_name, mlir_input_shape, mlir_output_shape,
                           spec.dims_to_reduce, spec.element_type);
   TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.codegen_strategy = true;
+  tf_cpurt_opts.vectorize = true;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, "main",
                           /*lower_from_tensorflow=*/true, tf_cpurt_opts);
