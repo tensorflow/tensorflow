@@ -92,15 +92,16 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<NDK path>/build/cmake/android.toolchain.cmake \
 
 Cross-compilation of the unit tests requires flatc compiler for the host architecture.
 For this purpose, there is a CMakeLists located in _tensorflow/lite/tools/cmake/native_tools/flatbuffers_
-to build the flatc compiler with CMake in advance using the host toolchain:
+to build the flatc compiler with CMake in advance in a separate build directory using the host toolchain.
 
 ```sh
+mkdir flatc-native-build && cd flatc-native-build
 cmake ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
 cmake --build .
 ```
 
-It is also possible to install the _flatc_ into a custom installation location
-(e.g. containing other natively-built tools):
+It is also possible **to install** the _flatc_ to a custom installation location
+(e.g. to a directory containing other natively-built tools instead of the CMake build directory):
 
 ```sh
 cmake -DCMAKE_INSTALL_PREFIX=<native_tools_dir> ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
