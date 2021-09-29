@@ -739,6 +739,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/decompose_resource_ops.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
@@ -754,9 +755,33 @@ cc_library(
     ],
     deps = [
         ":decompose_resource_ops_inc_gen",
+        ":rewrite_util",
         ":tensorflow",
         ":tensorflow_types",
         "//tensorflow/core:framework",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+td_library(
+    name = "rewrite_util_td_files",
+    srcs = [
+        "transforms/rewrite_util.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "rewrite_util",
+    srcs = [
+    ],
+    hdrs = [
+        "transforms/rewrite_util.h",
+    ],
+    deps = [
         "@llvm-project//mlir:IR",
     ],
 )
@@ -2055,6 +2080,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/lower_tf.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
@@ -2070,6 +2096,7 @@ cc_library(
     ],
     deps = [
         ":lower_tf_inc_gen",
+        ":rewrite_util",
         ":tensorflow",
         ":tensorflow_ops",
         ":tensorflow_types",

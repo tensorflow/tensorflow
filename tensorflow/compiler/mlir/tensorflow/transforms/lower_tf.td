@@ -15,11 +15,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-
-// Here, the element type can be any integer or float type. But, note that only
-// 32 bit integers are supported for the values.
-class GetScalarOfType<int value> : NativeCodeCall<
-  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;

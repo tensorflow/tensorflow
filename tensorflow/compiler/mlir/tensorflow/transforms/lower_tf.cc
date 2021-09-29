@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -100,30 +101,6 @@ static APFloat ConvertToAPFloat(double val, Type type) {
   }
 
   return APFloat(val);
-}
-
-// Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the value.
-template <typename T>
-static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto int_ty = ty.dyn_cast_or_null<IntegerType>()) {
-    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto complex_ty = ty.dyn_cast_or_null<ComplexType>()) {
-    Type complex_element_ty = complex_ty.getElementType();
-    if (complex_element_ty.isF32()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<float>>(raw_value));
-    } else if (complex_element_ty.isF64()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<double>>(raw_value));
-    }
-  }
-  llvm_unreachable("unsupported type");
 }
 
 // Return true if the passed quantized type is unsigned.
