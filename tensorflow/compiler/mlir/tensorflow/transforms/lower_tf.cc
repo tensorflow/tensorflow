@@ -1755,6 +1755,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
   // Populate the relevant generated patterns.
   // clang-format off
   patterns->insert<
+      LowerAddOp,
       LowerBiasAddGradOp,
       LowerDivNoNanOp,
       LowerEmptyOp,

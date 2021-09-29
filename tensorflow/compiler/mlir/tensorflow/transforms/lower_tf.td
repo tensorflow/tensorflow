@@ -56,6 +56,18 @@ def CreateTensorScatterNdOp : NativeCodeCall<
     "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
 
 //===----------------------------------------------------------------------===//
+// Add op patterns.
+//===----------------------------------------------------------------------===//
+
+// We can lower AddOp to AddV2Op, except for string type. AddOp is defined for
+// TF_NumberNotQuantizedOrStrTensor tensor types. TF_NumberNotQuantizedTensor
+// is the same, except not containing TF_Str.
+
+def LowerAddOp : Pat<(TF_AddOp TF_NumberNotQuantizedTensor:$x,
+                               TF_NumberNotQuantizedTensor:$y),
+                     (TF_AddV2Op $x, $y)>;
+
+//===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -498,7 +510,7 @@ def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
 
 def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
-          (TF_AddOp
+          (TF_AddV2Op
              (TF_MulOp
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
                    (CreateTensorScatterNdOp $input, $indices,
@@ -552,6 +564,6 @@ def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
                           (TF_ConstOp (getScale $features))),
                         (TF_MulOp
                           $gradients,
-                          (TF_AddOp
+                          (TF_AddV2Op
                             $features,
                             (TF_ConstOp (getScaledAlpha $features)))))>;
