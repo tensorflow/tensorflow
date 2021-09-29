@@ -142,6 +142,9 @@ port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, block_host_for_event);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, synchronize_all_activity);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, host_callback);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, mem_zero);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memset);
+  TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memset32);
   return port::Status::OK();
 }
 
@@ -347,18 +350,33 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
   port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64 size) override {
-    return port::UnimplementedError(
-        "MemZero is not supported by pluggable device.");
+    OwnedTFStatus c_status(TF_NewStatus());
+    SP_Stream stream_handle =
+        static_cast<CStream*>(stream->implementation())->Handle();
+    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
+    stream_executor_->mem_zero(&device_, stream_handle, &device_mem, size,
+                               c_status.get());
+    return StatusFromTF_Status(c_status.get());
   }
   port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
                       uint64 size) override {
-    return port::UnimplementedError(
-        "Memset is not supported by pluggable device.");
+    OwnedTFStatus c_status(TF_NewStatus());
+    SP_Stream stream_handle =
+        static_cast<CStream*>(stream->implementation())->Handle();
+    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
+    stream_executor_->memset(&device_, stream_handle, &device_mem, pattern,
+                             size, c_status.get());
+    return StatusFromTF_Status(c_status.get());
   }
   port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                         uint32 pattern, uint64 size) override {
-    return port::UnimplementedError(
-        "Memset32 is not supported by pluggable device.");
+    OwnedTFStatus c_status(TF_NewStatus());
+    SP_Stream stream_handle =
+        static_cast<CStream*>(stream->implementation())->Handle();
+    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
+    stream_executor_->memset32(&device_, stream_handle, &device_mem, pattern,
+                               size, c_status.get());
+    return StatusFromTF_Status(c_status.get());
   }
   bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
               uint64 size) override {

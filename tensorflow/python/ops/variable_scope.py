@@ -14,10 +14,6 @@
 # ==============================================================================
 """A class to store named variables and a scope operator to manage sharing."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools

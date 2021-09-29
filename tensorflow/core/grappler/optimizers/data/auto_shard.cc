@@ -45,6 +45,7 @@ namespace {
 using tensorflow::data::AutoShardPolicy;
 
 constexpr char kAssertCardinalityDatasetOpName[] = "AssertCardinalityDataset";
+constexpr char kMapDatasetOpName[] = "MapDataset";
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
@@ -782,24 +783,26 @@ Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
   NodeDef* sink_node;
   TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
 
+  // id for telemetry purpose. item.id is always the same so we use the address
+  // of the output as id.
+  string id = strings::StrCat(reinterpret_cast<uint64>(output));
+  // Only record metrics on the first shard to avoid duplication.
+  if (index == 0) {
+    std::vector<std::string> ineligible_reason;
+    bool is_eligible = internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                            &ineligible_reason);
+    metrics::RecordTFDataAutoShardRewriteBatchSize(is_eligible,
+                                                   ineligible_reason);
+  }
+
   AutoShardPolicy policy_applied = policy;
   if (policy != AutoShardPolicy::OFF &&
       !(policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
     TF_RETURN_IF_ERROR(ApplyAutoShard(*sink_node, num_workers, index, policy,
                                       num_replicas, &graph, &policy_applied));
   }
-
   // Only record metrics on the first shard to avoid duplication.
   if (index == 0) {
-    // item.id is always the same so we use the address of the output as id.
-    string id = strings::StrCat(reinterpret_cast<uint64>(output));
-    {
-      std::vector<std::string> ineligible_reason;
-      bool is_eligible = internal::IsEligibleRewriteBatchSize(
-          *sink_node, graph, &ineligible_reason);
-      metrics::RecordTFDataAutoShardRewriteBatchSize(is_eligible,
-                                                     ineligible_reason);
-    }
     metrics::RecordTFDataAutoShard(id, policy_applied, num_workers,
                                    num_replicas);
   }
@@ -817,13 +820,25 @@ bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
   // We always traverse the graph until we arrive at a batch node to collect all
   // ineligible reasons;
   while (input_node != nullptr) {
-    // 1. If the node is insensitive to the batch size of the input, we continue
+    // 1. Skip RebatchDataset and the MapDataset immediately before it. That map
+    // is added by tf.data Python code.
+    if (input_node->op() == kRebatchDatasetOpName ||
+        input_node->op() == kRebatchDatasetV2OpName) {
+      input_node = graph_utils::GetInputNode(*input_node, graph);
+      if (input_node == nullptr || input_node->op() != kMapDatasetOpName) {
+        ineligible_reason->push_back("BUG_NO_MAP_BEFORE_REBATCH");
+        return false;
+      }
+      input_node = graph_utils::GetInputNode(*input_node, graph);
+      continue;
+    }
+    // 2. If the node is insensitive to the batch size of the input, we continue
     // looking at the input dataset of the node.
     if (IsDatasetNodeOfType(*input_node, kBatchSizeOrthogonalDatasetOps)) {
       input_node = graph_utils::GetInputNode(*input_node, graph);
       continue;
     }
-    // 2. We arrive at a batch node. Examine its drop_remainder input and
+    // 3. We arrive at a batch node. Examine its drop_remainder input and
     // cardinality to determine eligibility.
     if (IsDatasetNodeOfType(*input_node, kBatchDatasetOps) ||
         IsDatasetNodeOfType(*input_node, kMapAndBatchDatasetOps)) {
@@ -855,13 +870,15 @@ bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
         return false;
       }
     }
-    // 3. We encountered other nodes before arriving at a batch node. We don't
+    // 4. We encountered other nodes before arriving at a batch node. We don't
     // know whether this node is sensitive to the batch size or not and we err
     // on the safe side.
     ineligible_reason->push_back(
         strings::StrCat("OP_NOT_SUPPORTED_", input_node->op()));
     input_node = graph_utils::GetInputNode(*input_node, graph);
   }
+  // If we don't find a batch node, only records BATCH_NOT_FOUND as the reason.
+  ineligible_reason->clear();
   ineligible_reason->push_back("BATCH_NOT_FOUND");
   return false;
 }

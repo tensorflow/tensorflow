@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks using custom training loop on MNIST dataset."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import timeit
 import numpy as np
 

@@ -48,6 +48,7 @@ filegroup(
     name = "runtime_srcs",
     srcs = [
         # Single-threaded support.
+        "runtime_custom_call_status.cc",
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
@@ -55,7 +56,6 @@ filegroup(
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
         "runtime_topk.cc",
-    ] + [
         # Multi-threaded support.
         "runtime_conv2d.cc",
         "runtime_fft.cc",
@@ -69,6 +69,7 @@ filegroup(
     name = "runtime_hdrs",
     srcs = [
         # Single-threaded support.
+        "runtime_custom_call_status.h",
         "runtime_conv2d_impl.h",
         "runtime_fft_impl.h",
         "runtime_fp16.h",
@@ -78,7 +79,6 @@ filegroup(
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
-    ] + [
         # Multi-threaded support.
         "runtime_conv2d.h",
         "runtime_fft.h",
@@ -184,6 +184,7 @@ cc_library(
         "@llvm-project//mlir:VectorOps",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
+        "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:result_caster",
@@ -289,6 +290,7 @@ cc_library(
         ":compiler_functor",
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
+        ":runtime_custom_call_status",
         ":runtime_fp16",
         ":runtime_pow",
         ":runtime_conv2d",
@@ -694,6 +696,18 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_custom_call_status",
+    srcs = ["runtime_custom_call_status.cc"],
+    hdrs = ["runtime_custom_call_status.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/core/platform:dynamic_annotations",
+    ],
+)
+
+cc_library(
     name = "runtime_conv2d_mkl",
     srcs = [
         "runtime_conv2d_mkl.cc",
@@ -870,6 +884,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",

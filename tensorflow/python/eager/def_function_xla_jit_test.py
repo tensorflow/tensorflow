@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -39,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class DefFunctionTest(xla_test.XLATestCase):
 
   def testAutoclusteringWithTfFunction(self):
@@ -819,7 +816,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+      with self.assertRaises(TypeError):
         fn2(inputs, 1)
 
   def testGetCompilerIrKwargs(self):
@@ -1087,7 +1084,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       arg = random_ops.random_normal([2])
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'def_function_xla_jit_test.py'):
+                                  'Trying to access resource .*'):
         update_var(arg)
 
   def testMustBeConstantInsideCondition(self):
@@ -1126,8 +1123,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       def f(samples):
         v.assign(array_ops.zeros(samples))  # assignment
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  '@ .+def_function_xla_jit_test.py'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Shape .* cannot be changed after initialization'):
         f(constant_op.constant(6))
 
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
@@ -1146,7 +1144,7 @@ class DefFunctionTest(xla_test.XLATestCase):
           summary_ops_v2.scalar('my_metric', 0.5, step=10)
 
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'defined @.+def_function_xla_jit_test'):
+                                  'Trying to access resource .*'):
         my_func_temp()
 
 

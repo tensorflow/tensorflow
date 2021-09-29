@@ -1025,7 +1025,8 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
-      for (const auto& payload : status->status.GetAllPayloads()) {
+      for (const auto& payload :
+           tensorflow::errors::GetPayloads(status->status)) {
         PyDict_SetItem(payloads.get(),
                        PyBytes_FromString(payload.first.c_str()),
                        PyBytes_FromString(payload.second.c_str()));
@@ -1059,7 +1060,7 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
-      for (const auto& element : status.GetAllPayloads()) {
+      for (const auto& element : tensorflow::errors::GetPayloads(status)) {
         PyDict_SetItem(payloads.get(),
                        PyBytes_FromString(element.first.c_str()),
                        PyBytes_FromString(element.second.c_str()));

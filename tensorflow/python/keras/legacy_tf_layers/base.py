@@ -14,10 +14,6 @@
 # =============================================================================
 # pylint: disable=g-classes-have-attributes
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import warnings
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for losses."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -488,7 +484,9 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 1], [2, 3]])
       weights = constant_op.constant(1.2)
 
-      with self.assertRaisesRegex(ValueError, 'mismatch'):
+      with self.assertRaisesRegex(
+          ValueError,
+          '`labels.shape.rank` must equal `logits.shape.rank - 1`'):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 

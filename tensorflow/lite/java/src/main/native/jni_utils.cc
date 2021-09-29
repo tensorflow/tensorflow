@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/core/shims/jni/jni_utils.h"
+#include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/core/shims/jni/jni_utils.h"
 
 namespace tflite {
 namespace jni {

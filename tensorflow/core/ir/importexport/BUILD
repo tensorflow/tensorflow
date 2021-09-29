@@ -11,12 +11,13 @@ cc_library(
     name = "import",
     srcs = [
         "functiondef_import.cc",
+        "functiondef_import.h",
         "import.cc",
     ],
     hdrs = [
-        "functiondef_import.h",
         "import.h",
     ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":convert_attributes",
         ":convert_tensor",
@@ -44,11 +45,12 @@ cc_library(
     srcs = [
         "export.cc",
         "functiondef_export.cc",
+        "functiondef_export.h",
     ],
     hdrs = [
         "export.h",
-        "functiondef_export.h",
     ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":convert_attributes",
         ":convert_tensor",

@@ -106,6 +106,13 @@ StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
       backend().default_stream_executor()->GetAllocator());
 }
 
+StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
+    std::unique_ptr<HloModule> hlo_module) {
+  return backend().compiler()->RunHloPasses(
+      std::move(hlo_module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
+}
+
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }

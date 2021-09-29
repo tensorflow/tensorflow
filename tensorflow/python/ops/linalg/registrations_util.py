@@ -14,10 +14,6 @@
 # ==============================================================================
 """Common utilities for registering LinearOperator methods."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # Note: only use this method in the commuting case.
 def combined_commuting_self_adjoint_hint(operator_a, operator_b):

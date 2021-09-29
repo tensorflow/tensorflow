@@ -61,8 +61,9 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
+  TfCpuRtPipelineOptions tf_cpurt_opts;
   JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, lower_from_tensorflow);
+      *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -70,7 +71,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
-  RemainingResults results(host.get(), result_values);
+  RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
   ReturnValueConverter<ResultConversionCtx> converter(results);
@@ -108,7 +109,8 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto err =
+          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute once.
@@ -134,7 +136,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto err =
+          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
@@ -210,7 +213,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
                                       NUM_THREADS,                          \
                                       /*lower_from_tensorflow=*/true);      \
   }                                                                         \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                  \
@@ -224,7 +227,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
                                       NUM_THREADS,                            \
                                       /*lower_from_tensorflow=*/false);       \
   }                                                                           \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_EigenScalar(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   static void BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS(                \
@@ -232,7 +235,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
     RunUnaryEigenBenchmark<TYPE, RANK, false>(state, FN, SCALE, OFFSET,  \
                                               NUM_THREADS);              \
   }                                                                      \
-  BENCHMARK(BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_eigen_s_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_EigenVectorized(NAME, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   static void BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS(                    \
@@ -240,6 +243,6 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
     RunUnaryEigenBenchmark<TYPE, RANK, true>(state, FN, SCALE, OFFSET,       \
                                              NUM_THREADS);                   \
   }                                                                          \
-  BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)
+  BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_

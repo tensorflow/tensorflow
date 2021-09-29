@@ -278,7 +278,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr,
+                     tensorflow::GraphOptimizer::Options());
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.

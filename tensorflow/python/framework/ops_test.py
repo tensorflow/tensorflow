@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 import threading
@@ -2910,7 +2906,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
                                     "Attempting to capture an EagerTensor"):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
-      with self.assertRaisesRegex(TypeError, "Graph tensors"):
+      with self.assertRaises(TypeError):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):

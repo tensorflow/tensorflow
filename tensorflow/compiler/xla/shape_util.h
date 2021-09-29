@@ -392,6 +392,9 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
+  // Appends a minor dimension to the shape with the given bound.
+  static void AppendMinorDimension(int bound, Shape* shape);
+
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);
 

@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 // TODO(rmlarsen,penporn): Investigate using newer kernels in CUDA 10.1+.
 
@@ -534,7 +534,7 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+      DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
@@ -576,7 +576,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+      DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 

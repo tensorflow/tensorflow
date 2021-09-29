@@ -179,6 +179,11 @@ class RemoveIdentityStridedSlice : public NodeTransformation {
               "node output is graph output"};
     }
     if (output_is_graph_output) {
+      if (graph->FindConsumers(input->id).size() != 1) {
+        return {TransformStatus::SKIPPED,
+                "Can not apply transformation when node output is graph output "
+                "and input consumed by other nodes."};
+      }
       absl::Status status = RemoveSimpleNodeKeepOutput(graph, node);
       if (!status.ok()) {
         return {TransformStatus::INVALID,

@@ -20,17 +20,19 @@ func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
   %view = memref.view %output[%c0][] : memref<100xi8> to memref<5x5xf32>
 
   // CHECK: tfrt_gpu.blas.gemm
-  "lmhlo_gpu.gemm"(%lhs, %rhs, %view) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
-       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm"(%lhs, %rhs, %view) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}} : !tfrt.chain
@@ -52,17 +54,19 @@ func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2
   %cast = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [5, 4] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
 
   // CHECK: tfrt_gpu.blas.gemm
-  "lmhlo_gpu.gemm"(%cast, %rhs, %output) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
-       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm"(%cast, %rhs, %output) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}} : !tfrt.chain
@@ -80,31 +84,35 @@ func @two_ops(%memref: memref<4x4xf32>) {
 
   // CHECK: tfrt.constant.f32 3.14159274
   // CHECK: tfrt_gpu.blas.gemm
-  "lmhlo_gpu.gemm"(%memref, %memref, %memref) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
-       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
-       alpha_real = 3.14159274,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 16,
-       rhs_stride = 16}
-    : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
+  "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    alpha_real = 3.14159274,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 16,
+    rhs_stride = 16
+  } : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK: tfrt.constant.f32 2.71828175
   // CHECK: tfrt_gpu.blas.gemm
-  "lmhlo_gpu.gemm"(%memref, %memref, %memref) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
-       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
-       alpha_real = 2.71828175,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 16,
-       rhs_stride = 16}
-    : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
+  "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    alpha_real = 2.71828175,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 16,
+    rhs_stride = 16
+  } : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}} : !tfrt.chain
@@ -121,17 +129,19 @@ func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
   // CHECK-NOT: async.execute
 
   // CHECK: tfrt_gpu.blas.gemm
-  "lmhlo_gpu.gemm"(%memref, %memref, %memref) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
-       lhs_contracting_dimensions = dense<[1]> : tensor<1xi64>,
-       rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
-       alpha_real = 1.0,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 16,
-       rhs_stride = 16}
-    : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
+  "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    alpha_real = 1.0,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 16,
+    rhs_stride = 16
+  } : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}}, %arg2 : !tfrt.chain, !tfrt_gpu.buffer

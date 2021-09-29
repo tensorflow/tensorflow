@@ -140,6 +140,31 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
+bool IsVariantWithUnsupportedDeviceCopy(const Node* node) {
+  bool is_mutex_lock_op = node->op_def().name() == "MutexLock";
+  bool is_dataset_op = data::DatasetOpKernel::IsDatasetOp(node->op_def());
+  return is_mutex_lock_op || is_dataset_op;
+}
+
+bool HasNoCopyReturns(const Node& node) {
+  if (!node.def().has_experimental_type()) {
+    return false;
+  }
+  const FullTypeDef& ft = node.def().experimental_type();
+  DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
+
+  for (const auto& arg : ft.args()) {
+    switch (arg.type_id()) {
+      case TFT_DATASET:
+        return true;
+      default:
+        continue;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
@@ -711,6 +736,36 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
   return Status::OK();
 }
 
+Status ColocationGraph::ColocateUncopiableTypeEdges(
+    std::unordered_set<Node*>* inspection_required) {
+  for (const Edge* edge : graph_.edges()) {
+    if (edge->IsControlEdge()) {
+      continue;
+    }
+    Node* src = edge->src();
+    Node* dst = edge->dst();
+    bool needs_inspection;
+    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
+        *src, &needs_inspection));
+    if (needs_inspection) {
+      inspection_required->insert(src);
+      continue;
+    }
+    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
+        *dst, &needs_inspection));
+    if (needs_inspection) {
+      inspection_required->insert(dst);
+      continue;
+    }
+
+    if (HasNoCopyReturns(*src)) {
+      TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
+    }
+  }
+
+  return Status::OK();
+}
+
 Status ColocationGraph::ColocateResourceAndRefEdges(
     std::unordered_set<Node*>* inspection_required) {
   // If `node` has an input edge with reference type, add an edge from the
@@ -764,6 +819,7 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
 namespace {
 // Returns tensor list element data type, if the node is one of the ops that
 // operate with TensorLists. Otherwise returns DT_INVALID.
+// TODO(b/199443424): Don't use op names, use FullType here.
 DataType GetElementDataType(const Node& node) {
   static absl::flat_hash_set<std::string>* tensor_list_ops =
       new absl::flat_hash_set<std::string>(
@@ -820,7 +876,7 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
 
     auto enter = [&](Node* n) -> void {
       // TODO(b/199443424): Replace this logic with propagated type information.
-      if (data::DatasetOpKernel::IsDatasetOp(n->op_def())) {
+      if (IsVariantWithUnsupportedDeviceCopy(n)) {
         // NOTE: Datasets are expected to live on the host. This code should be
         // updated if that changes. Under this assumption, however, we must
         // locate some ops on the host when the input is a dataset variant.
@@ -878,6 +934,7 @@ Status ColocationGraph::Initialize() {
 
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
+  TF_RETURN_IF_ERROR(ColocateUncopiableTypeEdges(&inspection_required));
   TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
   TF_RETURN_IF_ERROR(ColocateAllNodes());

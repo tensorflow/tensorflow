@@ -131,8 +131,8 @@ func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tenso
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<i32>
   return %1, %2 : tensor<f32>, tensor<i32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 
@@ -144,8 +144,8 @@ func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<3xi32>
   return %1, %2 : tensor<3xf32>, tensor<3xi32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 

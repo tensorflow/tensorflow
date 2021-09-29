@@ -57,7 +57,7 @@ Status EvaluateConstantIntFromScalarEdge(const Node& node, int input_idx,
     if (scalar.dtype() == DT_INT32) {
       *output = scalar.scalar<int32>()();
     } else if (scalar.dtype() == DT_INT64) {
-      *output = scalar.scalar<int64>()();
+      *output = scalar.scalar<int64_t>()();
     } else {
       *success = false;
     }

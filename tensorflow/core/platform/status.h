@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stack_frame.h"
@@ -110,13 +111,46 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
-  // TODO(b/197552541): Match payload function signatures with absl::Status.
+  //----------------------------------------------------------------------------
+  // Payload Management APIs (Cloned from absl::Status)
+  //----------------------------------------------------------------------------
+  // A payload may be attached to a status to provide additional context to an
+  // error that may not be satisfied by an existing `tensorflow::error::Code`.
+  // Typically, this payload serves one of several purposes:
+  //
+  //   * It may provide more fine-grained semantic information about the error
+  //     to facilitate actionable remedies.
+  //   * It may provide human-readable contexual information that is more
+  //     appropriate to display to an end user.
+  //
+  // A payload consists of a [key,value] pair, where the key is a string
+  // referring to a unique "type URL" and the value is an object of type
+  // `absl::Cord` to hold the contextual data.
+  //
+  // The "type URL" should be unique and follow the format of a URL
+  // (https://en.wikipedia.org/wiki/URL) and, ideally, provide some
+  // documentation or schema on how to interpret its associated data. For
+  // example, the default type URL for a protobuf message type is
+  // "type.googleapis.com/packagename.messagename". Other custom wire formats
+  // should define the format of type URL in a similar practice so as to
+  // minimize the chance of conflict between type URLs.
+  // Users should ensure that the type URL can be mapped to a concrete
+  // C++ type if they want to deserialize the payload and read it effectively.
+  //
+  // To attach a payload to a status object, call `Status::SetPayload()`,
+  // passing it the type URL and an `absl::Cord` of associated data. Similarly,
+  // to extract the payload from a status, call `Status::GetPayload()`. You
+  // may attach multiple payloads (with differing type URLs) to any given
+  // status object, provided that the status is currently exhibiting an error
+  // code (i.e. is not OK).
+  // TODO(b/197552541): Use absl::Cord for payload value type.
+
   // The Payload-related APIs are cloned from absl::Status.
   //
   // Returns the payload of a status given its unique `type_url` key, if
-  // present. Returns an empty StringPiece if the status is ok, or if the key is
-  // not present.
-  tensorflow::StringPiece GetPayload(tensorflow::StringPiece type_url) const;
+  // present.
+  absl::optional<tensorflow::StringPiece> GetPayload(
+      tensorflow::StringPiece type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
@@ -129,14 +163,15 @@ class Status {
   // the payload was present.
   bool ErasePayload(tensorflow::StringPiece type_url);
 
-  // Returns all the payload information.
-  // Returns an empty result if status is ok.
-  const std::unordered_map<std::string, std::string> GetAllPayloads() const;
-
-  // Copies all the payloads using the input and discards existing payloads.
-  // Does nothing if status is ok or 'payloads' is empty.
-  void ReplaceAllPayloads(
-      const std::unordered_map<std::string, std::string>& payloads);
+  // Iterates over the stored payloads and calls the
+  // `visitor(type_key, payload)` callable for each one.
+  //
+  // The order of calls to `visitor()` is not specified and may change at
+  // any time and any mutation on the same Status object during visitation is
+  // forbidden and could result in undefined behavior.
+  void ForEachPayload(
+      const std::function<void(tensorflow::StringPiece,
+                               tensorflow::StringPiece)>& visitor) const;
 
  private:
   static const std::string& empty_string();

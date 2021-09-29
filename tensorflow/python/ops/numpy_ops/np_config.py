@@ -14,10 +14,6 @@
 # ==============================================================================
 """Config functions for TF NumPy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_export

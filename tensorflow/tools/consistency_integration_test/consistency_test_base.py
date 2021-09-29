@@ -22,10 +22,6 @@ have bugs assigned to them but do not work and do not have sufficient error
 messages.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import tempfile

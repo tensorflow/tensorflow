@@ -146,8 +146,8 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
   %2 = "tfl.slice"(%arg0, %0, %1) : (tensor<4x128x32xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x128x32xf32>
   return %2 : tensor<1x128x32xf32>
 
-// CHECK:  [[VAL_1:%.*]] = constant dense<0> : tensor<3xi32>
-// CHECK:  [[VAL_2:%.*]] = constant dense<[1, 128, 32]> : tensor<3xi32>
+// CHECK-DAG:  [[VAL_1:%.*]] = constant dense<0> : tensor<3xi32>
+// CHECK-DAG:  [[VAL_2:%.*]] = constant dense<[1, 128, 32]> : tensor<3xi32>
 // CHECK:  [[VAL_3:%.*]] = "tfl.slice"(%arg0, [[VAL_1]], [[VAL_2]]) : (tensor<4x128x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x128x32xf32>
 }
 

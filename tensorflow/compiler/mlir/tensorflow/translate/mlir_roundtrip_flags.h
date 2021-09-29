@@ -74,6 +74,12 @@ struct GraphImportConfig {
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;
+  // _output_shapes is an unregistered attribute which is used during
+  // GraphConstructor::ConvertGraph to override shapes. It is unfortunately
+  // not always set correctly (which is undesirable and should be addressed)
+  // so make it opt-in to consider it unconditionally also when importing the
+  // graph.
+  bool unconditionally_use_set_output_shapes = false;
 };
 
 struct GraphExportConfig {

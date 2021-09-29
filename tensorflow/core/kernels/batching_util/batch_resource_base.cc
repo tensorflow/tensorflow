@@ -19,7 +19,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/ops_util.h"
@@ -37,16 +39,6 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 namespace {
-
-const char* GetCostMeasurementType() {
-  static const char* type = std::getenv("TF_COST_MEASUREMENT_TYPE");
-  return type;
-}
-
-const char* GetRequestCostAccessorType() {
-  static const char* accessor = std::getenv("TF_REQUEST_COST_ACCESSOR_TYPE");
-  return accessor;
-}
 
 // TODO(b/181883417): Replace with RecordPaddingSizeV2.
 void RecordPaddingSize(int32_t padding_size, const string& model_name,
@@ -295,12 +287,8 @@ Status BatchResourceBase::RegisterInput(
   batch_components->output = std::make_shared<TensorMatrix>();
   batch_components->status = std::make_shared<ThreadSafeStatus>();
 
-  const char* request_cost_accessor_type = GetRequestCostAccessorType();
   std::unique_ptr<RequestCostAccessor> request_cost_accessor =
-      request_cost_accessor_type
-          ? RequestCostAccessorRegistry::CreateByNameOrNull(
-                request_cost_accessor_type)
-          : nullptr;
+      CreateRequestCostAccessor();
   if (request_cost_accessor) {
     batch_components->request_cost = request_cost_accessor->GetRequestCost();
   }
@@ -648,11 +636,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   // Creates the CostMeasurement within the same context that runs the Session.
-  const char* cost_measurement_type = GetCostMeasurementType();
-  auto batch_cost_measurement =
-      cost_measurement_type
-          ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
-          : nullptr;
+  std::unique_ptr<CostMeasurement> batch_cost_measurement =
+      CreateCostMeasurement();
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -747,11 +732,9 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
   // Creates the CostMeasurement within the same context that runs the Session.
-  const char* cost_measurement_type = GetCostMeasurementType();
-  auto batch_cost_measurement =
-      cost_measurement_type
-          ? CostMeasurementRegistry::CreateByNameOrNull(cost_measurement_type)
-          : nullptr;
+  std::unique_ptr<CostMeasurement> batch_cost_measurement =
+      CreateCostMeasurement();
+
   int64_t processed_size = batch->size();
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {
     SplitBatchCost(batch_cost_measurement.get(), processed_size, *batch);
@@ -915,8 +898,8 @@ void BatchResourceBase::SplitBatchCost(CostMeasurement* batch_cost_measurement,
         total_cost / processed_size * batch.task(i).size();
 
     request_cost->RecordCost(
-        {{absl::StrCat(cost_type, "_with_smear"), cost_with_smear},
-         {absl::StrCat(cost_type, "_no_smear"), cost_no_smear}});
+        {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
+         {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
   }
 }
 

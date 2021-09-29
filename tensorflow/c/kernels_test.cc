@@ -100,6 +100,7 @@ static void MyDeleteFunc(void* kernel) {
 }
 
 namespace tensorflow {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                                                const char* op_name,
@@ -178,6 +179,7 @@ ATTR_TEST_REGISTER_OP(Int, int);
 ATTR_TEST_REGISTER_OP(Float, float);
 ATTR_TEST_REGISTER_OP(Bool, bool);
 ATTR_TEST_REGISTER_OP(Type, type);
+ATTR_TEST_REGISTER_OP(Tensor, tensor);
 #undef ATTR_TEST_REGISTER_OP
 
 // Helper macros for the TF_OpKernelConstruction_GetAttr* tests.
@@ -289,6 +291,142 @@ TEST_F(TestKernelAttr, StringList) {
   std::string attr_in[] = {"bugs", "bunny", "duck"};
   SetAttrValue(gtl::ArraySlice<std::string>(attr_in, 3), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrStringList", v);
+}
+
+TEST_F(TestKernelAttr, Tensor) {
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      tensor_proto.add_int_val(5);
+      tensor_proto.add_int_val(6);
+      return tensor_proto;
+    }
+  };
+
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    TF_Tensor* val;
+    TF_Status* status = TF_NewStatus();
+    EXPECT_TF_SIZE(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_total_size*/ -1);
+    TF_OpKernelConstruction_GetAttrTensor(ctx, "Attr", &val, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    ::tensorflow::Tensor expected_tensor;
+    EXPECT_TRUE(
+        expected_tensor.FromProto(TensorProtoHelpers::GenerateTensorProto()));
+
+    ::tensorflow::Tensor actual_tensor;
+    EXPECT_TRUE(TF_TensorToTensor(val, &actual_tensor).ok());
+
+    EXPECT_EQ(actual_tensor.tensor_data(), expected_tensor.tensor_data());
+    EXPECT_EQ(actual_tensor.shape(), expected_tensor.shape());
+    EXPECT_EQ(actual_tensor.dtype(), expected_tensor.dtype());
+
+    TF_DeleteStatus(status);
+    TF_DeleteTensor(val);
+    return static_cast<void*>(s);
+  };
+
+  AttrValue v;
+  ::tensorflow::TensorProto* tensor_proto = v.mutable_tensor();
+  *tensor_proto = TensorProtoHelpers::GenerateTensorProto();
+
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensor", v);
+}
+
+TEST_F(TestKernelAttr, TensorList) {
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto1() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      return tensor_proto;
+    }
+
+    static ::tensorflow::TensorProto GenerateTensorProto2() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_FLOAT);
+      tensor_proto.add_float_val(5.0f);
+      tensor_proto.add_float_val(6.0f);
+      tensor_proto.add_float_val(7.0f);
+      tensor_proto.add_float_val(8.0f);
+      tensor_proto.add_float_val(9.0f);
+      tensor_proto.add_float_val(10.0f);
+      return tensor_proto;
+    }
+  };
+
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    const size_t list_size = 2;
+    TF_Tensor* values[list_size];
+
+    TF_Status* status = TF_NewStatus();
+    EXPECT_TF_SIZE(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_total_size*/ -1);
+    TF_OpKernelConstruction_GetAttrTensorList(ctx, "Attr", values, list_size,
+                                              status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    ::tensorflow::Tensor expected_tensor1;
+    EXPECT_TRUE(
+        expected_tensor1.FromProto(TensorProtoHelpers::GenerateTensorProto1()));
+
+    ::tensorflow::Tensor actual_tensor1;
+    EXPECT_TRUE(TF_TensorToTensor(values[0], &actual_tensor1).ok());
+
+    EXPECT_EQ(actual_tensor1.tensor_data(), expected_tensor1.tensor_data());
+    EXPECT_EQ(actual_tensor1.shape(), expected_tensor1.shape());
+    EXPECT_EQ(actual_tensor1.dtype(), expected_tensor1.dtype());
+
+    ::tensorflow::Tensor expected_tensor2;
+    EXPECT_TRUE(
+        expected_tensor2.FromProto(TensorProtoHelpers::GenerateTensorProto2()));
+
+    ::tensorflow::Tensor actual_tensor2;
+    EXPECT_TRUE(TF_TensorToTensor(values[1], &actual_tensor2).ok());
+
+    EXPECT_EQ(actual_tensor2.tensor_data(), expected_tensor2.tensor_data());
+    EXPECT_EQ(actual_tensor2.shape(), expected_tensor2.shape());
+    EXPECT_EQ(actual_tensor2.dtype(), expected_tensor2.dtype());
+
+    TF_DeleteStatus(status);
+    TF_DeleteTensor(values[0]);
+    TF_DeleteTensor(values[1]);
+    return static_cast<void*>(s);
+  };
+
+  AttrValue v;
+  ::tensorflow::TensorProto* tensor_proto1 = v.mutable_list()->add_tensor();
+  *tensor_proto1 = TensorProtoHelpers::GenerateTensorProto1();
+
+  ::tensorflow::TensorProto* tensor_proto2 = v.mutable_list()->add_tensor();
+  *tensor_proto2 = TensorProtoHelpers::GenerateTensorProto2();
+
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensorList", v);
 }
 
 TEST_F(TestKernelAttr, Int) {

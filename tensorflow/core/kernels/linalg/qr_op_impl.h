@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -171,7 +171,7 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Allocate temporaries.
     Tensor input_transposed;
@@ -285,8 +285,8 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // Asynchronously check return status from cuSolver kernels.
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(done));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(done));
   }
 
  private:

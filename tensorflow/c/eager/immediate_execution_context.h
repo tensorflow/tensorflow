@@ -138,6 +138,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Configure device placement policy logging.
   virtual void SetLogDevicePlacement(bool enable) = 0;
 
+  // Enables running eager ops as functions.
+  virtual void SetRunEagerOpAsFunction(bool enable) = 0;
+
   // Sets the device placement policy for the current thread.
   virtual void SetThreadLocalDevicePlacementPolicy(
       ContextDevicePlacementPolicy policy) = 0;

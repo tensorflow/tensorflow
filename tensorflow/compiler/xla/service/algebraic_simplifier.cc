@@ -302,6 +302,13 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
   return is_conversion_floating || is_conversion_integral;
 }
 
+PrecisionConfig SwapOperandsInDotPrecisionConfig(PrecisionConfig config) {
+  CHECK_EQ(config.operand_precision_size(), 2);
+  std::swap(config.mutable_operand_precision()->at(0),
+            config.mutable_operand_precision()->at(1));
+  return config;
+}
+
 }  // namespace
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
@@ -924,6 +931,11 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
 
 Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     HloInstruction* bitcast) {
+  TF_ASSIGN_OR_RETURN(bool replaced,
+                      TrySimplifyTautologicalBitcastConvert(bitcast));
+  if (replaced) {
+    return Status::OK();
+  }
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
@@ -1139,6 +1151,35 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
                          broadcast_dims, concatenate->shape()));
   }
   return Status::OK();
+}
+
+StatusOr<bool>
+AlgebraicSimplifierVisitor::TrySimplifyTautologicalBitcastConvert(
+    HloInstruction* bitcast) {
+  CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcastConvert);
+  PrimitiveType outer_to = bitcast->shape().element_type();
+  HloInstruction* concat = bitcast->mutable_operand(0);
+  if (concat->opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
+  std::vector<HloInstruction*> outer_inputs;
+  std::vector<HloInstruction*> to_remove_bitcasts;
+  for (int i = 0; i < concat->operand_count(); i++) {
+    HloInstruction* in = concat->mutable_operand(i);
+    if (in->opcode() != HloOpcode::kBitcastConvert ||
+        in->operand(0)->shape().element_type() != outer_to) {
+      return false;
+    }
+    outer_inputs.push_back(in->mutable_operand(0));
+    to_remove_bitcasts.push_back(in);
+  }
+
+  const int64_t concat_dim = concat->concatenate_dimension();
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_concat,
+                      MakeConcatHlo(outer_inputs, concat_dim));
+  TF_RETURN_IF_ERROR(ReplaceInstruction(bitcast, new_concat));
+
+  return true;
 }
 
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
@@ -1603,6 +1644,67 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
         dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
   }
+  return true;
+}
+
+StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
+    HloInstruction* dot) {
+  const int64_t rank = dot->shape().rank();
+  const auto& dnums = dot->dot_dimension_numbers();
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+
+  // lhs and rhs must apply the same permutation.
+  if (lhs->opcode() != HloOpcode::kTranspose ||
+      rhs->opcode() != HloOpcode::kTranspose ||
+      absl::MakeSpan(lhs->dimensions()) != absl::MakeSpan(rhs->dimensions())) {
+    return false;
+  }
+  absl::Span<const int64_t> permutation = lhs->dimensions();
+
+  // Dot must be "somewhat canonical": batch dimensions at the beginning, one
+  // contracting dimension, and one non-contracting dim.
+  if (absl::MakeSpan(dnums.lhs_batch_dimensions()) !=
+          absl::MakeSpan(dnums.rhs_batch_dimensions()) ||
+      dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.rhs_contracting_dimensions_size() != 1 ||
+      dnums.lhs_contracting_dimensions(0) != rank - 1 ||
+      dnums.rhs_contracting_dimensions(0) != rank - 2 ||
+      rank != dnums.lhs_batch_dimensions_size() + 2) {
+    return false;
+  }
+
+  // The last two elements of the permutation must be either [rank-2, rank-1]
+  // (i.e. no permutation) or [rank-1, rank-2].  Otherwise, this means that
+  // we're permuting batch dimensions with the non-batch dimensions, which isn't
+  // allowed.
+  //
+  // If the permutation ends with [rank - 1, rank - 2] then we're going to flip
+  // the order of dot operands to dot(b,a).  Otherwise it stays dot(a,b).
+  bool reorder_operands;
+  if (permutation.subspan(rank - 2) ==
+      std::array<int64_t, 2>{rank - 2, rank - 1}) {
+    reorder_operands = false;
+  } else if (permutation.subspan(rank - 2) ==
+             std::array<int64_t, 2>{rank - 1, rank - 2}) {
+    reorder_operands = true;
+  } else {
+    return false;
+  }
+
+  HloInstruction* new_lhs =
+      reorder_operands ? rhs->mutable_operand(0) : lhs->mutable_operand(0);
+  HloInstruction* new_rhs =
+      reorder_operands ? lhs->mutable_operand(0) : rhs->mutable_operand(0);
+  auto new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::PermuteDimensions(permutation, dot->shape()), new_lhs, new_rhs,
+      dnums,
+      reorder_operands
+          ? SwapOperandsInDotPrecisionConfig(dot->precision_config())
+          : dot->precision_config()));
+  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+      dot,
+      HloInstruction::CreateTranspose(dot->shape(), new_dot, permutation)));
   return true;
 }
 
@@ -2134,6 +2236,8 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  const auto& dnums = dot->dot_dimension_numbers();
+
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
   if (options_.is_layout_sensitive()) {
@@ -2153,24 +2257,18 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
   if (options_.enable_dot_to_multiply_rewrite() &&
-      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_lhs,
-        NormalizeDotOperandToBatchMajorAndContractingMinor(
-            lhs,
-            AsInt64Slice(dot->dot_dimension_numbers().lhs_batch_dimensions()),
-            AsInt64Slice(
-                dot->dot_dimension_numbers().lhs_contracting_dimensions())));
+      dnums.lhs_contracting_dimensions_size() == 0) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
+                        NormalizeDotOperandToBatchMajorAndContractingMinor(
+                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
+                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_rhs,
-        NormalizeDotOperandToBatchMajorAndContractingMinor(
-            rhs,
-            AsInt64Slice(dot->dot_dimension_numbers().rhs_batch_dimensions()),
-            AsInt64Slice(
-                dot->dot_dimension_numbers().rhs_contracting_dimensions())));
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
+                        NormalizeDotOperandToBatchMajorAndContractingMinor(
+                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
+                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
@@ -2182,7 +2280,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     }
     if (dot->shape().rank() != rhs->shape().rank()) {
       std::vector<int64_t> rhs_broadcast_dims(
-          dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+          dnums.lhs_batch_dimensions_size());
       absl::c_iota(rhs_broadcast_dims, 0);
       for (int64_t i = lhs->shape().rank(); i < dot->shape().rank(); ++i) {
         rhs_broadcast_dims.push_back(i);
@@ -2198,82 +2296,67 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
   if (options_.enable_dot_strength_reduction() &&
-      ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-            dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
+      ((dnums.lhs_batch_dimensions_size() +
+            dnums.lhs_contracting_dimensions_size() ==
         lhs->shape().rank()) ||
-       (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
-            dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
+       (dnums.rhs_contracting_dimensions_size() +
+            dnums.rhs_batch_dimensions_size() ==
         rhs->shape().rank()))) {
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_lhs,
-        NormalizeDotOperandToBatchMajorAndContractingMinor(
-            lhs,
-            AsInt64Slice(dot->dot_dimension_numbers().lhs_batch_dimensions()),
-            AsInt64Slice(
-                dot->dot_dimension_numbers().lhs_contracting_dimensions())));
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
+                        NormalizeDotOperandToBatchMajorAndContractingMinor(
+                            lhs, AsInt64Slice(dnums.lhs_batch_dimensions()),
+                            AsInt64Slice(dnums.lhs_contracting_dimensions())));
     if (!ShapeUtil::SameElementType(dot->shape(), new_lhs->shape())) {
       new_lhs = MakeConvertToHlo(new_lhs, dot->shape().element_type());
     }
 
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_rhs,
-        NormalizeDotOperandToBatchMajorAndContractingMinor(
-            rhs,
-            AsInt64Slice(dot->dot_dimension_numbers().rhs_batch_dimensions()),
-            AsInt64Slice(
-                dot->dot_dimension_numbers().rhs_contracting_dimensions())));
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
+                        NormalizeDotOperandToBatchMajorAndContractingMinor(
+                            rhs, AsInt64Slice(dnums.rhs_batch_dimensions()),
+                            AsInt64Slice(dnums.rhs_contracting_dimensions())));
     if (!ShapeUtil::SameElementType(dot->shape(), new_rhs->shape())) {
       new_rhs = MakeConvertToHlo(new_rhs, dot->shape().element_type());
     }
 
     int64_t lhs_outer_dims =
-        lhs->shape().rank() -
-        (dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-         dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
+        lhs->shape().rank() - (dnums.lhs_batch_dimensions_size() +
+                               dnums.lhs_contracting_dimensions_size());
     int64_t rhs_outer_dims =
-        rhs->shape().rank() -
-        (dot->dot_dimension_numbers().rhs_batch_dimensions_size() +
-         dot->dot_dimension_numbers().rhs_contracting_dimensions_size());
+        rhs->shape().rank() - (dnums.rhs_batch_dimensions_size() +
+                               dnums.rhs_contracting_dimensions_size());
     CHECK(lhs_outer_dims == 0 || rhs_outer_dims == 0);
     if (rhs_outer_dims > 0) {
       std::vector<int64_t> lhs_broadcast_dims(
-          dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+          dnums.lhs_batch_dimensions_size());
       absl::c_iota(lhs_broadcast_dims, 0);
       lhs_broadcast_dims.resize(lhs->shape().rank());
-      std::iota(lhs_broadcast_dims.begin() +
-                    dot->dot_dimension_numbers().lhs_batch_dimensions_size(),
+      std::iota(lhs_broadcast_dims.begin() + dnums.lhs_batch_dimensions_size(),
                 lhs_broadcast_dims.end(),
-                dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-                    rhs_outer_dims);
+                dnums.lhs_batch_dimensions_size() + rhs_outer_dims);
       new_lhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
           new_rhs->shape(), new_lhs, lhs_broadcast_dims));
     } else if (lhs_outer_dims > 0) {
       std::vector<int64_t> rhs_broadcast_dims(
-          dot->dot_dimension_numbers().rhs_batch_dimensions_size());
+          dnums.rhs_batch_dimensions_size());
       absl::c_iota(rhs_broadcast_dims, 0);
       rhs_broadcast_dims.resize(rhs->shape().rank());
-      std::iota(rhs_broadcast_dims.begin() +
-                    dot->dot_dimension_numbers().rhs_batch_dimensions_size(),
+      std::iota(rhs_broadcast_dims.begin() + dnums.rhs_batch_dimensions_size(),
                 rhs_broadcast_dims.end(),
-                dot->dot_dimension_numbers().rhs_batch_dimensions_size() +
-                    lhs_outer_dims);
+                dnums.rhs_batch_dimensions_size() + lhs_outer_dims);
       new_rhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
           new_lhs->shape(), new_rhs, rhs_broadcast_dims));
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
                         MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
-    std::vector<int64_t> reduce_dims(
-        dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
+    std::vector<int64_t> reduce_dims(dnums.lhs_contracting_dimensions_size());
     PrimitiveType dot_type =
         ShapeUtil::ElementIsFloating(dot->shape())
             ? (dot->shape().element_type() == F64 ? F64 : F32)
             : dot->shape().element_type();
     new_dot = AsType(new_dot, dot_type);
     const int64_t outer_dims = std::max(rhs_outer_dims, lhs_outer_dims);
-    absl::c_iota(
-        reduce_dims,
-        outer_dims + dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+    absl::c_iota(reduce_dims, outer_dims + dnums.lhs_batch_dimensions_size());
     new_dot = AddReduce(new_dot, reduce_dims, dot_type);
     new_dot = AsType(new_dot, dot->shape().element_type());
     return ReplaceInstruction(dot, new_dot);
@@ -2316,21 +2399,10 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return Status::OK();
   }
 
-  // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
-  if (dot->dot_dimension_numbers().lhs_batch_dimensions_size() == 0 &&
-      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 1 &&
-      dot->dot_dimension_numbers().lhs_contracting_dimensions(0) == 1 &&
-      dot->dot_dimension_numbers().rhs_contracting_dimensions(0) == 0 &&
-      lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
-    DotDimensionNumbers dot_dimension_numbers;
-    dot_dimension_numbers.add_lhs_contracting_dimensions(1);
-    dot_dimension_numbers.add_rhs_contracting_dimensions(0);
-    auto new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
-        ShapeUtil::PermuteDimensions({1, 0}, dot->shape()),
-        rhs->mutable_operand(0), lhs->mutable_operand(0), dot_dimension_numbers,
-        dot->precision_config()));
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
+  TF_ASSIGN_OR_RETURN(bool removed_transposes,
+                      RemoveTransposesFromDotOperands(dot));
+  if (removed_transposes) {
+    return Status::OK();
   }
 
   return Status::OK();
@@ -5160,6 +5232,18 @@ bool OnlyPermutesDegenerateDims(const Shape& shape,
   }
   return degenerate_count > 0 && absl::c_is_sorted(new_permutation);
 }
+
+bool IsPermutationOfIota(absl::Span<const int64_t> elems) {
+  absl::InlinedVector<int64_t, 8> sorted(elems.begin(), elems.end());
+  absl::c_sort(sorted);
+  for (int i = 0; i < sorted.size(); i++) {
+    if (sorted[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
@@ -5179,35 +5263,55 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   }
 
   // Convert transpose(dot(a,b)) to dot(b,a).
-  if (operand->opcode() == HloOpcode::kDot && operand->user_count() == 1 &&
-      operand->shape().rank() == 2) {
-    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
-      const auto& dnums = operand->dot_dimension_numbers();
-      if (dnums.lhs_batch_dimensions_size() != 0) {
-        return false;
-      }
-      HloInstruction* lhs = operand->mutable_operand(0);
-      if (lhs->shape().rank() != 1 + dnums.lhs_contracting_dimensions_size()) {
-        return false;
-      }
-      HloInstruction* rhs = operand->mutable_operand(1);
-      if (rhs->shape().rank() != 1 + dnums.rhs_contracting_dimensions_size()) {
-        return false;
-      }
-      DotDimensionNumbers new_dnums;
-      *new_dnums.mutable_lhs_contracting_dimensions() =
-          dnums.rhs_contracting_dimensions();
-      *new_dnums.mutable_rhs_contracting_dimensions() =
-          dnums.lhs_contracting_dimensions();
-      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-          transpose, HloInstruction::CreateDot(transpose->shape(), /*lhs=*/rhs,
-                                               /*rhs=*/lhs, new_dnums,
-                                               operand->precision_config())));
-      return true;
-    }());
-    if (did_transform) {
-      return Status::OK();
+  auto do_transpose_of_dot = [&]() -> StatusOr<bool> {
+    if (operand->opcode() != HloOpcode::kDot || operand->user_count() != 1) {
+      return false;
     }
+    HloInstruction* dot = operand;
+    HloInstruction* lhs = dot->mutable_operand(0);
+    HloInstruction* rhs = dot->mutable_operand(1);
+
+    const int64_t rank = dot->shape().rank();
+    const auto& dnums = dot->dot_dimension_numbers();
+
+    // Dot must be "somewhat canonical": batch dimensions at the beginning and
+    // one non-contracting dim.  It's the responsibility of DotDecomposer to
+    // canonicalize dots.
+    if (absl::MakeSpan(dnums.lhs_batch_dimensions()) !=
+            absl::MakeSpan(dnums.rhs_batch_dimensions()) ||
+        !IsPermutationOfIota(dnums.lhs_batch_dimensions()) ||
+        dnums.lhs_contracting_dimensions_size() == 0 ||
+        dnums.lhs_contracting_dimensions_size() +
+                dnums.lhs_batch_dimensions_size() + 1 !=
+            lhs->shape().rank() ||
+        dnums.rhs_contracting_dimensions_size() == 0 ||
+        dnums.rhs_contracting_dimensions_size() +
+                dnums.rhs_batch_dimensions_size() + 1 !=
+            rhs->shape().rank()) {
+      return false;
+    }
+
+    // Transpose must just be over the two last dims (i.e. the non-batch dims).
+    absl::InlinedVector<int64_t, 8> expected_perm(rank);
+    absl::c_iota(expected_perm, 0);
+    std::swap(expected_perm.rbegin()[0], expected_perm.rbegin()[1]);
+    if (absl::MakeSpan(transpose->dimensions()) != expected_perm) {
+      return false;
+    }
+
+    DotDimensionNumbers new_dnums = dnums;
+    std::swap(*new_dnums.mutable_lhs_contracting_dimensions(),
+              *new_dnums.mutable_rhs_contracting_dimensions());
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        transpose,
+        HloInstruction::CreateDot(
+            transpose->shape(), /*lhs=*/rhs, /*rhs=*/lhs, new_dnums,
+            SwapOperandsInDotPrecisionConfig(dot->precision_config()))));
+    return true;
+  };
+  TF_ASSIGN_OR_RETURN(bool did_transpose_of_dot, do_transpose_of_dot());
+  if (did_transpose_of_dot) {
+    return Status::OK();
   }
 
   // Replace transpose with a reshape if more than one degenerate method is

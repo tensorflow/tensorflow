@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for deterministic functionality of SparseSoftmaxCrossEntropyWithLogits op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -190,5 +186,5 @@ class SparseXentOpDeterministicTest(
 
 if __name__ == "__main__":
   # TODO(reedwm): Merge this test with sparse_xent_op_test.py.
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

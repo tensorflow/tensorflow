@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -1756,6 +1757,12 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   auto stream = ctx->op_device_context()->stream();
+
+  OP_REQUIRES(
+      ctx, !OpDeterminismRequired(),
+      errors::Unimplemented(
+          "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
+          " not currently available."));
 
   // Initialize the results to 0.
   int num_filter_backprop =

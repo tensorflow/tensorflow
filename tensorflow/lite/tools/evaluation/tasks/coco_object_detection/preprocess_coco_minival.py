@@ -26,10 +26,6 @@ A subfolder for allowlisted images (images/), and a file (ground_truth.pbtxt)
 containing an instance of tflite::evaluation::ObjectDetectionGroundTruth.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import ast
 import collections

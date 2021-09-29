@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -66,6 +67,9 @@ limitations under the License.
 namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
+
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
 
 namespace mlir {
 namespace mhlo {
@@ -180,7 +184,7 @@ static LogicalResult rngInferReturnTypeComponents(
   }
 
   shapeVector.reserve(shape.size());
-  for (const APInt& fp : shape.getIntValues())
+  for (const APInt& fp : shape.getValues<APInt>())
     shapeVector.push_back(fp.getSExtValue());
   inferredReturnShapes.emplace_back(shapeVector, elementType);
   return success();
@@ -246,18 +250,18 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
 
 static LogicalResult Verify(DotGeneralOp op) {
   auto dot_dimension_numbers = op.dot_dimension_numbers();
-  int64_t lhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
-  int64_t rhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  int64_t lhs_batching_dimensions_size =
+      dot_dimension_numbers.getLhsBatchingDimensions().size();
+  int64_t rhs_batching_dimensions_size =
+      dot_dimension_numbers.getRhsBatchingDimensions().size();
   if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
     return op.emitError()
            << "lhs and rhs should have the same number of batching dimensions";
   }
-  int64_t lhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
-  int64_t rhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  int64_t lhs_contracting_dimensions_size =
+      dot_dimension_numbers.getLhsContractingDimensions().size();
+  int64_t rhs_contracting_dimensions_size =
+      dot_dimension_numbers.getRhsContractingDimensions().size();
   if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
     return op.emitError() << "lhs and rhs should have the same number of "
                              "contracting dimensions";
@@ -281,20 +285,19 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
       return failure();
 
     const auto& dnums = gather.dimension_numbers();
-    if (dnums.index_vector_dim().getInt() != 0 || index.getType().getRank() > 1)
+    if (dnums.getIndexVectorDim() != 0 || index.getType().getRank() > 1)
       return failure();
 
     // TODO(tberghammer): Remove when the verifier catches this case what is
     // invalid if all previous condition holds.
-    if (index.getNumElements() != dnums.start_index_map().getNumElements())
+    if (index.getNumElements() != dnums.getStartIndexMap().size())
       return failure();
 
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
-    for (auto it : llvm::zip(dnums.start_index_map().getIntValues(),
-                             index.getIntValues())) {
-      int64_t map_index = std::get<0>(it).getSExtValue();
+    for (auto it : llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
+      int64_t map_index = std::get<0>(it);
       int64_t offset = std::get<1>(it).getSExtValue();
       slice_start[map_index] += offset;
       slice_end[map_index] += offset;
@@ -313,10 +316,8 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
         GetI64ElementsAttr(slice_end, &rewriter),
         GetI64ElementsAttr(slice_stride, &rewriter));
 
-    if (dnums.collapsed_slice_dims().getNumElements() > 0) {
-      auto collapsed_slice_dims = llvm::to_vector<8>(llvm::map_range(
-          dnums.collapsed_slice_dims().getIntValues(),
-          [](const llvm::APInt& i) { return i.getSExtValue(); }));
+    auto collapsed_slice_dims = dnums.getCollapsedSliceDims();
+    if (!collapsed_slice_dims.empty()) {
       llvm::SmallVector<int64_t, 8> reshape_shape;
       for (size_t i = 0; i < slice_shape.size(); ++i) {
         if (llvm::count(collapsed_slice_dims, i) == 0) {
@@ -398,12 +399,9 @@ LogicalResult GatherShapeInferImpl(
   };
 
   auto dimension_numbers = op->dimension_numbers();
-  SmallVector<int64_t, 4> collapsed_slice_dims(
-      dimension_numbers.collapsed_slice_dims().template getValues<int64_t>());
-  SmallVector<int64_t, 4> offset_dims(
-      dimension_numbers.offset_dims().template getValues<int64_t>());
-  int64_t index_vector_dim =
-      dimension_numbers.index_vector_dim().getValue().getSExtValue();
+  auto collapsed_slice_dims = dimension_numbers.getCollapsedSliceDims();
+  auto offset_dims = dimension_numbers.getOffsetDims();
+  int64_t index_vector_dim = dimension_numbers.getIndexVectorDim();
 
   SmallVector<Value, 4> slice_sizes;
   GetSliceSizeValues(op, builder, loc, operands, slice_sizes);
@@ -467,6 +465,64 @@ LogicalResult GatherOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+}
+
+static LogicalResult Verify(GatherOp op) {
+  GatherDimensionNumbersAttr dimensionNumbers = op.dimension_numbers();
+
+  auto operandTy = op.operand().getType().cast<ShapedType>();
+  auto startIndicesTy = op.start_indices().getType().cast<ShapedType>();
+  DenseIntElementsAttr sliceSizes = op.slice_sizes();
+  int64_t indexVectorDim = dimensionNumbers.getIndexVectorDim();
+
+  // This should probably be a custom attr.
+  if (sliceSizes.getType().getRank() != 1) {
+    return op.emitOpError() << "slice_sizes.rank != 1";
+  }
+
+  if (startIndicesTy.hasRank()) {
+    // index_vector_dim == start_indices.rank implies a trailing 1 on the shape
+    // of start_indices.
+    if (indexVectorDim > startIndicesTy.getRank())
+      return op.emitOpError()
+             << "index_vector_dim " << indexVectorDim
+             << " is out of bounds for start indices with rank "
+             << startIndicesTy.getRank();
+
+    bool impliedTrailingDim = indexVectorDim == startIndicesTy.getRank();
+    if (impliedTrailingDim || !startIndicesTy.isDynamicDim(indexVectorDim)) {
+      int64_t effectiveDimSize;
+      if (impliedTrailingDim)
+        effectiveDimSize = 1;
+      else
+        effectiveDimSize = startIndicesTy.getDimSize(indexVectorDim);
+      if (effectiveDimSize != dimensionNumbers.getStartIndexMap().size())
+        return op.emitOpError() << "start_index_map size ("
+                                << dimensionNumbers.getStartIndexMap().size()
+                                << ") is not equal to size of index dimension ("
+                                << indexVectorDim << ") of start_indices ("
+                                << effectiveDimSize << ")";
+    }
+  }
+
+  if (operandTy.hasRank()) {
+    int64_t operandRank = operandTy.getRank();
+    if (dimensionNumbers.getOffsetDims().size() +
+            dimensionNumbers.getCollapsedSliceDims().size() !=
+        operandRank)
+      return op.emitOpError()
+             << "offset_dims size (" << dimensionNumbers.getOffsetDims().size()
+             << ") plus collapse_slice_dims size ("
+             << dimensionNumbers.getCollapsedSliceDims().size()
+             << ") is not equal to operand rank (" << operandRank << ")";
+
+    if (sliceSizes.size() != operandRank)
+      return op.emitOpError()
+             << "slice_sizes size (" << sliceSizes.size()
+             << ") not equal to operand rank (" << operandRank << ")";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2082,7 +2138,8 @@ OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
 
   llvm::SmallVector<APInt, 4> values;
   values.reserve(rhsVal.getNumElements());
-  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+  for (auto it :
+       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
     values.push_back(std::get<0>(it) & std::get<1>(it));
   }
 
@@ -2126,7 +2183,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
 
   llvm::SmallVector<APInt, 4> values;
   values.reserve(rhsVal.getNumElements());
-  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+  for (auto it :
+       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
     values.push_back(std::get<0>(it) | std::get<1>(it));
   }
 
@@ -2159,7 +2217,8 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
 
   llvm::SmallVector<APInt, 4> values;
   values.reserve(rhsVal.getNumElements());
-  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+  for (auto it :
+       llvm::zip(rhsVal.getValues<APInt>(), lhsVal.getValues<APInt>())) {
     values.push_back(std::get<0>(it) ^ std::get<1>(it));
   }
 
@@ -2734,16 +2793,16 @@ static LogicalResult Verify(PadOp op) {
 OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
   // If all padding is zero then it is an identity pad.
   auto is_zero = [](const APInt& i) { return i == 0; };
-  if (llvm::all_of(edge_padding_low().getIntValues(), is_zero) &&
-      llvm::all_of(edge_padding_high().getIntValues(), is_zero) &&
-      llvm::all_of(interior_padding().getIntValues(), is_zero))
+  if (llvm::all_of(edge_padding_low().getValues<APInt>(), is_zero) &&
+      llvm::all_of(edge_padding_high().getValues<APInt>(), is_zero) &&
+      llvm::all_of(interior_padding().getValues<APInt>(), is_zero))
     return operand();
 
   // If any padding is negative then it isn't supported by the folder (yet).
   auto is_negative = [](const APInt& i) { return i.slt(0); };
-  if (llvm::all_of(edge_padding_low().getIntValues(), is_negative) &&
-      llvm::all_of(edge_padding_high().getIntValues(), is_negative) &&
-      llvm::all_of(interior_padding().getIntValues(), is_negative))
+  if (llvm::all_of(edge_padding_low().getValues<APInt>(), is_negative) &&
+      llvm::all_of(edge_padding_high().getValues<APInt>(), is_negative) &&
+      llvm::all_of(interior_padding().getValues<APInt>(), is_negative))
     return {};
 
   DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -3088,7 +3147,7 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   int bit_width = type.getIntOrFloatBitWidth();
   llvm::SmallVector<APFloat, 4> values;
   values.reserve(val.getNumElements());
-  for (auto it : val.getFloatValues()) {
+  for (auto it : val.getValues<APFloat>()) {
     double value = bit_width == 32 ? it.convertToFloat() : it.convertToDouble();
     if (value < 0) return {};
     value = std::sqrt(value);
@@ -3480,12 +3539,12 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   auto etype = elements.getType().getElementType();
   if (etype.isa<IntegerType>()) {
     return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
-        this, elements.getIntValues().begin());
+        this, elements.value_begin<APInt>());
   } else if (etype.isa<FloatType>()) {
     return FoldSlice<
         llvm::mapped_iterator<DenseElementsAttr::IntElementIterator,
                               std::function<APFloat(const APInt&)>>,
-        APFloat>(this, elements.getFloatValues().begin());
+        APFloat>(this, elements.value_begin<APFloat>());
   }
 
   return {};
@@ -3515,8 +3574,8 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 
     auto dimension = concat.dimension();
 
-    auto start = slice.start_indices().getIntValues();
-    auto limit = slice.limit_indices().getIntValues();
+    auto start = slice.start_indices().getValues<APInt>();
+    auto limit = slice.limit_indices().getValues<APInt>();
 
     auto slice_start = (*(start.begin() + dimension)).getSExtValue();
     auto slice_limit = (*(limit.begin() + dimension)).getSExtValue();
@@ -3701,9 +3760,32 @@ static LogicalResult SortDropEmptyUseArgs(SortOp op,
   return success();
 }
 
+/// Set the sorting dimension to the last dimension if it's not set and the rank
+/// is known.
+static LogicalResult SortOpInferDefaultDimension(SortOp op,
+                                                 PatternRewriter& rewriter) {
+  auto ty = op.getResultTypes()[0].dyn_cast<ShapedType>();
+  if (!ty) {
+    return failure();
+  }
+  if (op.dimension() != -1) {
+    return failure();
+  }
+
+  IntegerAttr dim = rewriter.getI64IntegerAttr(ty.getRank() - 1);
+  auto new_op = rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(),
+                                        op.operands(), dim, op.is_stableAttr());
+  Region& region = new_op.comparator();
+  rewriter.inlineRegionBefore(op.comparator(), region, region.end());
+  rewriter.replaceOp(op, new_op.getResults());
+
+  return success();
+}
+
 void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                          MLIRContext* /*context*/) {
   results.insert(SortDropEmptyUseArgs);
+  results.insert(SortOpInferDefaultDimension);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4107,7 +4189,7 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
   // index_type.rank.
   const int64_t index_vector_dim =
-      scatter_dimension_numbers().index_vector_dim().getInt();
+      scatter_dimension_numbers().getIndexVectorDim();
   if (index_vector_dim == index_type.getRank()) {
     auto index_shape = index_type.getShape().vec();
     index_shape.push_back(1);
@@ -4144,7 +4226,8 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
     index_index.clear();
     if (index_vector_dim == 0) index_index.push_back(0);
     for (int64_t i = 0; i < update_index.size(); ++i) {
-      if (llvm::count(scatter_dimension_numbers().update_window_dims(), i) == 0)
+      if (llvm::count(scatter_dimension_numbers().getUpdateWindowDims(), i) ==
+          0)
         index_index.push_back(update_index[i]);
       if (index_index.size() == index_vector_dim) index_index.push_back(0);
     }
@@ -4153,23 +4236,20 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
     base_index.assign(base_type.getRank(), 0);
     uint64_t index_count = index_type.getShape()[index_vector_dim];
     for (uint64_t i = 0; i < index_count; ++i) {
-      uint64_t operand_dim = scatter_dimension_numbers()
-                                 .scatter_dims_to_operand_dims()
-                                 .getValue<APInt>({i})
-                                 .getSExtValue();
+      uint64_t operand_dim =
+          scatter_dimension_numbers().getScatterDimsToOperandDims()[i];
       index_index[index_vector_dim] = i;
       base_index[operand_dim] +=
           index.getValue<APInt>(index_index).getSExtValue();
     }
     uint64_t update_window_dim_index = 0;
+    auto inserted_window_dims =
+        scatter_dimension_numbers().getInsertedWindowDims();
+    auto update_window_dims = scatter_dimension_numbers().getUpdateWindowDims();
     for (uint64_t i = 0; i < base_index.size(); ++i) {
-      if (llvm::count(scatter_dimension_numbers().inserted_window_dims(), i))
-        continue;
+      if (llvm::count(inserted_window_dims, i)) continue;
       base_index[i] +=
-          update_index[scatter_dimension_numbers()
-                           .update_window_dims()
-                           .getValue<APInt>({update_window_dim_index})
-                           .getSExtValue()];
+          update_index[update_window_dims[update_window_dim_index]];
       update_window_dim_index++;
     }
 
@@ -4253,6 +4333,10 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
+      >();
   context->loadDialect<tensor::TensorDialect>();
 }
 
@@ -4271,6 +4355,259 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
     return;
   }
   os << "<unknown mhlo type>";
+}
+
+// Entry point for Attribute parsing, TableGen generated code will handle the
+// dispatch to the individual classes.
+Attribute MhloDialect::parseAttribute(DialectAsmParser& parser,
+                                      Type type) const {
+  StringRef attr_tag;
+  if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
+  {
+    Attribute attr;
+    auto parse_result =
+        generatedAttributeParser(getContext(), parser, attr_tag, type, attr);
+    if (parse_result.hasValue()) return attr;
+  }
+  parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
+  return Attribute();
+}
+
+// Entry point for Attribute printing, TableGen generated code will handle the
+// dispatch to the individual classes.
+void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
+  LogicalResult result = generatedAttributePrinter(attr, os);
+  (void)result;
+  assert(succeeded(result));
+}
+
+/// Helpers for attributes parsing.
+
+static ParseResult parseDims(DialectAsmParser& parser,
+                             SmallVector<int64_t>& dims) {
+  dims.clear();
+  if (parser.parseLSquare()) return failure();
+  while (failed(parser.parseOptionalRSquare())) {
+    dims.emplace_back();
+    if (parser.parseInteger(dims.back())) return failure();
+    parser.parseOptionalComma();
+  }
+  return success();
+}
+
+/// Parse a custom attribute that resembles a struct of the form
+/// <
+///   foo = something_parsed_by_custom_parser,
+///   bar = something_parsed_by_different_custom_parser
+/// >
+static ParseResult parseStruct(
+    DialectAsmParser& parser, ArrayRef<StringRef> keywords,
+    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs) {
+  assert(keywords.size() == parseFuncs.size());
+  SmallVector<bool> seen(keywords.size(), false);
+  while (failed(parser.parseOptionalGreater())) {
+    bool foundOne = false;
+    for (auto it : llvm::enumerate(keywords)) {
+      size_t index = it.index();
+      StringRef keyword = it.value();
+      if (succeeded(parser.parseOptionalKeyword(keyword))) {
+        if (seen[index]) {
+          return parser.emitError(parser.getCurrentLocation())
+                 << "duplicated `" << keyword << "` entry";
+        }
+        if (failed(parser.parseEqual()) || failed(parseFuncs[index]()))
+          return failure();
+        if (failed(parser.parseOptionalComma())) return parser.parseGreater();
+        seen[index] = true;
+        foundOne = true;
+      }
+    }
+    if (!foundOne) {
+      auto parseError = parser.emitError(parser.getCurrentLocation())
+                        << "expected one of: ";
+      llvm::interleaveComma(keywords, parseError, [&](StringRef kw) {
+        parseError << '`' << kw << '`';
+      });
+      return parseError;
+    }
+  }
+  return success();
+}
+
+// Custom printer and parser for ScatterDimensionNumbersAttr.
+void ScatterDimensionNumbersAttr::print(
+    ::mlir::DialectAsmPrinter& printer) const {
+  printer << "scatter<";
+  auto update_window_dims = getUpdateWindowDims();
+  StringRef separator = "";
+  if (!update_window_dims.empty()) {
+    printer << "update_window_dims = [";
+    llvm::interleaveComma(update_window_dims, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto inserted_window_dims = getInsertedWindowDims();
+  if (!inserted_window_dims.empty()) {
+    printer << separator << "inserted_window_dims = [";
+    llvm::interleaveComma(inserted_window_dims, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto scatter_dims_to_operand_dims = getScatterDimsToOperandDims();
+  if (!scatter_dims_to_operand_dims.empty()) {
+    printer << separator << "scatter_dims_to_operand_dims = [";
+    llvm::interleaveComma(scatter_dims_to_operand_dims, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  if (getIndexVectorDim())
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
+  printer << ">";
+}
+Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
+                                             DialectAsmParser& parser,
+                                             Type type) {
+  if (failed(parser.parseLess())) return {};
+  SmallVector<int64_t> update_window_dims;
+  SmallVector<int64_t> inserted_window_dims;
+  SmallVector<int64_t> scatter_dims_to_operand_dims;
+  int64_t index_vector_dim = 0;
+
+  if (failed(parseStruct(
+          parser,
+          {"update_window_dims", "inserted_window_dims",
+           "scatter_dims_to_operand_dims", "index_vector_dim"},
+          {[&]() { return parseDims(parser, update_window_dims); },
+           [&]() { return parseDims(parser, inserted_window_dims); },
+           [&]() { return parseDims(parser, scatter_dims_to_operand_dims); },
+           [&]() { return parser.parseInteger(index_vector_dim); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing scatter dimension numbers attribute";
+    return {};
+  }
+
+  return ScatterDimensionNumbersAttr::get(
+      context, update_window_dims, inserted_window_dims,
+      scatter_dims_to_operand_dims, index_vector_dim);
+}
+
+// Custom printer and parser for GatherDimensionNumbersAttr.
+void GatherDimensionNumbersAttr::print(
+    ::mlir::DialectAsmPrinter& printer) const {
+  printer << "gather<";
+  StringRef separator = "";
+  auto offset_dims = getOffsetDims();
+  if (!offset_dims.empty()) {
+    printer << "offset_dims = [";
+    llvm::interleaveComma(offset_dims, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto collapsed_slice_dims = getCollapsedSliceDims();
+  if (!collapsed_slice_dims.empty()) {
+    printer << separator << "collapsed_slice_dims = [";
+    llvm::interleaveComma(collapsed_slice_dims, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto start_index_map = getStartIndexMap();
+  if (!start_index_map.empty()) {
+    printer << separator << "start_index_map = [";
+    llvm::interleaveComma(start_index_map, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  if (getIndexVectorDim())
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
+  printer << ">";
+}
+
+Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
+                                            DialectAsmParser& parser,
+                                            Type type) {
+  if (failed(parser.parseLess())) return {};
+
+  SmallVector<int64_t> offset_dims;
+  SmallVector<int64_t> collapsed_slice_dims;
+  SmallVector<int64_t> start_index_map;
+  int64_t index_vector_dim = 0;
+
+  if (failed(parseStruct(
+          parser,
+          {"offset_dims", "collapsed_slice_dims", "start_index_map",
+           "index_vector_dim"},
+          {[&]() { return parseDims(parser, offset_dims); },
+           [&]() { return parseDims(parser, collapsed_slice_dims); },
+           [&]() { return parseDims(parser, start_index_map); },
+           [&]() { return parser.parseInteger(index_vector_dim); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing gather dimension numbers attribute";
+    return {};
+  }
+
+  return GatherDimensionNumbersAttr::get(context, offset_dims,
+                                         collapsed_slice_dims, start_index_map,
+                                         index_vector_dim);
+}
+
+// Custom printer and parser for DotDimensionNumbersAttr.
+void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+  printer << "dot<";
+  StringRef separator = "";
+  auto lhs_batching_dimensions = getLhsBatchingDimensions();
+  if (!lhs_batching_dimensions.empty()) {
+    printer << "lhs_batching_dimensions = [";
+    llvm::interleaveComma(lhs_batching_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto rhs_batching_dimensions = getRhsBatchingDimensions();
+  if (!rhs_batching_dimensions.empty()) {
+    printer << separator << "rhs_batching_dimensions = [";
+    llvm::interleaveComma(rhs_batching_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto lhs_contracting_dimensions = getLhsContractingDimensions();
+  if (!lhs_contracting_dimensions.empty()) {
+    printer << separator << "lhs_contracting_dimensions = [";
+    llvm::interleaveComma(lhs_contracting_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto rhs_contracting_dimensions = getRhsContractingDimensions();
+  if (!rhs_contracting_dimensions.empty()) {
+    printer << separator << "rhs_contracting_dimensions = [";
+    llvm::interleaveComma(rhs_contracting_dimensions, printer);
+    printer << "]";
+  }
+  printer << ">";
+}
+
+Attribute DotDimensionNumbersAttr::parse(MLIRContext* context,
+                                         DialectAsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+
+  SmallVector<int64_t> lhs_batching_dimensions;
+  SmallVector<int64_t> rhs_batching_dimensions;
+  SmallVector<int64_t> lhs_contracting_dimensions;
+  SmallVector<int64_t> rhs_contracting_dimensions;
+
+  if (failed(parseStruct(
+          parser,
+          {"lhs_batching_dimensions", "rhs_batching_dimensions",
+           "lhs_contracting_dimensions", "rhs_contracting_dimensions"},
+          {[&]() { return parseDims(parser, lhs_batching_dimensions); },
+           [&]() { return parseDims(parser, rhs_batching_dimensions); },
+           [&]() { return parseDims(parser, lhs_contracting_dimensions); },
+           [&]() { return parseDims(parser, rhs_contracting_dimensions); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing dot dimension numbers attribute";
+    return {};
+  }
+  return DotDimensionNumbersAttr::get(
+      context, lhs_batching_dimensions, rhs_batching_dimensions,
+      lhs_contracting_dimensions, rhs_contracting_dimensions);
 }
 
 //===----------------------------------------------------------------------===//

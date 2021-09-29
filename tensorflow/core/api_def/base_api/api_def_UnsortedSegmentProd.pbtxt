@@ -20,8 +20,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the product of all
 entries belonging to a segment such that:
 

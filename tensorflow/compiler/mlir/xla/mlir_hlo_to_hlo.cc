@@ -253,35 +253,31 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
 }
 
 static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
-    mlir::mhlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+    mlir::mhlo::DotDimensionNumbersAttr dot_dimension_numbers_attr) {
   xla::DotDimensionNumbers dot_dimension_numbers;
 
   auto rhs_contracting_dimensions =
-      dot_dimension_numbers_attr.rhs_contracting_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getRhsContractingDimensions();
   auto lhs_contracting_dimensions =
-      dot_dimension_numbers_attr.lhs_contracting_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getLhsContractingDimensions();
   auto rhs_batch_dimensions =
-      dot_dimension_numbers_attr.rhs_batching_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getRhsBatchingDimensions();
   auto lhs_batch_dimensions =
-      dot_dimension_numbers_attr.lhs_batching_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getLhsBatchingDimensions();
 
   for (const auto& val : rhs_contracting_dimensions) {
-    dot_dimension_numbers.add_rhs_contracting_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_rhs_contracting_dimensions(val);
   }
   for (const auto& val : lhs_contracting_dimensions) {
-    dot_dimension_numbers.add_lhs_contracting_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_lhs_contracting_dimensions(val);
   }
 
   for (const auto& val : rhs_batch_dimensions) {
-    dot_dimension_numbers.add_rhs_batch_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_rhs_batch_dimensions(val);
   }
 
   for (const auto& val : lhs_batch_dimensions) {
-    dot_dimension_numbers.add_lhs_batch_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_lhs_batch_dimensions(val);
   }
 
   return dot_dimension_numbers;
@@ -316,52 +312,49 @@ static xla::ComparisonDirection Convert_comparison_direction(
 }
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::GatherDimensionNumbers input) {
+    mlir::mhlo::GatherDimensionNumbersAttr input) {
   xla::GatherDimensionNumbers output;
 
-  auto offset_dims = ConvertDenseIntAttr(input.offset_dims());
+  auto offset_dims = input.getOffsetDims();
   std::copy(offset_dims.begin(), offset_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_offset_dims()));
 
-  auto collapsed_slice_dims = ConvertDenseIntAttr(input.collapsed_slice_dims());
+  auto collapsed_slice_dims = input.getCollapsedSliceDims();
   std::copy(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_collapsed_slice_dims()));
 
-  auto start_index_map = ConvertDenseIntAttr(input.start_index_map());
+  auto start_index_map = input.getStartIndexMap();
   std::copy(start_index_map.begin(), start_index_map.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_start_index_map()));
 
-  output.set_index_vector_dim(
-      ConvertAPInt(input.index_vector_dim().getValue()));
+  output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
-    mlir::mhlo::ScatterDimensionNumbers input) {
+    mlir::mhlo::ScatterDimensionNumbersAttr input) {
   xla::ScatterDimensionNumbers output;
 
-  auto update_window_dims = ConvertDenseIntAttr(input.update_window_dims());
+  auto update_window_dims = input.getUpdateWindowDims();
   std::copy(update_window_dims.begin(), update_window_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_update_window_dims()));
 
-  auto inserted_window_dims = ConvertDenseIntAttr(input.inserted_window_dims());
+  auto inserted_window_dims = input.getInsertedWindowDims();
   std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_inserted_window_dims()));
 
-  auto scatter_dims_to_operand_dims =
-      ConvertDenseIntAttr(input.scatter_dims_to_operand_dims());
+  auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
             scatter_dims_to_operand_dims.end(),
             tensorflow::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_dims_to_operand_dims()));
 
-  output.set_index_vector_dim(
-      ConvertAPInt(input.index_vector_dim().getValue()));
+  output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
 }
 
@@ -1287,7 +1280,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
   case xla_type: {                                                           \
     xla::Array<cpp_type> source_data(shape.dimensions());                    \
-    source_data.SetValues(attr.getValues<cpp_type>());                       \
+    source_data.SetValues(                                                   \
+        attr.cast<DenseElementsAttr>().getValues<cpp_type>());               \
     return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
   }
 

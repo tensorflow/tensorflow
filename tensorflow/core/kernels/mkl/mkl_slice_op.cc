@@ -42,7 +42,7 @@ gtl::InlinedVector<int64, 4> IntTensorToInt64Vec(const Tensor& tensor) {
     }
   } else if (tensor.dtype() == DT_INT64) {
     for (int64 i = 0; i < tensor.NumElements(); ++i) {
-      out.push_back(tensor.flat<int64>()(i));
+      out.push_back(tensor.flat<int64_t>()(i));
     }
   } else {
     // tensor must be either int32 or int64

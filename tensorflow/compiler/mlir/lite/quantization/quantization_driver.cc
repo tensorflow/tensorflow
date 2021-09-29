@@ -1035,7 +1035,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
   const int32_t kBiasMax = std::numeric_limits<int32_t>::max() / 2;
   if (auto bias_params = params.dyn_cast<UniformQuantizedType>()) {
     double bias_half_range = 0.0f;
-    for (auto bias : bias_values.getFloatValues()) {
+    for (auto bias : bias_values.getValues<APFloat>()) {
       if (bias_half_range < std::abs(bias.convertToFloat())) {
         bias_half_range = std::abs(bias.convertToFloat());
       }

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for a little bit of strategy_combinations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python import tf2

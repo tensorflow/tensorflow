@@ -70,6 +70,14 @@ def LinalgMatmulSpecialization
   }];
 }
 
+def CodegenCWise : FunctionPass<"tf-cpurt-codegen-cwise"> {
+  let summary = "Tile elementwise ops on tensors";
+  let constructor = "tensorflow::CreateCodegenStrategyForCWisePass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+  ];
+}
+
 def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
@@ -84,6 +92,21 @@ def CodegenMatmul : FunctionPass<"tf-cpurt-codegen-matmul"> {
   let dependentDialects = [
     "mlir::linalg::LinalgDialect",
   ];
+}
+
+def CodegenReduction : FunctionPass<"tf-cpurt-codegen-reduction"> {
+  let summary = "Tile and fuse linalg.generic reduction on tensors.";
+  let constructor = "tensorflow::CreateCodegenStrategyForReductionPass()";
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::scf::SCFDialect"
+  ];
+
+  let description = [{
+    Matches linalg.generic to understand whether it is a reduction or not.
+    After that performs tiling for vectorization and fusion of producers.
+  }];
 }
 
 def Fission : FunctionPass<"tf-cpurt-fission"> {

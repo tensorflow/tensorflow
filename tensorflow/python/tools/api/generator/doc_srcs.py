@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Specifies sources of doc strings for API modules."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util import tf_export
 
 

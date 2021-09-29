@@ -183,6 +183,7 @@ COMMON_PROTO_SRCS = [
     "//tensorflow/core/protobuf:rewriter_config.proto",
     "//tensorflow/core/protobuf:tensor_bundle.proto",
     "//tensorflow/core/protobuf:saver.proto",
+    "//tensorflow/core/protobuf:status.proto",
     "//tensorflow/core/protobuf:verifier_config.proto",
 ]
 
@@ -452,6 +453,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:op_def_builder.h",
         "//tensorflow/core/framework:op_def_util.h",
         "//tensorflow/core/framework:op_kernel.h",
+        "//tensorflow/core/framework:op_requires.h",
         "//tensorflow/core/framework:ops_util.h",
         "//tensorflow/core/framework:partial_tensor_shape.h",
         "//tensorflow/core/framework:queue_interface.h",
@@ -1686,6 +1688,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:env_impl",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",

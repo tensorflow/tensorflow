@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/Bufferize.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
@@ -60,15 +61,17 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
   return mlir::success();
 }
 
-JitExecutable& CreateJitExecutable(const HostContext& host,
-                                   llvm::StringRef mlir_input,
-                                   llvm::StringRef function_name,
-                                   bool lower_from_tensorflow) {
+JitExecutable& CreateJitExecutable(
+    const HostContext& host, llvm::StringRef mlir_input,
+    llvm::StringRef function_name, bool lower_from_tensorflow,
+    const TfCpuRtPipelineOptions& tf_cpurt_opts) {
   CompilationOptions opts;
   opts.num_worker_threads = host.GetNumWorkerThreads();
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   if (lower_from_tensorflow) {
-    opts.register_pass_pipeline = tensorflow::CreateDefaultTfCpuRtPipeline;
+    opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
+      tensorflow::CreateTfCpuRtPipeline(pm, tf_cpurt_opts);
+    };
   }
   opts.type_converter = mlir::BufferizeTypeConverter();
 
@@ -115,6 +118,33 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
   shape.GetDimensions(&desc.sizes);
   shape.GetStrides(&desc.strides);
   return desc;
+}
+
+std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,
+                            llvm::StringRef element_type) {
+  std::string result{"tensor<"};
+  llvm::raw_string_ostream ss(result);
+  for (int64_t dim : shape) {
+    if (mlir::ShapedType::isDynamic(dim)) {
+      ss << '?';
+    } else {
+      ss << dim;
+    }
+    ss << 'x';
+  }
+  ss << element_type << '>';
+  return result;
+}
+
+std::string PrintDenseArray(llvm::ArrayRef<int32_t> array) {
+  std::string result{"dense<["};
+  llvm::raw_string_ostream ss(result);
+  for (auto elem : llvm::enumerate(array)) {
+    if (elem.index() > 0) ss << ',';
+    ss << elem.value();
+  }
+  ss << "]>";
+  return result;
 }
 
 }  // namespace tensorflow

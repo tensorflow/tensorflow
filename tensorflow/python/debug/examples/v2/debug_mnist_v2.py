@@ -18,10 +18,6 @@ This demo contains a classical example of a neural network for the mnist
 dataset, but modifications are made so that problematic numerical values (infs
 and nans) appear in nodes of the graph during training.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

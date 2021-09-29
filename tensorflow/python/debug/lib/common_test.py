@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Unit tests for common values and methods of TensorFlow Debugger."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 
 from tensorflow.python.debug.lib import common

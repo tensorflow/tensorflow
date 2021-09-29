@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/enable_tf2_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -48,6 +50,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+// TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
+#include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -243,7 +247,7 @@ tensorflow::Status RunInitializers(
                                           host, runtime.work_queue(),
                                           resource_context, fallback_state));
 
-  tfrt::ExecutionContext exec_ctx(req_ctx.CopyRef());
+  tfrt::ExecutionContext exec_ctx(req_ctx);
 
   // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
   // is the special function created by compiler, which calls a sequence of
@@ -534,6 +538,20 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   metrics::AddTFRTVersionMetric();
 
+  if (options.compile_options.tpu_target ==
+      tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
+    auto s = CheckTpuMlirBridgeCompatibility(meta_graph_def);
+    if (!s.ok()) {
+      LOG(INFO)
+          << "TFRT detected Bridge unsupported feature, using TF fallback";
+      options.compile_options.tpu_target =
+          tensorflow::TfrtTpuInfraTarget::kTfFallback;
+    } else {
+      options.compile_options.tpu_target =
+          tensorflow::TfrtTpuInfraTarget::kTpurt;
+    }
+  }
+
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
     mlir::MLIRContext context;
@@ -594,9 +612,9 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     auto init_start_time = absl::Now();
     TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
 
-    auto tpu_var_table = std::make_unique<tpu::TpuVariablesTable>();
+    auto tpu_model_resource = std::make_unique<tpu::TpuModelResource>();
     auto resource_context =
-        CreateResourceContext(*options.runtime, tpu_var_table.get(),
+        CreateResourceContext(*options.runtime, tpu_model_resource.get(),
                               options.compile_options.tpu_target);
     TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
                                       bef_file.get(), options,
@@ -619,7 +637,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         std::move(bef_file),
         std::move(initializers_and_signatures.signature_map),
         std::move(fallback_state), std::move(graph_execution_state),
-        std::move(tpu_var_table), std::move(resource_context))};
+        std::move(tpu_model_resource), std::move(resource_context))};
   }();
 
   if (!statusor_saved_model.ok()) {
@@ -636,7 +654,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
-    std::unique_ptr<tpu::TpuVariablesTable> tpu_var_table,
+    std::unique_ptr<tpu::TpuModelResource> tpu_model_resource,
     std::unique_ptr<tfrt::ResourceContext> resource_context)
     : SavedModel(options.runtime),
       options_(std::move(options)),
@@ -647,7 +665,7 @@ SavedModelImpl::SavedModelImpl(
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
-      tpu_var_table_(std::move(tpu_var_table)),
+      tpu_model_resource_(std::move(tpu_model_resource)),
       resource_context_(std::move(resource_context)) {}
 
 SavedModelImpl::~SavedModelImpl() = default;
@@ -888,7 +906,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
 std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
     const tensorflow::tfrt_stub::Runtime& runtime,
-    tpu::TpuVariablesTable* tpu_var_table,
+    tpu::TpuModelResource* tpu_model_resource,
     tensorflow::TfrtTpuInfraTarget tpu_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime.CreateRuntimeResources(resource_context.get());
@@ -897,7 +915,7 @@ std::unique_ptr<tfrt::ResourceContext> SavedModelImpl::CreateResourceContext(
   // opposed to linking it in. We can do this by adding a callback with
   // `Runtime::AddCreateRuntimeResourceFn`.
   if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
-    AddTpuResources(resource_context.get(), tpu_var_table);
+    AddTpuResources(resource_context.get(), tpu_model_resource);
   }
   return resource_context;
 }
@@ -1090,8 +1108,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
   loading_result->name = joined_signature.name;
-  loading_result->resource_context = CreateResourceContext(
-      runtime(), tpu_var_table_.get(), options_.compile_options.tpu_target);
+  loading_result->resource_context =
+      CreateResourceContext(runtime(), tpu_model_resource_.get(),
+                            options_.compile_options.tpu_target);
 
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
       options_.compile_options, module.get(), &loading_result->bef));
@@ -1200,10 +1219,10 @@ tensorflow::Status SavedModelImpl::RunInternal(
     if (absl::ToChronoTime(absl::Now()) > deadline) {
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
-    req_deadline_tracker_.CancelRequestOnDeadline(deadline, req_ctx.CopyRef());
+    req_deadline_tracker_.CancelRequestOnDeadline(deadline, req_ctx);
   }
 
-  ExecutionContext exec_ctx{req_ctx.CopyRef()};
+  ExecutionContext exec_ctx{req_ctx};
   if (run_options.work_queue) {
     exec_ctx.set_work_queue(run_options.work_queue);
   }

@@ -13,7 +13,7 @@ func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
   // CHECK-DAG: %[[INDICES_2:.*]] = "tf.Sub"(%[[cst_1]], %[[INDICES_1]]) : (tensor<i32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_3:.*]] = "tf.Mul"(%[[INDICES_2]], %arg0) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_4:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %0, %[[UPDATES]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
-  // CHECK-DAG: %[[INDICES_5:.*]] = "tf.Add"(%[[INDICES_3]], %[[INDICES_4]]) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
+  // CHECK-DAG: %[[INDICES_5:.*]] = "tf.AddV2"(%[[INDICES_3]], %[[INDICES_4]]) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<5xi32>) -> tensor<5xi32>
   return %0 : tensor<5xi32>
 }
@@ -182,6 +182,13 @@ func @pad_bf16(%arg0: tensor<3xbf16>) -> tensor<6xbf16> {
   // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
   %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xbf16>, tensor<1x2xi64>) -> tensor<6xbf16>
   return %0 : tensor<6xbf16>
+}
+
+// CHECK-LABEL: func @add_f32
+func @add_f32(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %add = "tf.Add"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  return %add : tensor<3xf32>
 }
 
 // CHECK-LABEL: func @BiasAddGrad_NHWC
@@ -1096,11 +1103,11 @@ func @roll_scalar_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<i32>, tensor<i32>) -> tensor<3x8x4xi32>
   return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_scalar_axis
-  // CHECK:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST2:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST3:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST2:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST3:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK:  %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
   // CHECK:  %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST1]], %[[CST2]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
   // CHECK:  %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST3]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
@@ -1113,11 +1120,11 @@ func @roll_1d_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3x8x4xi32>
   return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_1d_axis
-  // CHECK:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST2:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK:  %[[CST3:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST2:.*]] = "tf.Const"() {value = dense<[3, 6, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG:  %[[CST3:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK:  %[[SLICE:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x2x4xi32>
   // CHECK:  %[[SLICE1:.*]] = "tf.Slice"(%arg0, %[[CST1]], %[[CST2]]) : (tensor<3x8x4xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<3x6x4xi32>
   // CHECK:  %[[CONCAT:.*]] = "tf.ConcatV2"(%[[SLICE]], %[[SLICE1]], %[[CST3]]) : (tensor<3x2x4xi32>, tensor<3x6x4xi32>, tensor<i32>) -> tensor<3x8x4xi32>
@@ -1178,14 +1185,14 @@ func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %arg2: t
   return %0 : tensor<14xf32>
 
   // CHECK-LABEL: scatter_nd_updates
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK: %[[CST0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
-  // CHECK: %[[CST1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[CST0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+  // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
   // CHECK: %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%cst_1, %arg1, %[[CST0]]) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<f32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %arg0) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %arg2) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
-  // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[SCATTER1]]) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[MUL]], %[[SCATTER1]]) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
   // CHECK: return %[[ADD]] : tensor<14xf32>
 }
 
@@ -1194,16 +1201,16 @@ func @scatter_nd_updates_bool(%arg0: tensor<1x24xi1>, %arg1: tensor<1x2x2xi32>, 
   return %0 : tensor<1x24xi1>
 
 // CHECK-LABEL: scatter_nd_updates_bool(
-// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[CST0:.*]] = "tf.Const"() {value = dense<1> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
-// CHECK:           %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<1x24xi32>} : () -> tensor<1x24xi32>
+// CHECK-DAG:       %[[CST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[CST0:.*]] = "tf.Const"() {value = dense<1> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+// CHECK-DAG:       %[[CST1:.*]] = "tf.Const"() {value = dense<0> : tensor<1x24xi32>} : () -> tensor<1x24xi32>
 // CHECK:           %[[CAST0:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x24xi1>) -> tensor<1x24xi32>
 // CHECK:           %[[CAST1:.*]] = "tf.Cast"(%arg2) {Truncate = false} : (tensor<1x2xi1>) -> tensor<1x2xi32>
 // CHECK:           %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CST0]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<i32>, tensor<1x24xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %[[CAST0]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %[[CAST1]]) : (tensor<1x24xi32>, tensor<1x2x2xi32>, tensor<1x2xi32>) -> tensor<1x24xi32>
-// CHECK:           %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[SCATTER1]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
+// CHECK:           %[[ADD:.*]] = "tf.AddV2"(%[[MUL]], %[[SCATTER1]]) : (tensor<1x24xi32>, tensor<1x24xi32>) -> tensor<1x24xi32>
 // CHECK:           %[[CAST2:.*]] = "tf.Cast"(%[[ADD]]) {Truncate = false} : (tensor<1x24xi32>) -> tensor<1x24xi1>
 // CHECK:           return %[[CAST2]] : tensor<1x24xi1>
 }
@@ -1285,7 +1292,7 @@ func @selu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tens
     // CHECK-DAG:   %[[SCALED_ALPHA:.*]] = "tf.Const"() {value = dense<1.75809932> : tensor<f32>} : () -> tensor<f32>
     // CHECK-DAG:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xi1>
     // CHECK-NEXT:  %[[SCALED_GRADIENTS:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[SCALE]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
-    // CHECK-NEXT:  %[[FEATURES_PLUS_SCALED_ALPHA:.*]] = "tf.Add"(%[[FEATURES]], %[[SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  %[[FEATURES_PLUS_SCALED_ALPHA:.*]] = "tf.AddV2"(%[[FEATURES]], %[[SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  %[[SELU_GRAD_VALUE:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[FEATURES_PLUS_SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<4x8xf32>

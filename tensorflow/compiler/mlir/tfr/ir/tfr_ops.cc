@@ -734,7 +734,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
     }
     SmallVector<float> scale_factors;
     scale_factors.reserve(filter_scale_attr.size());
-    for (auto value : filter_scale_attr.getFloatValues()) {
+    for (auto value : filter_scale_attr.getValues<APFloat>()) {
       scale_factors.push_back(in_scale * value.convertToFloat() / out_scale);
     }
     rewriter.setInsertionPoint(scale_factor_op);

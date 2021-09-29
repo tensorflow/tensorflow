@@ -29,22 +29,24 @@ typedef struct {
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.
-TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault();
+TFL_CAPI_EXPORT TfLiteXNNPackDelegateOptions
+TfLiteXNNPackDelegateOptionsDefault();
 
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteXNNPackDelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the following default values are used:
-TfLiteDelegate* TfLiteXNNPackDelegateCreate(
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 
 // Returns the pthreadpool_t object used for parallelization in XNNPACK.
 // Can return NULL if the XNNPack delegate is single-threaded.
 //
 // WARNING: This API is experimental and subject to change.
-void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
+    TfLiteDelegate* delegate);
 
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
-void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }

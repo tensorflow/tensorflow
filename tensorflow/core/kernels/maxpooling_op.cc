@@ -178,7 +178,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
 
     if (input_backprop != nullptr) {
       auto input_backprop_flat = input_backprop->flat<T>();
-      auto out_arg_max_flat = output_arg_max->flat<int64>();
+      auto out_arg_max_flat = output_arg_max->flat<int64_t>();
       auto out_backprop_flat = out_backprop.flat<T>();
 
       // Initialize output to 0.
@@ -1011,7 +1011,7 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
 
       {
         auto grad_out_flat = grad_out->flat<T>();
-        auto argmax_flat = argmax.flat<int64>();
+        auto argmax_flat = argmax.flat<int64_t>();
         auto grad_in_flat = grad_in.flat<T>();
 
         const int64_t output_start = start * output_size_per_batch;

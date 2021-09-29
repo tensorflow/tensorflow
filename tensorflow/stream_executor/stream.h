@@ -259,8 +259,7 @@ class Stream {
       dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training,
-      ScratchAllocator *reserve_space_allocator,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
@@ -334,42 +333,44 @@ class Stream {
 
   template <typename InputType, typename OutputType>
   port::Status ConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<InputType> &input_data,
+      dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<InputType> input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputType> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      DeviceMemory<InputType> filter_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputType> output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result) {
     DeviceMemory<uint8> scratch_memory;
     dnn::AlgorithmDesc algorithm_desc;
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
-          dnn::ConvolutionKind::FORWARD, this, input_descriptor, input_data,
-          filter_descriptor, filter_data, output_descriptor, *output,
-          convolution_descriptor, algorithm_config, scratch_allocator,
-          &algorithm_desc, &scratch_memory));
-      return dnn->DoConvolve(
-          dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
-          dnn::ToDataType<OutputType>::value, this, input_descriptor,
-          input_data, filter_descriptor, filter_data, output_descriptor,
-          *output, convolution_descriptor, algorithm_desc, scratch_memory,
-          output_profile_result);
+          kind, this, input_descriptor, input_data, filter_descriptor,
+          filter_data, output_descriptor, output_data, convolution_descriptor,
+          algorithm_config, scratch_allocator, &algorithm_desc,
+          &scratch_memory));
+      return dnn->DoConvolve(kind, dnn::ToDataType<InputType>::value,
+                             dnn::ToDataType<OutputType>::value, this,
+                             input_descriptor, input_data, filter_descriptor,
+                             filter_data, output_descriptor, output_data,
+                             convolution_descriptor, algorithm_desc,
+                             scratch_memory, output_profile_result);
     }
     return port::UnimplementedError("DNN library is not found.");
   }
 
   template <typename InputType, typename OutputType>
   port::Status ConvolveWithExecutionPlan(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<InputType> &input_data,
+      dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<InputType> input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputType> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      DeviceMemory<InputType> filter_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputType> output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
 #if GOOGLE_CUDA
@@ -377,10 +378,10 @@ class Stream {
     if (dnn) {
       gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
       return cudnn_dnn->DoConvolveWithExecutionPlan(
-          dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
+          kind, dnn::ToDataType<InputType>::value,
           dnn::ToDataType<OutputType>::value, this, input_descriptor,
           input_data, filter_descriptor, filter_data, output_descriptor,
-          *output, convolution_descriptor, plan_config, scratch_allocator,
+          output_data, convolution_descriptor, plan_config, scratch_allocator,
           output_profile_result);
     }
 #endif  // GOOGLE_CUDA
@@ -454,126 +455,6 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardDataWithExecutionPlan(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<ElementType> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<ElementType> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoConvolveWithExecutionPlan(
-          dnn::ConvolutionKind::BACKWARD_DATA,
-          dnn::ToDataType<ElementType>::value,
-          dnn::ToDataType<ElementType>::value, this, input_descriptor,
-          *backward_input_data, filter_descriptor, filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          plan_config, scratch_allocator, output_profile_result);
-    }
-#endif  // GOOGLE_CUDA
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<ElementType> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<ElementType> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
-          dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
-          *backward_input_data, filter_descriptor, filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          algorithm_config, scratch_allocator, &algorithm_desc,
-          &scratch_memory));
-      return dnn->DoConvolve(
-          dnn::ConvolutionKind::BACKWARD_DATA,
-          dnn::ToDataType<ElementType>::value,
-          dnn::ToDataType<ElementType>::value, this, input_descriptor,
-          *backward_input_data, filter_descriptor, filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          algorithm_desc, scratch_memory, output_profile_result);
-    }
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<ElementType> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
-          dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
-          input_data, filter_descriptor, *backward_filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          algorithm_config, scratch_allocator, &algorithm_desc,
-          &scratch_memory));
-      return dnn->DoConvolve(
-          dnn::ConvolutionKind::BACKWARD_FILTER,
-          dnn::ToDataType<ElementType>::value,
-          dnn::ToDataType<ElementType>::value, this, input_descriptor,
-          input_data, filter_descriptor, *backward_filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          algorithm_desc, scratch_memory, output_profile_result);
-    }
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  port::Status ConvolveBackwardFilterWithExecutionPlan(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<ElementType> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<ElementType> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoConvolveWithExecutionPlan(
-          dnn::ConvolutionKind::BACKWARD_FILTER,
-          dnn::ToDataType<ElementType>::value,
-          dnn::ToDataType<ElementType>::value, this, input_descriptor,
-          input_data, filter_descriptor, *backward_filter_data,
-          output_descriptor, backward_output_data, convolution_descriptor,
-          plan_config, scratch_allocator, output_profile_result);
-    }
-#endif  // GOOGLE_CUDA
-    return port::UnimplementedError("DNN library is not found.");
-  }
 
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,

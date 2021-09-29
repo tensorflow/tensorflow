@@ -592,7 +592,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   return fusion;
 }
 
-StatusOr<mhlo::ScatterDimensionNumbers>
+StatusOr<mhlo::ScatterDimensionNumbersAttr>
 LhloDialectEmitter::GetScatterDimensionNumbers(const HloInstruction* instr,
                                                mlir::MLIRContext* context) {
   auto* scatter_instr = xla::Cast<xla::HloScatterInstruction>(instr);
@@ -600,17 +600,15 @@ LhloDialectEmitter::GetScatterDimensionNumbers(const HloInstruction* instr,
   const xla::ScatterDimensionNumbers& xla_scatter_dim =
       scatter_instr->scatter_dimension_numbers();
 
-  mlir::Builder builder(context);
-  auto get_i64_array_attr =
-      [builder](absl::Span<const int64_t> container) mutable {
-        return builder.getI64TensorAttr(
-            {container.data(), static_cast<size_t>(container.size())});
-      };
-  auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbers::get(
-      get_i64_array_attr(xla_scatter_dim.update_window_dims()),
-      get_i64_array_attr(xla_scatter_dim.inserted_window_dims()),
-      get_i64_array_attr(xla_scatter_dim.scatter_dims_to_operand_dims()),
-      builder.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()), context);
+  auto get_i64_array = [](absl::Span<const int64_t> container) {
+    return ArrayRef<int64_t>{container.data(),
+                             static_cast<size_t>(container.size())};
+  };
+  auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbersAttr::get(
+      context, get_i64_array(xla_scatter_dim.update_window_dims()),
+      get_i64_array(xla_scatter_dim.inserted_window_dims()),
+      get_i64_array(xla_scatter_dim.scatter_dims_to_operand_dims()),
+      xla_scatter_dim.index_vector_dim());
   return scatter_dimension_numbers;
 }
 
@@ -779,13 +777,15 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   auto set_common_attributes = [&](auto op) -> Operation* {
+    auto arrayref = [](absl::Span<const int64_t> array) {
+      return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+    };
     auto hlo_dims = config.dot_dimension_numbers();
-    auto mlir_dims = mhlo::DotDimensionNumbers::get(
-        GetI64DenseElementsAttr(hlo_dims.lhs_batch_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.rhs_batch_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.lhs_contracting_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.rhs_contracting_dimensions()),
-        builder_.getContext());
+    auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
+        builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
+        arrayref(hlo_dims.rhs_batch_dimensions()),
+        arrayref(hlo_dims.lhs_contracting_dimensions()),
+        arrayref(hlo_dims.rhs_contracting_dimensions()));
     op.dot_dimension_numbersAttr(mlir_dims);
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));

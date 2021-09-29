@@ -1366,8 +1366,7 @@ namespace {
 // A transpose or a reshape that only changes trivial dimensions have meaningful
 // layouts that are valuable to propagate in a depthfirst manner to avoid
 // unassigned layouts in the graph.
-bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo,
-                                          bool forward_propagation = true) {
+bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kFusion:
       return hlo.IsCustomFusion();
@@ -1375,8 +1374,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo,
       return true;
     case HloOpcode::kReshape:
       return hlo.operand(0)->shape().rank() == 1 ||
-             (forward_propagation &&
-              std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions()));
+             std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
     case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
       return true;
@@ -1620,8 +1618,7 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
           TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
               *operand_layout, instruction, operand_no, /*mandatory=*/false,
               /*dfs=*/
-              InstructionShouldPropagateDepthFirst(
-                  *instruction, /*forward_propagation=*/false)));
+              InstructionShouldPropagateDepthFirst(*instruction)));
         }
       } else {
         VLOG(6) << "Operand already has a constraint "

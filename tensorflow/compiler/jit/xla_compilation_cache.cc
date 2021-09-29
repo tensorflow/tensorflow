@@ -468,7 +468,7 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
                                                bool is_first_execution,
                                                int64_t current_request_count,
                                                const NameAttrList& function) {
-  absl::optional<int64> compile_threshold;
+  absl::optional<int64_t> compile_threshold;
   if (compile_mode == CompileMode::kLazy) {
     compile_threshold = kDefaultCompilationThreshold;
   } else if (compile_mode == CompileMode::kAsync) {

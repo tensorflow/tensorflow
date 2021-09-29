@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfReshapeTest(googletest.TestCase):
+class TfReshapeTest(test.TestCase):
 
   def test_reshape_unknown_1d(self):
     # TODO(ezhulenev): Make it work without shape constraint.
@@ -49,4 +49,4 @@ class TfReshapeTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

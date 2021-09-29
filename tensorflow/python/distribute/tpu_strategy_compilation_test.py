@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPUStrategy in regards to compiling programs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function

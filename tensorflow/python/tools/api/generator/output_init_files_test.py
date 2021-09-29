@@ -13,10 +13,6 @@
 # limitations under the License.
 # =============================================================================
 """Tests for api_init_files.bzl and api_init_files_v1.bzl."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 # The unused imports are needed so that the python and lite modules are

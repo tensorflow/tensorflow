@@ -1036,6 +1036,22 @@ cc_library(
     alwayslink = True,
 )
 
+# Defines CreateOpResolver with a selected subset of ops.
+cc_library(
+    name = "create_op_resolver_with_selected_ops",
+    srcs = ["create_op_resolver_with_selected_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
+)
+
 cc_test(
     name = "util_test",
     size = "small",

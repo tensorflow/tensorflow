@@ -16,10 +16,6 @@
 #
 # Do not use pylint on generated code.
 # pylint: disable=missing-docstring,g-short-docstring-punctuation,g-no-space-after-docstring-summary,invalid-name,line-too-long,unused-argument,g-doc-args
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import grpc
 
 from tensorflow.core.profiler import profiler_analysis_pb2 as third__party_dot_tensorflow_dot_core_dot_profiler_dot_profiler__analysis__pb2

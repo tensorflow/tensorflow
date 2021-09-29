@@ -27,10 +27,6 @@ bazel run tensorflow/examples/speech_commands:wav_to_features -- \
 --input_wav=my.wav --output_c_file=my_wav_data.c
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os.path
 import sys

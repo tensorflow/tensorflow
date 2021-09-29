@@ -937,6 +937,23 @@ GENERATE_DEFAULT_TEST(Selu, DT_DOUBLE, DT_DOUBLE, baseline_selu,
 GENERATE_DEFAULT_TEST_2(Selu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_selu, test::OpsTestConfig())
 
+/// Test `tf.Sigmoid`.
+
+// Reference implementation
+template <typename T>
+T baseline_sigmoid(T x) {
+  return 1.0 / (1 + std::exp(-x));
+}
+
+GENERATE_DEFAULT_TEST(Sigmoid, DT_FLOAT, DT_FLOAT, baseline_sigmoid,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sigmoid, DT_DOUBLE, DT_DOUBLE, baseline_sigmoid,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Sigmoid, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_sigmoid, test::OpsTestConfig())
+
 /// Test `tf.Sign`.
 
 // Reference implementation

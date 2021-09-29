@@ -14,12 +14,9 @@
 # ==============================================================================
 """FuncGraph and related functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as py_collections
 import itertools
+import traceback
 import weakref
 
 import numpy as np
@@ -335,8 +332,8 @@ class FuncGraph(ops.Graph):
       key: optional. If not None, multiple calls to lazy_capture with the same
         key in the same graph will return the same placeholder, and the
         first closure will be used at function call time.
-      default_value: optional. If not None, in save context, the `default_value`
-        will be returned.
+      default_value: optional value to return in environments that cannot safely
+        evaluate closure.
       placeholder: optional. If not None, the graph will take the passed-in
         `placeholder` as the internal capture instead of creating a new one.
         This is useful when loading from a SavedModel.
@@ -379,6 +376,7 @@ class FuncGraph(ops.Graph):
         # `serving_fn`.
         if save_context.in_save_context() and default_value is not None:
           return default_value
+        # TODO(wxinyi): raise an error if in save context but no default value.
 
         if not context.executing_eagerly():
           graph = ops.get_default_graph()
@@ -386,7 +384,7 @@ class FuncGraph(ops.Graph):
           # In the case of control flow, we need to capture the
           # external_captures (deferred or not) of the body_graph (i.e.
           # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
-          # create the cooresponding placeholders in `cond_graph` so that it
+          # create the corresponding placeholders in `cond_graph` so that it
           # expects to receive these as arguments. However, doing so requires
           # having evaluated the call_time_value already (and maybe repeatedly),
           # so we skip adding deferred_captures to the control flow graph but
@@ -395,8 +393,8 @@ class FuncGraph(ops.Graph):
             graph = graph.outer_graph
 
           with graph.as_default():
-            ret_nest = graph.capture_call_time_value(closure, spec)
-
+            ret_nest = graph.capture_call_time_value(
+                closure, spec, key=key, default_value=default_value)
         else:
           ret_nest = closure()
 
@@ -409,6 +407,7 @@ class FuncGraph(ops.Graph):
         # pylint: enable=protected-access
         return nest.flatten(y, expand_composites=True)
 
+      wrapped_closure.output_spec = spec
       self._deferred_captures[key] = (wrapped_closure, placeholder)
     return self._deferred_captures[key][1]
 
@@ -727,12 +726,27 @@ class FuncGraph(ops.Graph):
       inner_graph = tensor.graph
       while inner_graph is not None and isinstance(inner_graph, FuncGraph):
         if inner_graph is self:
+          try:
+            tb = tensor.op.traceback
+          except AttributeError:
+            tensor_traceback = "<unknown>"
+          else:
+            tensor_traceback_list = []
+            for frame in traceback.format_list(tb.get_user_frames()):
+              tensor_traceback_list.extend(
+                  [f"  {line}" for line in frame.split("\n") if line.strip()])
+            tensor_traceback = "\n".join(tensor_traceback_list)
+          # Keep in sync with tfe_wrapper.cc.
+          # TODO(b/200991648): Unify those two paths.
           raise errors.InaccessibleTensorError(
-              "The tensor '%s' cannot be accessed here: it is defined"
-              " in another function or code block. Use return values,"
-              " explicit Python locals or TensorFlow collections to access"
-              " it. Defined in: %s; accessed from: %s.\n"
-              % (tensor, tensor.graph, self))
+              f"{tensor!r} is out of scope and cannot be used here. Use return "
+              "values, explicit Python locals or TensorFlow collections to "
+              "access it.\n"
+              "Please see https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values "
+              "for more information.\n\n"
+              f"{tensor!r} was defined here:\n{tensor_traceback}\n\n"
+              f"The tensor {tensor!r} cannot be accessed from {self}, because "
+              f"it was defined in {tensor.graph}, which is out of scope.")
         inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)
     return tensor
@@ -776,6 +790,52 @@ class FuncGraph(ops.Graph):
     """Replace already existing capture."""
     self._captures[id(tensor)] = (tensor, placeholder)
 
+  def replace_capture_with_deferred_capture(self,
+                                            tensor,
+                                            closure,
+                                            spec,
+                                            placeholder,
+                                            default_value=None):
+    """Replaces existing capture `tensor` with a deferred capture `closure`.
+
+    Caution: It is the caller's responsibility to make sure that, after calling
+    this function, the TypeSpec of the `inputs` (i.e. internal placeholders) and
+    the `_captured_inputs` (i.e. external captures) of a concrete function that
+    wraps this function graph are still compatible. Thus user should pairing
+    usage of this function with `ConcreteFunction.set_external_captures` to make
+    sure the order still matches. For example,
+    ```
+    # concrete_fn._captured_inputs == [tensor1, tensor2, tensor3]
+    # concrete_fn.inputs == [placeholder1, placeholder2, placeholder3]
+    # replace external capture `tensor2` with a deferred_capture, i.e., a
+    # closure, `closure2`
+    concrete_fn.graph.replace_capture_with_deferred_capture(tensor2,
+                                                            closure2,
+                                                            placeholder2,
+                                                            some_spec,
+                                                            some_default)
+    concrete_fn.set_external_captures([tensor1, closure2, tensor3])
+    ```
+
+    Args:
+      tensor: Tensor already captured.
+      closure: function which takes no arguments, to be evaluated at function
+        call time, returning a nest of tensors compatible with `spec`.
+      spec: nest of TypeSpec for the value to capture.
+      placeholder: the internal placeholder corresponding to the captured
+        `tensor`.
+      default_value: optional value to use in environments that cannot safely
+        evaluate closure.
+    """
+    if id(tensor) in self._captures:
+      self.pop_capture(tensor)
+    self.capture_call_time_value(
+        closure,
+        spec,
+        key=id(tensor),
+        default_value=default_value,
+        placeholder=placeholder)
+
   def reset_captures(self, capture_list):
     """Set the captures with the provided list of captures & placeholder."""
     self._captures = py_collections.OrderedDict()
@@ -810,10 +870,7 @@ class FuncGraph(ops.Graph):
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
     if capture is None:
-      # We clear all control dependencies and place the Const op on the same
-      # device as the source tensor. The device placement may be relaxed at
-      # a later date.
-      with ops.control_dependencies(None), self.device(tensor.device):
+      with ops.control_dependencies(None):
         constant_value = tensor_util.constant_value(tensor)
         if constant_value is None:
           # Some eager tensors, e.g. parallel tensors, are not convertible to a

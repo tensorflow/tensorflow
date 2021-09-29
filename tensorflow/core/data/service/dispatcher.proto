@@ -14,10 +14,11 @@ message TaskProgress {
   bool completed = 2;
 }
 
-// Next tag: 4
+// Next tag: 5
 message WorkerHeartbeatRequest {
   string worker_address = 1;
   string transfer_address = 3;
+  repeated string worker_tags = 4;
   repeated int64 current_tasks = 2;
 }
 
@@ -181,7 +182,7 @@ message ClientHeartbeatResponse {
 // Next tag: 3
 message WorkerInfo {
   string address = 1;
-  int64 id = 2;
+  reserved 2;
 }
 
 // Next tag: 1

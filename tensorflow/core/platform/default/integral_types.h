@@ -26,7 +26,7 @@ namespace tensorflow {
 typedef signed char int8;
 typedef short int16;
 typedef int int32;
-[[deprecated("Use int64_t instead.")]] typedef ::std::int64_t int64;
+typedef ::std::int64_t int64;
 
 typedef unsigned char uint8;
 typedef unsigned short uint16;

@@ -238,7 +238,7 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   if (!permutation_op || transpose_ops.empty()) return;
   SmallVector<int64_t, 4> permutation;
   auto perm_attr = permutation_op.value().cast<DenseElementsAttr>();
-  for (const auto& value : perm_attr.getIntValues())
+  for (const auto& value : perm_attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
   // We want to make sure the shape of the operand equals the transposed shape.
@@ -385,11 +385,17 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   SmallVector<int64_t, 8> permutation;
 
   auto attr = permutation_op.value().cast<DenseElementsAttr>();
-  for (const auto& value : attr.getIntValues())
+  for (const auto& value : attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
   // Check if we can fold transpose into the operation.
   if (fold_operands && fold_transpose_in_ops) {
+    SmallVector<int64_t, 8> permutation;
+
+    auto attr = permutation_op.value().cast<DenseElementsAttr>();
+    for (const auto& value : attr.getValues<APInt>())
+      permutation.push_back(value.getSExtValue());
+
     if (failed(fold_operands.FoldOperandsPermutation(permutation))) return;
   }
 

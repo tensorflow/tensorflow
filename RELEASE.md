@@ -176,6 +176,29 @@
   * Support uint32 data type for cast op.
   * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
 
+* Extension Types
+  * Add experimental API to define new Python classes that can be handled by
+    TensorFlow APIs.  To create an extension type, simply define a Python class
+    with `tf.experimental.ExtensionType` as its base, and use type annotations
+    to specify the type for each field.  E.g.:
+    ```
+    class MaskedTensor(tf.experimental.ExtensionType):
+      values: tf.Tensor
+      mask: tf.Tensor
+    ```
+    The `tf.ExtensionType` base class works similarly to
+    [`typing.NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple)
+    and [`@dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass)
+    from the standard Python library.
+  * Extension types are supported by Keras, tf.data, TF-hub, SavedModel,
+    tf.function, control flow ops, py_function, and distribution strategy.
+  * Add "dispatch decorators" that can be used to override the default behavior
+    of TensorFlow ops (such as `tf.add` or `tf.concat`) when they are applied to
+    ExtensionType values.
+  * The `BatchableExtensionType` API can be used to define extension types that
+    support APIs that make use of batching, such as `tf.data.Dataset` and
+    `tf.map_fn`.
+
 ## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -189,7 +212,7 @@
     * Added an experimental session config
       `tf.experimental.disable_functional_ops_lowering` which disables
       functional control flow op lowering optimization. This is useful when
-      executing within a portable runtime where control flow op kernels may not 
+      executing within a portable runtime where control flow op kernels may not
       be loaded due to selective registration.
     * Added a new experimental argument `experimental_is_anonymous` to
       `tf.lookup.StaticHashTable.__init__` to create the table in anonymous
@@ -197,6 +220,13 @@
       handles (not resource names) and will be deleted automatically when all
       resource handles pointing to it are gone.
 *   `tf.data`:
+    *   Introducing the `tf.data.experimental.at` API which provides random
+        access for input pipelines that consist of transformations that support
+        random access. The initial set of transformations that support random
+        access includes: `tf.data.Dataset.from_tensor_slices`,
+        `tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`,
+        `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
+        `tf.data.Dataset.range`, `tf.data.Dataset.skip`.
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
@@ -206,9 +236,6 @@
         `tf.data.Options.experimental_optimization.autotune_buffers`.
     *   Added support for user-defined names of tf.data core Python API, which
         can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
-    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
-        that are files. This will enable creating hermetic SavedModels when
-        using datasets created from files.
     *   Promoting
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental

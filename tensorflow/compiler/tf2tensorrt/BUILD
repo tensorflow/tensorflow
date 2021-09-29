@@ -100,6 +100,44 @@ cc_library(
 )
 
 cc_library(
+    name = "testutils",
+    testonly = 1,
+    srcs = ["utils/trt_testutils.cc"],
+    hdrs = [
+        "utils/trt_testutils.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":trt_conversion",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/framework:tensor_testutil",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "testutils_test",
+    size = "small",
+    srcs = ["utils/trt_testutils_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":testutils",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+    ]),
+)
+
+cc_library(
     name = "trt_op_kernels",
     srcs = [
         "kernels/get_calibration_data_op.cc",
@@ -167,6 +205,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":common_utils",
+        ":testutils",
         ":trt_engine_instance_proto_cc",
         ":trt_engine_resource_op_kernels",
         ":trt_engine_resource_ops_op_lib",
@@ -203,6 +242,7 @@ tf_cuda_cc_test(
         ":trt_op_libs",
         ":trt_resources",
         ":trt_conversion",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -463,6 +503,7 @@ tf_cuda_cc_test(
         ":trt_op_kernels",
         ":trt_op_libs",
         ":trt_conversion",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
@@ -496,6 +537,7 @@ tf_cuda_cc_test(
         ":trt_plugins",
         ":trt_engine_utils",
         ":utils",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -512,6 +554,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",

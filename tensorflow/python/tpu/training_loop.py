@@ -15,10 +15,6 @@
 
 """Library for constructing a training loop, suitable for TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Any, Callable, Iterable, List, Optional, Union
 
 from tensorflow.python.compiler.xla import xla

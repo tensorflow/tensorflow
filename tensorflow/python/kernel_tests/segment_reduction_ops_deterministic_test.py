@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for deterministic functionality of segment reduction ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.eager import backprop
@@ -190,5 +186,5 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

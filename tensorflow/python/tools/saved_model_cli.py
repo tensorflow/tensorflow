@@ -19,10 +19,6 @@ https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmod
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import re

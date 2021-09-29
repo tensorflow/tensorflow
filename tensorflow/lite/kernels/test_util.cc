@@ -127,7 +127,12 @@ int SingleOpModel::AddNullInput() {
 }
 
 int SingleOpModel::AddOutput(const TensorData& t) {
-  int id = AddTensor<float>(t, {});
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {});
+  }
   outputs_.push_back(id);
   return id;
 }
@@ -197,20 +202,19 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
   if (!resolver_) {
-    // If we have a manually-set TfLite delegate, we assume the intention of
-    // the test is to test against the particular delegate, hence bypassing
-    // applying TfLite default delegates (i.e. the XNNPACK delegate).
-    bool bypass_default_delegates = (delegate_ != nullptr);
-    if (!bypass_default_delegates) {
-      // Check if any delegates are specified via the commandline flags.
+    if (!bypass_default_delegates_) {
+      // Check if any delegates are specified via the commandline flags. We also
+      // assume the intention of the test is to test against a particular
+      // delegate, hence bypassing applying TfLite default delegates (i.e. the
+      // XNNPACK delegate).
       const auto specified_delegates =
           tflite::KernelTestDelegateProviders::Get()->CreateAllDelegates();
       if (!specified_delegates.empty()) {
-        bypass_default_delegates = true;
+        bypass_default_delegates_ = true;
       }
     }
     MutableOpResolver* resolver =
-        (bypass_default_delegates || use_simple_allocator)
+        (bypass_default_delegates_ || use_simple_allocator)
             ? new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates()
             : new ops::builtin::BuiltinOpResolver();
     for (const auto& reg : custom_registrations_) {

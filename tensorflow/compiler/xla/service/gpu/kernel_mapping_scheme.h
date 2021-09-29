@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 
 namespace xla {
 namespace gpu {
@@ -195,47 +196,22 @@ class ReductionCodegenInfo {
   bool is_race_free_;
 };
 
-// Information to support the code generation for a tiled reduction kernel.
-using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
-
 class ReductionCodegenState {
  public:
+  struct ReductionCalculationState {
+    llvm::GlobalVariable* shared_cache;
+    llvm::Value* initial_value;
+    llvm::AllocaInst* partial_result_address;
+    llvm::AllocaInst* input_address;
+    llvm_ir::ElementGenerator input_gen;
+  };
+
   explicit ReductionCodegenState(
       const ReductionCodegenInfo& reduction_codegen_info)
       : reduction_codegen_info_(reduction_codegen_info) {}
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return reduction_codegen_info_.mapping_scheme_;
-  }
-
-  // Gets writeable pointer to the address (or addresses) used to store
-  // reduction accumulators.
-  AddressVector* GetMutablePartialResultAddresses() {
-    return &partial_result_addresses_;
-  }
-
-  // Returns the address (addresses) of the reduction accumulators.
-  absl::Span<llvm::AllocaInst* const> GetPartialResultAddresses() const {
-    return partial_result_addresses_;
-  }
-
-  // Mutable pointer to the address of the input element to perform the
-  // reduction with.
-  AddressVector* GetMutableReductionInputAddresses() {
-    return &reduction_input_addresses_;
-  }
-
-  std::vector<llvm::Value*>* GetMutableInitialValues() {
-    return &initial_values_;
-  }
-
-  absl::Span<llvm::Value* const> GetInitialValues() const {
-    return initial_values_;
-  }
-
-  // Returns the address of the input element to perform the reduction with.
-  absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
-    return reduction_input_addresses_;
   }
 
   int GetNumPartialResults() const {
@@ -248,22 +224,29 @@ class ReductionCodegenState {
 
   bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
-  // Gets a pointer to a mutable shared cache used by reduction.
-  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
-    return &shared_cache_;
+  const ReductionCalculationState& GetCalculationStateFor(
+      int output_idx, int operand_idx) const {
+    const ReductionOpState& op_state = state_.at(output_idx);
+    CHECK_LT(operand_idx, op_state.size());
+    return op_state[operand_idx];
   }
 
-  // Shared cache used for reduction.
-  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
-    return shared_cache_;
+  void SetCalculationStateFor(
+      const ReductionCalculationState& calculation_state, int output_idx,
+      int operand_idx) {
+    ReductionOpState& op_state = state_[output_idx];
+    CHECK_EQ(operand_idx, op_state.size());
+    op_state.push_back(calculation_state);
   }
 
  private:
   ReductionCodegenInfo reduction_codegen_info_;
-  std::vector<llvm::GlobalVariable*> shared_cache_;
-  std::vector<llvm::Value*> initial_values_;
-  AddressVector partial_result_addresses_;
-  AddressVector reduction_input_addresses_;
+
+  // One state per reduction operand.
+  using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
+
+  // output_index -> operand_idx -> cache
+  absl::flat_hash_map<int, ReductionOpState> state_;
 };
 
 }  // end namespace gpu

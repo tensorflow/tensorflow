@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -1013,7 +1009,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert elements of .* to Tensor")
 
     class RHSReturnsTrue(object):
 
