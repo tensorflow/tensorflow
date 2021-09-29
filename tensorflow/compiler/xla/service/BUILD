@@ -6165,6 +6165,10 @@ py_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_oss",
+        "nopip",
+    ],
     deps = [
         ":generate_test_hlo_checks",
         "@absl_py//absl/testing:absltest",
