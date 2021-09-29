@@ -709,7 +709,7 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def enable_coordination_service(self, service_type):
+  def configure_coordination_service(self, service_type):
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
                       "effective because the context is already initialized.")

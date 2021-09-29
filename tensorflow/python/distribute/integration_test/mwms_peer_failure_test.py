@@ -26,10 +26,8 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import test_util
-from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
-COORDINATION_SERVICE = None
 RPC_PROTOCOL = "grpc"
 
 # Put it in top level so it executes in the child processes as well.
@@ -76,7 +74,6 @@ class PeerFailureTest(test.TestCase):
     # the first replica to all replicas.
 
     def worker_fn():
-      context.context().enable_coordination_service(COORDINATION_SERVICE)
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       with strategy.scope():
         tf.Variable(1.)
@@ -112,7 +109,6 @@ class PeerFailureTest(test.TestCase):
     # not aware of the failures of the receiving party.
 
     def worker_fn():
-      context.context().enable_coordination_service(COORDINATION_SERVICE)
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       value = tf.identity([1.])
       strategy.reduce("sum", value, axis=None)
@@ -139,7 +135,6 @@ class PeerFailureRecoverTest(test.TestCase):
     # See PeerFailureTest.test_creating_variable
 
     def worker_fn(attempts):
-      context.context().enable_coordination_service(COORDINATION_SERVICE)
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       task_id, attempt = get_attempt(strategy, attempts)
       with strategy.scope():
@@ -166,7 +161,6 @@ class PeerFailureRecoverTest(test.TestCase):
     # See PeerFailureTest.test_reduce_small_tensor
 
     def worker_fn(attempts):
-      context.context().enable_coordination_service(COORDINATION_SERVICE)
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       task_id, attempt = get_attempt(strategy, attempts)
       value = tf.identity([1.])
@@ -202,7 +196,6 @@ class PeerFailureRecoverTest(test.TestCase):
       mwms_lib.CollectiveAllReduceExtended._check_alive_interval = 30
       mwms_lib.CollectiveAllReduceExtended._check_alive_initial_timeout = 30
 
-      context.context().enable_coordination_service(COORDINATION_SERVICE)
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       task_id, attempt = get_attempt(strategy, attempts)
 
