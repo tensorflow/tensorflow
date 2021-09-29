@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 specializations = [
     tf_cpurt.Specialization.ENABLED,
@@ -28,7 +28,7 @@ specializations = [
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class MultipleResultsTest(googletest.TestCase):
+class MultipleResultsTest(test.TestCase):
 
   def test_two_results(self):
     for specialize in specializations:
@@ -81,4 +81,4 @@ class MultipleResultsTest(googletest.TestCase):
 
 if __name__ == '__main__':
   np.random.seed(0)
-  googletest.main()
+  test.main()

@@ -16,15 +16,15 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 # Metadata operations that are noop at runtime, but exist in the Tensorflow
 # graphs purely to facilitate graph construction and transformations.
-class TfMetadataOpsTest(googletest.TestCase):
+class TfMetadataOpsTest(test.TestCase):
 
   def test_stop_gradient(self):
     mlir_function = """
@@ -39,4 +39,4 @@ class TfMetadataOpsTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

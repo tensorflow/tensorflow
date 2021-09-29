@@ -8,9 +8,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["nomsan"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -23,9 +23,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -38,9 +38,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -53,9 +53,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -68,9 +68,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -83,9 +83,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -98,9 +98,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -113,9 +113,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -128,9 +128,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -143,9 +143,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -158,9 +158,9 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -173,8 +173,8 @@ py_strict_test(
         "nomsan",
     ],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )

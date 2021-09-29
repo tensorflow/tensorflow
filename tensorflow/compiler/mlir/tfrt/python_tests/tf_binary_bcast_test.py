@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
@@ -28,7 +28,7 @@ specializations = [
 ]
 
 
-class TfBinaryBcastTest(googletest.TestCase):
+class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_1d(self):
     mlir_function = """
@@ -195,4 +195,4 @@ class TfBinaryBcastTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()
