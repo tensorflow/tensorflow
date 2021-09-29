@@ -67,8 +67,11 @@ class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
 //===----------------------------------------------------------------------===//
 // TFAllocOp
 //===----------------------------------------------------------------------===//
-def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
-    [MemoryEffects<[MemAlloc<DefaultResource>]>]> {
+def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+      ["buildDealloc", "buildClone"]>
+  ]> {
   let summary = "allocation of tensors that uses TF Framework";
   let description = [{
     Allocation of tensors during kernel execution in the Compute method.
@@ -148,7 +151,7 @@ def TFFramework_TFDeallocOp : TFFramework_Op<"dealloc",
   }];
 
   let arguments = (ins TFFramework_OpKernelContextType:$ctx,
-                   Arg<AnyMemRef, "", [MemFree]>:$memref);
+                   Arg<AnyRankedOrUnrankedMemRef, "", [MemFree]>:$memref);
   let assemblyFormat = "`(` $ctx `,` $memref `)` attr-dict `:` type($memref)";
 }
 

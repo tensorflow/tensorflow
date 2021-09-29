@@ -277,6 +277,8 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   LogicalResult matchAndRewrite(
       TFDeallocOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    // TODO(herhut) Support unranked memrefs.
+    if (!op.memref().getType().isa<MemRefType>()) return failure();
     MemRefDescriptor memref(adaptor.memref());
 
     Value allocated_bytes_ptr = rewriter.create<LLVM::BitcastOp>(
