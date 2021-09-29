@@ -92,6 +92,18 @@ struct LhloToScalarOp<lmhlo::FloorOp> {
   using FOp = ::mlir::FloorFOp;
 };
 template <>
+struct LhloToScalarOp<lmhlo::MaxOp> {
+  using FOp = ::mlir::MaxFOp;
+  using IOp = ::mlir::MaxSIOp;
+  using UOp = ::mlir::MaxUIOp;
+};
+template <>
+struct LhloToScalarOp<lmhlo::MinOp> {
+  using FOp = ::mlir::MinFOp;
+  using IOp = ::mlir::MinSIOp;
+  using UOp = ::mlir::MinUIOp;
+};
+template <>
 struct LhloToScalarOp<lmhlo::LogOp> {
   using FOp = ::mlir::math::LogOp;
   using COp = ::mlir::complex::LogOp;
@@ -592,36 +604,6 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
   Value exp_neg_x = b->create<::mlir::math::ExpOp>(loc, neg_x);
   Value one_add_exp_neg_x = b->create<AddFOp>(loc, one, exp_neg_x);
   return b->create<DivFOp>(loc, one, one_add_exp_neg_x);
-}
-
-template <>
-inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
-                                                  ArrayRef<Type> result_types,
-                                                  ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
-                                                  OpBuilder* b) {
-  return LhloAlwaysPropagateNaN(
-      CompareSelectOpToStdScalarOp<
-          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT",
-                                                           result_types,
-                                                           arg_types, args, b),
-      args, loc, b);
-}
-
-template <>
-inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
-                                                  ArrayRef<Type> result_types,
-                                                  ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
-                                                  OpBuilder* b) {
-  return LhloAlwaysPropagateNaN(
-      CompareSelectOpToStdScalarOp<
-          IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
-          ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT",
-                                                           result_types,
-                                                           arg_types, args, b),
-      args, loc, b);
 }
 
 template <>
