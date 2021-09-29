@@ -234,14 +234,12 @@ int CountLeadingZeros(T integer_input) {
     return std::numeric_limits<T>::digits;
   }
 #if defined(__GNUC__)
-  if (std::is_same<T, unsigned long long>::value) {
-    return __builtin_clzll(integer_input);
-  } else if (std::is_same<T, unsigned long>::value) {
-    return __builtin_clzl(integer_input);
-  } else {
+  if (std::is_same<T, unsigned int>::value) {
     return __builtin_clz(integer_input);
+  } else if (std::is_same<T, unsigned long long>::value) {
+    return __builtin_clzll(integer_input);
   }
-#else
+#endif
   const T one_in_leading_positive = static_cast<T>(1)
                                     << (std::numeric_limits<T>::digits - 1);
   int leading_zeros = 0;
@@ -250,7 +248,6 @@ int CountLeadingZeros(T integer_input) {
     ++leading_zeros;
   }
   return leading_zeros;
-#endif
 }
 
 template <typename T>
