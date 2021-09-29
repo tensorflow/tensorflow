@@ -456,26 +456,6 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
 
-  Stream &ThenMatMul(const DeviceMemory<float> &input_data,
-                     const DeviceMemory<float> &weights,
-                     const dnn::BatchDescriptor &input_dimensions,
-                     const dnn::BatchDescriptor &output_dimensions,
-                     DeviceMemory<float> *output_data);
-
-  Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                              const DeviceMemory<int8> &weights,
-                              const DeviceMemory<float> &weight_scales,
-                              const dnn::BatchDescriptor &input_dimensions,
-                              const dnn::BatchDescriptor &output_dimensions,
-                              DeviceMemory<float> *output_data);
-
-  Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                              const DeviceMemory<int16> &weights,
-                              const DeviceMemory<float> &weight_scales,
-                              const dnn::BatchDescriptor &input_dimensions,
-                              const dnn::BatchDescriptor &output_dimensions,
-                              DeviceMemory<float> *output_data);
-
   Stream &ThenBiasAdd(const DeviceMemory<float> &input_data,
                       const DeviceMemory<float> &biases,
                       const dnn::BatchDescriptor &dimensions,

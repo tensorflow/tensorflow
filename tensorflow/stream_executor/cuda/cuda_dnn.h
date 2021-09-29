@@ -392,32 +392,6 @@ class CudnnSupport : public dnn::DnnSupport {
     return false;
   }
 
-  bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
-                const DeviceMemory<float>& weights,
-                const dnn::BatchDescriptor& input_dimensions,
-                const dnn::BatchDescriptor& output_dimensions,
-                DeviceMemory<float>* output_data) override;
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int8>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by CUDNN";
-    return false;
-  }
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int16>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by CUDNN";
-    return false;
-  }
-
   bool DoBiasAdd(Stream* stream, const DeviceMemory<float>& input_data,
                  const DeviceMemory<float>& biases,
                  const dnn::BatchDescriptor& dimensions,

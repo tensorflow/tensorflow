@@ -547,63 +547,6 @@ Stream &Stream::ThenSeparableConvolve(
   return *this;
 }
 
-Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
-                           const DeviceMemory<float> &weights,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(input_dimensions),
-            PARAM(output_dimensions), PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMul(this, input_data, weights, input_dimensions,
-                             output_dimensions, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMatMulQuantized(
-    const DeviceMemory<float> &input_data, const DeviceMemory<int8> &weights,
-    const DeviceMemory<float> &weight_scales,
-    const dnn::BatchDescriptor &input_dimensions,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(weight_scales),
-            PARAM(input_dimensions), PARAM(output_dimensions),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMulQuantized(this, input_data, weights, weight_scales,
-                                      input_dimensions, output_dimensions,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenMatMulQuantized(
-    const DeviceMemory<float> &input_data, const DeviceMemory<int16> &weights,
-    const DeviceMemory<float> &weight_scales,
-    const dnn::BatchDescriptor &input_dimensions,
-    const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_data), PARAM(weights), PARAM(weight_scales),
-            PARAM(input_dimensions), PARAM(output_dimensions),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoMatMulQuantized(this, input_data, weights, weight_scales,
-                                      input_dimensions, output_dimensions,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenBiasAdd(const DeviceMemory<float> &input_data,
                             const DeviceMemory<float> &biases,
                             const dnn::BatchDescriptor &dimensions,
