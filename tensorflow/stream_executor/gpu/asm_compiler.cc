@@ -150,6 +150,20 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
   return absl::MakeSpan(compiled);
 }
 
+std::vector<std::string> GetGpuAsmParameters(int cc_major, int cc_minor,
+                                            GpuAsmOpts options) {
+  std::vector<std::string> args;
+  if (options.disable_gpuasm_optimizations) {
+    args.push_back("-O0");
+  }
+  args.insert(args.end(), options.extra_flags.begin(),
+              options.extra_flags.end());
+  if (cc_major > 0) {
+    args.push_back(absl::StrCat("-arch=sm_", cc_major, cc_minor));
+  }
+  return args;
+}
+
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
@@ -234,15 +248,6 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   }
 }
 
-static void AppendArgsFromOptions(GpuAsmOpts options,
-                                  std::vector<std::string>& args) {
-  if (options.disable_gpuasm_optimizations) {
-    args.push_back("-O0");
-  }
-  args.insert(args.end(), options.extra_flags.begin(),
-              options.extra_flags.end());
-}
-
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
@@ -281,12 +286,14 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
-  AppendArgsFromOptions(options, ptxas_args);
+  std::vector<std::string> options_args = GetGpuAsmParameters(cc_major, cc_minor,
+                                                             options);
+  ptxas_args.insert(ptxas_args.end(), options_args.begin(), options_args.end());
+
   if (VLOG_IS_ON(3)) {
     VLOG(3) << absl::StrJoin(ptxas_args, " ");
   }
@@ -372,8 +379,7 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
   });
 
   // Compute the ptxas options that were used to produce the cubins.
-  std::vector<std::string> ptxas_options;
-  AppendArgsFromOptions(options, ptxas_options);
+  std::vector<std::string> ptxas_options = GetGpuAsmParameters(0, 0, options);
 
   // Invoke fatbinary and collect its output.
   tensorflow::SubProcess fatbinary;

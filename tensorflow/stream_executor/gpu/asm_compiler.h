@@ -35,6 +35,13 @@ namespace gpu {
 class GpuContext;
 }
 
+// Returns the parameters to pass to the assembler compiler (i.e. ptxas).
+//
+// It needs to be in a separate functions as that information is
+// needed for the compilation and the cache of that compilation.
+std::vector<std::string> GetGpuAsmParameters(int cc_major, int cc_minor,
+                                            GpuAsmOpts options);
+
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array. The generated cubin matches the compute
 // capabilities of the device associated with 'device_ordinal'.

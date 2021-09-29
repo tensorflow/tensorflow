@@ -357,17 +357,10 @@ int64 PersistentCompilationCache::CreateKey(
     const se::GpuAsmOpts &options,
     bool &valid){
   std::string llvm_str = llvm_ir::DumpModuleToString(*llvm_module);
-  std::string ptx_options;
-  if (options.disable_gpuasm_optimizations) {
-    ptx_options += "-O0";
-  }
-  for (const std::string &flag: options.extra_flags) {
-    ptx_options += flag;
-  }
+  std::string ptx_options = absl::StrJoin(GetGpuAsmParameters(
+      compute_capability.major, compute_capability.minor, options), " ");
 
   int64 key = tensorflow::Hash64(llvm_str);
-  key = tensorflow::Hash64Combine(key, compute_capability.major);
-  key = tensorflow::Hash64Combine(key, compute_capability.minor);
   key = tensorflow::Hash64Combine(key, tensorflow::Hash64(ptx_options));
 
   VLOG(3) << "Created key " << key << ".";
