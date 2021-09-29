@@ -70,8 +70,6 @@ class PosixFileSystem : public FileSystem {
                   TransactionToken* token) override;
 };
 
-Status IOError(const string& context, int err_number);
-
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
   string TranslateName(const string& name) const override {
