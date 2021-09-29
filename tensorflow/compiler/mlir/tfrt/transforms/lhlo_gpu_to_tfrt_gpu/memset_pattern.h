@@ -15,12 +15,12 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_MEMSET_PATTERN_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_MEMSET_PATTERN_H_
 
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 
 namespace tensorflow {
 
 // Add a pattern to the given pattern list to convert from mlir::gpu::MemsetOp
-// to tfrt::gpu::MemsetOp.
+// to tfrt::gpu::MemSetOp.
 void populateMemsetConversionPattern(mlir::RewritePatternSet& patterns);
 
 }  // namespace tensorflow
