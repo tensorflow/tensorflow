@@ -28,7 +28,7 @@ namespace xla {
 // Computes approximate top-ks by aggregating top-1s in equal-sized windows.
 // The number and the size of the windows are determined by the `recall_target`.
 //
-// operand: A sequence of 2-dimensional arrays of type T_0, ..., T_{N-1}
+// operand: A sequence of multi-dimensional arrays of type T_0, ..., T_{N-1}
 // init_values: N starting values for top-1 reductions
 // top_k: Determines the k in top-k operation.
 // reduction_dim: Determines the dimension to compute top-k.
@@ -41,7 +41,8 @@ namespace xla {
 //   wanted to forward the approximate results to host and aggregate the results
 //   on CPU for better throughput.
 //
-// Returns a sequence of 2-dimensional arrays of type T_0, ..., T_{N-1}, which
+// Returns a sequence of multidimensional arrays of type T_0, ..., T_{N-1},
+// which
 //   contains the approximate top-ks from the input operands. When
 //   `aggregate_to_topk` is set to true, the output size is just top_k. When
 //   `aggregate_to_topk` is set to false, the output size varied by the target
@@ -49,7 +50,6 @@ namespace xla {
 //   target recall = 0.99, the output size is roughly 100 * top_k.
 //
 // TODO(fchern): Support other hardware platforms.
-// TODO(fchern): Support higher dimensions.
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
                  int64_t reduction_dim, const XlaComputation& comparator,

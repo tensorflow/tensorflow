@@ -113,9 +113,9 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   for (int i = 0; i < num_operands; ++i) {
     const auto& op_shape = operands_shapes[i];
     const auto& init_shape = init_values_shapes[i];
-    if (op_shape.rank() != 2) {
+    if (op_shape.rank() < 2) {
       return builder->ReportError(
-          InvalidArgument("Only rank 2 operands are supported for now"));
+          InvalidArgument("Only rank 2+ operands are supported for now"));
     }
     if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
                                                   op_shape)) {
@@ -131,9 +131,9 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 
     op_types.push_back(op_shape.element_type());
   }
-  if (reduction_dim < 0 || reduction_dim >= 2) {
-    return builder->ReportError(
-        InvalidArgument("reduction_dim should range in [0,2)"));
+  if (reduction_dim < 0 || reduction_dim >= operands_shapes[0].rank()) {
+    return builder->ReportError(InvalidArgument(
+        "reduction_dim should range in [0,%d)", operands_shapes[0].rank()));
   }
 
   auto reduction_computation =
