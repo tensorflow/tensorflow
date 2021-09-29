@@ -51,12 +51,17 @@ class TfrtGraphExecutionState {
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
   static StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
-      tensorflow::GraphDef graph_def, const FallbackState& fallback_state);
+      tensorflow::GraphDef graph_def, const FallbackState& fallback_state,
+      bool run_placer_grappler_on_nested_functions = false);
 
   // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
-  explicit TfrtGraphExecutionState(
-      std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state)
-      : graph_execution_state_(std::move(graph_execution_state)) {}
+  TfrtGraphExecutionState(
+      std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state,
+      const FallbackState& fallback_state,
+      bool run_placer_grappler_on_functions)
+      : graph_execution_state_(std::move(graph_execution_state)),
+        fallback_state_(fallback_state),
+        run_placer_grappler_on_functions_(run_placer_grappler_on_functions) {}
 
   // Creates an optimized graph by pruning with `graph_import_config` and
   // best-effort Grappler run.
@@ -81,6 +86,8 @@ class TfrtGraphExecutionState {
       const tensorflow::BuildGraphOptions& build_graph_options);
 
   std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_;
+  const FallbackState& fallback_state_;
+  bool run_placer_grappler_on_functions_;
 };
 
 // Prunes the `graph_def` using the feed/fetch nodes specified in
