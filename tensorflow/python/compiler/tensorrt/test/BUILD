@@ -73,6 +73,7 @@ cuda_py_tests(
         "quantization_test.py",
         "rank_two_test.py",
         "reshape_transpose_test.py",
+        "resize_test.py",
         "tf_function_test.py",
         "topk_test.py",
         "trt_engine_op_shape_test.py",

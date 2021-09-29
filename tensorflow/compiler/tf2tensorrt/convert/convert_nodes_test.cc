@@ -7970,16 +7970,18 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
   }
 
   std::vector<ResizeTestParams> params{
-      {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
-       /*output_resize_dims=*/{2, 3},  // H_out, W_out
-       /*input_values=*/{2.0f, -1.0f},
+      {/*input_dims=*/{1, 2, 2, 1},    // N, H, W, C
+       /*output_resize_dims=*/{4, 4},  // H_out, W_out
+       /*input_values=*/{0.0f, 1.0f, 2.0f, 3.0f},
        /*size_as_tensor=*/false,
        /*align_corners=*/false,
-       /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
+       /*expected_output_dims=*/{1, 4, 4, 1},  // N, H, W, C
        /*expected_nearest_output_values=*/
-       {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
+       {0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+        2.0f, 2.0f, 3.0f, 3.0f},
        /*expected_bilinear_output_values=*/
-       {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f},
+       {0.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.5f, 2.0f, 2.0f, 2.0f, 2.5f, 3.0f, 3.0f,
+        2.0f, 2.5f, 3.0f, 3.0f},
        /*status=*/Status::OK()},
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
@@ -8010,15 +8012,15 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
 
   for (auto p : params) {
     TestConvertResize<ops::ResizeNearestNeighbor>(this, p);
-
-// This use case is not supported as of TRT version 7.1
-#if IS_TRT_VERSION_GE(7, 1, 0, 0)
-    if (!p.align_corners) {
-      p.status = errors::InvalidArgument(
-          "Cannot Convert Bilinear Resize when align_corners=False");
+    // Dynamic batch mode is still supported with the (TRT7,
+    // align_corners=false, bilinear) workaround, but by default the fixtures
+    // makes all dims dynamic.
+    if (!p.align_corners && trt_mode_ == TrtTestMode::kDynamicShape &&
+        !IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      p.status = errors::Unimplemented(
+          "parameter combination of (mode=bilinear, align "
+          "corners=False, dynamic spatial shape) is unsupported");
     }
-#endif
-
     TestConvertResize<ops::ResizeBilinear>(this, p);
   }
 }

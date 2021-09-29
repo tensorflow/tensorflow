@@ -16,14 +16,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_OPS_LAYER_UTILS_H_
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#include <functional>
+#include <numeric>
 #include <type_traits>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/weights.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "third_party/tensorrt/NvInfer.h"
+#include "third_party/tensorrt/NvInferRuntime.h"
 #include "third_party/tensorrt/NvInferRuntimeCommon.h"
 
 namespace tensorflow {
@@ -220,6 +224,112 @@ class TRTNetworkBuilder {
     return layer;
   }
 
+  // Adds a resize layer to the network.
+  StatusOr<nvinfer1::IResizeLayer*> Resize(nvinfer1::ITensor* input,
+                                           const nvinfer1::ResizeMode mode,
+                                           nvinfer1::Dims size,
+                                           bool align_corners) {
+    TRT_ENSURE(input);
+    nvinfer1::IResizeLayer* layer = network_->addResize(*input);
+    TRT_ENSURE(layer);
+    layer->setResizeMode(mode);
+    layer->setAlignCorners(align_corners);
+    layer->setOutputDimensions(size);
+    return layer;
+  }
+
+  // Adds a Conv2D layer to the network.
+  StatusOr<nvinfer1::IConvolutionLayer*> Conv2D(
+      nvinfer1::ITensor* input, const int output_channels,
+      const int square_kernel_size, const std::array<int, 2>& padding,
+      const std::vector<float>& weights,
+      absl::optional<int> num_groups = absl::nullopt) {
+    nvinfer1::Dims input_dims = input->getDimensions();
+    const int in_channels = input_dims.d[input_dims.nbDims - 3];
+    if (num_groups) {
+      TRT_ENSURE(in_channels % *num_groups == 0 && *num_groups <= in_channels);
+    } else {
+      num_groups = 1;
+    }
+    const nvinfer1::Weights empty_weights{nvinfer1::DataType::kFLOAT, nullptr,
+                                          0};
+    const nvinfer1::Dims kernel_size{2,
+                                     {square_kernel_size, square_kernel_size}};
+    TRT_ENSURE(std::accumulate(
+                   kernel_size.d, kernel_size.d + kernel_size.nbDims, 1,
+                   std::multiplies<int>()) == static_cast<int>(weights.size()));
+    StatusOr<TRT_ShapedWeights> kernel_weights =
+        weight_store_->GetTempWeights(nvinfer1::DataType::kFLOAT, kernel_size);
+    TRT_ENSURE_OK(kernel_weights);
+    std::copy(weights.begin(), weights.end(),
+              kernel_weights->GetPointer<float>());
+    nvinfer1::IConvolutionLayer* layer = network_->addConvolutionNd(
+        *input, output_channels, kernel_size, kernel_weights->GetTrtWeights(),
+        /*biasWeights=*/empty_weights);
+    TRT_ENSURE(layer);
+    layer->setPaddingNd(nvinfer1::Dims{2, {padding[0], padding[1]}});
+    layer->setNbGroups(*num_groups);
+    return layer;
+  }
+
+  template <size_t SpatialDims>
+  struct TransposedConvolutionSpec {
+    std::array<int64_t, SpatialDims> kernel_size;
+    std::array<int64_t, SpatialDims> upper_padding;
+    std::array<int64_t, SpatialDims> lower_padding;
+    std::array<int64_t, SpatialDims> stride;
+  };
+
+  template <size_t SpatialDims>
+  StatusOr<nvinfer1::IDeconvolutionLayer*> TransposedConvolution(
+      nvinfer1::ITensor* input, const int output_channels,
+      const TransposedConvolutionSpec<SpatialDims>& spec,
+      const std::vector<float>& weights,
+      absl::optional<int> num_groups = absl::nullopt) {
+    nvinfer1::Dims input_dims = input->getDimensions();
+    const int in_channels = input_dims.d[input_dims.nbDims - 3];
+    if (num_groups) {
+      TRT_ENSURE(in_channels % *num_groups == 0 && *num_groups <= in_channels);
+    } else {
+      num_groups = 1;
+    }
+    const nvinfer1::Weights empty_weights{nvinfer1::DataType::kFLOAT, nullptr,
+                                          0};
+
+    auto make_dims =
+        [](const std::array<int64_t, SpatialDims>& data) -> nvinfer1::Dims {
+      nvinfer1::Dims dims{static_cast<int32_t>(data.size()), {}};
+      std::copy(data.begin(), data.end(), dims.d);
+      return dims;
+    };
+
+    const nvinfer1::Dims kernel_size{
+        4,
+        {output_channels, in_channels / (*num_groups),
+         static_cast<int32_t>(spec.kernel_size[0]),
+         static_cast<int32_t>(spec.kernel_size[1])}};
+
+    StatusOr<TRT_ShapedWeights> kernel_weights =
+        weight_store_->GetTempWeights(nvinfer1::DataType::kFLOAT, kernel_size);
+    TRT_ENSURE_OK(kernel_weights);
+    TRT_ENSURE(std::accumulate(
+                   kernel_size.d, kernel_size.d + kernel_size.nbDims, 1,
+                   std::multiplies<>()) == static_cast<int>(weights.size()));
+    std::copy(weights.begin(), weights.end(),
+              kernel_weights->GetPointer<float>());
+
+    nvinfer1::IDeconvolutionLayer* layer = network_->addDeconvolutionNd(
+        *input, output_channels, make_dims(spec.kernel_size),
+        kernel_weights->GetTrtWeights(),
+        /*biasWeights=*/empty_weights);
+    TRT_ENSURE(layer);
+    layer->setStrideNd(make_dims(spec.stride));
+    layer->setPostPadding(make_dims(spec.lower_padding));
+    layer->setPrePadding(make_dims(spec.upper_padding));
+    layer->setNbGroups(*num_groups);
+    return layer;
+  }
+
   // Adds a Constant layer whose output is a TensorRT shape tensor. The shape
   // tensor's size and values correspond to dim's nbDims and d[], respectively.
   StatusOr<nvinfer1::IConstantLayer*> ConstantShape(
@@ -251,7 +361,7 @@ class TRTNetworkBuilder {
       const std::vector<int>& data) noexcept {
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
-    shape_dims.d[0] = data.size();
+    shape_dims.d[0] = static_cast<int32_t>(data.size());
     StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
     TRT_ENSURE_OK(const_weights);
@@ -337,6 +447,53 @@ class TRTNetworkBuilder {
     return layer;
   }
 
+  StatusOr<nvinfer1::ITensor*> MaybeConstantExtendSides2D(
+      nvinfer1::ITensor* input, const std::array<int64_t, 2>& extension_size) {
+    TRT_ENSURE(input);
+    TRT_ENSURE(input->getDimensions().nbDims >= 3);
+    auto make_slice = [](const nvinfer1::Dims& input_dims, int axis) {
+      const int num_dims = input_dims.nbDims;
+      nvinfer1::Dims begin{num_dims, {}};
+      nvinfer1::Dims stride{num_dims, {}};
+      nvinfer1::Dims size{num_dims, {}};
+      for (int i = 0; i < num_dims; i++) {
+        begin.d[i] = (i == axis ? input_dims.d[i] - 1 : 0);
+        size.d[i] = (i == axis ? 1 : input_dims.d[i]);
+        stride.d[i] = 1;
+      }
+      return std::make_tuple(begin, size, stride);
+    };
+
+    for (int i = 0; i < 2; i++) {
+      if (extension_size[i] > 0) {
+        const nvinfer1::Dims input_dims = input->getDimensions();
+        auto slice_spec = make_slice(input_dims, input_dims.nbDims - 2 + i);
+        StatusOr<nvinfer1::ISliceLayer*> sliced =
+            this->Slice(input, std::get<0>(slice_spec), std::get<1>(slice_spec),
+                        std::get<2>(slice_spec));
+        TRT_ENSURE_PTR_OK(sliced);
+        StatusOr<nvinfer1::IConcatenationLayer*> concat = this->Concat(
+            {input, (*sliced)->getOutput(0)}, input_dims.nbDims - 2 + i);
+        TRT_ENSURE_PTR_OK(concat);
+        input = (*concat)->getOutput(0);
+      }
+    }
+    return input;
+  }
+
+  // Adds a TensorRT Concatenate operation to the network.
+  StatusOr<nvinfer1::IConcatenationLayer*> Concat(
+      const std::vector<nvinfer1::ITensor*>& inputs, const int axis) {
+    for (nvinfer1::ITensor* input : inputs) {
+      TRT_ENSURE(input);
+    }
+    nvinfer1::IConcatenationLayer* layer = network_->addConcatenation(
+        inputs.data(), static_cast<int32_t>(inputs.size()));
+    TRT_ENSURE(layer);
+    layer->setAxis(axis);
+    return layer;
+  }
+
   // Adds a TensorRT Shape operation, which determines the runtime shape of the
   // input tensor, to the network.
   StatusOr<nvinfer1::IShapeLayer*> Shape(nvinfer1::ITensor* input) {
@@ -375,7 +532,7 @@ class TRTNetworkBuilder {
     std::vector<int> indices_all(input_nb_dims, input_nb_dims);
     for (auto idx : indices) {
       TRT_ENSURE(idx < input_nb_dims);
-      indices_all[idx] = idx;
+      indices_all[idx] = static_cast<int>(idx);
     }
 
     StatusOr<nvinfer1::IConstantLayer*> indices_result =
@@ -543,6 +700,29 @@ class TRTNetworkBuilder {
                                              int input_idx = 0) {
     return FindProducerOf(layer->getInput(input_idx));
   }
+
+  // Creates a Gather operation on the shape of the input tensor.
+  StatusOr<nvinfer1::IGatherLayer*> GatherDims(
+      nvinfer1::ITensor* input, const std::vector<int>& indices) {
+    TRT_ENSURE(input);
+    TRT_ENSURE(indices.size() <= nvinfer1::Dims::MAX_DIMS);
+
+    // Get the runtime shape of input;
+    StatusOr<nvinfer1::IShapeLayer*> shape_layer = this->Shape(input);
+    TRT_ENSURE_PTR_OK(shape_layer);
+    nvinfer1::ITensor* runtime_shape = (*shape_layer)->getOutput(0);
+    StatusOr<nvinfer1::IConstantLayer*> indices_result =
+        this->Constant(indices);
+    TRT_ENSURE_PTR_OK(indices_result);
+    nvinfer1::ITensor* gather_indices = (*indices_result)->getOutput(0);
+    TRT_ENSURE(gather_indices->getType() == nvinfer1::DataType::kINT32);
+
+    // Finally, gather the indices from the input.
+    nvinfer1::IGatherLayer* gather =
+        network_->addGather(*runtime_shape, *gather_indices, 0);
+    TRT_ENSURE(gather);
+    return gather;
+  };
 
  private:
   nvinfer1::INetworkDefinition* const network_;

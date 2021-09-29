@@ -525,18 +525,21 @@ StatusOr<ITensorProxyPtr> ConcatenateTensors(
     OpConverterParams* params, const std::vector<ITensorProxyPtr> input_tensors,
     absl::optional<int> op_instance = absl::nullopt) {
   std::vector<nvinfer1::ITensor*> trt_input_tensors;
+  trt_input_tensors.reserve(input_tensors.size());
   for (const auto& t : input_tensors) {
     trt_input_tensors.push_back(t->trt_tensor());
   }
-  nvinfer1::IConcatenationLayer* layer =
-      params->converter->network()->addConcatenation(
-          static_cast<nvinfer1::ITensor* const*>(trt_input_tensors.data()),
-          input_tensors.size());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.op());
-  params->converter->SetLayerName(layer, params->node_def.name(),
+
+  StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
+      params->converter->network(), params->weight_store);
+  TRT_ENSURE_OK(builder);
+
+  StatusOr<nvinfer1::IConcatenationLayer*> layer =
+      builder->Concat(trt_input_tensors, /*axis=*/0);
+  TRT_ENSURE_PTR_OK(layer);
+  params->converter->SetLayerName(*layer, params->node_def.name(),
                                   "concat_shapes", op_instance);
-  layer->setAxis(0);
-  return ITensorProxyPtr(layer->getOutput(0));
+  return ITensorProxyPtr((*layer)->getOutput(0));
 }
 
 // Convert an axis from TF format to TRT format while validating. TF format
@@ -6409,158 +6412,6 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
 #endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
-Status ConvertResize(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(
-      *params,
-      {{"input", TrtInputArg::kTensor}, {"size", TrtInputArg::kBoth}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
-
-  // Get input tensor.
-  ITensorProxyPtr inputs_tensor = inputs.at(0).tensor();
-  TFTRT_RETURN_ERROR_IF_NULLPTR(inputs_tensor, params->node_def.name());
-
-  // Check output size. It must constain two values i.e. [H_out, W_out]
-  const bool const_output_size = inputs.at(1).is_weights();
-  if (const_output_size) {
-    // Output size is given as a constant.
-    if (inputs.at(1).weights().count() != 2) {
-      return errors::Unimplemented("Resize requires 2D values for the size");
-    }
-  } else {
-    // Output size is given as a tensor, possibly as the result of shape
-    // calculation ops in the graph.
-    if (params->use_implicit_batch) {
-      return errors::Unimplemented(
-          "Resize requires constant size in implicit batch mode");
-    }
-    TF_RETURN_IF_ERROR(ExpectShapeTensor(inputs.at(1)));
-    if (inputs.at(1).tensor()->getDimensions().d[0] != 2) {
-      return errors::Unimplemented("Resize requires 2D values for the size");
-    }
-  }
-
-  // Verify and consume node attributes.
-  bool align_corners;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(AttrSlice(node_def), "align_corners", &align_corners));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
-  // Verify resize mode. Initialize resize mode if supported.
-  nvinfer1::ResizeMode resize_mode;
-  if (node_def.op() == "ResizeBilinear") {
-#if IS_TRT_VERSION_GE(7, 1, 0, 0)
-    if (!align_corners) {
-      return errors::InvalidArgument(
-          "Cannot Convert Bilinear Resize when align_corners=False");
-    }
-#endif
-    resize_mode = nvinfer1::ResizeMode::kLINEAR;
-  } else if (node_def.op() == "ResizeNearestNeighbor") {
-    resize_mode = nvinfer1::ResizeMode::kNEAREST;
-  } else {
-    return errors::Unimplemented(node_def.op(), " is not yet implemented");
-  }
-
-  // return after validation if only validation is requested.
-  if (params->validation_only) return Status::OK();
-
-  // Transpose tensor from NHWC to NCHW format.
-  TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      inputs_tensor, {0, 3, 1, 2}, &inputs_tensor, node_def, "to_NCHW"));
-
-  // Calculate the output shape as static dimensions or a shape tensor:
-  // Given input shape [N, C, H, W] and output size [H_out, W_out],
-  // output shape equals [N, C, H_out, W_out].
-  nvinfer1::Dims output_shape_dims;
-  ITensorProxyPtr output_shape_tensor;
-  const bool static_output_shape =
-      HasStaticShape(inputs_tensor->getDimensions()) && const_output_size;
-  if (static_output_shape) {
-    // If the output shape can be fully determined at build time, calculate it
-    // as a set of dimensions.
-    output_shape_dims.nbDims = inputs_tensor->getDimensions().nbDims;
-    for (int i = 0; i < output_shape_dims.nbDims; ++i) {
-      output_shape_dims.d[i] = inputs_tensor->getDimensions().d[i];
-    }
-    const int* weights_ptr = inputs.at(1).weights().GetPointer<int>();
-    output_shape_dims.d[output_shape_dims.nbDims - 2] = weights_ptr[0];
-    output_shape_dims.d[output_shape_dims.nbDims - 1] = weights_ptr[1];
-  } else {
-    // Otherwise, build the output shape as a shape tensor that will be computed
-    // at run time.
-    // The batch size and num of channels will be copied from the input shape.
-    ITensorProxyPtr shape = params->converter->network()
-                                ->addShape(*inputs_tensor->trt_tensor())
-                                ->getOutput(0);
-    ITensorProxyPtr batch_size =
-        params->converter->network()
-            ->addSlice(*shape->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
-            ->getOutput(0);
-    ITensorProxyPtr num_channels =
-        params->converter->network()
-            ->addSlice(*shape->trt_tensor(), {1, {1}}, {1, {1}}, {1, {1}})
-            ->getOutput(0);
-
-    // The height and width will be obtained from the requested output size.
-    ITensorProxyPtr height, width;
-    if (const_output_size) {
-      // If the output size is constant, the height and width dimensions can be
-      // created as constants from the size values.
-      const int* weights_ptr = inputs.at(1).weights().GetPointer<int>();
-      TF_RETURN_IF_ERROR(CreateScalarConstant(params, weights_ptr[0], &height));
-      TF_RETURN_IF_ERROR(CreateScalarConstant(params, weights_ptr[1], &width));
-    } else {
-      // Otherwise, the size is a tensor which can be sliced, and each element
-      // used directly as the output height and width dimensions.
-      ITensorProxyPtr size = inputs.at(1).tensor();
-      height = params->converter->network()
-                   ->addSlice(*size->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
-                   ->getOutput(0);
-      width = params->converter->network()
-                  ->addSlice(*size->trt_tensor(), {1, {1}}, {1, {1}}, {1, {1}})
-                  ->getOutput(0);
-    }
-
-    StatusOr<ITensorProxyPtr> result = ConcatenateTensors(
-        params, {batch_size, num_channels, height, width}, 0);
-    TF_RETURN_IF_ERROR(result.status());
-    output_shape_tensor = result.ValueOrDie();
-  }
-
-  // Add resize layer.
-  nvinfer1::IResizeLayer* layer =
-      params->converter->network()->addResize(*inputs_tensor->trt_tensor());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-
-  // Set layer parameters.
-  layer->setResizeMode(resize_mode);
-  layer->setAlignCorners(align_corners);
-
-  // Set output shape.
-  if (static_output_shape) {
-    // If the shapes are fully known at build time, pass the static output shape
-    // to the resize layer as expected output dimensions.
-    layer->setOutputDimensions(output_shape_dims);
-  } else {
-    // Otherwise, pass the output shape tensor to the resize layer as an input.
-    layer->setInput(1, *output_shape_tensor->trt_tensor());
-  }
-
-  // Get output tensor. Transpose it from NCHW to NHWC.
-  ITensorProxyPtr output = layer->getOutput(0);
-
-  TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      output, {0, 2, 3, 1}, &output, node_def, "to_NHWC"));
-  params->outputs->push_back(TRT_TensorOrWeights(output));
-  // Success
-  return Status::OK();
-}  // ConvertResize
-
 Status ConvertAddN(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -6644,8 +6495,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReshape, "Reshape");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3D, "Conv3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3DBackpropInputV2,
                                   "Conv3DBackpropInputV2");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertResize, "ResizeBilinear");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertResize, "ResizeNearestNeighbor");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "AvgPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "MaxPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertShape, "Shape");

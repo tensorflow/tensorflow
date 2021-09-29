@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_OP_CONVERTER_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_OP_CONVERTER_H_
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include <memory>
