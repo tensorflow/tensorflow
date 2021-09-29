@@ -26,10 +26,13 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import trace
 
 
+@test_util.with_eager_op_as_function
 class ProfilerTest(test_util.TensorFlowTestCase):
 
+  # TODO(b/201538012): Revert the host_tracer_level to 2 once the tracing logic
+  #                    between eager and graph mode execution are unified.
   def test_profile(self):
-    profiler.start()
+    profiler.start(options={'host_tracer_level': 3})
     with trace.Trace('three_times_five'):
       three = constant_op.constant(3)
       five = constant_op.constant(5)
