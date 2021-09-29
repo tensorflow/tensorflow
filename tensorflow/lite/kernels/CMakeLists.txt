@@ -61,20 +61,20 @@ build_flatbuffers(
 )
 
 set(DELEGATE_PROVIDERS_SUPP
-  ${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc
-  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/delegates/external/external_delegate.cc
+  ${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
 )
 
 set(DELEGATE_PROVIDERS
   ${DELEGATE_PROVIDERS_SUPP}
-  ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/coreml_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/hexagon_delegate_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
 )
 
