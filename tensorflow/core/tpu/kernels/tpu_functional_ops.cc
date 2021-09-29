@@ -353,16 +353,12 @@ int64_t RemoveDescendantNodeOfArg(
 
 uint64 GetInputHash(OpKernelContext* ctx) {
   uint64 input_hash = 0;  // initialization for determinism.
-  // Use the input shape to compute hash.
-  // TODO(chiachenc): Handle collisions between programs with identical inputs
+  // Use the number of elements to compute hash.
+  // TODO(chiachenc): use fhe full shape to compute the hash.
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     VLOG(4) << "InputHash, combine input " << i
-            << ", Shape:" << ctx->input(i).shape();
-    input_hash = Hash64Combine(input_hash, ctx->input(i).dtype());
-    input_hash = Hash64Combine(input_hash, ctx->input(i).dims());
-    for (int i = 0; i < ctx->input(i).dims(); ++i) {
-      input_hash = Hash64Combine(input_hash, ctx->input(i).dim_size(i));
-    }
+            << ", NumElements: " << ctx->input(i).NumElements();
+    input_hash = Hash64Combine(input_hash, ctx->input(i).NumElements());
   }
   return input_hash;
 }
