@@ -967,10 +967,15 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   }
 
   Value unquantized_bias = tfl_conv2d_op.bias();
+  Type bias_ety =
+      output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
+  if (unquantized_bias)
+    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv2d_op.input(),
-      tfl_conv2d_op.filter(), unquantized_bias, pad, stride, dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety),
+      tfl_conv2d_op.input(), tfl_conv2d_op.filter(), unquantized_bias, pad,
+      stride, dilation);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1104,9 +1109,10 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   }
 
   if (!zero_bias) return failure();
+  Type bias_ety = zero_bias->getType().cast<ShapedType>().getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv_op.input(),
+      rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv_op.input(),
       tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride, dilation,
       output_shape);
 
@@ -1227,11 +1233,15 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       rewriter.getI64ArrayAttr(a2_reshape_dims));
 
   Value unquantized_bias = tfl_conv2d_op.bias();
+  Type bias_ety =
+      output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
+  if (unquantized_bias)
+    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
 
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
-      rewriter, op->getLoc(), output_type, tfl_conv2d_op.input(),
-      a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride,
-      dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety),
+      tfl_conv2d_op.input(), a2_filter_reshape_op.getResult(), unquantized_bias,
+      pad, stride, dilation);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1320,7 +1330,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     // value. TOSA requires bias to be an array of output_channel_count values,
     // so create a constant of the appropriate number and type of zeros.
     SmallVector<int64_t, 1> bias_shape({filter_type.getShape()[0]});
-    RankedTensorType bias_type =
+    RankedTensorType new_bias_type =
         RankedTensorType::get(bias_shape, input_type.getElementType());
 
     DenseElementsAttr bias_attr;
@@ -1331,7 +1341,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
         bias_arr[i] = 0.0;
       }
       bias_attr =
-          DenseElementsAttr::get(bias_type, llvm::makeArrayRef(bias_arr));
+          DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     } else {
       SmallVector<int32_t> bias_arr(bias_shape[0]);
 
@@ -1339,18 +1349,21 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
         bias_arr[i] = 0;
       }
       bias_attr =
-          DenseElementsAttr::get(bias_type, llvm::makeArrayRef(bias_arr));
+          DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     }
     auto bias_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
-                                                   bias_type, bias_attr);
+                                                   new_bias_type, bias_attr);
     bias_val = bias_op.getResult();
+    bias_type = new_bias_type;
   } else {
     bias_val = tfl_fc_op.bias();
   }
 
+  Type bias_ety = bias_val.getType().cast<ShapedType>().getElementType();
+
   auto fc_op = CreateOpAndInfer<tosa::FullyConnectedOp>(
-      rewriter, op->getLoc(), output_type, input_val, tfl_fc_op.filter(),
-      bias_val);
+      rewriter, op->getLoc(), UnrankedTensorType::get(bias_ety), input_val,
+      tfl_fc_op.filter(), bias_val);
 
   Value fc_output;
   if (input_is_qtype) {
@@ -1358,6 +1371,17 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
                                          input_type, filter_type, output_type);
   } else {
     fc_output = fc_op.getResult();
+  }
+
+  // If we know the output rank, we need to ensure the output shape is correct.
+  ShapedType fc_type = fc_output.getType().cast<ShapedType>();
+  if (output_type.hasRank() && fc_type.getRank() != output_type.getRank()) {
+    llvm::SmallVector<int64_t> output_shape;
+
+    fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(fc_type.getElementType()), fc_output,
+        rewriter.getI64ArrayAttr(output_type.getShape()));
   }
 
   auto fused_activation_fn = tfl_fc_op.fused_activation_functionAttr();

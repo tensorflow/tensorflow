@@ -811,6 +811,54 @@ func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<
 
 // -----
 
+// CHECK-LABEL: @test_fullyconnected
+func @test_fullyconnected(%arg0: tensor<14x19xf32>, %arg1: tensor<28x19xf32>, %arg2: tensor<28xf32>) -> tensor<14x28xf32> {
+  // CHECK: "tosa.fully_connected"
+  // CHECK-SAME: tensor<14x19xf32>
+  // CHECK-SAME: tensor<28x19xf32>
+  // CHECK-SAME: tensor<28xf32>
+  // CHECK-SAME: tensor<14x28xf32>
+  %2 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<14x19xf32>, tensor<28x19xf32>, tensor<28xf32>) -> tensor<14x28xf32>
+  return %2 : tensor<14x28xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_fullyconnected_in_batch_dim
+func @test_fullyconnected_in_batch_dim(%arg0: tensor<1x14x19xf32>, %arg1: tensor<28x19xf32>, %arg2: tensor<28xf32>) -> tensor<14x28xf32> {
+  // CHECK: "tosa.reshape"
+  // CHECK-SAME: tensor<1x14x19xf32>
+  // CHECK-SAME: tensor<14x19xf32>
+  // CHECK: "tosa.fully_connected"
+  // CHECK-SAME: tensor<14x19xf32>
+  // CHECK-SAME: tensor<28x19xf32>
+  // CHECK-SAME: tensor<28xf32>
+  // CHECK-SAME: tensor<14x28xf32>
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x14x19xf32>, tensor<28x19xf32>, tensor<28xf32>) -> tensor<14x28xf32>
+  return %0 : tensor<14x28xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_fullyconnected_extra_dim
+func @test_fullyconnected_extra_dim(%arg0: tensor<1x14x19xf32>, %arg1: tensor<28x19xf32>, %arg2: tensor<28xf32>) -> tensor<1x14x28xf32> {
+  // CHECK: "tosa.reshape"
+  // CHECK-SAME: tensor<1x14x19xf32>
+  // CHECK-SAME: tensor<14x19xf32>
+  // CHECK: "tosa.fully_connected"
+  // CHECK-SAME: tensor<14x19xf32>
+  // CHECK-SAME: tensor<28x19xf32>
+  // CHECK-SAME: tensor<28xf32>
+  // CHECK-SAME: tensor<14x28xf32>
+  // CHECK: "tosa.reshape"
+  // CHECK-SAME: tensor<14x28xf32>
+  // CHECK-SAME: tensor<1x14x28xf32>
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x14x19xf32>, tensor<28x19xf32>, tensor<28xf32>) -> tensor<1x14x28xf32>
+  return %0 : tensor<1x14x28xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_add_scalar
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
