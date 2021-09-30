@@ -3378,15 +3378,18 @@ def sample_distorted_bounding_box_v2(image_size,
     bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
     the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
   """
   if seed:
     seed1, seed2 = random_seed.get_seed(seed)
   else:
     if config.is_op_determinism_enabled():
       raise ValueError(
-          'tf.image.sample_distorted_bounding_box requires a non-zero seed to '
-          'be passed in when determinism is enabled. Please pass in a non-zero '
-          'seed, e.g. by passing "seed=1".')
+          f'tf.image.sample_distorted_bounding_box requires a non-zero seed to '
+          f'be passed in when determinism is enabled, but got seed={seed}. '
+          f'Please pass in a non-zero seed, e.g. by passing "seed=1".')
     seed1, seed2 = (0, 0)
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
     return gen_image_ops.sample_distorted_bounding_box_v2(
@@ -3626,12 +3629,16 @@ def sample_distorted_bounding_box(image_size,
     bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
     the distorted bounding box.
       Provide as input to `tf.image.draw_bounding_boxes`.
+
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
   """
   if not seed and not seed2 and config.is_op_determinism_enabled():
     raise ValueError(
-        'tf.compat.v1.image.sample_distorted_bounding_box requires "seed" or '
-        '"seed2" to be non-zero when determinism is enabled. Please pass in '
-        'a non-zero seed, e.g. by passing "seed=1".')
+        f'tf.compat.v1.image.sample_distorted_bounding_box requires "seed" or '
+        f'"seed2" to be non-zero when determinism is enabled. Please pass in '
+        f'a non-zero seed, e.g. by passing "seed=1". Got seed={seed} and '
+        f"seed2={seed2}")
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
     return gen_image_ops.sample_distorted_bounding_box_v2(
         image_size,
