@@ -437,7 +437,7 @@ class IrEmitterUnnested : public IrEmitter {
                       absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64_t> reduced_output_dims,
                       absl::Span<const int64_t> tiled_param_ids,
-                      const KernelMappingScheme& mapping_scheme,
+                      const TilingScheme& tiling_scheme,
                       const LaunchDimensions& launch_dimensions);
 
   struct TilingKernelInfo {
@@ -451,7 +451,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
   TilingKernelInfo EmitTilingKernel(
-      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
+      const TilingScheme& tiling_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
   // Emits code to process up to
@@ -460,7 +460,7 @@ class IrEmitterUnnested : public IrEmitter {
   // element, `thread_id_y` and `thread_id_x` are the intra-tile coordinates for
   // the first element to process, and `index` is the index for the origin of
   // the tile. Information about tile_size_x/y and num_threads_x/y are stored in
-  // `mapping_scheme`. Emits bounds check to ensure that each processed element
+  // `tiling_scheme`. Emits bounds check to ensure that each processed element
   // is within the boundary defined by `tile_width` and `tile_height`.
   //
   // Pseudocode:
@@ -480,7 +480,7 @@ class IrEmitterUnnested : public IrEmitter {
   // }
   //
   void EmitTile(
-      const KernelMappingScheme& mapping_scheme,
+      const TilingScheme& tiling_scheme,
       const llvm_ir::IrArray::Index& tile_origin_index, const string& loop_name,
       KernelSupportLibrary* ksl, const ThreadIdInfo& thread_id_info,
       llvm::Value* tile_height, llvm::Value* tile_width,
@@ -494,9 +494,9 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::lmhlo::FusionOp fusion,
       absl::Span<const llvm_ir::IrArray> operand_arrays,
       absl::Span<const llvm_ir::IrArray> output_arrays,
-      const llvm_ir::IrArray::Index& index,
-      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
+      const llvm_ir::IrArray::Index& index, const TilingScheme& tiling_scheme,
+      llvm::Value* y_loc, llvm::Value* x_loc,
+      absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Creates accumulator alloca's, populates them with initial values, generates
   // __shared__ caches and returns the populated object.
