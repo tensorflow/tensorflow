@@ -15,13 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LmhloGpuAsyncConversionPass : FunctionPass<"lmhlo-to-gpu"> {
+def ConvertLmhloToGpuPass : FunctionPass<"lmhlo-to-gpu"> {
   let summary = "Convert lmhlo_gpu ops to tfrt_gpu dialect.";
   let description = [{
     Move lmhlo_gpu ops inside tfrt_gpu_conversion.execute ops and convert them
     to tfrt_gpu dialect.
   }];
-  let constructor = "createLmhloGpuAsyncConversionPass()";
+  let constructor = "createConvertLmhloToGpuPass()";
   let dependentDialects = [
     "::mlir::gpu::GPUDialect",
     "::tfrt::compiler::TFRTDialect",

@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -749,18 +750,13 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   // LHLO -> TFRT Dialect (gpu kernels)
   mlir::PassManager pm(mlir_module.getContext(),
                        mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
+  pm.addPass(mlir::createCanonicalizerPass());
   if (pm.run(mlir_module).failed()) {
     return InternalError(
         "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
-
-  // Perform DCE with empty pattern set.
-  if (failed(mlir::applyPatternsAndFoldGreedily(
-          mlir_module, mlir::RewritePatternSet(mlir_module.getContext())))) {
-    return InternalError("Failed to remove dead ops.");
   }
 
   // TFRT Dialect -> BEF

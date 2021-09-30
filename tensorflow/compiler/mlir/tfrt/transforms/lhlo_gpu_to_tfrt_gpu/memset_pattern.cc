@@ -13,8 +13,6 @@
 // limitations under the License.
 
 // Pattern to lower mlir::gpu::memset Ops to tfrt cuda dialect.
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memset_pattern.h"
-
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -45,8 +43,9 @@ struct MemsetRewritePattern
 
 }  // namespace
 
-void populateMemsetConversionPattern(RewritePatternSet& patterns) {
-  patterns.add<MemsetRewritePattern>(patterns.getContext());
+void populateMemsetConversionPattern(RewritePatternSet& patterns,
+                                     TypeConverter& converter) {
+  patterns.add<MemsetRewritePattern>(converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

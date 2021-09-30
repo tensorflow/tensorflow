@@ -18,8 +18,6 @@
 // Pattern to lower lmhlo collective ops to tfrt_gpu/xlir dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/ccl_pattern.h"
-
 #include <functional>
 #include <string>
 
@@ -311,13 +309,14 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
 
 }  // namespace
 
-void populateCclConversionPattern(RewritePatternSet& patterns) {
+void populateCclConversionPattern(RewritePatternSet& patterns,
+                                  TypeConverter& converter) {
   patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
                CclRewritePattern<lmhlo::AllReduceOp>,
                CclRewritePattern<lmhlo::ReduceScatterOp>,
                CclRewritePattern<lmhlo::AllToAllOp>,
                CclRewritePattern<lmhlo::CollectivePermuteOp>>(
-      patterns.getContext());
+      converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

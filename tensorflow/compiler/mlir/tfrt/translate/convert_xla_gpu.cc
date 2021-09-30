@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/translate/convert_xla_gpu.h"
 
+#include "mlir/Dialect/GPU/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/InitAllDialects.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/platform/errors.h"
@@ -55,18 +56,13 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
 
   // LHLO -> TFRT Dialect (gpu kernels)
   mlir::PassManager pm(&context, mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
+  pm.addPass(mlir::createCanonicalizerPass());
   if (pm.run(*module).failed()) {
     return errors::Internal(
         "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
-
-  // Perform DCE with empty pattern set.
-  if (failed(mlir::applyPatternsAndFoldGreedily(*module,
-                                                RewritePatternSet(&context)))) {
-    return errors::Internal("Failed to remove dead ops.");
   }
 
   // TFRT Dialect -> BEF

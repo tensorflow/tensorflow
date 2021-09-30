@@ -189,7 +189,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
 static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   mlir::PassManager pass_manager(module->getContext(),
                                  mlir::PassManager::Nesting::Implicit);
-  pass_manager.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pass_manager.addPass(tensorflow::createConvertLmhloToGpuPass());
   pass_manager.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pass_manager);
 

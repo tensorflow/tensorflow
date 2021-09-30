@@ -13,8 +13,6 @@
 // limitations under the License.
 
 // Pattern to lower gpu.memcpy ops to tfrt_gpu.mem.copy.
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/memcpy_pattern.h"
-
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -44,8 +42,9 @@ struct MemcpyRewritePattern
 
 }  // namespace
 
-void populateMemcpyConversionPattern(RewritePatternSet& patterns) {
-  patterns.add<MemcpyRewritePattern>(patterns.getContext());
+void populateMemcpyConversionPattern(RewritePatternSet& patterns,
+                                     TypeConverter& converter) {
+  patterns.add<MemcpyRewritePattern>(converter, patterns.getContext());
 }
 
 }  // namespace tensorflow
