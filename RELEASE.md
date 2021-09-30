@@ -249,6 +249,8 @@
         endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+    *   The saved_model_cli's `--input_examples` inputs are now restricted to
+        python literals to avoid code injection.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
