@@ -4884,82 +4884,70 @@ func @gatherNd_static(%arg0: tensor<2x4x128xf32>, %arg1: tensor<2x1xi32>) -> ten
 // -----
 
 // CHECK-LABEL: @gather_v2
-func @gather_v2(%arg0: tensor<16x2x3xf32>, %arg1: tensor<16x5xi32>) -> tensor<16x2x5xf32> {
-  // CHECK: "mhlo.torch_index_select"(%arg0, %arg1) {batch_dims = 1 : i64, dim = 2 : i64} : (tensor<16x2x3xf32>, tensor<16x5xi32>) -> tensor<16x2x5xf32>
-  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<16x2x3xf32>, tensor<16x5xi32>, tensor<1xi32>) -> tensor<16x2x5xf32>
+//  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
+func @gather_v2(%params: tensor<16x2x3xf32>, %indices: tensor<16x5xi32>) -> tensor<16x2x5xf32> {
+  //      CHECK: mhlo.torch_index_select
+  // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
+  // CHECK-SAME:   batch_dims = 1
+  // CHECK-SAME:   dim = 2
+  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<16x2x3xf32>, tensor<16x5xi32>, tensor<1xi32>) -> tensor<16x2x5xf32>
   return %1 : tensor<16x2x5xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @gather_v2_dynamic
-func @gather_v2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> tensor<*xf32> {
-  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
-  // CHECK: index_cast {{.*}} : index to i32
-  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
-  // CHECK: index_cast {{.*}} : index to i32
-  // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: mhlo.dynamic_gather
-  // CHECK-SAME:   dimension_numbers =
-  // CHECK-SAME:     offset_dims = [0, 1]
-  // CHECK-SAME:     collapsed_slice_dims = [2]
-  // CHECK-SAME:     start_index_map = [2]
-  // CHECK-SAME:     index_vector_dim = 2
-  // CHECK-SAME:   indices_are_sorted = false
-  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<*xf32>
+//  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
+func @gather_v2_dynamic(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi32>) -> tensor<*xf32> {
+  //      CHECK: mhlo.torch_index_select
+  // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
+  // CHECK-SAME:   batch_dims = 1
+  // CHECK-SAME:   dim = 2
+  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @gather_v2_dynamic_index_i64
-func @gather_v2_dynamic_index_i64(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi64>) -> tensor<*xf32> {
-  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
-  // CHECK: index_cast {{.*}} : index to i64
-  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
-  // CHECK: index_cast {{.*}} : index to i64
-  // CHECK: tensor.from_elements {{.*}} : tensor<3xi64>
-  // CHECK: mhlo.dynamic_gather
-  // CHECK-SAME:   dimension_numbers =
-  // CHECK-SAME:     offset_dims = [0, 1]
-  // CHECK-SAME:     collapsed_slice_dims = [2]
-  // CHECK-SAME:     start_index_map = [2]
-  // CHECK-SAME:     index_vector_dim = 2
-  // CHECK-SAME:   indices_are_sorted = false
-  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<*xf32>
+//  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
+func @gather_v2_dynamic_index_i64(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi64>) -> tensor<*xf32> {
+  //      CHECK: mhlo.torch_index_select
+  // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
+  // CHECK-SAME:   batch_dims = 1
+  // CHECK-SAME:   dim = 2
+  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @gather_v2_unranked
-func @gather_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> {
+func @gather_v2_unranked(%params: tensor<*xf32>, %indices: tensor<*xi32>) -> tensor<*xf32> {
   // CHECK: tf.GatherV2
-  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<*xf32>, tensor<*xi32>, tensor<1xi32>) -> tensor<*xf32>
+  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<*xf32>, tensor<*xi32>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @gather_v2_dynamic_shape
-func @gather_v2_dynamic_shape(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) -> tensor<?x2x5xf32> {
-  // CHECK: constant 0
-  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  // CHECK: tensor.dim {{.*}} : tensor<?x2x3xf32>
-  // CHECK: index_cast {{.*}} : index to i32
-  // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: mhlo.dynamic_gather
-  // CHECK-SAME:   dimension_numbers =
-  // CHECK-SAME:     offset_dims = [0, 1]
-  // CHECK-SAME:     collapsed_slice_dims = [2]
-  // CHECK-SAME:     start_index_map = [2]
-  // CHECK-SAME:     index_vector_dim = 2
-  // CHECK-SAME:   indices_are_sorted = false
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<1xi32>) -> tensor<?x2x5xf32>
+//  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
+//  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
+func @gather_v2_dynamic_shape(%params: tensor<?x2x3xf32>, %indices: tensor<?x5xi32>) -> tensor<?x2x5xf32> {
+  //      CHECK: mhlo.torch_index_select
+  // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
+  // CHECK-SAME:   batch_dims = 1
+  // CHECK-SAME:   dim = 2
+  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<1xi32>) -> tensor<?x2x5xf32>
   return %1 : tensor<?x2x5xf32>
 }
 

@@ -1105,95 +1105,6 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
   }
 };
 
-// Convert TF::GatherV2Op to mhlo::DynamicGatherOp
-class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
-  using OpRewritePattern<TF::GatherV2Op>::OpRewritePattern;
-  // TODO(disc): To recover static special case's performance with folding and
-  // canonicalization.
-  LogicalResult matchAndRewrite(TF::GatherV2Op op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value params = op.params();
-    // params and indices of GatherNdOp must be ranked
-    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
-    Value indices = op.indices();
-    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
-    if (!params_ty || !indices_ty) return failure();
-
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
-      return failure();
-
-    int64_t params_rank = params_ty.getRank();
-    int64_t indices_rank = indices_ty.getRank();
-
-    // axis
-    DenseIntElementsAttr axis_attr;
-    // axis must be const for GatherOp
-    if (!matchPattern(op.axis(), m_Constant(&axis_attr))) return failure();
-
-    int64_t axis = (*axis_attr.begin()).getSExtValue();
-    if (axis < 0) axis += params_rank;
-
-    // slice_sizes
-    SmallVector<int64_t, 4> slice_sizes;
-    slice_sizes.reserve(params_rank);
-    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
-      if (dim_idx == axis) {
-        slice_sizes.push_back(1);
-      } else {
-        // potentially dynamic
-        int64_t dim_size = params_ty.getDimSize(dim_idx);
-        slice_sizes.push_back(dim_size);
-      }
-    }
-    SmallVector<Value, 4> slice_sizes_vals;
-    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
-      if (dim_idx == axis) {
-        slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-            loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
-      } else {
-        int64_t dim_size = params_ty.getDimSize(dim_idx);
-        if (dim_size != ShapedType::kDynamicSize) {
-          slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-              loc,
-              rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
-        } else {
-          slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-              loc, rewriter.create<tensor::DimOp>(loc, params, dim_idx),
-              indices_ty.getElementType()));
-        }
-      }
-    }
-    Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-        loc, indices_ty.getElementType(), slice_sizes_vals);
-    // offset_dims
-    SmallVector<int64_t, 4> offset_dims;
-    for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
-      if (dim_idx < axis) {
-        offset_dims.push_back(dim_idx);
-      } else if (dim_idx >= axis + 1) {
-        offset_dims.push_back(dim_idx + indices_rank - 1);
-      }
-    }
-    // collapsed_slice_dims
-    SmallVector<int64_t, 4> collapsed_slice_dims(1, axis);
-    // start_index_map
-    SmallVector<int64_t, 4> start_index_map(1, axis);
-    // index_vector_dim
-    int64_t index_vector_dim = indices_rank;
-    auto dims_attr = GatherDimensionNumbersAttr::get(
-        rewriter.getContext(), offset_dims, collapsed_slice_dims,
-        start_index_map, index_vector_dim);
-
-    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
-        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
-        dims_attr);
-    return success();
-  }
-};
-
 // Conterts tf.Conv2D to mhlo.dynamic_conv.
 // TODO(disc): To recover static special case's performance with adding folding,
 // canonicalization func and removing ConvertConvOp.
@@ -7227,7 +7138,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertUnpackOpDynamic,
     ConvertSignOpDynamic,
     ConvertSigmoidGradOpDynamic,
-    ConvertGatherV2OpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
     ConvertGatherNdOpDynamic>(context);
