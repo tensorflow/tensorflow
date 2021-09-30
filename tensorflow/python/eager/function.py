@@ -36,6 +36,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import function_trace_type
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
@@ -3287,7 +3288,7 @@ class Function(object):
       # This reduces ambiguity, for example, when args contains a dict and
       # kwargs is empty.
       inputs = (args, kwargs)
-      input_signature = pywrap_tfe.TFE_Py_EncodeArg(
+      input_signature = function_trace_type.make_input_signature(
           inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
       hashable_input_signature = _make_input_signature_hashable(input_signature)
     else:

@@ -531,6 +531,18 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "function_trace_type_test",
+    size = "medium",
+    srcs = ["function_trace_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function_trace_type",
+        ":test",
+        "//tensorflow/python:array_ops",
+    ],
+)
+
 py_library(
     name = "test",
     srcs = ["test.py"],
@@ -601,6 +613,16 @@ py_library(
 )
 
 py_library(
+    name = "function_trace_type",
+    srcs = ["function_trace_type.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tf_session",
+    ],
+)
+
+py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -610,6 +632,7 @@ py_library(
         ":core",
         ":execute",
         ":forwardprop_util",
+        ":function_trace_type",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
