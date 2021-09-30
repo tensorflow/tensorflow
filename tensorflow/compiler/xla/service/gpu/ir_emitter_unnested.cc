@@ -1025,12 +1025,12 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
-    std::vector<BufferAllocation::Slice> inputs = {lhs, rhs};
+    std::vector<BufferAllocation::Slice> buffers = {lhs, rhs};
     if (bias.has_value()) {
-      inputs.push_back(bias.value());
+      buffers.push_back(bias.value());
     }
-    return CreateBefThunk(GetThunkInfo(op), op, inputs,
-                          std::vector<BufferAllocation::Slice>{output});
+    buffers.push_back(output);
+    return CreateBefThunk(GetThunkInfo(op), op, std::move(buffers));
   };
 
   auto make_gemm_thunk =
@@ -1529,10 +1529,17 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
                         values_to_non_optional_slices(custom_call.args()));
     TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> outputs,
                         values_to_non_optional_slices(custom_call.output()));
-    TF_ASSIGN_OR_RETURN(
-        thunk, CreateBefCustomCallThunk(GetThunkInfo(op), op, std::move(inputs),
-                                        std::move(outputs),
-                                        std::move(custom_call_target)));
+    std::vector<BufferAllocation::Slice> buffers;
+    buffers.reserve(inputs.size() + outputs.size());
+    for (const auto& buffer : inputs) {
+      buffers.push_back(buffer);
+    }
+    for (const auto& buffer : outputs) {
+      buffers.push_back(buffer);
+    }
+    TF_ASSIGN_OR_RETURN(thunk, CreateBefCustomCallThunk(
+                                   GetThunkInfo(op), op, std::move(buffers),
+                                   std::move(custom_call_target)));
   } else {
     thunk = absl::make_unique<CustomCallThunk>(
         GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
@@ -2939,10 +2946,11 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   } else {
     std::unique_ptr<Thunk> thunk;
     if (IsBefThunkEnabled()) {
-      TF_ASSIGN_OR_RETURN(
-          thunk, CreateBefCollectivePermuteThunk(
-                     GetThunkInfo(op), op, {source_slice}, {result_slice},
-                     replica_count, partition_count));
+      std::vector<BufferAllocation::Slice> buffers = {source_slice,
+                                                      result_slice};
+      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectivePermuteThunk(
+                                     GetThunkInfo(op), op, std::move(buffers),
+                                     replica_count, partition_count));
     } else {
       const NcclCollectivePermuteThunk::Buffer buffer = {
           /*element_count=*/ShapeUtil::ElementsIn(shape),
@@ -3010,13 +3018,16 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
                                 mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
                                 mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
                                 mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
-      std::vector<BufferAllocation::Slice> inputs, outputs;
+      std::vector<BufferAllocation::Slice> arg_buffers;
+      arg_buffers.reserve(buffers.size() * 2);
       for (const auto& buffer : buffers) {
-        inputs.push_back(buffer.source_buffer);
-        outputs.push_back(buffer.destination_buffer);
+        arg_buffers.push_back(buffer.source_buffer);
+      }
+      for (const auto& buffer : buffers) {
+        arg_buffers.push_back(buffer.destination_buffer);
       }
       TF_ASSIGN_OR_RETURN(
-          thunk, CreateBefThunk(GetThunkInfo(op), op, inputs, outputs));
+          thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(arg_buffers)));
     } else {
       thunk = absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                                /*buffers=*/std::move(buffers));
