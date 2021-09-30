@@ -33,8 +33,6 @@ cc_library(
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "gpu_passes.cc",
-        "memcpy_pattern.cc",
-        "memset_pattern.cc",
     ],
     hdrs = [
         "gpu_passes.h",

@@ -43,8 +43,6 @@ namespace tensorflow {
 void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
-void populateMemcpyConversionPattern(RewritePatternSet&, TypeConverter&);
-void populateMemsetConversionPattern(RewritePatternSet&, TypeConverter&);
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h.inc"
@@ -59,29 +57,14 @@ struct ConvertLmhloToGpuPass
 
 }  // namespace
 
-static Value MaterializeCast(OpBuilder& builder, Type type, ValueRange values,
-                             Location loc) {
-  auto cast_op = builder.create<UnrealizedConversionCastOp>(loc, type, values);
-  return cast_op.getResult(0);
-}
-
 void ConvertLmhloToGpuPass::runOnFunction() {
   auto* context = &getContext();
-
-  TypeConverter converter;
-  converter.addConversion([](Type type) { return type; });
-  auto buffer_type = tfrt::gpu::BufferType::get(context);
-  converter.addConversion([&](BaseMemRefType) { return buffer_type; });
-  converter.addArgumentMaterialization(MaterializeCast);
-  converter.addSourceMaterialization(MaterializeCast);
-  converter.addTargetMaterialization(MaterializeCast);
+  TypeConverter converter = tfrt::gpu::createMemrefToTfrtGpuConverter();
 
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
-  populateMemcpyConversionPattern(patterns, converter);
-  populateMemsetConversionPattern(patterns, converter);
   populateFuncOpTypeConversionPattern(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
 
@@ -90,8 +73,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   // and stream, which the wrapper op provides as block arguments). On the other
   // hand, ops which lower to the gpu dialect do not need to be wrapped.
   ConversionTarget wrap_target(*context);
-  wrap_target
-      .addLegalDialect<lmhlo_gpu::LmhloGpuDialect, mlir::gpu::GPUDialect>();
+  wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
   wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
                          lmhlo::ReduceScatterOp, lmhlo::AllToAllOp,
                          lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp>();
