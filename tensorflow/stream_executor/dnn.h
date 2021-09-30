@@ -929,12 +929,12 @@ class AlgorithmConfig {
   void set_plan(std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
     plan_ = std::move(plan);
   }
-  const dnn::ConvolveExecutionPlan* get_plan() { return plan_.get(); }
+  const dnn::ConvolveExecutionPlan* get_plan() const { return plan_.get(); }
   void set_plan_no_scratch(
       std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
     plan_no_scratch_ = std::move(plan);
   }
-  const dnn::ConvolveExecutionPlan* get_plan_no_scratch() {
+  const dnn::ConvolveExecutionPlan* get_plan_no_scratch() const {
     return plan_no_scratch_.get();
   }
 

@@ -5041,38 +5041,13 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
     const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemoryBase scratch_memory,
+    const dnn::ConvolveExecutionPlan& execution_plan,
     dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  absl::optional<dnn::AlgorithmDesc> plan_or = algorithm_config.algorithm();
-  absl::optional<dnn::AlgorithmDesc> plan_no_scratch_or =
-      algorithm_config.algorithm_no_scratch();
-
-  if (!plan_or) {
-    return port::InvalidArgumentError(
-        "DoConvolveWithExecutionPlan called with no execution plan.");
-  }
-
-  size_t workspace_size = algorithm_config.scratch_size().value_or(0);
-  dnn::AlgorithmDesc selected_plan = *plan_or;
-
-  DeviceMemory<uint8> scratch_memory;
-  if (workspace_size > 0) {
-    auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
-    if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
-    } else if (plan_no_scratch_or.has_value()) {
-      selected_plan = {plan_no_scratch_or->exec_plan_id(),
-                       plan_no_scratch_or->exec_plan_desc()};
-    } else {
-      return port::Status(port::error::UNKNOWN,
-                          "CUDNN failed to allocate the scratch space for the "
-                          "plan or to find a working no-scratch plan.");
-    }
-  }
+  size_t workspace_size = execution_plan.getWorkspaceSize();
 
   void* data_ptrs[] = {
       conv_input_data.opaque(), output_data.opaque(), filter_data.opaque(),
@@ -5086,8 +5061,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(variantPack);
 
-  VLOG(4) << "\nDo fused convolution with plan tag: "
-          << selected_plan.exec_plan_id()
+  VLOG(4) << "\nDo fused convolution with plan tag: " << execution_plan.getTag()
           << "\nWorkspace size in bytes: " << workspace_size
           << "\nVariantPack: " << variantPack.describe();
 
@@ -5105,10 +5079,10 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
   }
 
   cudnnStatus_t status =
-      cudnnBackendExecute(cudnn.handle(), selected_plan.exec_plan_desc(),
+      cudnnBackendExecute(cudnn.handle(), execution_plan.get_raw_desc(),
                           variantPack.get_raw_desc());
   if (status != CUDNN_STATUS_SUCCESS || !is_profiling) {
-    VLOG(4) << "conv with plan " << selected_plan.exec_plan_id()
+    VLOG(4) << "conv with plan " << execution_plan.getTag()
             << ", workspace_size=" << workspace_size << " -> "
             << ToString(status);
   }
@@ -5118,11 +5092,12 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
     if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
-    output_profile_result->set_algorithm(selected_plan);
+    output_profile_result->set_algorithm(
+        {execution_plan.getTag(), execution_plan.get_raw_desc()});
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());
-    VLOG(4) << "conv with plan " << selected_plan.exec_plan_id()
+    VLOG(4) << "conv with plan " << execution_plan.getTag()
             << ", workspace_size=" << workspace_size << " -> "
             << ToString(status) << " in " << timer->GetElapsedMilliseconds()
             << "ms";
