@@ -15,10 +15,6 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from collections import OrderedDict
 import contextlib

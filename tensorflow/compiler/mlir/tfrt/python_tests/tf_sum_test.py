@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfReductionTest(googletest.TestCase):
+class TfReductionTest(test.TestCase):
 
   def test_2d_column_reduction(self):
     mlir_function = """
@@ -93,4 +93,4 @@ class TfReductionTest(googletest.TestCase):
     np.testing.assert_allclose(res, np.sum(arg0, axis=0), atol=1)
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

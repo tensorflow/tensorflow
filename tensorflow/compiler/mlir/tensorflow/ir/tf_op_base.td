@@ -430,6 +430,9 @@ def TF_Number : AnyTypeOf<
   [TF_Int, TF_Float, TF_Quantized, TF_Complex], "number">;
 def TF_NumberTensor : TensorOf<[TF_Number]>;
 
+def TF_NumberNotQuantizedTensor : TensorOf<
+  [TF_Float, TF_SInt, TF_Complex, TF_Uint8]>;
+
 def TF_NumberNotQuantizedOrStr :
   AnyTypeOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Str]>;
 def TF_NumberNotQuantizedOrStrTensor : TensorOf<[TF_NumberNotQuantizedOrStr]>;

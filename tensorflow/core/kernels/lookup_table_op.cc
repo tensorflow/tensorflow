@@ -1133,7 +1133,15 @@ REGISTER_KERNEL(tstring, tstring);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousMutableHashTable")                                        \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      AnonymousLookupTableOp<                                                  \
+          lookup::MutableHashTableOfScalars<key_dtype, value_dtype>,           \
+          key_dtype, value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
@@ -1167,7 +1175,15 @@ REGISTER_KERNEL(tstring, int64_t);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousMutableHashTableOfTensors")                               \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      AnonymousLookupTableOp<                                                  \
+          lookup::MutableHashTableOfTensors<key_dtype, value_dtype>,           \
+          key_dtype, value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
@@ -1186,21 +1202,29 @@ REGISTER_KERNEL(tstring, int64_t);
 #undef REGISTER_KERNEL
 
 // Register the MutableDenseHashTable op.
-#define REGISTER_KERNEL(key_dtype, value_dtype)                            \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MutableDenseHashTable")                                        \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<key_dtype>("key_dtype")                          \
-          .TypeConstraint<value_dtype>("value_dtype"),                     \
-      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)                               \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MutableDenseHashTableV2")                                      \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<key_dtype>("key_dtype")                          \
-          .TypeConstraint<value_dtype>("value_dtype"),                     \
-      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+#define REGISTER_KERNEL(key_dtype, value_dtype)                             \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("MutableDenseHashTable")                                         \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>,  \
+                    key_dtype, value_dtype>)                                \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("MutableDenseHashTableV2")                                       \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>,  \
+                    key_dtype, value_dtype>)                                \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("AnonymousMutableDenseHashTable")                                \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      AnonymousLookupTableOp<                                               \
+          lookup::MutableDenseHashTable<key_dtype, value_dtype>, key_dtype, \
+          value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);

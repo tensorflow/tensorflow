@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import structure

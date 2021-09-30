@@ -127,9 +127,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "input names.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get input names.");
+    }
     return nullptr;
   }
   size_t size = interpreter->inputs().size();
@@ -200,9 +202,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureKeys(
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "SignatureDef keys.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get SignatureDef keys.");
+    }
     return nullptr;
   }
   const auto& signature_keys = interpreter->signature_keys();
@@ -282,9 +286,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "output names.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get output names.");
+    }
     return nullptr;
   }
   size_t size = interpreter->outputs().size();
@@ -383,12 +389,23 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
     jclass xnnpack_delegate_class =
         env->FindClass("org/tensorflow/lite/XnnpackDelegate");
     if (xnnpack_delegate_class == nullptr) {
-      ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                     "Internal error: "
-                     "Can't find org/tensorflow/lite/XnnpackDelegate class");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                       "Internal error: "
+                       "Can't find org/tensorflow/lite/XnnpackDelegate class");
+      }
+      return 0;
     }
     jmethodID constructor =
         env->GetMethodID(xnnpack_delegate_class, "<init>", "(JJ)V");
+    if (constructor == nullptr) {
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                       "Internal error: Can't find "
+                       "org/tensorflow/lite/XnnpackDelegate constructor");
+      }
+      return 0;
+    }
     jobject xnnpack_delegate = env->NewObject(
         xnnpack_delegate_class, constructor, delegate_handle, delete_handle);
     return reinterpret_cast<jlong>(xnnpack_delegate);

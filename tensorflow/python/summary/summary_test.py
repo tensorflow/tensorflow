@@ -19,10 +19,6 @@ more complex summaries (e.g. audio, image).  Those test live separately in
 tensorflow/python/kernel_tests/summary_v1_*.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2

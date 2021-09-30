@@ -30,9 +30,13 @@ namespace tensorflow {
 // i.e. all nodes must have an assigned_device set.
 // `graph` is non-const because the underlying Partition() function transforms
 // the graph to correctly partition distributed control flow.
+// `get_tensor_name_attr` computes the "tensor_name" attr value of Send/Recv ops
+// inserted during partitioning. Use the default one if not set. It needs to be
+// thread safe if it's shared in multple threads.
 Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs);
+    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
+    std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
 
 // This function performs bookkeeping to track which `Arg` and `Retval` nodes
 // were placed on a particular device / graph.

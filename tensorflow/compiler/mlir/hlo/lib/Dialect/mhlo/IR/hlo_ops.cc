@@ -296,7 +296,8 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
-    for (auto it : llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
+    for (auto it :
+         llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
       int64_t map_index = std::get<0>(it);
       int64_t offset = std::get<1>(it).getSExtValue();
       slice_start[map_index] += offset;
@@ -4365,8 +4366,7 @@ Attribute MhloDialect::parseAttribute(DialectAsmParser& parser,
   if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
   {
     Attribute attr;
-    auto parse_result =
-        generatedAttributeParser(getContext(), parser, attr_tag, type, attr);
+    auto parse_result = generatedAttributeParser(parser, attr_tag, type, attr);
     if (parse_result.hasValue()) return attr;
   }
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
@@ -4464,8 +4464,7 @@ void ScatterDimensionNumbersAttr::print(
     printer << separator << "index_vector_dim = " << getIndexVectorDim();
   printer << ">";
 }
-Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
-                                             DialectAsmParser& parser,
+Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
                                              Type type) {
   if (failed(parser.parseLess())) return {};
   SmallVector<int64_t> update_window_dims;
@@ -4487,7 +4486,7 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
   }
 
   return ScatterDimensionNumbersAttr::get(
-      context, update_window_dims, inserted_window_dims,
+      parser.getContext(), update_window_dims, inserted_window_dims,
       scatter_dims_to_operand_dims, index_vector_dim);
 }
 
@@ -4522,8 +4521,7 @@ void GatherDimensionNumbersAttr::print(
   printer << ">";
 }
 
-Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
-                                            DialectAsmParser& parser,
+Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
                                             Type type) {
   if (failed(parser.parseLess())) return {};
 
@@ -4545,7 +4543,7 @@ Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
     return {};
   }
 
-  return GatherDimensionNumbersAttr::get(context, offset_dims,
+  return GatherDimensionNumbersAttr::get(parser.getContext(), offset_dims,
                                          collapsed_slice_dims, start_index_map,
                                          index_vector_dim);
 }
@@ -4584,8 +4582,7 @@ void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
   printer << ">";
 }
 
-Attribute DotDimensionNumbersAttr::parse(MLIRContext* context,
-                                         DialectAsmParser& parser, Type type) {
+Attribute DotDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
 
   SmallVector<int64_t> lhs_batching_dimensions;
@@ -4606,7 +4603,7 @@ Attribute DotDimensionNumbersAttr::parse(MLIRContext* context,
     return {};
   }
   return DotDimensionNumbersAttr::get(
-      context, lhs_batching_dimensions, rhs_batching_dimensions,
+      parser.getContext(), lhs_batching_dimensions, rhs_batching_dimensions,
       lhs_contracting_dimensions, rhs_contracting_dimensions);
 }
 

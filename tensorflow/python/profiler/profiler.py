@@ -14,10 +14,6 @@
 # ==============================================================================
 """profiler python module provides APIs to profile TensorFlow models.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.core.profiler.tfprof_log_pb2 import OpLogProto
 from tensorflow.core.profiler.tfprof_output_pb2 import AdviceProto

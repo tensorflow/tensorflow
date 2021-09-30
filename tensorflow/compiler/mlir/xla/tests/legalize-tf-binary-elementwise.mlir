@@ -101,6 +101,15 @@ func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @mod
+// CHLO-LABEL: func @mod
+func @mod(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NEXT:  mhlo.remainder %arg0, %arg1 : tensor<4xf32>
+  // CHLO: chlo.broadcast_remainder
+  %0 = "tf.Mod"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @mul
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  %0 = mhlo.multiply %arg0, %arg0 : tensor<2xi32>

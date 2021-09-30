@@ -14,10 +14,6 @@
 # ==============================================================================
 """Python API for random indexing into a dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.util import structure
 from tensorflow.python.ops import gen_experimental_dataset_ops
 

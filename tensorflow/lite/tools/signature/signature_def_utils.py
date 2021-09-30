@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utility functions related to SignatureDefs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.lite.tools.signature import _pywrap_signature_def_util_wrapper as signature_def_util
 

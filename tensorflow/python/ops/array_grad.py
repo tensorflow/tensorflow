@@ -14,10 +14,6 @@
 # ==============================================================================
 """Gradients for operators defined in array_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session

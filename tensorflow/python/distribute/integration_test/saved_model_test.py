@@ -25,9 +25,6 @@ This file is not intended to provide exhaustive test coverage. Exhaustive tests
 using Keras models are in keras*_test.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import os
 from absl.testing import parameterized
 
@@ -298,6 +295,15 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = Model(tf.saved_model.load(layer_export_dir))
       export_dir = self.get_temp_dir()
+      # Saving a ConcreteFunction should raise an error.
+      with self.assertRaisesRegex(
+          ValueError, "save a tf.function with input_signature instead"):
+        tf.saved_model.save(
+            m,
+            export_dir,
+            signatures={
+                "call": m.__call__.get_concrete_function(),
+            })
       tf.saved_model.save(m, export_dir)
 
     loaded = tf.saved_model.load(export_dir)

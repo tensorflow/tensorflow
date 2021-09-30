@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Converts a model's graph def into a tflite model with MLIR-based conversion."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 

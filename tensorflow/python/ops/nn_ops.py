@@ -133,10 +133,6 @@ For example:
 >>> tf.debugging.assert_equal(output, output2)
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import numbers
 
@@ -5808,11 +5804,23 @@ def fractional_max_pool(value,
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
 
+  Raises:
+    ValueError: If op determinism is enabled and either the seeds are not set or
+      the "deterministic" argument is False.
+
   References:
     Fractional Max-Pooling:
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if config.is_op_determinism_enabled() and (not seed or not seed2 or
+                                             not deterministic):
+    raise ValueError(
+        f'tf.compat.v1.nn.fractional_max_pool requires "seed" and '
+        f'"seed2" to be non-zero and "deterministic" to be true when op '
+        f"determinism is enabled. Please pass in such values, e.g. by passing"
+        f'"seed=1, seed2=1, deterministic=True". Got: seed={seed}, '
+        f'seed2={seed2}, deterministic={deterministic}')
   return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                         overlapping, deterministic, seed, seed2,
                                         name)
@@ -5886,6 +5894,9 @@ def fractional_max_pool_v2(value,
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
 
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
+
   References:
     Fractional Max-Pooling:
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
@@ -5914,6 +5925,11 @@ def fractional_max_pool_v2(value,
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
+    if config.is_op_determinism_enabled():
+      raise ValueError(
+          f"tf.nn.fractional_max_pool requires a non-zero seed to be passed in "
+          f"when determinism is enabled, but got seed={seed}. Please pass in a "
+          f'non-zero seed, e.g. by passing "seed=1".')
     return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                           overlapping, deterministic=False,
                                           seed=0, seed2=0, name=name)

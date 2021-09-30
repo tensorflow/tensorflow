@@ -1881,7 +1881,7 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
 template <typename T>
 Status ReductionShapeHelper(const Tensor* reduction_indices_t,
                             const int32_t input_rank,
-                            std::set<int64>* true_indices) {
+                            std::set<int64_t>* true_indices) {
   auto reduction_indices = reduction_indices_t->flat<T>();
   for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
     const T reduction_index = reduction_indices(i);

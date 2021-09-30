@@ -112,7 +112,7 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format) {
     std::vector<int32> dilations(4, 1);
     dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;

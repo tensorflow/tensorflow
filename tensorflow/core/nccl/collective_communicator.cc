@@ -80,7 +80,7 @@ std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
 
 void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                StatusCallback done) {
-  const CollectiveParams* col_params = col_ctx->col_params;
+  const CollectiveParams* col_params = col_ctx->col_params.get();
   const int num_global_devices = col_params->group.group_size;
   const int num_local_devices = col_params->group.num_devices_per_task.at(
       col_params->group.members[col_params->default_rank].task);
@@ -125,15 +125,6 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "
           << col_params->instance.instance_key;
-  // Hold a ref to col_params for the rest of this function.
-  // NOTE: an alternate design can be one in which CollectiveParams is not
-  // refcounted.  In such a design, we would need to ensure that the
-  // done_callback of each participant is called only after this function is
-  // done with accessing the params.  This would likely require some
-  // coordination mechanism, and may even require the participant thread to
-  // block until after UnblockDependencies is called below.
-  col_params->Ref();
-  core::ScopedUnref unref(col_params);
   // `AddTo*` performs consistency checks for the NCCL call and enqueues the
   // `Participant` struct locally.  When all local participants with this
   // `nccl_collective_key` have called `AddToAllReduce` and

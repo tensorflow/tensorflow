@@ -59,10 +59,6 @@ visible ops by default.  APIs/ops that are implemented in Python can opt in to
 dispatch support using the `add_dispatch_support` decorator.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import itertools
 import typing  # pylint: disable=unused-import (used in doctests)

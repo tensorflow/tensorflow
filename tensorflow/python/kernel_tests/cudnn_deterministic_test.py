@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TF_CUDNN_DETERMINISTIC=1."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.kernel_tests import cudnn_deterministic_base

@@ -197,7 +197,7 @@ template <>
 Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value) {
   return GetScalarConstNodeValueHelper(
       node, DT_INT64,
-      [value](const Tensor& tensor) { *value = tensor.scalar<int64>()(); });
+      [value](const Tensor& tensor) { *value = tensor.scalar<int64_t>()(); });
 }
 
 template <>

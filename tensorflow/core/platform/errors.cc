@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 
 #include <errno.h>
 #include <string.h>
@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
+namespace errors {
+
 namespace {
 
 error::Code ErrnoToCode(int err_number) {
@@ -178,4 +180,5 @@ Status IOError(const string& context, int err_number) {
   return Status(code, strings::StrCat(context, "; ", strerror(err_number)));
 }
 
+}  // namespace errors
 }  // namespace tensorflow

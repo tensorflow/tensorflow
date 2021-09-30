@@ -289,22 +289,22 @@ REGISTER_UNIQUE(bool)
 // de-duplicate sparse gradient indices) does not conflict with gradients being
 // located on a GPU. These kernels run on the CPU, their inputs and outputs
 // residing in host (not GPU) memory.
-#define REGISTER_UNIQUE_DEVICE(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                        \
-                              .Device(DEVICE_DEFAULT)           \
-                              .TypeConstraint<type>("T")        \
-                              .TypeConstraint<int32>("out_idx") \
-                              .HostMemory("x")                  \
-                              .HostMemory("y")                  \
-                              .HostMemory("idx"),               \
-                          UniqueOp<type, int32>);               \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                        \
-                              .Device(DEVICE_DEFAULT)           \
-                              .TypeConstraint<type>("T")        \
-                              .TypeConstraint<int64>("out_idx") \
-                              .HostMemory("x")                  \
-                              .HostMemory("y")                  \
-                              .HostMemory("idx"),               \
+#define REGISTER_UNIQUE_DEVICE(type)                              \
+  REGISTER_KERNEL_BUILDER(Name("Unique")                          \
+                              .Device(DEVICE_DEFAULT)             \
+                              .TypeConstraint<type>("T")          \
+                              .TypeConstraint<int32>("out_idx")   \
+                              .HostMemory("x")                    \
+                              .HostMemory("y")                    \
+                              .HostMemory("idx"),                 \
+                          UniqueOp<type, int32>);                 \
+  REGISTER_KERNEL_BUILDER(Name("Unique")                          \
+                              .Device(DEVICE_DEFAULT)             \
+                              .TypeConstraint<type>("T")          \
+                              .TypeConstraint<int64_t>("out_idx") \
+                              .HostMemory("x")                    \
+                              .HostMemory("y")                    \
+                              .HostMemory("idx"),                 \
                           UniqueOp<type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE_DEVICE);

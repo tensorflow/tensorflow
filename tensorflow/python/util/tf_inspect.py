@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TFDecorator-aware replacements for the inspect module."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import inspect as _inspect

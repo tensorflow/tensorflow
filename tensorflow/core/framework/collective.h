@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/intrusive_ptr.h"
 
 namespace tensorflow {
 
@@ -380,7 +381,7 @@ struct CollectiveContext {
   const DeviceMgr* dev_mgr;                      // Not owned
   OpKernelContext* op_ctx;                       // Not owned
   OpKernelContext::Params* op_params;            // Not owned
-  const CollectiveParams* col_params;            // Not owned
+  core::IntrusivePtr<const CollectiveParams> col_params;
   const string exec_key;
   const int64_t step_id;
   const Tensor* input;  // Not owned

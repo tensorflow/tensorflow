@@ -24,7 +24,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'key_dtype\', \'value_dtype\', \'default_value\', \'empty_key\', \'deleted_key\', \'initial_num_buckets\', \'name\', \'checkpoint\'], varargs=None, keywords=None, defaults=[\'None\', \'MutableDenseHashTable\', \'True\'], "
+    argspec: "args=[\'self\', \'key_dtype\', \'value_dtype\', \'default_value\', \'empty_key\', \'deleted_key\', \'initial_num_buckets\', \'name\', \'checkpoint\', \'experimental_is_anonymous\'], varargs=None, keywords=None, defaults=[\'None\', \'MutableDenseHashTable\', \'True\', \'False\'], "
   }
   member_method {
     name: "erase"

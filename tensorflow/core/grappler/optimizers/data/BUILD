@@ -765,6 +765,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

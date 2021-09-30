@@ -18,8 +18,6 @@
 // Pattern to lower lhlogpu_gemm Ops to tfrt cuda dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gemm_pattern.h"
-
 #include <assert.h>
 #include <stdint.h>
 
@@ -345,10 +343,11 @@ struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
 
 }  // namespace
 
-void populateGemmConversionPattern(RewritePatternSet& patterns) {
+void populateGemmConversionPattern(RewritePatternSet& patterns,
+                                   TypeConverter& converter) {
   patterns.add<GemmRewritePattern<lmhlo_gpu::GEMMOp>,
                GemmRewritePattern<lmhlo_gpu::GEMM_BiasOp>>(
-      patterns.getContext());
+      converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

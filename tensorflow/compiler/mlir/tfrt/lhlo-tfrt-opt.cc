@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
                   mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect,
                   tfrt::gpu::conversion::GpuConversionDialect>();
   tfrt::RegisterTFRTDialects(registry);
-  tensorflow::registerTFRTGPUPasses();
+  tensorflow::registerXlirPasses();
   tfrt::gpu::registerPasses();
   return failed(mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n",
                                   registry,

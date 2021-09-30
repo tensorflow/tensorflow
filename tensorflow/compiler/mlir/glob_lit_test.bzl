@@ -44,10 +44,6 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
       features: [str], list of extra features to enable.
     """
 
-    # Remove the default_driver from the data: it does not exist as a file and is
-    # just a placeholder from the copybara rewrite.
-    data = [d for d in data if d != _default_driver]
-
     # Disable tests on windows for now, to enable testing rest of all xla and mlir.
     native.py_test(
         name = name,

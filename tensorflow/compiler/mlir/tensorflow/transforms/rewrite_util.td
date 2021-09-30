@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_ERROR_H_
-#define TENSORFLOW_CORE_PLATFORM_ERROR_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL
 
-#include <string>
+include "mlir/IR/OpBase.td"
 
-#include "tensorflow/core/platform/status.h"
+// Here, the element type can be any integer or float type. But, note that only
+// 32 bit integers are supported for the values.
+class GetScalarOfType<int value> : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
-// TODO(b/197995327): Rename this file to io_error.h or unify with errors.h.
-namespace tensorflow {
-
-Status IOError(const string& context, int err_number);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_ERROR_H_
+#endif // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL

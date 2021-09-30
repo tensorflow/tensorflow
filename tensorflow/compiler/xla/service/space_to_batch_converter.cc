@@ -2893,10 +2893,16 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     activations_chunks.push_back(activations_slice);
   }
 
-  int64_t high_padding_to_materialize = inherent_high_padding;
-  if (total_overlap_count < inherent_high_padding + inherent_low_padding) {
-    high_padding_to_materialize = 0;
+  int64_t high_padding_to_materialize = 0;
+
+  if (inherent_high_padding > 0) {
+    high_padding_to_materialize =
+        std::max(total_overlap_count -
+                     (std::max(overlap_count, static_cast<int64_t>(0)) +
+                      std::max(inherent_low_padding, static_cast<int64_t>(0))),
+                 static_cast<int64_t>(0));
   }
+
   // Insert slices for high padding.
   for (int64_t i = 0; i < high_padding_to_materialize; ++i) {
     HloInstruction* activations_to_use = nullptr;

@@ -26,7 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-const uint64_t kTpuTiling = 128;
+// Used by rank 2+ operands
+const uint64_t kTpuLaneTiling = 128;
+// Used by rank 1 operands.
+const uint64_t kTpuChunkTiling = 1024;
 
 namespace xla {
 
@@ -113,9 +116,9 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   for (int i = 0; i < num_operands; ++i) {
     const auto& op_shape = operands_shapes[i];
     const auto& init_shape = init_values_shapes[i];
-    if (op_shape.rank() != 2) {
+    if (op_shape.rank() == 0) {
       return builder->ReportError(
-          InvalidArgument("Only rank 2 operands are supported for now"));
+          InvalidArgument("ApproxTopK operands must have rank 1+."));
     }
     if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
                                                   op_shape)) {
@@ -131,9 +134,10 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 
     op_types.push_back(op_shape.element_type());
   }
-  if (reduction_dim < 0 || reduction_dim >= 2) {
+  int64_t rank = operands_shapes[0].rank();
+  if (reduction_dim < 0 || reduction_dim >= rank) {
     return builder->ReportError(
-        InvalidArgument("reduction_dim should range in [0,2)"));
+        InvalidArgument("reduction_dim should range in [0,%d)", rank));
   }
 
   auto reduction_computation =
@@ -147,9 +151,10 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   {reduction_dim});
   }
 
+  uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;
   uint64_t n = operands_shapes[0].dimensions(reduction_dim);
-  // ApproxTopK can only reduce elements larger than kTpuTiling.
-  if (n <= kTpuTiling) {
+  // ApproxTopK can only reduce elements larger than the tiling.
+  if (n <= tpu_tiling) {
     if (aggregate_to_topk) {
       return SortAndSliceBuilder(builder, operands, top_k, reduction_dim,
                                  comparator);
@@ -177,7 +182,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   }
   uint64_t m = std::min(
       std::max(static_cast<uint64_t>((1.0 - top_k) / std::log(recall_target)),
-               kTpuTiling),
+               tpu_tiling),
       n);
   uint32_t log2_reduction = absl::bit_width(n / m) - 1;  // floor(n / m)
   if (log2_reduction == 0) {
@@ -196,8 +201,8 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     partial_reduce_args.push_back(op);
   }
   int64_t output_reduction_size =
-      CeilOfRatio<int64_t>(CeilOfRatio(n, kTpuTiling), (1 << log2_reduction)) *
-      kTpuTiling;
+      CeilOfRatio<int64_t>(CeilOfRatio(n, tpu_tiling), (1 << log2_reduction)) *
+      tpu_tiling;
   std::vector<Shape> approx_output_shapes;
   for (auto op_shape : operands_shapes) {
     op_shape.mutable_dimensions()[reduction_dim] = output_reduction_size;

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Reads Summaries from and writes Summaries to event files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.summary.summary_iterator import summary_iterator
 from tensorflow.python.summary.writer.writer import FileWriter as _FileWriter

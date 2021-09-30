@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.cc.inc"
@@ -86,6 +87,19 @@ LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
            << " does not match dynamic dimensions count in the result type"
            << op.getType();
   return success();
+}
+
+Optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder, Value alloc) {
+  auto funcop = alloc.getParentRegion()->getParentOfType<FuncOp>();
+  return builder
+      .create<TFDeallocOp>(alloc.getLoc(), funcop.getArgument(0), alloc)
+      .getOperation();
+}
+
+Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
+  // TODO(herhut): We should have our own clone op if one of these survives.
+  return builder.create<mlir::memref::CloneOp>(alloc.getLoc(), alloc)
+      .getResult();
 }
 
 ::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code) {

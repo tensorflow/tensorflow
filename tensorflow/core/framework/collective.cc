@@ -163,7 +163,7 @@ CollectiveContext::CollectiveContext(
       dev_mgr(dev_mgr),
       op_ctx(ctx),
       op_params(op_params),
-      col_params(col_params),
+      col_params(col_params, /*add_ref=*/true),
       exec_key(exec_key),
       step_id(step_id),
       input(input),

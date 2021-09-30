@@ -18,10 +18,6 @@ NOTE: At this time, functions are experimental and subject to change!. Proceed
 with caution.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import hashlib
 

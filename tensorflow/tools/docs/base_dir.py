@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Opensource base_dir configuration for tensorflow doc-generator."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import distutils
 from os import path
 

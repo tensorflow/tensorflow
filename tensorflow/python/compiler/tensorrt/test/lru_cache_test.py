@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test LRUCache by running different input batch sizes on same network."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test

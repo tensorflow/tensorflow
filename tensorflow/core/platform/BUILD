@@ -297,26 +297,17 @@ cc_library(
 )
 
 cc_library(
-    name = "error",
-    srcs = ["error.cc"],
-    hdrs = ["error.h"],
-    deps = [
-        ":platform",
-        ":status",
-        ":strcat",
-        ":types",
-    ],
-)
-
-cc_library(
     name = "errors",
+    srcs = ["errors.cc"],
     hdrs = ["errors.h"],
     deps = [
         ":logging",
         ":macros",
+        ":platform",
         ":status",
         ":str_util",
         ":strcat",
+        ":types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1544,7 +1535,6 @@ filegroup(
         "crash_analysis.h",
         "dynamic_annotations.h",
         "env.h",
-        "error.h",
         "errors.h",
         "file_statistics.h",
         "file_system.h",
@@ -1777,8 +1767,7 @@ filegroup(
         "env.cc",
         "env.h",
         "env_time.h",
-        "error.cc",
-        "error.h",
+        "errors.cc",
         "errors.h",
         "file_statistics.h",
         "file_system.cc",

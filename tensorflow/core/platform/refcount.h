@@ -144,6 +144,9 @@ class WeakRefCounted : public RefCounted {
 
   template <typename T>
   friend class WeakPtr;
+  // MSVC14 workaround: access permission of a nested class member is not
+  // treated as an ordinary member in MSVC14.
+  friend struct WeakRefData;
 };
 
 // A weak reference to a WeakRefCounted object. See WeakRefCounted.

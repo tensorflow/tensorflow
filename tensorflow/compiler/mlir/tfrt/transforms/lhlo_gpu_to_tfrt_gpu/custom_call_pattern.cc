@@ -18,8 +18,6 @@
 // Pattern to lower lmhlo.custom_call op to tfrt_gpu/xlir dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/custom_call_pattern.h"
-
 #include <functional>
 #include <string>
 
@@ -85,8 +83,9 @@ struct CustomCallRewritePattern
 
 }  // namespace
 
-void populateCustomCallConversionPattern(RewritePatternSet& patterns) {
-  patterns.add<CustomCallRewritePattern>(patterns.getContext());
+void populateCustomCallConversionPattern(RewritePatternSet& patterns,
+                                         TypeConverter& converter) {
+  patterns.add<CustomCallRewritePattern>(converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

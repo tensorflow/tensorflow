@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for inspect_utils module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import functools
@@ -592,24 +588,24 @@ class InspectUtilsTest(test.TestCase):
 
   def test_getfutureimports_functions(self):
     imps = inspect_utils.getfutureimports(basic_definitions.function_with_print)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
   def test_getfutureimports_lambdas(self):
     imps = inspect_utils.getfutureimports(basic_definitions.simple_lambda)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
   def test_getfutureimports_methods(self):
     imps = inspect_utils.getfutureimports(
         basic_definitions.SimpleClass.method_with_print)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
 

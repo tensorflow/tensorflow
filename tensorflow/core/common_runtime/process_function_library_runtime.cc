@@ -293,15 +293,20 @@ ProcessFunctionLibraryRuntime::AddMultiDeviceHandle(
   return h;
 }
 
+bool ProcessFunctionLibraryRuntime::HasMultiDeviceHandle(
+    FunctionLibraryRuntime::Handle handle) const {
+  bool multi_device;
+  {
+    tf_shared_lock l(mu_);
+    multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
+  }
+  return multi_device;
+}
+
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::GetHandle(
     const string& function_key) const {
   tf_shared_lock l(mu_);
   return gtl::FindWithDefault(table_, function_key, kInvalidHandle);
-}
-
-bool ProcessFunctionLibraryRuntime::IsInstantiatedOnDevice(
-    const string& device_name, FunctionLibraryRuntime::Handle handle) const {
-  return GetHandleOnDevice(device_name, handle) != kInvalidHandle;
 }
 
 FunctionLibraryRuntime::LocalHandle
@@ -430,6 +435,19 @@ FunctionLibraryRuntime::DoneCallback TensorsToFunctionRetsDoneCallback(
     delete tensors;
     done(s);
   };
+}
+
+// Push Tensors in `function_rets` into `tensors`.
+Status FunctionRetsToTensors(const std::vector<FunctionRet>* function_rets,
+                             std::vector<Tensor>* tensors) {
+  for (const auto& ret : *function_rets) {
+    if (ret.index() != 0) {
+      return errors::Internal(
+          "Expect a Tensor as a function output but got a TensorShape.");
+    }
+    tensors->push_back(absl::get<Tensor>(ret));
+  }
+  return Status::OK();
 }
 
 }  // anonymous namespace
@@ -1100,48 +1118,50 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
   return Status::OK();
 }
 
-void ProcessFunctionLibraryRuntime::RunMultiDevice(
+Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
-    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
-    FunctionLibraryRuntime::DoneCallback done,
-    std::function<Status(const ComponentFunctionData& comp_data,
-                         InternalArgs* args)>
-        get_component_args) const {
+    FunctionLibraryRuntime::Handle handle,
+    const MultiDeviceFunctionData** data) const {
   if (opts.create_rendezvous) {
     // FLR->Run() is the default entry point. It checks for cancellation,
     // creates rendezvous, etc.
     // Letting create_rendezvous through will do the wrong thing - each
     // component function will get a separate rendezvous created by its FLR.
-    done(
-        errors::Internal("Cannot call ProcessFunctionLibraryRuntime::Run with "
-                         "create_rendezvous=true. Please run the function "
-                         "using FunctionLibraryRuntime::Run"));
-    return;
+    return errors::Internal(
+        "Cannot call ProcessFunctionLibraryRuntime::Run with "
+        "create_rendezvous=true. Please run the function "
+        "using FunctionLibraryRuntime::Run");
   }
 
-  const MultiDeviceFunctionData* data = IsMultiDevice(handle);
-  if (data == nullptr) {
-    done(errors::NotFound("Multi-device function handle ", handle,
-                          "not found. Was the function instantiated?"));
-    return;
-  }
-
-  VLOG(1) << "Running multi-device function " << data->function_name_;
-  VLOG(4) << "    with " << opts.DebugString();
-
-  if (data->glue_.empty()) {
-    // Trivial case where the function body is empty.
-    done(Status::OK());
-    return;
+  *data = IsMultiDevice(handle);
+  if (*data == nullptr) {
+    return errors::NotFound("Multi-device function handle ", handle,
+                            "not found. Was the function instantiated?");
   }
 
   // Check whether we have the right rendezvous.
-  if (opts.rendezvous && data->is_cross_process_ &&
+  if (opts.rendezvous && (*data)->is_cross_process_ &&
       !opts.rendezvous->is_cross_process()) {
-    done(errors::InvalidArgument(
-        "Running a cross process function ", data->function_name_,
-        " without an appropriate cross process Rendezvous."));
+    return errors::InvalidArgument(
+        "Running a cross process function ", (*data)->function_name_,
+        " without an appropriate cross process Rendezvous.");
+  }
+
+  return Status::OK();
+}
+
+void ProcessFunctionLibraryRuntime::RunMultiDevice(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle outer_handle, std::vector<FunctionRet>* rets,
+    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+    FunctionLibraryRuntime::DoneCallback done,
+    std::function<Status(const ComponentFunctionData& comp_data,
+                         InternalArgs* args)>
+        get_component_args) const {
+  const MultiDeviceFunctionData* data;
+  Status prepare_status = PrepareRunMultiDevice(opts, outer_handle, &data);
+  if (!prepare_status.ok()) {
+    done(prepare_status);
     return;
   }
 
@@ -1163,7 +1183,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
   for (const auto& pair : data->glue_) {
     const string& target = pair.first;
     const ComponentFunctionData& comp_data = pair.second;
-    FunctionLibraryRuntime::Handle handle = pair.second.handle;
+    FunctionLibraryRuntime::Handle comp_handle = pair.second.handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs;
@@ -1182,12 +1202,12 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     rets->resize(data->num_outputs_);
 
     auto component_fn_callback = [comp_rets, rets, comp_data, refcounted_done,
-                                  cm, local_cm, data, handle,
+                                  cm, local_cm, data, comp_handle,
                                   target](const Status& status) {
       if (!status.ok()) {
         VLOG(2) << "Component function execution on target " << target
-                << " from " << data->function_name_ << " with handle " << handle
-                << " failed: " << status;
+                << " from " << data->function_name_ << " with handle "
+                << comp_handle << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
             status.error_message());
@@ -1197,8 +1217,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
         cm->StartCancel();
       } else {
         VLOG(2) << "Component function execution on target " << target
-                << " from " << data->function_name_ << " with handle " << handle
-                << " succeeded.";
+                << " from " << data->function_name_ << " with handle "
+                << comp_handle << " succeeded.";
         for (int i = 0; i < comp_rets->size(); ++i) {
           (*rets)[comp_data.ret_indices[i]] = (*comp_rets)[i];
         }
@@ -1217,23 +1237,24 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       opts_copy.runner = (pool == nullptr) ? opts.runner : flr->runner();
 
       VLOG(1) << "Running component function on device " << target << " from "
-              << data->function_name_ << " with handle " << handle;
+              << data->function_name_ << " with handle " << comp_handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       std::vector<Tensor>* comp_tensor_rets = new std::vector<Tensor>;
       flr->Run(
-          opts_copy, handle, GetLocalArgs(comp_args.args), comp_tensor_rets,
+          opts_copy, comp_handle, GetLocalArgs(comp_args.args),
+          comp_tensor_rets,
           TensorsToFunctionRetsDoneCallback(comp_rets, comp_tensor_rets,
                                             std::move(component_fn_callback)));
     } else {
       opts_copy.remote_execution = true;
 
       VLOG(1) << "Running component function on device " << target << " from "
-              << data->function_name_ << " with handle " << handle;
+              << data->function_name_ << " with handle " << comp_handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
-      RunInternal(opts_copy, handle, comp_args.args, comp_rets, cleanup_items,
-                  std::move(component_fn_callback));
+      RunInternal(opts_copy, comp_handle, comp_args.args, comp_rets,
+                  cleanup_items, std::move(component_fn_callback));
     }
   }
   refcounted_done->Unref();
@@ -1390,6 +1411,18 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   return errors::InvalidArgument("Handle not found: ", handle);
 }
 
+void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
+    const Rendezvous* created_rendezvous, const int64_t step_id) const {
+  if (created_rendezvous) {
+    DCHECK(rendezvous_factory_);
+    created_rendezvous->Unref();
+    Status s = rendezvous_factory_.CleanUp(step_id);
+    if (!s.ok()) {
+      LOG(ERROR) << s;
+    }
+  }
+}
+
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
@@ -1397,14 +1430,7 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     const Rendezvous* created_rendezvous) const {
   return [this, items, done = std::move(done), step_id,
           created_rendezvous](const Status& status) {
-    if (created_rendezvous) {
-      DCHECK(rendezvous_factory_);
-      created_rendezvous->Unref();
-      Status s = rendezvous_factory_.CleanUp(step_id);
-      if (!s.ok()) {
-        LOG(ERROR) << s;
-      }
-    }
+    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1416,17 +1442,76 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
 }
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(
-    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Options& opts,
     Rendezvous** created_rendezvous) const {
-  if (rendezvous_factory_) {
-    return rendezvous_factory_(opts.step_id, device_mgr_, created_rendezvous);
-  } else {
+  DCHECK(opts.rendezvous == nullptr);
+  if (!rendezvous_factory_) {
     return errors::FailedPrecondition(
         "The caller does not provide a rendezvous and "
         "ProcessFunctionLibraryRuntime was created without a rendezvous "
         "factory.");
   }
+  Status s = rendezvous_factory_(opts.step_id, device_mgr_, created_rendezvous);
+  if (s.ok()) {
+    opts.rendezvous = *created_rendezvous;
+    opts.create_rendezvous = false;
+  }
+  return s;
 }
+
+Status ProcessFunctionLibraryRuntime::GetComponentArgs(
+    const gtl::ArraySlice<Tensor> args,
+    const ProcessFunctionLibraryRuntime::ComponentFunctionData& comp_data,
+    ProcessFunctionLibraryRuntime::InternalArgs* comp_args) {
+  // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
+  for (const auto& it : comp_data.arg_indices) {
+    if (it.index >= args.size()) {
+      return errors::InvalidArgument("index ", it.index,
+                                     " is out of range [0, ", args.size(), ")");
+    }
+    if (it.sub_index >= 0) {
+      const Tensor& t = args[it.index];
+      if (t.dtype() != DT_RESOURCE) {
+        return errors::InvalidArgument("Got unexpected sub_index ",
+                                       it.sub_index, " for argument ",
+                                       it.index);
+      }
+      const auto& handles = t.flat<ResourceHandle>();
+      if (it.sub_index >= handles.size()) {
+        return errors::InvalidArgument("Sub_index ", it.sub_index,
+                                       "is out of range [0,", handles.size(),
+                                       ") for argument ", it.index);
+      }
+      comp_args->args.push_back(Tensor(handles(it.sub_index)));
+    } else {
+      comp_args->args.push_back(args[it.index]);
+    }
+  }
+  return Status::OK();
+}
+
+#if !defined(IS_MOBILE_PLATFORM)
+Status ProcessFunctionLibraryRuntime::GetComponentArgs(
+    const FunctionArgsInterface& args,
+    const ProcessFunctionLibraryRuntime::ComponentFunctionData& comp_data,
+    ProcessFunctionLibraryRuntime::InternalArgs* comp_args) {
+  for (int i = 0; i < comp_data.arg_indices.size(); ++i) {
+    const FunctionArgIndex index = comp_data.arg_indices.at(i);
+    Tensor tensor;
+    if (args.GetLocalArg(index, &tensor).ok()) {
+      comp_args->args.push_back(std::move(tensor));
+    } else {
+      eager::RemoteTensorHandle remote_handle;
+      TF_RETURN_IF_ERROR(args.GetRemoteArg(index, &remote_handle));
+      comp_args->remote_args.emplace_back(
+          absl::make_unique<eager::RemoteTensorHandle>(
+              std::move(remote_handle)));
+      comp_args->args.push_back(comp_args->remote_args.back().get());
+    }
+  }
+  return Status::OK();
+}
+#endif  // IS_MOBILE_PLATFORM
 
 void ProcessFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
@@ -1436,13 +1521,11 @@ void ProcessFunctionLibraryRuntime::Run(
   FunctionLibraryRuntime::Options new_opts = opts;
   Rendezvous* created_rendezvous = nullptr;
   if (!opts.rendezvous) {
-    Status s = CreateRendezvous(opts, &created_rendezvous);
+    Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
       done(s);
       return;
     }
-    new_opts.rendezvous = created_rendezvous;
-    new_opts.create_rendezvous = false;
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
@@ -1452,52 +1535,16 @@ void ProcessFunctionLibraryRuntime::Run(
   done = [rets, function_rets, done = std::move(done)](const Status& s) {
     Status status = s;
     if (status.ok()) {
-      for (const auto& ret : *function_rets) {
-        if (ret.index() == 0) {
-          rets->push_back(absl::get<Tensor>(ret));
-        } else {
-          status.Update(errors::Internal(
-              "Expect a Tensor as a function output but got a TensorShape."));
-          break;
-        }
-      }
+      status.Update(FunctionRetsToTensors(function_rets, rets));
     }
     delete function_rets;
     done(status);
   };
-  bool multi_device;
-  {
-    tf_shared_lock l(mu_);
-    multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
-  }
+  bool multi_device = HasMultiDeviceHandle(handle);
   if (multi_device) {
     auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                       InternalArgs* comp_args) -> Status {
-      // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
-      for (const auto& it : comp_data.arg_indices) {
-        if (it.index >= args.size()) {
-          return errors::InvalidArgument(
-              "index ", it.index, " is out of range [0, ", args.size(), ")");
-        }
-        if (it.sub_index >= 0) {
-          const Tensor& t = args[it.index];
-          if (t.dtype() != DT_RESOURCE) {
-            return errors::InvalidArgument("Got unexpected sub_index ",
-                                           it.sub_index, " for argument ",
-                                           it.index);
-          }
-          const auto& handles = t.flat<ResourceHandle>();
-          if (it.sub_index >= handles.size()) {
-            return errors::InvalidArgument(
-                "Sub_index ", it.sub_index, "is out of range [0,",
-                handles.size(), ") for argument ", it.index);
-          }
-          comp_args->args.push_back(Tensor(handles(it.sub_index)));
-        } else {
-          comp_args->args.push_back(args[it.index]);
-        }
-      }
-      return Status::OK();
+      return GetComponentArgs(args, comp_data, comp_args);
     };
     return RunMultiDevice(new_opts, handle, function_rets, cleanup_items,
                           std::move(done), std::move(get_component_args));
@@ -1698,13 +1745,11 @@ void ProcessFunctionLibraryRuntime::Run(
   FunctionLibraryRuntime::Options new_opts = opts;
   Rendezvous* created_rendezvous = nullptr;
   if (!opts.rendezvous) {
-    Status s = CreateRendezvous(opts, &created_rendezvous);
+    Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
       done(s);
       return;
     }
-    new_opts.rendezvous = created_rendezvous;
-    new_opts.create_rendezvous = false;
   }
 
 #if defined(IS_MOBILE_PLATFORM)
@@ -1718,21 +1763,7 @@ void ProcessFunctionLibraryRuntime::Run(
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {
-    for (int i = 0; i < comp_data.arg_indices.size(); ++i) {
-      const FunctionArgIndex index = comp_data.arg_indices.at(i);
-      Tensor tensor;
-      if (args.GetLocalArg(index, &tensor).ok()) {
-        comp_args->args.push_back(std::move(tensor));
-      } else {
-        eager::RemoteTensorHandle remote_handle;
-        TF_RETURN_IF_ERROR(args.GetRemoteArg(index, &remote_handle));
-        comp_args->remote_args.emplace_back(
-            absl::make_unique<eager::RemoteTensorHandle>(
-                std::move(remote_handle)));
-        comp_args->args.push_back(comp_args->remote_args.back().get());
-      }
-    }
-    return Status::OK();
+    return GetComponentArgs(args, comp_data, comp_args);
   };
   return RunMultiDevice(new_opts, handle, rets, cleanup_items, std::move(done),
                         std::move(get_component_args));

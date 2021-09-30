@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test utilities for tf.signal."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.lite.python import interpreter
 from tensorflow.lite.python import lite

@@ -28,7 +28,7 @@ limitations under the License.
 #include <time.h>
 
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -40,6 +40,8 @@ limitations under the License.
 #undef DeleteFile
 
 namespace tensorflow {
+
+using ::tensorflow::errors::IOError;
 
 namespace {
 

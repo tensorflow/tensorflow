@@ -38,10 +38,6 @@ Example structures: `((3, 4), 5, (6, 7, (9, 10), 8))`, `(np.array(0),
   (np.array([3, 4]), tf.constant([3, 4])))`
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as _collections
 
 import six as _six

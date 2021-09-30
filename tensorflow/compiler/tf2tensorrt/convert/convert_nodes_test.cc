@@ -320,7 +320,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   }
 
   // Helper method to run ConvertToTensorOrWeights() with predefined parameters.
-  auto convert_to_tensor_or_weights = [this](const std::vector<int64>& dims,
+  auto convert_to_tensor_or_weights = [this](const std::vector<int64_t>& dims,
                                              TRT_TensorOrWeights* output) {
     Scope s = Scope::NewRootScope();
     const auto attrs = ops::Placeholder::Shape(PartialTensorShape{dims});
@@ -334,7 +334,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     TRT_TensorOrWeights output;
     EXPECT_THAT(
         convert_to_tensor_or_weights(
-            std::vector<int64>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
+            std::vector<int64_t>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
         StatusIs(error::OUT_OF_RANGE,
                  HasSubstr("Input tensor rank is greater than 9")));
   }
@@ -1124,7 +1124,7 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   Tensor AsTensor(gtl::ArraySlice<T> vals) {  // non-absl ok
     Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
     return ret;
   }
@@ -1134,7 +1134,7 @@ class OpConverterTest : public ::testing::Test {
   Tensor AsTensor(gtl::ArraySlice<T> vals,  // non-absl ok
                   const TensorShape& shape) {
     Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     CHECK(ret.CopyFrom(AsTensor(vals), shape));
     return ret;
   }
@@ -1146,7 +1146,7 @@ class OpConverterTest : public ::testing::Test {
   Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
                   DataType tf_type) {
     Tensor ret(tensor_buffer_allocator_.get(), tf_type,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     if (tf_type == DT_FLOAT) {
       auto conv_vals = CastVector<T, float>(vals);
       std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
@@ -1869,9 +1869,10 @@ TEST_F(OpConverterTest, ConvertConst) {
   }
   {
     Reset();
-    Tensor tensor = AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1,
-                                     1, std::numeric_limits<int64>::lowest()},
-                                    TensorShape({2, 3}));
+    Tensor tensor =
+        AsTensor<int64_t>({1, std::numeric_limits<int64_t>::max(), 1, 1, 1,
+                           std::numeric_limits<int64_t>::lowest()},
+                          TensorShape({2, 3}));
     NodeDef node_def;
     node_def.set_name("my_const");
     node_def.set_op("Const");

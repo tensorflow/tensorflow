@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data.Dataset.from_generator()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from absl.testing import parameterized

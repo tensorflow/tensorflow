@@ -90,7 +90,14 @@ class GpuExecutable : public Executable {
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
     std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
-    std::string verbose_buffer_assignment_string = "";
+
+    // A callable that dumps out a debug string upon device OOM. It's not the
+    // string itself, as the string can be huge and increase peak host memory
+    // usage for the common (non-OOM) case.
+    std::function<std::string()> verbose_buffer_assignment_string_dumper = [] {
+      return std::string();
+    };
+
     std::unique_ptr<HloModule> debug_module = nullptr;
     size_t entry_computation_profile_index = 0;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
@@ -217,7 +224,7 @@ class GpuExecutable : public Executable {
   const std::vector<BufferAllocation> allocations_;
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
-  std::string verbose_buffer_assignment_string_;
+  std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
   size_t entry_computation_profile_index_ = -1;
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Python module for Session ops, vars, and functions exported by pybind11."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client._pywrap_tf_session import *

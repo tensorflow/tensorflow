@@ -376,7 +376,8 @@ std::vector<std::string> FindNamesForValidSignatures(
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const tensorflow::tfrt_stub::FallbackState& fallback_state,
-    std::string saved_model_dir, bool import_user_signatures) {
+    std::string saved_model_dir, bool import_user_signatures,
+    bool run_placer_grappler_on_functions) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
@@ -394,7 +395,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
   TF_ASSIGN_OR_RETURN(
       auto import_input,
       tensorflow::tfrt_stub::TfrtSavedModelMLIRImportInput::Create(
-          fallback_state, &meta_graph_def, /*debug_info=*/{}));
+          fallback_state, &meta_graph_def, /*debug_info=*/{},
+          run_placer_grappler_on_functions));
 
   TF_ASSIGN_OR_RETURN(
       auto module,
@@ -578,7 +580,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         ImportSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
-            /*import_user_signatures=*/!options.enable_lazy_loading));
+            /*import_user_signatures=*/!options.enable_lazy_loading,
+            options.run_placer_grappler_on_functions));
 
     auto import_duration = absl::Now() - import_start_time;
     saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
@@ -629,7 +632,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     TF_ASSIGN_OR_RETURN(
         auto graph_execution_state,
         tensorflow::tfrt_stub::TfrtGraphExecutionState::Create(
-            std::move(*meta_graph_def.mutable_graph_def()), *fallback_state));
+            std::move(*meta_graph_def.mutable_graph_def()), *fallback_state,
+            options.run_placer_grappler_on_functions));
 
     // Finally, create the saved model.
     return {std::make_unique<SavedModelImpl>(

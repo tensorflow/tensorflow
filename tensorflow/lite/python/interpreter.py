@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python TF-Lite interpreter."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import enum
 import os

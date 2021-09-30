@@ -102,8 +102,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
-      verbose_buffer_assignment_string_(
-          params.verbose_buffer_assignment_string),
+      verbose_buffer_assignment_string_dumper_(
+          params.verbose_buffer_assignment_string_dumper),
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
@@ -372,7 +372,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
         return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
-                                 verbose_buffer_assignment_string_);
+                                 verbose_buffer_assignment_string_dumper_());
       }
       buffer_address = buffer->Release();
     }
@@ -729,7 +729,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
                                    allocated_buffer.status().error_message(),
-                                   verbose_buffer_assignment_string_);
+                                   verbose_buffer_assignment_string_dumper_());
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =

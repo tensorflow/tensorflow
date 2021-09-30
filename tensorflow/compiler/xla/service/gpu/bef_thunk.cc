@@ -189,7 +189,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
 static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   mlir::PassManager pass_manager(module->getContext(),
                                  mlir::PassManager::Nesting::Implicit);
-  pass_manager.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pass_manager.addPass(tensorflow::createConvertLmhloToGpuPass());
   pass_manager.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pass_manager);
 
@@ -365,8 +365,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs) {
+    std::vector<BufferAllocation::Slice> buffers) {
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto module = CreateModule(op);
   TF_RETURN_IF_ERROR(RunLmhloGpuToTfrtConversionPipeline(*module));
@@ -376,19 +375,14 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
       auto bef_result,
       ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
 
-  std::vector<BufferAllocation::Slice> arg_buffers;
-  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
-  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
-
   return std::unique_ptr<Thunk>(new BefThunk(
-      kind, thunk_info, std::move(arg_buffers), std::move(bef_result.first),
+      kind, thunk_info, std::move(buffers), std::move(bef_result.first),
       std::move(bef_result.second), op));
 }
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs, int64_t replica_count,
+    std::vector<BufferAllocation::Slice> buffers, int64_t replica_count,
     int64_t partition_count) {
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto module = CreateModule(op);
@@ -399,12 +393,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
       auto bef_result,
       ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
 
-  std::vector<BufferAllocation::Slice> arg_buffers;
-  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
-  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
-
   return std::unique_ptr<Thunk>(new BefThunk(
-      kind, thunk_info, std::move(arg_buffers), std::move(bef_result.first),
+      kind, thunk_info, std::move(buffers), std::move(bef_result.first),
       std::move(bef_result.second), replica_count, partition_count, op));
 }
 
@@ -438,8 +428,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
 // TODO(hanbinyoon): Deduplicate common code for BefThunk instantiation.
 StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs,
+    std::vector<BufferAllocation::Slice> buffers,
     CustomCallThunk::CustomCallTarget call_target) {
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto module = CreateModule(op);
@@ -450,12 +439,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
       auto bef_result,
       ConvertToBef(*module, runtime_and_queue.core_runtime->GetHostContext()));
 
-  std::vector<BufferAllocation::Slice> arg_buffers;
-  arg_buffers.insert(arg_buffers.end(), inputs.begin(), inputs.end());
-  arg_buffers.insert(arg_buffers.end(), outputs.begin(), outputs.end());
-
   return std::unique_ptr<Thunk>(new BefThunk(
-      kind, thunk_info, std::move(arg_buffers), std::move(bef_result.first),
+      kind, thunk_info, std::move(buffers), std::move(bef_result.first),
       std::move(bef_result.second), op, std::move(call_target)));
 }
 
@@ -733,31 +718,25 @@ namespace xla {
 bool gpu::IsBefThunkEnabled() { return false; }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
-    Thunk::ThunkInfo, mlir::Operation*,
-    absl::Span<const BufferAllocation::Slice>,
-    absl::Span<const BufferAllocation::Slice>) {
+    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCollectivePermuteThunk(
-    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    absl::Span<const BufferAllocation::Slice> inputs,
-    absl::Span<const BufferAllocation::Slice> outputs, int64_t replica_count,
-    int64_t partition_count) {
+    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
+    int64_t, int64_t) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefKernelThunk(
-    Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
-    const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
+    Thunk::ThunkInfo, absl::Span<const BufferAllocation* const>,
+    const std::string&, const LaunchDimensions&) {
   return tensorflow::errors::FailedPrecondition(
       "BefKernelThunks are disabled.");
 }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCustomCallThunk(
-    Thunk::ThunkInfo, mlir::Operation*,
-    absl::Span<const BufferAllocation::Slice>,
-    absl::Span<const BufferAllocation::Slice>,
+    Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
     CustomCallThunk::CustomCallTarget) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }

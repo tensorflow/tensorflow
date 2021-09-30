@@ -65,9 +65,7 @@ static llvm::cl::opt<bool> tpu_compile_metadata_debug(
     llvm::cl::desc("Serialize TPUCompileMetadataProto metadata in "
                    "'tf._TPUCompileMlir' op as a proto debug string"));
 
-constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";

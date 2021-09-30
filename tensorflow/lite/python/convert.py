@@ -15,10 +15,6 @@
 # ==============================================================================
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import distutils.spawn
 import enum  # pylint: disable=g-bad-import-order
 import os as _os
