@@ -3619,13 +3619,6 @@ void IrEmitterUnnested::EmitTile(
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
 
-  // True iff all threads always execute all instructions in the tiling
-  // dimension X.
-  bool x_tile_fits = tiling_scheme.GetDimsInElems()[kDimX] %
-                             tiling_scheme.GetBlockTileSizeFor(kDimX) ==
-                         0 &&
-                     tiling_scheme.GetRowContiguous();
-
   ksl->For(
       loop_name + "_y_in_tile",
       /*start=*/thread_id_info.thread_id_y,
@@ -3643,8 +3636,7 @@ void IrEmitterUnnested::EmitTile(
         // LLVM. Special case when the tile doesn't fit completely for even
         // row size. For odd row size every other row isn't aligned to the
         // vectorized size, so it can't be vectorized by LLVM.
-        if (!x_tile_fits &&
-            tiling_scheme.GetIndexingOrder() == kStridedLinearIndexingX) {
+        if (tiling_scheme.GetIndexingOrder() == kStridedLinearIndexingX) {
           ksl->If(
               loop_name + "_is_full_tile",
               // For the last block, tile_width will be the number of
@@ -3655,7 +3647,7 @@ void IrEmitterUnnested::EmitTile(
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
         } else {
-          unroll_inner_tile_loop(/*check_x_tile_bounds=*/!x_tile_fits);
+          unroll_inner_tile_loop(/*check_x_tile_bounds=*/true);
         }
       });
 }
@@ -4734,8 +4726,7 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
                              /*tile_sizes=*/{1, kWarpSize / kNumRows, 1},
                              /*num_threads=*/{1, kNumRows, kWarpSize},
                              /*indexing_order=*/kLinearIndexingX,
-                             /*vector_size=*/1,
-                             /*is_row_contiguous=*/false);
+                             /*vector_size=*/1);
   LaunchDimensions launch_dimensions(tiling_scheme.GetNumberOfBlocks(),
                                      tiling_scheme.GetNumThreadsPerBlock());
   std::vector<llvm_ir::IrArray> ir_arrays;

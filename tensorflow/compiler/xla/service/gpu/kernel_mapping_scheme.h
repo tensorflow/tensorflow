@@ -50,14 +50,14 @@ class TilingScheme {
   TilingScheme(absl::Span<const int64_t> dims_in_elems,
                absl::Span<const int64_t> tile_sizes,
                absl::Span<const int64_t> num_threads,
-               IndexingOrder indexing_order, int vector_size,
-               bool is_row_contiguous = false)
+               IndexingOrder indexing_order, int vector_size)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_{num_threads[0], num_threads[1], num_threads[2]},
         indexing_order_(indexing_order),
-        vector_size_(vector_size),
-        is_row_contiguous_(is_row_contiguous) {}
+        vector_size_(vector_size) {
+    CHECK_EQ(tile_sizes[2] % vector_size_, 0);
+  }
 
   static std::string IndexingOrderToString(IndexingOrder order) {
     switch (order) {
@@ -79,8 +79,7 @@ class TilingScheme {
                          absl::StrJoin(num_threads_, ", ")),
          absl::StrFormat("indexing_order = %s",
                          IndexingOrderToString(indexing_order_)),
-         absl::StrFormat("vector_size = %d", vector_size_),
-         absl::StrCat("contiguous_row = ", is_row_contiguous_)},
+         absl::StrFormat("vector_size = %d", vector_size_)},
         ", ");
   }
 
@@ -117,7 +116,6 @@ class TilingScheme {
 
   IndexingOrder GetIndexingOrder() const { return indexing_order_; }
   int GetVectorSize() const { return vector_size_; }
-  bool GetRowContiguous() const { return is_row_contiguous_; }
 
  private:
   // The number of elements in each dimension.
@@ -129,18 +127,10 @@ class TilingScheme {
   // Number of threads implicitly assigned to each dimension.
   const Vector3 num_threads_;
 
-  // When num_threads_x threads process a total of tile_size_x
-  // elements in the X dimension of a tile, each threads process
-  // n=tile_size_x/num_threads_x elements.
-  // indexing_order defines which tile's elements each thread reads.
   const IndexingOrder indexing_order_;
 
-  // vector_size_ only supported for row reduction and must be a divisor
-  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
-  // to trigger vectorized loads on GPUs while keeping memory
-  // coalescing.
+  // Vector size for dimension X.
   const int vector_size_;
-  const bool is_row_contiguous_;
 };
 
 class ReductionCodegenInfo {
