@@ -6081,7 +6081,7 @@ func @softplus_f64(%arg0: tensor<8x16xf64>) -> tensor<8x16xf64> {
 // -----
 
 // CHECK-LABEL: @xla_gather
-func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x1x300xf32> {
+func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<1x300x10xf32> {
   %cst = "tf.Const"() { value = dense<[1, 1, 300]> : tensor<3xi64> } : () -> tensor<3xi64>
 
   // CHECK: "mhlo.gather"
@@ -6093,14 +6093,14 @@ func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> ten
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
-  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<10x1x300xf32>
-  return %0 : tensor<10x1x300xf32>
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<1x300x10xf32>
+  return %0 : tensor<1x300x10xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @xla_gather_i32
-func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x1x300xf32> {
+func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<1x300x10xf32> {
   %cst = "tf.Const"() { value = dense<[1, 1, 300]> : tensor<3xi32> } : () -> tensor<3xi32>
 
   // CHECK: "mhlo.gather"
@@ -6112,8 +6112,8 @@ func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) ->
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
-  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<10x1x300xf32>
-  return %0 : tensor<10x1x300xf32>
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\02\00\01\12\01\00\1A\02\00\01\20\01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<1x300x10xf32>
+  return %0 : tensor<1x300x10xf32>
 }
 
 
