@@ -302,7 +302,9 @@ py_library(
     name = "tpu_util",
     srcs = ["tpu_util.py"],
     deps = [
+        ":packed_distributed_variable",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/tpu:tpu_py",
     ],
 )
@@ -865,14 +867,60 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":packed_distributed_variable",
+        ":tpu_replicated_variable",
         ":tpu_util",
         ":values",
         ":values_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
+    name = "tpu_replicated_variable",
+    srcs = ["tpu_replicated_variable.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_util",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python:tpu_partition_ops_gen",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_replicated_variable_test",
+    srcs = ["tpu_replicated_variable_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_replicated_variable",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
