@@ -16,4 +16,5 @@ def repo(name):
             "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         ],
         build_file = "//third_party/llvm:BUILD.bazel",
+        patch_file = "//third_party/llvm:macos_build_fix.patch",
     )
