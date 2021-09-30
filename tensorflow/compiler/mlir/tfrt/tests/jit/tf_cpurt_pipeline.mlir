@@ -342,10 +342,7 @@ func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
   // CHECK:      linalg.generic
   // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : {{.*}})
   // CHECK:        addf
-  // CHECK:        cmpf ogt
-  // CHECK:        select
-  // CHECK:        cmpf uno
-  // CHECK:        select
+  // CHECK:        maxf
   // CHECK-NEXT:   linalg.yield
   // CHECK-NOT:  linalg.generic
   %0 = "tf.BiasAdd"(%arg0, %arg1)
