@@ -270,45 +270,66 @@ is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 
 @tf_export("nest.is_nested")
 def is_nested(seq):
-  """Returns true if its input is a collections.abc.Sequence (except strings).
+  """Returns true if its input is a nested structure (or just "nest").
 
-    >>> tf.nest.is_nested("1234")
-    False
+  In particular, the following collection types are recognized by `tf.nest`
+  as nested structures:
 
-    >>> tf.nest.is_nested([1, 3, [4, 5]])
-    True
+  * `collections.abc.Sequence` (except `string` and `bytes`).
+    This includes `list`, `tuple`, and `namedtuple`.
+  * `collections.abc.Mapping` (with sortable keys).
+    This includes `dict` and `collections.OrderedDict`.
+  * `collections.abc.MappingView` (with sortable keys).
+  * [`attr.s` classes](https://www.attrs.org/).
 
-    >>> tf.nest.is_nested(((7, 8), (5, 6)))
-    True
+  Any other values are considered **atoms**.  Not all collection types are
+  considered nested structures.  For example, the following types are
+  considered atoms:
 
-    >>> tf.nest.is_nested([])
-    True
+    * `set`
+    * [`dataclass` classes](https://docs.python.org/library/dataclasses.html)
+    * `tf.Tensor`
+    * `numpy.array`
 
-    >>> tf.nest.is_nested({"a": 1, "b": 2})
-    True
+  >>> tf.nest.is_nested("1234")
+  False
 
-    >>> tf.nest.is_nested({"a": 1, "b": 2}.keys())
-    True
+  >>> tf.nest.is_nested([1, 3, [4, 5]])
+  True
 
-    >>> tf.nest.is_nested({"a": 1, "b": 2}.values())
-    True
+  >>> tf.nest.is_nested(((7, 8), (5, 6)))
+  True
 
-    >>> tf.nest.is_nested({"a": 1, "b": 2}.items())
-    True
+  >>> tf.nest.is_nested([])
+  True
 
-    >>> tf.nest.is_nested(set([1, 2]))
-    False
+  >>> tf.nest.is_nested({"a": 1, "b": 2})
+  True
 
-    >>> ones = tf.ones([2, 3])
-    >>> tf.nest.is_nested(ones)
-    False
+  >>> tf.nest.is_nested({"a": 1, "b": 2}.keys())
+  True
+
+  >>> tf.nest.is_nested({"a": 1, "b": 2}.values())
+  True
+
+  >>> tf.nest.is_nested({"a": 1, "b": 2}.items())
+  True
+
+  >>> tf.nest.is_nested(set([1, 2]))
+  False
+
+  >>> ones = tf.ones([2, 3])
+  >>> tf.nest.is_nested(ones)
+  False
+
+  Note: nested structures have sometimes been referred to as "nested sequences,"
+  but "nested structures" and "nests" are the preferred terms.
 
   Args:
-    seq: an input sequence.
+    seq: the value to test.
 
   Returns:
-    True if the sequence is a not a string and is a collections.abc.Sequence
-    or a dict.
+    True if the input is a nested structure.
   """
   return is_sequence(seq)
 
