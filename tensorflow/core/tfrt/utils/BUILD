@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tpu:virtual_device",
+        "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
