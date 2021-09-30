@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -80,31 +79,6 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
       dims, &shape,
       use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
-  return Status::OK();
-}
-
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index) {
-  // If the engine has been built for K profiles, the first getNbBindings() / K
-  // bindings are used by profile number 0, the following getNbBindings() / K
-  // bindings are used by profile number 1 etc.
-  //
-  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
-  // We can also consider it as a "binding_index_within_profile".
-  *binding_index = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_index == -1) {
-    const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(WARNING) << msg;
-    return errors::NotFound(msg);
-  }
-  int n_profiles = cuda_engine->getNbOptimizationProfiles();
-  // If we have more then one optimization profile, then we need to shift the
-  // binding index according to the following formula:
-  // binding_index_within_engine = binding_index_within_profile +
-  //                               profile_index * bindings_per_profile
-  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
-  *binding_index = *binding_index + profile_index * bindings_per_profile;
   return Status::OK();
 }
 

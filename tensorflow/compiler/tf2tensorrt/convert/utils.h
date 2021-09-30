@@ -40,12 +40,6 @@ namespace tensorrt {
 
 static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
-class IONamePrefixes {
- public:
-  static constexpr const char* const kInputPHName = "TensorRTInputPH_";
-  static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
-};
-
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {
