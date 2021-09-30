@@ -102,12 +102,30 @@ struct InlineBroadcastedShapeOperandsPattern : public OpRewritePattern<OpTy> {
   }
 };
 
+bool IsMovable(Operation *op) {
+  return MemoryEffectOpInterface::hasNoEffect(op) ||
+         llvm::isa<shape::CstrBroadcastableOp>(op);
+}
+
 LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
                                                 PatternRewriter &rewriter) {
-  // Only move into immediately preceding `assuming` op.
-  auto assuming_op =
-      llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
+  // Find a preceding `assuming` op with nothing but side effect-free operations
+  // in between.
+  Operation *prev = op->getPrevNode();
+  while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev) &&
+         IsMovable(prev)) {
+    prev = prev->getPrevNode();
+  }
+  auto assuming_op = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
   if (!assuming_op) return failure();
+
+  // Make sure that all operands will be available after moving.
+  auto is_available = [&](Value v) {
+    Operation *def = v.getDefiningOp();
+    return def == nullptr || (def->getBlock() == op->getBlock() &&
+                              !assuming_op->isBeforeInBlock(def));
+  };
+  if (!llvm::all_of(op->getOperands(), is_available)) return failure();
 
   Block *body = assuming_op.getBody();
   auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
@@ -245,7 +263,7 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
             if (is_new_op_result(result)) {
               replacement_values.push_back(result);
             } else {
-              new_yield_operands.push_back(mapping.lookup(result));
+              new_yield_operands.push_back(mapping.lookupOrDefault(result));
               replacement_values.push_back(nullptr);
             }
           }
