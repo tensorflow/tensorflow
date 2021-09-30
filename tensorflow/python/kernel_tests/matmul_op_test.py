@@ -34,6 +34,7 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+@test_util.with_eager_op_as_function
 class MatMulMixedType(test_lib.TestCase):
   """Simple test for tf.matmul where Tout is different from T."""
 
@@ -56,6 +57,7 @@ class MatMulMixedType(test_lib.TestCase):
     self.assertAllEqual([[5, 11], [11, 25]], c)
 
 
+@test_util.with_eager_op_as_function
 class MatVecTest(test_lib.TestCase):
   """Simple test for matvec, which is sugar on top of matmul."""
 
@@ -83,6 +85,7 @@ def _GetTransposedMatrices(x, x_name, kwargs):
     return x
 
 
+@test_util.with_eager_op_as_function
 class MatMulTest(test_lib.TestCase):
   pass  # Filled in below
 
@@ -128,6 +131,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 
+@test_util.with_eager_op_as_function
 class MatMulGradientTest(test_lib.TestCase):
   pass  # Will be filled in below.
 
@@ -164,6 +168,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 
+@test_util.with_eager_op_as_function
 class MatMulStatsTest(test_lib.TestCase):
 
   @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
