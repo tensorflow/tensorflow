@@ -214,8 +214,11 @@
       functional control flow op lowering optimization. This is useful when
       executing within a portable runtime where control flow op kernels may not
       be loaded due to selective registration.
-    * Added a new experimental argument `experimental_is_anonymous` to
-      `tf.lookup.StaticHashTable.__init__` to create the table in anonymous
+    * Added a new experimental argument `experimental_is_anonymous` to the
+      `__init__` function of `tf.lookup.StaticHashTable`,
+      `tf.lookup.StaticVocabularyTable`,
+      `tf.lookup.experimental.MutableHashTable` and
+      `tf.lookup.experimental.DenseHashTable`, to create the table in anonymous
       mode. In this mode, the table resource can only be accessed via resource
       handles (not resource names) and will be deleted automatically when all
       resource handles pointing to it are gone.
