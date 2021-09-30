@@ -215,7 +215,7 @@ void LogFusedConvForwardAutotuneResults(
 
 Status BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>* plans,
     se::dnn::AlgorithmConfig* algo) {
   auto compare_run_times = [](const AutotuneResult& lhs,
                               const AutotuneResult& rhs) {

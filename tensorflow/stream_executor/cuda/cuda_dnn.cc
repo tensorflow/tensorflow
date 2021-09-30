@@ -1688,9 +1688,9 @@ class CudnnConvolveExecutionPlan : public dnn::ConvolveExecutionPlan {
  public:
   CudnnConvolveExecutionPlan(cudnn_frontend::ExecutionPlan plan)
       : plan_(std::move(plan)) {}
-  std::string getTag() override { return plan_.getTag(); };
-  void* get_raw_desc() override { return plan_.get_raw_desc(); }
-  int64_t getWorkspaceSize() override { return plan_.getWorkspaceSize(); }
+  std::string getTag() const override { return plan_.getTag(); };
+  void* get_raw_desc() const override { return plan_.get_raw_desc(); }
+  int64_t getWorkspaceSize() const override { return plan_.getWorkspaceSize(); }
 
  private:
   cudnn_frontend::ExecutionPlan plan_;

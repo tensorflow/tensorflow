@@ -130,26 +130,30 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
 
     // Find all candidate algorithms or execution plans (for CuDNN frontend
     // APIs).
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
+    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>> plans;
     std::vector<se::dnn::AlgorithmDesc> algorithms;
     std::vector<se::dnn::AlgorithmConfig> configs;
     if (CudnnUseFrontend()) {
+      std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> unique_plans;
       if (!stream->parent()
                ->GetFusedConvolveExecutionPlans(
                    se::dnn::ConvolutionKind::FORWARD,
                    se::dnn::ToDataType<T>::value, conv_scale, side_input_scale,
                    stream, input_desc, filter_desc, bias_desc, output_desc,
-                   conv_desc, activation_mode, &plans)
+                   conv_desc, activation_mode, &unique_plans)
                .ok()) {
         return errors::Unknown(
             "Failed to get convolution plans. This is probably because cuDNN "
             "failed to initialize, so try looking to see if a warning log "
             "message was printed above.");
       }
+      std::move(unique_plans.begin(), unique_plans.end(),
+                std::back_inserter(plans));
       for (const auto& plan : plans) {
         configs.push_back(se::dnn::AlgorithmConfig(
             se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
             plan->getWorkspaceSize()));
+        configs.back().set_plan(plan);
       }
     } else {
       if (!stream->parent()->GetConvolveAlgorithms(
@@ -226,7 +230,7 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
         algorithm_config = se::dnn::AlgorithmConfig(
             se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
             plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
+        algorithm_config.set_plan(std::move(plan));
         break;
       }
     }
@@ -301,7 +305,7 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
     if (!autotune_map->Find(conv_parameters, &algorithm_config)) {
       profiler::ScopedAnnotation annotation("cudnn_autotuning");
 
-      std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
+      std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<se::dnn::AlgorithmDesc> algorithms;
       std::vector<se::dnn::AlgorithmConfig> configs;
@@ -312,15 +316,20 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
           "was printed above.");
 
       if (CudnnUseFrontend()) {
+        std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>
+            unique_plans;
         if (!stream->parent()->GetConvolveExecutionPlans(
                 kind, se::dnn::ToDataType<T>::value, stream, input_desc,
-                filter_desc, output_desc, conv_desc, &plans)) {
+                filter_desc, output_desc, conv_desc, &unique_plans)) {
           return get_algo_failed_error;
         }
+        std::move(unique_plans.begin(), unique_plans.end(),
+                  std::back_inserter(plans));
         for (const auto& plan : plans) {
           configs.push_back(se::dnn::AlgorithmConfig(
               se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
               plan->getWorkspaceSize()));
+          configs.back().set_plan(plan);
         }
       } else {
         if (!stream->parent()->GetConvolveAlgorithms(kind, &algorithms)) {
@@ -456,7 +465,7 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
         algorithm_config = se::dnn::AlgorithmConfig(
             se::dnn::AlgorithmDesc{plan->getTag(), plan->get_raw_desc()},
             plan->getWorkspaceSize());
-        algorithm_config.set_plan(plan);
+        algorithm_config.set_plan(std::move(plan));
         break;
       }
     }
