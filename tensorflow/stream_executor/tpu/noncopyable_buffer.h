@@ -27,6 +27,14 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
+using BufferDeallocator = std::function<void(void*)>;
+using OwnedDataPtr = std::unique_ptr<uint8_t[], BufferDeallocator>;
+using BufferAllocator = std::function<OwnedDataPtr(size_t)>;
+
+inline OwnedDataPtr DefaultAllocator(size_t size) {
+  return {static_cast<uint8_t*>(malloc(size)), free};
+}
+
 // Uncopyable buffer type with optional ownership of the underlying data. If
 // data is not owned then ensuring lifetime of the data exceeds the lifetime of
 // the buffer is the responsibility of the user.
@@ -37,15 +45,15 @@ class NoncopyableBuffer {
   // Allocate an owning buffer without initializing the data. Useful when it
   // will be filled by a subsequent function and want to avoid initialization
   // cost. Size is specified in number of bytes.
-  explicit NoncopyableBuffer(size_t size)
-      : data_(static_cast<uint8_t*>(malloc(size)), free),
-        buf_(data_.get()),
-        size_(size) {}
+  explicit NoncopyableBuffer(size_t size,
+                             BufferAllocator allocator = DefaultAllocator)
+      : data_(allocator(size)), buf_(data_.get()), size_(size) {}
 
   // Allocates an owning buffer and initializes it with the specified data. Size
   // is specified in number of uint32's.
-  NoncopyableBuffer(size_t size_in_u32s, absl::optional<uint32_t> value)
-      : NoncopyableBuffer(size_in_u32s * sizeof(uint32_t)) {
+  NoncopyableBuffer(size_t size_in_u32s, absl::optional<uint32_t> value,
+                    BufferAllocator allocator = DefaultAllocator)
+      : NoncopyableBuffer(size_in_u32s * sizeof(uint32_t), allocator) {
 #ifndef MEMORY_SANITIZER
     if (!value.has_value()) {
       return;
@@ -115,7 +123,6 @@ class NoncopyableBuffer {
   }
 
  private:
-  using OwnedDataPtr = std::unique_ptr<uint8_t[], decltype(port::AlignedFree)*>;
   NoncopyableBuffer(OwnedDataPtr data, size_t size)
       : data_(std::move(data)), buf_(data_.get()), size_(size) {}
 
@@ -125,7 +132,7 @@ class NoncopyableBuffer {
         port::AlignedFree);
   }
   // If data_ != nullptr then buf_ == data_.get()
-  OwnedDataPtr data_ = {nullptr, free};  // Owning data pointer.
+  OwnedDataPtr data_{nullptr, free};     // Owning data pointer.
   const void* buf_;                      // Non-owning data pointer.
   size_t size_;                          // Size in number of bytes.
 };
