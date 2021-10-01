@@ -1120,10 +1120,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     } else {
       VLOG(4) << "Convolution Autotune has been turned off";
     }
+    auto plan_and_scratch_or =
+        AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+    OP_REQUIRES_OK(ctx, plan_and_scratch_or.status());
+    auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
     cudnn_launch_status = stream->ConvolveWithExecutionPlan(
         se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
+        filter_ptr, output_desc, output_ptr, conv_desc,
+        std::get<se::DeviceMemoryBase>(plan_and_scratch),
+        *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+        nullptr);
   } else {
     VLOG(4) << "Convolution Algorithm: "
             << algorithm_config.algorithm()->algo_id();

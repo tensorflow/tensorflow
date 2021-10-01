@@ -374,12 +374,18 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
       }
 
       auto launch_func = [&](se::ScratchAllocator* allocator_used,
-                             se::dnn::AlgorithmConfig profile_config,
+                             se::dnn::AlgorithmConfig& profile_config,
                              se::dnn::ProfileResult* profile_result) -> Status {
         if (CudnnUseFrontend()) {
+          TF_ASSIGN_OR_RETURN(
+              auto plan_and_scratch,
+              AllocateScratchOrFallback(allocator_used, profile_config));
           return stream->ConvolveWithExecutionPlan(
               kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-              output_ptr, conv_desc, allocator_used, profile_config,
+              output_ptr, conv_desc,
+              std::get<se::DeviceMemoryBase>(plan_and_scratch),
+              *std::get<const se::dnn::ConvolveExecutionPlan*>(
+                  plan_and_scratch),
               profile_result);
         } else {
           return stream->ConvolveWithAlgorithm(

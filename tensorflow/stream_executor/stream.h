@@ -370,8 +370,8 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<OutputType> output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
+      DeviceMemoryBase scratch_memory,
+      const dnn::ConvolveExecutionPlan &execution_plan,
       dnn::ProfileResult *output_profile_result) {
 #if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
@@ -381,7 +381,7 @@ class Stream {
           kind, dnn::ToDataType<InputType>::value,
           dnn::ToDataType<OutputType>::value, this, input_descriptor,
           input_data, filter_descriptor, filter_data, output_descriptor,
-          output_data, convolution_descriptor, plan_config, scratch_allocator,
+          output_data, convolution_descriptor, execution_plan, scratch_memory,
           output_profile_result);
     }
 #endif  // GOOGLE_CUDA
