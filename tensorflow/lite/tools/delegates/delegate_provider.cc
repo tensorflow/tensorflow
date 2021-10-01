@@ -58,9 +58,5 @@ ProvidedDelegateList::CreateAllRankedDelegates(const ToolParams& params) const {
   return delegates;
 }
 
-const int ProvidedDelegateList::GetCount() {
-  return providers_.size();
-}
-
 }  // namespace tools
 }  // namespace tflite

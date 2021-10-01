@@ -69,11 +69,9 @@ set(DELEGATE_PROVIDERS_SUPP
 
 set(DELEGATE_PROVIDERS
   ${DELEGATE_PROVIDERS_SUPP}
-  ${TFLITE_SOURCE_DIR}/tools/delegates/coreml_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc
+  # List of delegates referenced as options in the tensorflow/lite/CMakeLists.txt
   ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/hexagon_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
 )

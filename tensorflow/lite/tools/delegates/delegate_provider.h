@@ -158,7 +158,9 @@ class ProvidedDelegateList {
   }
 
   // Returns the count of referenced delegates in providers_ variable
-  const int GetCount();
+  const int GetCount() {
+    return providers_.size();
+  }
 
  private:
   const DelegateProviderList& providers_;
