@@ -829,9 +829,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   }
 
   // Dump computation proto state and buffer assignment for debug and test, if
-  // dump or embed_ir_in_executable is enabled.
-  if (embed_ir_in_executable ||
-      DumpingEnabledForHloModule(cpu_executable->module())) {
+  // dump is enabled.
+  if (DumpingEnabledForHloModule(cpu_executable->module())) {
     if (!hlo_proto_) {
       hlo_proto_ = absl::make_unique<HloProto>();
       *hlo_proto_->mutable_hlo_module() = cpu_executable->module().ToProto();
