@@ -22,6 +22,12 @@ REGISTER4(BinaryOp, CPU, "FloorMod", functor::floor_fmod, Eigen::half, bfloat16,
           float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER4(BinaryOp, GPU, "FloorMod", functor::safe_floor_mod, uint8, uint16,
+          int16, int64_t);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+REGISTER3(BinaryOp, GPU, "FloorMod", functor::floor_fmod, float, Eigen::half,
+          double);
+#endif
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

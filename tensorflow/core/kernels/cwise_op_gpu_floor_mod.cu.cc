@@ -19,6 +19,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+DEFINE_BINARY5(safe_floor_mod, uint8, uint16, int16, int32, int64);
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+DEFINE_BINARY3(floor_fmod, Eigen::half, float, double);
+#endif
 // TODO(b/32239807) No GPU ops for mod yet.
 }  // namespace functor
 }  // namespace tensorflow
