@@ -261,10 +261,6 @@ filegroup(
         "absl_py",
         [
             "@absl_py//:LICENSE",
-            "@absl_py//absl/logging:LICENSE",
-            "@absl_py//absl/flags:LICENSE",
-            "@absl_py//absl/testing:LICENSE",
-            "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         ],
     ) + if_not_system_lib(
         "com_github_grpc_grpc",
