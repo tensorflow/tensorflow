@@ -2760,6 +2760,321 @@ func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 
 // -----
 
+func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    someattr
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xi32>) -> tensor<1x8x8xi32>
+  return %res : tensor<1x8x8xi32>
+}
+
+// CHECK-DAG: #[[MAP0:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL:   func @gather(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C1:.+]] = constant 1
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [1, 8, 8] : tensor<1x8x8xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           indexing_maps = [#[[MAP0]]],
+// CHECK-SAME:           iterator_types = ["parallel", "parallel", "parallel"]
+// CHECK-SAME:           outs(%[[INIT]] : tensor<1x8x8xi32>)
+// CHECK-SAME:           {someattr}
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
+// CHECK-DAG:         %[[S1:.+]] = index_cast %[[S1_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[C0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[S1]], %[[C0]] : index
+// CHECK-DAG:         %[[IN2:.+]] = addi %[[C0]], %[[IDX2]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<1x4x8xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK-DAG:       return %[[RES]]
+
+// -----
+
+func @gather_no_collapse(%operand : tensor<6x3xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x4x2xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[4, 2]> : tensor<2xi64>
+  } : (tensor<6x3xi32>, tensor<5x2xi32>) -> tensor<5x4x2xi32>
+  return %res : tensor<5x4x2xi32>
+}
+
+// CHECK-LABEL:   func @gather_no_collapse(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C1:.+]] = constant 1
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [5, 4, 2] : tensor<5x4x2xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<5x4x2xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C0]]] : tensor<5x2xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C1]]] : tensor<5x2xi32>
+// CHECK-DAG:         %[[S1:.+]] = index_cast %[[S1_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[IDX1]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[S1]], %[[IDX2]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<6x3xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+
+// -----
+
+func @gather_max_offset(%operand : tensor<?x?x?xi32>, %start_indices : tensor<5x2xi32>) -> tensor<2x3x4x5xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [0, 1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[2, 3, 4]> : tensor<3xi64>
+  } : (tensor<?x?x?xi32>, tensor<5x2xi32>) -> tensor<2x3x4x5xi32>
+  return %res : tensor<2x3x4x5xi32>
+}
+
+// CHECK-LABEL:   func @gather_max_offset(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C1:.+]] = constant 1
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [2, 3, 4, 5] : tensor<2x3x4x5xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<2x3x4x5xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[IDX3:.+]] = linalg.index 3
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX3]], %[[C0]]] : tensor<5x2xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX3]], %[[C1]]] : tensor<5x2xi32>
+// CHECK-DAG:         %[[S1:.+]] = index_cast %[[S1_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[S1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[IN2:.+]] = addi %[[C0]], %[[IDX2]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<?x?x?xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+// -----
+
+func @gather_reorder_start_index(%operand : tensor<6x3x2x7xi32>, %start_indices : tensor<5x4xi32>) -> tensor<5x2x4xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 2],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [3, 1, 2, 0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 2, 1, 4]> : tensor<4xi64>
+  } : (tensor<6x3x2x7xi32>, tensor<5x4xi32>) -> tensor<5x2x4xi32>
+  return %res : tensor<5x2x4xi32>
+}
+
+// CHECK-LABEL:   func @gather_reorder_start_index(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C1:.+]] = constant 1
+// CHECK-DAG:       %[[C2:.+]] = constant 2
+// CHECK-DAG:       %[[C3:.+]] = constant 3
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [5, 2, 4] : tensor<5x2x4xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<5x2x4xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C0]]] : tensor<5x4xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C1]]] : tensor<5x4xi32>
+// CHECK-DAG:         %[[S1:.+]] = index_cast %[[S1_INT]] : i32 to index
+// CHECK-DAG:         %[[S2_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C2]]] : tensor<5x4xi32>
+// CHECK-DAG:         %[[S2:.+]] = index_cast %[[S2_INT]] : i32 to index
+// CHECK-DAG:         %[[S3_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C3]]] : tensor<5x4xi32>
+// CHECK-DAG:         %[[S3:.+]] = index_cast %[[S3_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S3]], %[[C0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[S1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[IN2:.+]] = addi %[[S2]], %[[C0]] : index
+// CHECK-DAG:         %[[IN3:.+]] = addi %[[S0]], %[[IDX2]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]], %[[IN3]]] : tensor<6x3x2x7xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+// -----
+
+func @gather_implicit_trailing_dim(%operand : tensor<?x?xi32>, %start_indices : tensor<5x2xi32>) -> tensor<3x4x5x2xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 2,
+      offset_dims = [0, 1],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[3, 4]> : tensor<2xi64>
+  } : (tensor<?x?xi32>, tensor<5x2xi32>) -> tensor<3x4x5x2xi32>
+  return %res : tensor<3x4x5x2xi32>
+}
+
+// CHECK-LABEL:   func @gather_implicit_trailing_dim(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [3, 4, 5, 2] : tensor<3x4x5x2xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<3x4x5x2xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[IDX3:.+]] = linalg.index 3
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[IDX3]]] : tensor<5x2xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[C0]], %[[IDX1]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+// -----
+
+func @gather_non_static(%operand : tensor<?x?xi32>, %start_indices : tensor<?x?xi32>) -> tensor<3x4x?xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [0, 1],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[3, 4]> : tensor<2xi64>
+  } : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<3x4x?xi32>
+  return %res : tensor<3x4x?xi32>
+}
+
+// CHECK-LABEL:   func @gather_non_static(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C2:.+]] = constant 2
+// CHECK-DAG:       %[[C3:.+]] = constant 3
+// CHECK-DAG:       %[[C4:.+]] = constant 4
+
+//                  Reify return shape
+// CHECK-DAG:       %[[CI_3:.+]] = index_cast %[[C3]] : index to i32
+// CHECK-DAG:       %[[CI_4:.+]] = index_cast %[[C4]] : index to i32
+// CHECK-DAG:       %[[C0_REPEAT:.+]] = constant 0
+// CHECK-DAG:       %[[START_INDICES_DIM0_INT:.+]] = tensor.dim %[[START_INDICES]], %[[C0_REPEAT]] : tensor<?x?xi32>
+// CHECK-DAG:       %[[START_INDICES_DIM0:.+]] = index_cast %[[START_INDICES_DIM0_INT]] : index to i32
+// CHECK-DAG:       %[[RES_SHAPE:.+]] = tensor.from_elements %[[CI_3]], %[[CI_4]], %[[START_INDICES_DIM0]] : tensor<3xi32>
+// CHECK-DAG:       %[[DYN_DIM_INT:.+]] = tensor.extract %[[RES_SHAPE]][%[[C2]]] : tensor<3xi32>
+// CHECK-DAG:       %[[DYN_DIM:.+]] = index_cast %[[DYN_DIM_INT]] : i32 to index
+
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [3, 4, %[[DYN_DIM]]] : tensor<3x4x?xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<3x4x?xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[C0]], %[[IDX1]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+// -----
+
+func @gather_unranked(%operand : tensor<*xi32>, %start_indices : tensor<?x?xi32>) -> tensor<?x?x?xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [0, 1],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[3, 4]> : tensor<2xi64>
+  } : (tensor<*xi32>, tensor<?x?xi32>) -> tensor<?x?x?xi32>
+  return %res : tensor<?x?x?xi32>
+}
+
+// CHECK-LABEL:   func @gather_unranked(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = constant 0
+// CHECK-DAG:       %[[C1:.+]] = constant 1
+// CHECK-DAG:       %[[C2:.+]] = constant 2
+// CHECK-DAG:       %[[C3:.+]] = constant 3
+// CHECK-DAG:       %[[C4:.+]] = constant 4
+
+//                  Reify return shape
+// CHECK-DAG:       %[[CI3:.+]] = index_cast %[[C3]] : index to i32
+// CHECK-DAG:       %[[CI4:.+]] = index_cast %[[C4]] : index to i32
+// CHECK-DAG:       %[[C0_REPEAT:.+]] = constant 0
+// CHECK-DAG:       %[[START_INDICES_DIM0_INT:.+]] = tensor.dim %[[START_INDICES]], %[[C0_REPEAT]] : tensor<?x?xi32>
+// CHECK-DAG:       %[[START_INDICES_DIM0:.+]] = index_cast %[[START_INDICES_DIM0_INT]] : index to i32
+// CHECK-DAG:       %[[RES_SHAPE:.+]] = tensor.from_elements %[[CI3]], %[[CI4]], %[[START_INDICES_DIM0]] : tensor<3xi32>
+// CHECK-DAG:       %[[RES_DIM0_INT:.+]] = tensor.extract %[[RES_SHAPE]][%[[C0]]] : tensor<3xi32>
+// CHECK-DAG:       %[[RES_DIM0:.+]] = index_cast %[[RES_DIM0_INT]] : i32 to index
+// CHECK-DAG:       %[[RES_DIM1_INT:.+]] = tensor.extract %[[RES_SHAPE]][%[[C1]]] : tensor<3xi32>
+// CHECK-DAG:       %[[RES_DIM1:.+]] = index_cast %[[RES_DIM1_INT]] : i32 to index
+// CHECK-DAG:       %[[RES_DIM2_INT:.+]] = tensor.extract %[[RES_SHAPE]][%[[C2]]] : tensor<3xi32>
+// CHECK-DAG:       %[[RES_DIM2:.+]] = index_cast %[[RES_DIM2_INT]] : i32 to index
+
+// CHECK-DAG:       %[[INIT:.+]] = linalg.init_tensor [%[[RES_DIM0]], %[[RES_DIM1]], %[[RES_DIM2]]] : tensor<?x?x?xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           outs(%[[INIT]] : tensor<?x?x?xi32>) {
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
+// CHECK-DAG:         %[[S0:.+]] = index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[IN0:.+]] = addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = addi %[[C0]], %[[IDX1]] : index
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<*xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK:           return %[[RES]]
+
+// -----
+
 func @torch_index_select(%arg0: tensor<5x1x5xi32>,
                          %arg1: tensor<2xi32>) ->  tensor<2x1x5xi32> {
   %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
