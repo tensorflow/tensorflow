@@ -20,6 +20,7 @@ load(
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -527,7 +528,7 @@ tf_cuda_library(
         ":virtual_nccl",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ]) + if_rocm_is_configured([
+    ]) + if_rocm([
         ":virtual_rccl",
         "//tensorflow/stream_executor/rocm:rocm_activation",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
@@ -597,7 +598,7 @@ tf_cuda_library(
         "//tensorflow/stream_executor/lib",
     ]) + if_cuda_is_configured([
         ":virtual_nccl",
-    ]) + if_rocm_is_configured([
+    ]) + if_rocm([
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
@@ -693,7 +694,7 @@ cc_library(
         ":virtual_nccl_utils",
     ]) + if_cuda_is_configured([
         ":virtual_nccl",
-    ]) + if_rocm_is_configured([
+    ]) + if_rocm([
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
