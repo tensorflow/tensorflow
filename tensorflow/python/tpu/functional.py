@@ -14,10 +14,6 @@
 # =============================================================================
 """Functional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.tpu.ops import tpu_ops
 
 TPUPartitionedCall = tpu_ops.tpu_partitioned_call  # pylint: disable=invalid-name

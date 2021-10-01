@@ -704,6 +704,11 @@ void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
   tensorflow::unwrap(ctx)->SetLogDevicePlacement(enable);
 }
 
+void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx, unsigned char enable,
+                                        TF_Status* status) {
+  tensorflow::unwrap(ctx)->SetRunEagerOpAsFunction(enable);
+}
+
 const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument("Invalid handle");

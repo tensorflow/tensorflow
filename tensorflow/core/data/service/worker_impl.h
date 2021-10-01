@@ -92,6 +92,8 @@ class DataServiceWorkerImpl {
     std::unique_ptr<TaskRunner> task_runner;
   };
 
+  // Validates the worker config.
+  Status ValidateWorkerConfig() const;
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.

@@ -58,6 +58,7 @@ cuda_py_test(
     name = "gather_op_test",
     size = "medium",
     srcs = ["gather_op_test.py"],
+    shard_count = 3,
     deps = [
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
@@ -74,6 +75,7 @@ cuda_py_test(
     name = "scatter_nd_ops_test",
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
+    shard_count = 2,
     tags = ["noasan"],  # http://b/32635055
     deps = [
         "//tensorflow/python:array_ops",

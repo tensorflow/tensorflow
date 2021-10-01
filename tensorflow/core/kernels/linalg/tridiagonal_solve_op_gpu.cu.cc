@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -173,7 +173,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
       // Gtsv expects rhs in column-major form, so we have to transpose.
       // rhs is transposed into temp, gtsv replaces temp with solution, then
       // temp is transposed into x.
-      std::unique_ptr<CudaSolver> cublas_solver(new CudaSolver(context));
+      std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
       Tensor temp;
       TensorShape temp_shape({k, m});
       OP_REQUIRES_OK(context,
@@ -190,7 +190,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
 
  private:
   void TransposeWithGeam(OpKernelContext* context,
-                         const std::unique_ptr<CudaSolver>& cublas_solver,
+                         const std::unique_ptr<GpuSolver>& cublas_solver,
                          const Scalar* src, Scalar* dst, const int src_rows,
                          const int src_cols) const {
     const Scalar zero(0), one(1);
@@ -214,7 +214,7 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
                                 num_eqs, num_rhs, subdiag, diag, superdiag, rhs,
                                 num_eqs, &buffer_size));
     Tensor temp_tensor;
-    TensorShape temp_shape({static_cast<int64>(buffer_size)});
+    TensorShape temp_shape({static_cast<int64_t>(buffer_size)});
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_UINT8, temp_shape, &temp_tensor));
     void* buffer = temp_tensor.flat<std::uint8_t>().data();
@@ -317,7 +317,7 @@ class TridiagonalSolveOpGpu : public OpKernel {
                                 matrix_size, subdiag, diag, superdiag, x,
                                 batch_size, matrix_size, &buffer_size));
     Tensor temp_tensor;
-    TensorShape temp_shape({static_cast<int64>(buffer_size)});
+    TensorShape temp_shape({static_cast<int64_t>(buffer_size)});
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_UINT8, temp_shape, &temp_tensor));
     void* buffer = temp_tensor.flat<std::uint8_t>().data();
@@ -339,14 +339,14 @@ class TridiagonalSolveOpGpu : public OpKernel {
     }
     perm[ndims - 1] = ndims - 1;
 
-    std::vector<int64> dims;
+    std::vector<int64_t> dims;
     for (int index : perm) {
       dims.push_back(lhs.dim_size(index));
     }
     TensorShape lhs_transposed_shape(
-        gtl::ArraySlice<int64>(dims.data(), ndims));
+        gtl::ArraySlice<int64_t>(dims.data(), ndims));
 
-    std::unique_ptr<CudaSolver> cublas_solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
     OP_REQUIRES_OK(context, cublas_solver->allocate_scoped_tensor(
                                 DataTypeToEnum<Scalar>::value,
                                 lhs_transposed_shape, &lhs_transposed));

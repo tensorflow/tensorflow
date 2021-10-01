@@ -3,14 +3,25 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 licenses(["notice"])
 
 py_strict_test(
+    name = "multiple_results_test",
+    srcs = ["multiple_results_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
     name = "tf_binary_bcast_test",
     srcs = ["tf_binary_bcast_test.py"],
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -20,9 +31,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -32,9 +43,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -44,9 +55,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -56,9 +67,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -68,9 +79,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -80,9 +91,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -92,9 +103,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -104,9 +115,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -116,9 +127,9 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -128,8 +139,8 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        # copybara:uncomment "//testing/pybase",
-        "//third_party/py/numpy",
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )

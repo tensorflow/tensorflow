@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for pooling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 
@@ -2314,7 +2310,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testEdgeCasesRaiseErrors(self):
     with self.assertRaisesRegexp(
-        ValueError, "Data formats NCHW_VECT_C is not yet supported with "
+        ValueError, "NCHW_VECT_C.*is not supported with "
         "explicit padding|XLA does not support pooling ops with explicit "
         "padding"):
       nn_ops.max_pool(
@@ -2324,7 +2320,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           padding=[[0, 0], [0, 1], [0, 1], [0, 0]],
           data_format="NCHW_VECT_C")
     with self.assertRaisesRegexp(
-        ValueError, "Explicit padding is not yet supported with an input "
+        ValueError, "Explicit padding is not supported with an input "
                     "tensor of rank 5"):
       nn_ops.max_pool_v2(
           array_ops.placeholder(dtypes.float32, shape=[1, 3, 3, 1, 1]),

@@ -95,31 +95,39 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
 }
 
 ResourceMgr::ResourceAndName::ResourceAndName()
-    : resource(nullptr), name(nullptr), resource_owner(nullptr) {}
+    : resource(core::RefCountPtr<ResourceBase>{nullptr}), name(nullptr) {}
 
-ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
-                                              string name,
-                                              ResourceBase* resource_owner)
-    : resource(resource),
-      name(absl::make_unique<string>(std::move(name))),
-      resource_owner(resource_owner) {}
+ResourceMgr::ResourceAndName::ResourceAndName(
+    StrongOrWeakResourcePtr&& resource, string name)
+    : resource(std::move(resource)),
+      name(absl::make_unique<string>(std::move(name))) {}
+
+core::RefCountPtr<ResourceBase> ResourceMgr::ResourceAndName::GetResource()
+    const {
+  if (absl::holds_alternative<core::RefCountPtr<ResourceBase>>(resource)) {
+    ResourceBase* ptr =
+        absl::get<core::RefCountPtr<ResourceBase>>(resource).get();
+    ptr->Ref();
+    return core::RefCountPtr<ResourceBase>{ptr};
+  } else if (absl::holds_alternative<core::WeakPtr<ResourceBase>>(resource)) {
+    return absl::get<core::WeakPtr<ResourceBase>>(resource).GetNewRef();
+  } else {
+    return nullptr;
+  }
+}
 
 ResourceMgr::ResourceAndName::ResourceAndName(
     ResourceAndName&& other) noexcept {
-  resource = nullptr;
-  std::swap(resource, other.resource);
   name = std::move(other.name);
-  resource_owner = std::move(other.resource_owner);
+  resource = std::move(other.resource);
 }
 
 ResourceMgr::ResourceAndName::~ResourceAndName() {}
 
 ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
     ResourceAndName&& other) noexcept {
-  resource = nullptr;
-  std::swap(resource, other.resource);
   name = std::move(other.name);
-  resource_owner = std::move(other.resource_owner);
+  resource = std::move(other.resource);
   return *this;
 }
 
@@ -158,8 +166,9 @@ string ResourceMgr::DebugString() const {
     for (const auto& q : *p.second) {
       const Key& key = q.first;
       const char* type = DebugTypeName(key.first);
+      const core::RefCountPtr<ResourceBase> resource = q.second.GetResource();
       Line l{&container, port::Demangle(type), q.second.name.get(),
-             q.second.resource->DebugString()};
+             resource ? resource->DebugString() : "<nullptr>"};
       lines.push_back(l);
     }
   }
@@ -184,8 +193,11 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 
   // NOTE: Separating out the construction of the map key and value so that the
   // key can contain a StringPiece that borrows from the string in the value.
-  ResourceAndName resource_and_name(resource, name,
-                                    owns_resource ? resource : nullptr);
+  ResourceAndName resource_and_name(
+      owns_resource
+          ? StrongOrWeakResourcePtr{core::RefCountPtr<ResourceBase>{resource}}
+          : StrongOrWeakResourcePtr{core::WeakPtr<ResourceBase>{resource}},
+      name);
   StringPiece borrowed_name(*resource_and_name.name);
   Container::value_type key_and_value(Key(type.hash_code(), borrowed_name),
                                       std::move(resource_and_name));
@@ -226,8 +238,32 @@ Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
     return errors::NotFound("Resource ", container, "/", resource_name, "/",
                             type_name, " does not exist.");
   }
-  *resource = iter->second.resource;
-  (*resource)->Ref();
+  ResourceBase* ptr = iter->second.GetResource().release();
+  if (ptr == nullptr) {
+    return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                            type_name, " has been destroyed.");
+  }
+  *resource = ptr;
+  return Status::OK();
+}
+
+Status ResourceMgr::PopResourceAndName(const string& container,
+                                       uint64 type_hash_code,
+                                       const string& resource_name,
+                                       const string& type_name,
+                                       ResourceAndName& resource_and_name) {
+  mutex_lock l(mu_);
+  Container* b = gtl::FindPtrOrNull(containers_, container);
+  if (b == nullptr) {
+    return errors::NotFound("Container ", container, " does not exist.");
+  }
+  auto iter = b->find({type_hash_code, resource_name});
+  if (iter == b->end()) {
+    return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                            type_name, " does not exist.");
+  }
+  std::swap(resource_and_name, iter->second);
+  b->erase(iter);
   return Status::OK();
 }
 
@@ -235,21 +271,8 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
                              const string& resource_name,
                              const string& type_name) {
   ResourceAndName resource_and_name;
-  {
-    mutex_lock l(mu_);
-    Container* b = gtl::FindPtrOrNull(containers_, container);
-    if (b == nullptr) {
-      return errors::NotFound("Container ", container, " does not exist.");
-    }
-    auto iter = b->find({type_hash_code, resource_name});
-    if (iter == b->end()) {
-      return errors::NotFound("Resource ", container, "/", resource_name, "/",
-                              type_name, " does not exist.");
-    }
-    std::swap(resource_and_name, iter->second);
-    b->erase(iter);
-  }
-  DCHECK(resource_and_name.resource != nullptr);
+  TF_RETURN_IF_ERROR(PopResourceAndName(
+      container, type_hash_code, resource_name, type_name, resource_and_name));
   return Status::OK();
 }
 

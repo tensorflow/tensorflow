@@ -61,7 +61,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, bool add_default_attributes = true);
+    absl::Span<std::string> exported_names, bool add_default_attributes = true,
+    bool unconditionally_use_set_output_shapes = false);
 
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect.
@@ -136,7 +137,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
     absl::optional<absl::Span<const std::string>> exported_names,
-    mlir::MLIRContext* context);
+    mlir::MLIRContext* context,
+    bool unconditionally_use_set_output_shapes = false);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

@@ -65,8 +65,10 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, /*lower_from_tensorflow=*/true);
+  TfCpuRtPipelineOptions tf_cpurt_opts;
+  JitExecutable& jit_executable =
+      CreateJitExecutable(*host, mlir_input, function_name,
+                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -104,7 +106,8 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = executable->InitializeCallFrame(operands, &call_frame))
+  if (auto err =
+          executable->InitializeCallFrame(operands, &call_frame, nullptr))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {

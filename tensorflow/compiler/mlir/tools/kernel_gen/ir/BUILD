@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SideEffects",
     ],
 )

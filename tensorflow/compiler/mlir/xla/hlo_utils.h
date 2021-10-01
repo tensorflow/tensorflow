@@ -46,7 +46,7 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
 
-mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder);
 
 // Converts the given XLA shape for tensors to the template MLIR type. Note that

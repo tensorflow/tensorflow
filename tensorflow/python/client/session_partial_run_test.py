@@ -15,10 +15,6 @@
 
 """Tests for tensorflow.python.client.session.Session's partial run APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Experimental impl for gen_math_ops.py using unified APIs, for testing."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework.experimental import _math_ops
 from tensorflow.python.framework.experimental import context_stack as context
 

@@ -15,10 +15,6 @@
 # ==============================================================================
 """Upgrader for Python scripts according to an API change specification."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import collections
 import os

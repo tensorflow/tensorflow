@@ -14,10 +14,6 @@
 # ==============================================================================
 """Create a Block Diagonal operator from one or more `LinearOperators`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

@@ -42,6 +42,7 @@ extern llvm::cl::opt<bool> graph_as_function;
 extern llvm::cl::opt<bool> upgrade_legacy;
 // TODO(jpienaar): Temporary flag, flip default and remove.
 extern llvm::cl::opt<bool> enable_shape_inference;
+extern llvm::cl::opt<bool> unconditionally_use_set_output_shapes;
 
 // Export options.
 extern llvm::cl::opt<bool> export_entry_func_to_flib;

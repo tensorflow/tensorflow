@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
-using ::tensorflow::IOError;
 using ::tensorflow::Status;
 using ::tensorflow::error::Code;
+using ::tensorflow::errors::IOError;
 
 TF_Status* TF_NewStatus() { return new TF_Status; }
 

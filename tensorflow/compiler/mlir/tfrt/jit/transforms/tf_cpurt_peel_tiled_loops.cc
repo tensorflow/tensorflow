@@ -40,17 +40,17 @@ struct PeelTiledLoop
       mlir::linalg::TiledLoopOp loop,
       mlir::PatternRewriter &rewriter) const override {
     if (loop->hasAttr(kWasPeeledAttr)) return mlir::failure();
-    auto peeled_idx = loop.getNumLoops() - 1;
-    mlir::linalg::TiledLoopOp peel;
-    if (mlir::linalg::peelAndCanonicalizeTiledLoop(rewriter, loop, peeled_idx,
-                                                   peel)
-            .failed())
-      return mlir::failure();
-
-    // Ensure that the peeling doesn't keep occurring forever.
     auto true_attr = mlir::BoolAttr::get(rewriter.getContext(), true);
     loop->setAttr(kWasPeeledAttr, true_attr);
-    peel->setAttr(kWasPeeledAttr, true_attr);
+    for (int peeled_idx = loop.getNumLoops() - 1; peeled_idx >= 0;
+         peeled_idx--) {
+      mlir::linalg::TiledLoopOp peel;
+      // Mark the new loop if one was created
+      if (mlir::linalg::peelAndCanonicalizeTiledLoop(rewriter, loop, peeled_idx,
+                                                     peel)
+              .succeeded())
+        peel->setAttr(kWasPeeledAttr, true_attr);
+    }
     return mlir::success();
   }
 };

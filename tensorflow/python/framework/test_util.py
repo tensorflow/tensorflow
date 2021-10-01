@@ -15,10 +15,6 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from collections import OrderedDict
 import contextlib
@@ -1124,17 +1120,15 @@ def enable_eager_op_as_function(fn):
       return fn(*args, **kwargs)
 
     context.enable_run_eager_op_as_function()
-    context._reset_context()
     try:
       return fn(*args, **kwargs)
     finally:
       context.disable_run_eager_op_as_function()
-      context._reset_context()
 
   return wrapper
 
 
-def with_eager_op_as_function(cls):
+def with_eager_op_as_function(cls=None, only_as_function=False):
   """Adds methods that call original methods with eager_op_as_function enabled.
 
   Example:
@@ -1167,20 +1161,32 @@ def with_eager_op_as_function(cls):
 
   Args:
     cls: class to decorate.
+    only_as_function: whether to run all the tests in the TestCase in eager mode
+      and in eager_op_as_function mode. By default it will run all tests in both
+      modes. When `only_as_function=True` tests will not be run in eager mode.
 
   Returns:
     cls with new test methods added.
   """
-  if context.run_eager_op_as_function_enabled():
+
+  def decorator(cls):
+    if context.run_eager_op_as_function_enabled():
+      return cls
+
+    for name, value in cls.__dict__.copy().items():
+      if (callable(value) and
+          name.startswith(unittest.TestLoader.testMethodPrefix) and
+          not getattr(value, "_disable_eager_op_as_function", False)):
+        setattr(cls, name + "WithEagerOpAsFunctionEnabled",
+                enable_eager_op_as_function(value))
+        if only_as_function:
+          delattr(cls, name)
     return cls
 
-  for name, value in cls.__dict__.copy().items():
-    if (callable(value) and
-        name.startswith(unittest.TestLoader.testMethodPrefix) and
-        not getattr(value, "_disable_eager_op_as_function", False)):
-      setattr(cls, name + "WithEagerOpAsFunctionEnabled",
-              enable_eager_op_as_function(value))
-  return cls
+  if cls is not None:
+    return decorator(cls)
+
+  return decorator
 
 
 def disable_eager_op_as_function(unused_msg):

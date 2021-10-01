@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for loss scaling utilities in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -151,7 +147,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     # Static rank
     with self.assertRaisesRegex(
         ValueError, "Invalid value passed for `per_example_loss`. "
-        "Expected a tensor with at least rank 1,"):
+        "Expected a tensor with at least rank 1."):
       nn_impl.compute_average_loss(per_example_loss)
 
     with context.graph_mode():

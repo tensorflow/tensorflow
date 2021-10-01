@@ -630,12 +630,12 @@ inline void RequantizeManyInNewRange<quint8, qint32>(
 
   // Requantize remaining elements in array without SIMD.
   const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   for (; i < count; ++i) {
-    const int64 input_value = static_cast<int64>(input[i]);
+    const int64 input_value = static_cast<int64_t>(input[i]);
     int64 output_value = code_0_int64 + (input_value * mult_int32);
     output_value = std::max(output_value, lowest_quantized);
     output_value = std::min(output_value, highest_quantized);

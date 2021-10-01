@@ -14,10 +14,6 @@
 # ==============================================================================
 """AutomaticControlDependencies and related functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 
@@ -53,6 +49,7 @@ ASYNC_STATEFUL_OPS = [
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
     "Recv",
+    "CollectiveInitializeCommunicator",
 ]
 
 LEGACY_RANDOM_OPS = [

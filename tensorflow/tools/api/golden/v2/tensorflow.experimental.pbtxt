@@ -1,8 +1,16 @@
 path: "tensorflow.experimental"
 tf_module {
   member {
+    name: "BatchableExtensionType"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
     name: "ExtensionType"
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "ExtensionTypeBatchEncoder"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Optional"

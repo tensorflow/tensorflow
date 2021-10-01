@@ -309,29 +309,34 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
               return tiles;
             });
     auto alignment = 16;
-    mlir::linalg::CodegenStrategy()
-        .tile<mlir::linalg::GenericOp>(tiling_options)
-        .promote<mlir::linalg::GenericOp>(
-            mlir::linalg::LinalgPromotionOptions()
-                .setAlignment(alignment)
-                .setUseFullTileBuffersByDefault(true)
-                .setUseAlloca(true))
-        .vectorize<mlir::linalg::GenericOp>()
-        .setEnableVectorTransferPartialRewrite(true)
-        .setVectorTransformsOptions(
-            mlir::vector::VectorTransformsOptions().setVectorTransferSplit(
-                mlir::vector::VectorTransferSplit::VectorTransfer))
-        .setEnableVectorToSCFConversion(true)
-        .setVectorTransferToSCFOptions(
-            mlir::VectorTransferToSCFOptions().setUnroll(true))
-        .setEnableVectorContractLowering(true)
-        .transform(f);
+    if (failed(
+            mlir::linalg::CodegenStrategy()
+                .tile(mlir::linalg::GenericOp::getOperationName(),
+                      tiling_options)
+                .promote(mlir::linalg::GenericOp::getOperationName(),
+                         mlir::linalg::LinalgPromotionOptions()
+                             .setAlignment(alignment)
+                             .setUseFullTileBuffersByDefault(true)
+                             .setUseAlloca(true))
+                .vectorize(mlir::linalg::GenericOp::getOperationName())
+                .setEnableVectorTransferPartialRewrite(true)
+                .setVectorTransformsOptions(
+                    mlir::vector::VectorTransformsOptions()
+                        .setVectorTransferSplit(
+                            mlir::vector::VectorTransferSplit::VectorTransfer))
+                .setEnableVectorToSCFConversion(true)
+                .setVectorTransferToSCFOptions(
+                    mlir::VectorTransferToSCFOptions().setUnroll(true))
+                .setEnableVectorContractLowering(true)
+                .transform(f)))
+      return signalPassFailure();
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();
     OwningRewritePatternList patterns(ctx);
     mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(f, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 

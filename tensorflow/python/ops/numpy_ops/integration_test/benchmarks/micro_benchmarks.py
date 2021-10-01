@@ -20,10 +20,6 @@ bazel run -c opt --config=cuda \
   --number=100 --repeat=100 \
   --benchmarks=.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import time
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for deterministic image op gradient functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from absl.testing import parameterized

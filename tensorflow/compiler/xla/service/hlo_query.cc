@@ -24,13 +24,11 @@ limitations under the License.
 namespace xla {
 namespace hlo_query {
 
-namespace {
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
          op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
          op == HloOpcode::kReduceScatter;
 }
-}  // namespace
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&

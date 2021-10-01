@@ -249,9 +249,22 @@ android_library(
     ],
 )
 
+# 'tensorflowlite_java' is the public android_library target for the TF Lite Java
+# APIs & Runtime, including experimental APIs, but EXCLUDING NATIVE CODE dependencies.
 android_library(
     name = "tensorflowlite_java",
     srcs = [":java_srcs"],
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# 'tensorflowlite_java_stable' is the public android_library target for the TF Lite Java
+# APIs & Runtime, excluding experimental APIs, and EXCLUDING NATIVE CODE dependencies.
+android_library(
+    name = "tensorflowlite_java_stable",
+    srcs = [":java_stable_srcs"],
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",

@@ -14,10 +14,6 @@
 # =============================================================================
 """Utility to convert a Graph to a FunctionDef."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from tensorflow.core.framework import function_pb2

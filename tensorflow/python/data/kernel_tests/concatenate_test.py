@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.concatenate()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -111,7 +107,8 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -129,7 +126,8 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -145,7 +143,8 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())

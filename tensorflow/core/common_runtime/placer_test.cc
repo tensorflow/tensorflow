@@ -201,6 +201,18 @@ REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("XLA_CPU").Priority(2),
 REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("FakeCPU").Priority(1),
                         DummyOp);
 
+// Op with no-copy type definition.
+REGISTER_OP("TestUncopiableTypeGeneratorCPU")
+    .Output("d: variant")
+    .SetTypeConstructor(full_type::UnaryGeneric(TFT_DATASET));
+REGISTER_KERNEL_BUILDER(
+    Name("TestUncopiableTypeGeneratorCPU").Device("FakeCPU"), DummyOp);
+
+// Op consuming a typed input.
+REGISTER_OP("TestTypedConsumer").Input("i: variant");
+REGISTER_KERNEL_BUILDER(Name("TestTypedConsumer").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestTypedConsumer").Device("FakeGPU"), DummyOp);
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // A PlacerTest method has three phases:
@@ -760,6 +772,24 @@ TEST_F(PlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
   TF_EXPECT_OK(Place(&g));
   EXPECT_COLOCATED(g, "var_cpu", "in");
   EXPECT_COLOCATED(g, "assign", "in");
+}
+
+TEST_F(PlacerTest, TestUncopiableTypeEdges) {
+  Graph g(OpRegistry::Global());
+
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+
+  // The producer can only be on the CPU. Without colocation constraints,
+  // the consumer would be placed on GPU, causing a copy.
+  Node* input =
+      ops::SourceOp("TestUncopiableTypeGeneratorCPU", b.opts().WithName("ds"));
+  ops::UnaryOp("TestTypedConsumer", ops::NodeOut(input, 0),
+               b.opts().WithName("c"));
+
+  TF_EXPECT_OK(BuildGraph(b, &g));
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "ds", "c");
 }
 
 TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {

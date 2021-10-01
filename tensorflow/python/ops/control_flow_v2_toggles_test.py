@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for control_flow_v2_toggles.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.platform import googletest

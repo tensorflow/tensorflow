@@ -25,7 +25,7 @@ namespace fallback {
 FallbackDialect::FallbackDialect(MLIRContext *context)
     : Dialect(/*name=*/"tfrt_fallback", context,
               TypeID::get<FallbackDialect>()) {
-  addTypes<TFTensorType>();
+  addTypes<TFTensorType, TFAllocatorType>();
 
   addOperations<
 #define GET_OP_LIST
@@ -39,6 +39,7 @@ Type FallbackDialect::parseType(DialectAsmParser &parser) const {
   if (parser.parseKeyword(&keyword)) return Type();
 
   if (keyword == "tf_tensor") return TFTensorType::get(getContext());
+  if (keyword == "tf_allocator") return TFAllocatorType::get(getContext());
 
   parser.emitError(parser.getNameLoc(), "unknown type: ") << keyword;
   return Type();
@@ -48,6 +49,11 @@ Type FallbackDialect::parseType(DialectAsmParser &parser) const {
 void FallbackDialect::printType(Type type, DialectAsmPrinter &os) const {
   if (type.isa<TFTensorType>()) {
     os << "tf_tensor";
+    return;
+  }
+
+  if (type.isa<TFAllocatorType>()) {
+    os << "tf_allocator";
     return;
   }
 

@@ -21,10 +21,6 @@ activations are clipped, inspired by the GNMT machine translation model.
 The GNMT paper has more details: https://arxiv.org/abs/1609.08144
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import range
 
 from tensorflow.python.framework import dtypes

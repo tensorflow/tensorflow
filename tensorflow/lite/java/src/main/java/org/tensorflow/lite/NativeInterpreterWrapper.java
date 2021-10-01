@@ -72,25 +72,25 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     this.errorHandle = errorHandle;
     this.modelHandle = modelHandle;
-    // First create the interpreter without delegates.  We need an interpreter in order to figure
-    // out whether the model contains any unresolved flex ops, and creating the interpreter with
-    // delegates might fail if there are any unresolved flex ops.
+    // First create the interpreter without delegates.
+    // We need this in order to figure out whether the model contains any unresolved flex ops.
     // (Alternatively, we could determine this without needing to recreate the interpreter
     // by passing the tflite::Model in to here, and then traversing that?)
-    this.interpreterHandle =
-        createInterpreter(modelHandle, errorHandle, options.numThreads, delegates);
+    this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
-    if (!delegates.isEmpty()) {
-      // If there are any delegates enabled, recreate the interpreter with those delegates.
-      delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
-      this.interpreterHandle =
-          createInterpreter(modelHandle, errorHandle, options.numThreads, delegates);
-    }
+    // TODO(b/187920750): uncomment this when createInterpreter is modified to use
+    // InterpreterBuilder::AddDelegate.
+    // if (!delegates.isEmpty()) {
+    //   // If there are any delegates enabled, recreate the interpreter with those delegates.
+    //   delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
+    //   this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    // }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
           interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
     }
+    applyDelegates(options);
     if (options.allowBufferHandleOutput != null) {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
@@ -524,6 +524,13 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
   }
 
+  // Apply all the delegates specified in this.delegates.
+  private void applyDelegates(InterpreterImpl.Options options) {
+    for (Delegate delegate : delegates) {
+      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
+    }
+  }
+
   private NativeSignatureRunnerWrapper getSignatureRunnerWrapper(String signatureKey) {
     if (signatureRunnerMap == null) {
       signatureRunnerMap = new HashMap<>();
@@ -636,8 +643,10 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long createModelWithBuffer(ByteBuffer modelBuffer, long errorHandle);
 
-  private static native long createInterpreter(
-      long modelHandle, long errorHandle, int numThreads, List<Delegate> delegates);
+  private static native long createInterpreter(long modelHandle, long errorHandle, int numThreads);
+
+  private static native void applyDelegate(
+      long interpreterHandle, long errorHandle, long delegateHandle);
 
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 

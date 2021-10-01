@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for naming module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.platform import test
 

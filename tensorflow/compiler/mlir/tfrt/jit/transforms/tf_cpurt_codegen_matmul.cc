@@ -40,10 +40,14 @@ struct CodegenStrategyForMatMulPass
     matmul_tiling.setTileSizes({12, 32, 16});
 
     mlir::linalg::CodegenStrategy matmul_strategy;
-    matmul_strategy.tile<mlir::linalg::MatmulOp>(matmul_tiling)
-        .promote<mlir::linalg::MatmulOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::MatmulOp>();
-    matmul_strategy.transform(getFunction());
+    matmul_strategy
+        .tile(mlir::linalg::MatmulOp::getOperationName(), matmul_tiling)
+        .promote(mlir::linalg::MatmulOp::getOperationName(),
+                 full_alloca_promotion)
+        .vectorize(mlir::linalg::MatmulOp::getOperationName());
+    // TODO: propagate pass failure properly.
+    if (failed(matmul_strategy.transform(getFunction())))
+      return signalPassFailure();
 
     // Tile and vectorize linalg.vecmat operations. Interchange loop order to
     // linearly read from the matrix memref.
@@ -51,10 +55,13 @@ struct CodegenStrategyForMatMulPass
     vecmat_tiling.setTileSizes({16, 8}).setInterchange({1, 0});
 
     mlir::linalg::CodegenStrategy vecmat_strategy;
-    vecmat_strategy.tile<mlir::linalg::VecmatOp>(vecmat_tiling)
-        .promote<mlir::linalg::VecmatOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::VecmatOp>();
-    vecmat_strategy.transform(getFunction());
+    vecmat_strategy
+        .tile(mlir::linalg::VecmatOp::getOperationName(), vecmat_tiling)
+        .promote(mlir::linalg::VecmatOp::getOperationName(),
+                 full_alloca_promotion)
+        .vectorize(mlir::linalg::VecmatOp::getOperationName());
+    if (failed(vecmat_strategy.transform(getFunction())))
+      return signalPassFailure();
 
     // Vector contraction options.
     mlir::vector::VectorTransformsOptions vector_transforms_ops;
@@ -71,7 +78,8 @@ struct CodegenStrategyForMatMulPass
         .setEnableVectorToSCFConversion(true)
         .setVectorTransformsOptions(vector_transforms_ops)
         .setVectorTransferToSCFOptions(vector_transfer_opts);
-    vector_lowering_strategy.transform(getFunction());
+    if (failed(vector_lowering_strategy.transform(getFunction())))
+      return signalPassFailure();
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {

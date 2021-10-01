@@ -31,10 +31,9 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
   using OpConversionPattern<TFAssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TFAssertOp op, ArrayRef<Value> operands,
+      TFAssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    TFAssertOp::Adaptor transformed(operands, op->getAttrDictionary());
 
     // Split the block to insert CondBr.
     OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
@@ -44,8 +43,8 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     auto func = op->getParentOfType<FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, transformed.ctx(),
-                                   transformed.error_code(), transformed.msg());
+    rewriter.create<ReportErrorOp>(loc, adaptor.ctx(), adaptor.error_code(),
+                                   adaptor.msg());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getType().getResults()) {
@@ -54,9 +53,9 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     rewriter.create<ReturnOp>(loc, null_memrefs);
 
     rewriter.restoreInsertionPoint(ip);
-    rewriter.replaceOpWithNewOp<CondBranchOp>(
-        op, transformed.arg(), split_block, llvm::None, error_reporting_block,
-        llvm::None);
+    rewriter.replaceOpWithNewOp<CondBranchOp>(op, adaptor.arg(), split_block,
+                                              llvm::None, error_reporting_block,
+                                              llvm::None);
     return success();
   }
 };

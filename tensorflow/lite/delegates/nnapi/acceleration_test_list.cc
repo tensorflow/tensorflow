@@ -398,6 +398,18 @@ SpaceToDepthOpModel/int8
 # Only accelerated when axis is a constant tensor
 SplitOpTest/SplitOpTest/.+/0,29
 
+# split_v_test
+# NNAPI does not support int16
+-SplitVOpTypedTest/3/.+
+# NNAPI does not support zero-sized slice
+-SplitVOpTypedTest/.+OneDimensional2
+# Only accelerated when both split_sizes and axis are constant
+SplitVOpTypedTest/.+/ConstSplits.+,30
+
+# squared_difference_test
+FloatSquaredDifferenceOpTest/.+,28
+(Integer|Quantized)SquaredDifferenceOpTest/.+,30
+
 # squeeze_test
 FloatSqueezeOpTest/.+,29
 

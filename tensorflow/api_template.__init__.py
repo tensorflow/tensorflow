@@ -26,10 +26,6 @@ only a placeholder to enable test cases to run. The TensorFlow build replaces
 this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
 """
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import distutils as _distutils
 import inspect as _inspect
 import logging as _logging

@@ -174,7 +174,7 @@ void BatchFunctionFallback(tfrt::Argument<Chain> in_op_chain,
 
   SmallVector<RCReference<AsyncValue>, 8> results_refs;
   for (int b = 0, e = results.size(); b < e; ++b) {
-    results_refs.push_back(results.AllocateAt<tfrt::TensorHandle>(b).CopyRef());
+    results_refs.push_back(results.AllocateAt<tfrt::TensorHandle>(b));
   }
 
   auto op_chain = in_op_chain.ValueRef();

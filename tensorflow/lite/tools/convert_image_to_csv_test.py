@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests image file conversion utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np

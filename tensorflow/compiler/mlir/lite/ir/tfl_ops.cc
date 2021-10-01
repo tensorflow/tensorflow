@@ -1656,7 +1656,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)
@@ -3219,14 +3219,14 @@ static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
   auto input_type = input.getType().cast<TensorType>();
   DenseIntElementsAttr perm_const;
   if (!input_type.hasRank() || !matchPattern(perm, m_Constant(&perm_const)) ||
-      perm_const.getIntValues().empty()) {
+      perm_const.empty()) {
     TFL::TransposeOp::build(
         *builder, result, UnrankedTensorType::get(input_type.getElementType()),
         input, perm);
     return;
   }
 
-  const auto perm_value_it = perm_const.getIntValues().begin();
+  const auto perm_value_it = perm_const.value_begin<APInt>();
 
   const ArrayRef<int64_t> input_shape = input_type.getShape();
   SmallVector<int64_t, 4> output_shape(input_shape.size());

@@ -14,10 +14,6 @@
 # ======================================
 """Experimental support for defining XLA shardings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.tf2xla.python import xla as tf2xla

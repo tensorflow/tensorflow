@@ -20,10 +20,6 @@ The neural network in this demo is larged based on the tutorial at:
 But modifications are made so that problematic numerical values (infs and nans)
 appear in nodes of the graph during training.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 import tempfile

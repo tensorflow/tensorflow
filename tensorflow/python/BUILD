@@ -906,14 +906,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tpu_xla_ops_gen",
+    name = "tpu_partition_ops_gen",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/tpu/ops",
+        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
     ],
 )
 
@@ -1794,6 +1794,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -2165,6 +2166,8 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",

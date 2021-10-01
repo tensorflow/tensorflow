@@ -152,6 +152,9 @@ bool CanUseSubBuffer(const GpuInfo& gpu_info) {
   if (!gpu_info.IsCL11OrHigher()) {
     return false;
   }
+  if (gpu_info.IsPowerVR()) {
+    return false;
+  }
   if (gpu_info.IsMali() &&
       (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
     // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
@@ -629,7 +632,8 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
         &offset_assignment, base_align_bytes));
-    if (offset_assignment.total_size < TotalSize(buffer_assignment)) {
+    if (offset_assignment.total_size < TotalSize(buffer_assignment) &&
+        offset_assignment.total_size <= gpu_info.GetMaxBufferSize()) {
       use_offset_assignment = true;
     }
   }

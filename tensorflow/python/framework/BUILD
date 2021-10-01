@@ -2042,9 +2042,10 @@ tf_py_test(
 
 tf_py_test(
     name = "convert_to_constants_test",
-    size = "small",
+    size = "medium",
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":convert_to_constants",

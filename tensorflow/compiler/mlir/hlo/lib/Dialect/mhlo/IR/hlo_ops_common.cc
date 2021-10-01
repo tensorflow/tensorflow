@@ -101,15 +101,15 @@ LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
 namespace {
 // Custom formatting for convolution window attributes.
 void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {
-  if (attribute.getType().getElementType().isInteger(/*width=*/1)) {
+  if (attribute.getElementType().isInteger(/*width=*/1)) {
     // boolean attribute.
-    llvm::interleaveComma(attribute.getBoolValues(), p,
+    llvm::interleaveComma(attribute.getValues<bool>(), p,
                           [&](bool b) { p << (b ? 1 : 0); });
     return;
   }
   if (attribute.getType().getRank() == 2) {
     // Padding is Nx2 attribute.
-    auto it = attribute.getValues<int64_t>().begin();
+    auto it = attribute.value_begin<int64_t>();
     std::vector<std::pair<int64_t, int64_t>> values(attribute.getNumElements() /
                                                     2);
     for (auto &item : values) {

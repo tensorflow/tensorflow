@@ -75,7 +75,7 @@ TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
   context->ReportError(
-      context, "Node number %d (%s) %s.\n", node_index,
+      context, "Node number %d (%s) %s.", node_index,
       registration.custom_name
           ? registration.custom_name
           : EnumNameBuiltinOperator(
@@ -997,7 +997,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
             "https://www.tensorflow.org/lite/guide/ops_custom",
             op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
-      return kTfLiteError;
+      return kTfLiteUnresolvedOps;
     }
     // Resolved ops can have a null Prepare function.
     return kTfLiteOk;
@@ -1022,9 +1022,11 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
-    if (OpPrepare(registration, &node) != kTfLiteOk) {
-      return ReportOpError(&context_, node, registration, node_index,
-                           "failed to prepare");
+    const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
+    if (op_prepare_status != kTfLiteOk) {
+      ReportOpError(&context_, node, registration, node_index,
+                    "failed to prepare");
+      return op_prepare_status;
     }
 
     *last_execution_plan_index_prepared = execution_plan_index;
@@ -1683,7 +1685,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
         0, execution_plan_, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
-      ReportError(
+      TFLITE_LOG(
+          tflite::TFLITE_LOG_WARNING,
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "
           "dynamic-sized tensor).",

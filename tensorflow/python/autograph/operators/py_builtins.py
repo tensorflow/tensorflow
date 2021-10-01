@@ -17,10 +17,6 @@
 List of built-in functions: https://docs.python.org/3/library/functions.html
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import inspect
 

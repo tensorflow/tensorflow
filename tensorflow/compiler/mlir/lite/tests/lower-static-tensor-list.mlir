@@ -14,6 +14,9 @@ func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
   return %1 : tensor<2x3xi32>
 }
 
+// -----
+
+// CHECK-LABEL: func @emptyTensorlistConst
 func @emptyTensorlistConst(%arg0 : tensor<1xi32>) -> tensor<0x3xi32> {
   %0 = "tf.Const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F56415249414E542074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20222A5C6E5C30323674656E736F72666C6F773A3A54656E736F724C6973745C3032325C3032305C3030305C3030335C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3030315C3032325C3030325C3031305C30303322"> : tensor<!tf_type.variant>} : () -> tensor<!tf_type.variant<tensor<3xi32>>>
 
@@ -23,48 +26,56 @@ func @emptyTensorlistConst(%arg0 : tensor<1xi32>) -> tensor<0x3xi32> {
   return %1 : tensor<0x3xi32>
 }
 
+// -----
+
+// CHECK-LABEL: func @tensorlistGetItem
 func @tensorlistGetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> (tensor<10xf32>, tensor<3x10xf32>) {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<10xf32>>>, tensor<i32>, tensor<1xi32>) -> tensor<10xf32>
   %2 = "tf.TensorListStack"(%0, %arg1) : (tensor<!tf_type.variant<tensor<10xf32>>>, tensor<1xi32>) -> tensor<3x10xf32>
   return %1, %2 : tensor<10xf32>, tensor<3x10xf32>
 
-// CHECK-LABEL: tensorlistGetItem
 // CHECK:  %0 = "tf.Gather"(%arg0, %arg2) {validate_indices = true} : (tensor<3x10xf32>, tensor<i32>) -> tensor<10xf32>
 // CHECK: return %0, %arg0 : tensor<10xf32>, tensor<3x10xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @tensorlistGetItemWithUnknownRank
 func @tensorlistGetItemWithUnknownRank(%arg0: tensor<*xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>) {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<*xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<1xi32>) -> tensor<*xf32>
   %2 = "tf.TensorListStack"(%0, %arg1) : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<1xi32>) -> tensor<*xf32>
   return %1, %2 : tensor<*xf32>, tensor<*xf32>
 
-// CHECK-LABEL: tensorlistGetItemWithUnknownRank
 // CHECK:  %0 = "tf.Gather"(%arg0, %arg2) {validate_indices = true} : (tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
 // CHECK: return %0, %arg0 : tensor<*xf32>, tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistStackWithConstantElementShape
 func @tensorlistStackWithConstantElementShape(%arg0: tensor<?x3xf32>) -> (tensor<2x3xf32>) {
   %cst = constant dense<3> : tensor<1xi32>
   %0 = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<?x3xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<3xf32>>>
   %1 = "tf.TensorListStack"(%0, %cst) {num_elements = 2 : i64} : (tensor<!tf_type.variant<tensor<3xf32>>>, tensor<1xi32>) -> tensor<2x3xf32>
   return %1 : tensor<2x3xf32>
 
-// CHECK-LABEL: tensorlistStackWithConstantElementShape
 // CHECK:  [[ELEM_SHAPE:%cst.*]] = constant dense<3> : tensor<1xi32>
 // CHECK-NEXT:  [[SHAPE:%.*]] = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<?xi32>
 // CHECK-NEXT:  [[RESHAPE:%.*]] = "tf.Reshape"(%arg0, [[SHAPE]]) : (tensor<?x3xf32>, tensor<?xi32>) -> tensor<2x3xf32>
 // CHECK-NEXT:  return [[RESHAPE]] : tensor<2x3xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistSetItem
 func @tensorlistSetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>, %arg3: tensor<10xf32>) -> tensor<3x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
   %1 = "tf.TensorListSetItem"(%0, %arg2, %arg3) : (tensor<!tf_type.variant<tensor<10xf32>>>, tensor<i32>, tensor<10xf32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
   %2 = "tf.TensorListStack"(%1, %arg1) : (tensor<!tf_type.variant<tensor<10xf32>>>, tensor<1xi32>) -> tensor<3x10xf32>
   return %2 : tensor<3x10xf32>
 
-// CHECK-LABEL: tensorlistSetItem
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<3x10xf32>, [[ELEM_SHAPE:%.*]]: tensor<1xi32>, [[INDEX:%.*]]: tensor<i32>, [[ITEM:%.*]]: tensor<10xf32>)
 // CHECK-DAG:  [[RANK:%.*]] = "tf.Rank"([[ITEM]]) : (tensor<10xf32>) -> tensor<i32>
 // CHECK-DAG:  [[ZERO:%cst.*]] = constant dense<0> : tensor<i32>
@@ -103,13 +114,15 @@ func @tensorlistSetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: te
 // CHECK:  return [[RESULT]] : tensor<3x10xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistSetItemWithScalarElements
 func @tensorlistSetItemWithScalarElements(%arg0: tensor<5xf32>, %arg1: tensor<0xi32>, %arg2: tensor<i32>, %arg3: tensor<f32>) -> tensor<5xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<5xf32>, tensor<0xi32>) -> tensor<!tf_type.variant<tensor<f32>>>
   %1 = "tf.TensorListSetItem"(%0, %arg2, %arg3) : (tensor<!tf_type.variant<tensor<f32>>>, tensor<i32>, tensor<f32>) -> tensor<!tf_type.variant<tensor<f32>>>
   %2 = "tf.TensorListStack"(%1, %arg1) : (tensor<!tf_type.variant<tensor<f32>>>, tensor<0xi32>) -> tensor<5xf32>
   return %2 : tensor<5xf32>
 
-// CHECK-LABEL: tensorlistSetItemWithScalarElements
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<5xf32>, [[ELEM_SHAPE:%.*]]: tensor<0xi32>, [[INDEX:%.*]]: tensor<i32>, [[ITEM:%.*]]: tensor<f32>)
 // CHECK-DAG:  [[RANK:%.*]] = "tf.Rank"([[ITEM]]) : (tensor<f32>) -> tensor<i32>
 // CHECK-DAG:  [[ZERO:%cst.*]] = constant dense<0> : tensor<i32>
@@ -148,12 +161,14 @@ func @tensorlistSetItemWithScalarElements(%arg0: tensor<5xf32>, %arg1: tensor<0x
 // CHECK:  return [[RESULT]] : tensor<5xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistReserve
 func @tensorlistReserve(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<?x?x?xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf_type.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   return %1 : tensor<?x?x?xf32>
 
-// CHECK-LABEL: tensorlistReserve
 // CHECK-DAG:  [[ZERO1:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ZERO2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[DIM0:%.*]] = "tf.ExpandDims"(%arg1, [[ZERO1]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
@@ -164,24 +179,28 @@ func @tensorlistReserve(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<
 // CHECK:      return [[RESULT]] : tensor<?x?x?xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistReserveUnrankedElements
 func @tensorlistReserveUnrankedElements(%arg0: tensor<?xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<*xf32> {
   %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<?xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<?xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 
-// CHECK-LABEL: tensorlistReserveUnrankedElements
 // CHECK:  [[RESULT:%[0-9]+]] = "tf.Fill"{{.*}}(tensor<?xi32>, tensor<f32>) -> tensor<*xf32>
 // CHECK:  [[RESULT2:%[0-9]+]] = "tf.Gather"{{.*}}{validate_indices = true} : (tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
 // CHECK:  return [[RESULT2]] : tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistReserveConstantUnknownElementShapeDim
 func @tensorlistReserveConstantUnknownElementShapeDim(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<?x7xf32> {
   %cst = constant dense<[-1, 7]> : tensor<2xi32>
   %0 = "tf.TensorListReserve"(%cst, %arg0) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<?x7xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg1, %cst) : (tensor<!tf_type.variant<tensor<?x7xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<?x7xf32>
   return %1 : tensor<?x7xf32>
 
-// CHECK-LABEL: tensorlistReserveConstantUnknownElementShapeDim
 // CHECK-DAG:  [[ZERO1:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ZERO2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ELEMENT_SHAPE:%cst.*]] = constant dense<[1, 7]> : tensor<2xi32>
@@ -193,6 +212,9 @@ func @tensorlistReserveConstantUnknownElementShapeDim(%arg0: tensor<i32>, %arg1:
 // CHECK:      return [[RESULT]] : tensor<?x7xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistReserveUnknownElementShape
 func @tensorlistReserveUnknownElementShape(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<2xf32>) -> tensor<*xf32> {
   %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   %1 = "tf.TensorListSetItem"(%0, %arg2, %arg3) : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<2xf32>) -> tensor<!tf_type.variant<tensor<2xf32>>>
@@ -200,7 +222,6 @@ func @tensorlistReserveUnknownElementShape(%arg0: tensor<i32>, %arg1: tensor<i32
   %2 = "tf.TensorListStack"(%1, %cst) : (tensor<!tf_type.variant<tensor<2xf32>>>, tensor<i32>) -> tensor<*xf32>
   return %2 : tensor<*xf32>
 
-// CHECK-LABEL: tensorlistReserveUnknownElementShape
 // CHECK-DAG:  [[SHAPE:%[0-9]+]] = "tf.Shape"(%arg3) : (tensor<2xf32>) -> tensor<?xi32>
 // CHECK-DAG:  [[CST:%.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[EXPAND_DIM:%[0-9]+]] = "tf.ExpandDims"(%arg1, [[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
@@ -210,12 +231,14 @@ func @tensorlistReserveUnknownElementShape(%arg0: tensor<i32>, %arg1: tensor<i32
 // CHECK:  [[FILL:%[0-9]+]] = "tf.Fill"([[FINAL_SHAPE]], [[CST1]]) : (tensor<?xi32>, tensor<f32>) -> tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL: tensorlistReserveUnrankedElementShape
 func @tensorlistReserveUnrankedElementShape(%arg0: tensor<*xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<*xf32> {
   %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<*xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 
-// CHECK-LABEL: tensorlistReserveUnrankedElementShape
 // CHECK-DAG:  [[AXIS:%.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[EXPAND_DIM:%[0-9]+]] = "tf.ExpandDims"(%arg1, [[AXIS]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK-DAG:  [[AXIS_1:%.*]] = constant dense<0> : tensor<i32>
@@ -225,6 +248,8 @@ func @tensorlistReserveUnrankedElementShape(%arg0: tensor<*xi32>, %arg1: tensor<
 // CHECK:  [[GATHER:%.*]] = "tf.Gather"([[FILL]], %arg2) {validate_indices = true} : (tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
 // CHECK:  return [[GATHER]] : tensor<*xf32>
 }
+
+// -----
 
 func @EmptyTensorList(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   %0 = "tf.EmptyTensorList"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<?x?x?xf32>>>
@@ -242,6 +267,8 @@ func @EmptyTensorList(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i3
 // CHECK:      return [[RESULT]] : tensor<?x?x?xf32>
 }
 
+// -----
+
 func @tensorlistPushBack(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<10xf32>) -> tensor<?x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
   %1 = "tf.TensorListPushBack"(%0, %arg2) : (tensor<!tf_type.variant<tensor<10xf32>>>, tensor<10xf32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
@@ -256,6 +283,8 @@ func @tensorlistPushBack(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: t
 // CHECK:   return [[RESULT]] : tensor<?x10xf32>
 }
 
+// -----
+
 func @tensorlistLength(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>) -> (tensor<i32>) {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<10xf32>>>
   %1 = "tf.TensorListLength"(%0) : (tensor<!tf_type.variant<tensor<10xf32>>>) -> tensor<i32>
@@ -268,6 +297,8 @@ func @tensorlistLength(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>) -> (tensor
 // CHECK: [[RESULT:%.*]] = "tf.Gather"([[SHAPE]], [[ZERO]]) {validate_indices = true} : (tensor<2xi32>, tensor<i32>) -> tensor<i32>
 // CHECK: return [[RESULT]] : tensor<i32>
 }
+
+// -----
 
 func @tensorlistWhileLoop(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<3> : tensor<1xi32>
@@ -312,6 +343,8 @@ func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf_type.variant>) -
 // CHECK:  return %[[RESULT]] : tensor<i1>
 }
 
+// -----
+
 // CHECK-LABEL: func @tensorlistWhileRegion
 func @tensorlistWhileRegion(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
   %cst = constant dense<3> : tensor<1xi32>
@@ -350,6 +383,8 @@ func @tensorlistWhileRegion(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
   // CHECK:  return %0#1 : tensor<*xf32>
   return %2 : tensor<*xf32>
 }
+
+// -----
 
 func @otherVariantWhileLoop(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -394,6 +429,8 @@ func @otherVariantWhileCond(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tenso
 // CHECK:       [[CST:%.*]] = "tf.Const"()
 // CHECK-NEXT:  [[LESS:%.*]] = "tf.Less"(%arg2, [[CST]])
 // CHECK-NEXT:  return [[LESS]]
+
+// -----
 
 func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<?x10xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf_type.variant<tensor<10xf32>>>

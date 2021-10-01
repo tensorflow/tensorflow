@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -53,8 +55,6 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
   }
   return Status::OK();
 }
-
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
@@ -271,8 +271,6 @@ Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
   return Status::OK();
 }
 
-#endif
-
 absl::string_view GetDeviceName(const Node* node) {
   if (node->has_assigned_device_name()) {
     return node->assigned_device_name();
@@ -314,3 +312,5 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

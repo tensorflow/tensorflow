@@ -14,10 +14,6 @@
 # ==============================================================================
 """Configuration parameters for RaggedTensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def auto_cast_partition_dtype():
   """Whether incompatible row-partitioning dtypes should be auto-converted.

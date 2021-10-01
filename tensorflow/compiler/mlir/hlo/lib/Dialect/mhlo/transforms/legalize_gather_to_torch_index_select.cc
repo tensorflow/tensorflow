@@ -34,13 +34,13 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     auto start_indices = gather.start_indices();
     auto start_indices_ty = start_indices.getType().cast<ShapedType>();
     if (!start_indices_ty.hasRank()) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "unranked start_indices");
     }
 
     auto operand = gather.operand();
     auto operand_ty = operand.getType().cast<ShapedType>();
     if (!operand_ty.hasRank()) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "unranked operand");
     }
 
     int64_t index_vector_dim =
@@ -49,55 +49,56 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     // We can use torch_index_select if the last dimension represents the
     // gather indices.
     auto dimension_numbers = gather.dimension_numbers();
-    if (dimension_numbers.index_vector_dim().getValue().getSExtValue() !=
-        index_vector_dim) {
-      return failure();
+    if (dimension_numbers.getIndexVectorDim() != index_vector_dim) {
+      return rewriter.notifyMatchFailure(
+          gather, "index_vector_dim not last dimension of start_indices");
     }
 
     // Index select only works across a single dimension.
     if (!start_indices_ty.getShape().empty() &&
         start_indices_ty.getShape().back() != 1) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          gather, "start_indices index vector dimension not 1");
     }
 
     // Only support the default case for start_index_map.
-    if (dimension_numbers.start_index_map().getType().getRank() != 1 ||
-        dimension_numbers.start_index_map()
-                .getValue(0)
-                .cast<IntegerAttr>()
-                .getValue() != 0) {
-      return failure();
+    if (dimension_numbers.getStartIndexMap().size() != 1 ||
+        dimension_numbers.getStartIndexMap()[0] != 0) {
+      return rewriter.notifyMatchFailure(gather, "start_index_map != [0]");
     }
 
     auto result_ty = gather.getResult().getType().dyn_cast<RankedTensorType>();
     if (!result_ty) {
-      return failure();
+      return rewriter.notifyMatchFailure(gather, "unranked result");
     }
 
     // Offset dimensions should be the defaults.
-    if (dimension_numbers.offset_dims().getType().getNumElements() !=
+    if (dimension_numbers.getOffsetDims().size() !=
         result_ty.getRank() - index_vector_dim) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          gather, "offset_dims.size not operand rank minus index_vector_dim");
     }
 
-    for (auto it : llvm::enumerate(dimension_numbers.offset_dims())) {
+    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if ((it.index() + index_vector_dim) != it.value()) {
-        return failure();
+        return rewriter.notifyMatchFailure(
+            gather, "offset_dims != [index_vector_dim, result.rank)");
       }
     }
 
-    for (auto it : llvm::enumerate(gather.slice_sizes().getIntValues())) {
+    for (auto it : llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {
-          return failure();
+          return rewriter.notifyMatchFailure(gather, "slice_size[0] != 1");
         }
         continue;
       }
 
       // The gather needs to index the entire slice for each other dimension.
       if (it.value().getSExtValue() != operand_ty.getDimSize(it.index())) {
-        return failure();
+        return rewriter.notifyMatchFailure(
+            gather, "slice_size doesn't match operand dimension");
       }
     }
 
@@ -108,11 +109,9 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
       index_select_shape.push_back(dim);
     }
 
-    if (!dimension_numbers.collapsed_slice_dims().getType().hasRank() ||
-        dimension_numbers.collapsed_slice_dims().getType().getNumElements() !=
-            1 ||
-        dimension_numbers.collapsed_slice_dims().getValue<int64_t>({0}) != 0) {
-      return failure();
+    if (dimension_numbers.getCollapsedSliceDims().size() != 1 ||
+        dimension_numbers.getCollapsedSliceDims()[0] != 0) {
+      return rewriter.notifyMatchFailure(gather, "collapsed_slice_dims != [0]");
     }
 
     auto torch_index_select = rewriter.create<TorchIndexSelectOp>(
@@ -135,7 +134,9 @@ struct LegalizeGatherToTorchIndexSelectPass
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    if (failed(
+            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+      return signalPassFailure();
   }
 };
 }  // namespace

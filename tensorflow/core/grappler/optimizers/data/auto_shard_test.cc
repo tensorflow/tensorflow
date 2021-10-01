@@ -35,9 +35,41 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+using ::tensorflow::grappler::graph_tests_utils::MakeBatchV2Node;
+using ::tensorflow::grappler::graph_tests_utils::MakeMapAndBatchNode;
+using ::tensorflow::grappler::graph_tests_utils::MakeParallelBatchNode;
 using ::tensorflow::test::function::GDef;
 using ::tensorflow::test::function::NDef;
 using ::testing::UnorderedElementsAre;
+
+// Adds a MapDataset, a RebatchDataset, a PrefetchDataset and a fake sink that
+// are common to all graphs; and sets the fetch node to the fake sink.
+void FinishItem(GrapplerItem* item, const string& input_node_name) {
+  *item->graph.add_node() =
+      NDef("map_before_rebatch", "MapDataset", {input_node_name},
+           {{"f", "__inference_Dataset_map_normalize_8232"},
+            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() =
+      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
+  *item->graph.add_node() =
+      NDef("rebatch", "RebatchDataset", {"map_before_rebatch", "num_replicas"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() =
+      NDef("prefetch_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}});
+  *item->graph.add_node() =
+      NDef("prefetch", "PrefetchDataset", {"rebatch", "prefetch_count"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}});
+  *item->graph.add_node() = NDef("Sink", "Identity", {"prefetch"}, {});
+  item->fetch.push_back("Sink");
+}
+
+NodeDef AddCardinalityAttr(NodeDef node, int64_t cardinality) {
+  (*node.mutable_attr())[data::kCardinalityAttrForRewrite].set_i(cardinality);
+  return node;
+}
 
 TEST(RewriteBatchTest, InfiniteSource) {
   GrapplerItem item;
@@ -53,20 +85,77 @@ TEST(RewriteBatchTest, InfiniteSource) {
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", data::kInfiniteCardinality},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "repeat", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kInfiniteCardinality),
+  });
+  FinishItem(&item, "batch");
+
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_TRUE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                   &ineligible_reason))
+      << absl::StrJoin(ineligible_reason, ",");
+}
+
+TEST(RewriteBatchTest, InfiniteSourceMapAndBatch) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
+      NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
             {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+      NDef("num_parallel_calls", "Const", {},
+           {{"value", 2}, {"dtype", DT_INT64}}),
+      NDef("drop_remainder", "Const", {},
+           {{"value", true}, {"dtype", DT_BOOL}}),
+      AddCardinalityAttr(
+          MakeMapAndBatchNode("batch", "repeat", "batch_size",
+                              "num_parallel_calls", "drop_remainder"),
+          data::kInfiniteCardinality),
   });
+  FinishItem(&item, "batch");
 
-  item.fetch.push_back("Sink");
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_TRUE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                   &ineligible_reason))
+      << absl::StrJoin(ineligible_reason, ",");
+}
+
+TEST(RewriteBatchTest, InfiniteSourceParallelBatch) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
+      NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}}),
+      NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+      NDef("num_parallel_calls", "Const", {},
+           {{"value", 2}, {"dtype", DT_INT64}}),
+      NDef("drop_remainder", "Const", {},
+           {{"value", true}, {"dtype", DT_BOOL}}),
+      AddCardinalityAttr(
+          MakeParallelBatchNode("batch", "repeat", "batch_size",
+                                "num_parallel_calls", "drop_remainder",
+                                /*deterministic=*/"true"),
+          data::kInfiniteCardinality),
+  });
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -87,20 +176,12 @@ TEST(RewriteBatchTest, FiniteSourceNoDropRemainder) {
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", false}, {"dtype", DT_BOOL}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", data::kUnknownCardinality},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kUnknownCardinality),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -121,20 +202,12 @@ TEST(RewriteBatchTest, FiniteSourceDropRemainder) {
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", 1337},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          /*cardinality=*/1337),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -156,20 +229,12 @@ TEST(RewriteBatchTest, UnknownCardinalitySourceDropRemainder) {
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", data::kUnknownCardinality},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kUnknownCardinality),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -190,29 +255,16 @@ TEST(RewriteBatchTest, FiniteSourceDropRemainderUnknown) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "RandomBool", {}, {}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", 1337},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kUnknownCardinality),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
   TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
-  absl::flat_hash_map<std::string, int64_t> cardinalities{
-      {"tf_record", data::kUnknownCardinality},
-      {"batch", data::kUnknownCardinality},
-      {"rebatch", data::kUnknownCardinality},
-  };
   std::vector<std::string> ineligible_reason;
   EXPECT_FALSE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
                                                     &ineligible_reason));
@@ -229,19 +281,10 @@ TEST(RewriteBatchTest, DropRemainderCardinalityNotAvailable) {
       NDef("tf_record", "TFRecordDataset", {"file"}, {}),
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {}, {{"value", true}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"batch", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
+      MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                      /*parallel_copy=*/false),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "batch");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -263,23 +306,14 @@ TEST(RewriteBatchTest, OpNotSupported) {
       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       NDef("drop_remainder", "Const", {},
            {{"value", true}, {"dtype", DT_BOOL}}),
-      NDef("batch", "BatchDatasetV2",
-           {"repeat", "batch_size", "drop_remainder"},
-           {{"_cardinality", 1337},
-            {"_drop_remainder", true},
-            {"parallel_copy", false},
-            {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "tf_record", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kUnknownCardinality),
       NDef("take_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
       graph_tests_utils::MakeTakeNode("take", "batch", "take_count"),
-      NDef("num_replicas", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
-      NDef("rebatch", "RebatchDataset", {"take", "num_replicas"},
-           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-            {"output_types", gtl::ArraySlice<DataType>{}}}),
-      NDef("Sink", "Identity", {"rebatch"}, {}),
   });
-
-  item.fetch.push_back("Sink");
+  FinishItem(&item, "take");
 
   MutableGraphView graph(&item.graph);
   NodeDef* sink_node = nullptr;
@@ -290,6 +324,59 @@ TEST(RewriteBatchTest, OpNotSupported) {
   EXPECT_THAT(ineligible_reason,
               UnorderedElementsAre("OP_NOT_SUPPORTED_TakeDataset",
                                    "BATCH_DROP_REMAINDER_NOT_INFINITE"));
+}
+
+TEST(RewriteBatchTest, BatchNotFound) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      graph_tests_utils::MakeTakeNode("take", "tf_record", "take_count"),
+      NDef("take_count", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+  });
+  FinishItem(&item, "take");
+
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_FALSE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                    &ineligible_reason));
+  EXPECT_THAT(ineligible_reason, UnorderedElementsAre("BATCH_NOT_FOUND"));
+}
+
+// This is a very rare case (OneDeviceStrategy).
+TEST(RewriteBatchTest, InfiniteSourceNoRebatch) {
+  GrapplerItem item;
+  item.graph = GDef({
+      NDef("files", "Const", {},
+           {{"values", std::vector<std::string>{"file1", "file2"}},
+            {"dtype", DT_STRING}}),
+      NDef("tf_record", "TFRecordDataset", {"file"}, {}),
+      NDef("repeat_count", "Const", {}, {{"value", -1}, {"dtype", DT_INT32}}),
+      NDef("repeat", "RepeatDataset", {"tf_record", "repeat_count"},
+           {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+            {"output_types", gtl::ArraySlice<DataType>{}}}),
+      NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+      NDef("drop_remainder", "Const", {},
+           {{"value", true}, {"dtype", DT_BOOL}}),
+      AddCardinalityAttr(
+          MakeBatchV2Node("batch", "repeat", "batch_size", "drop_remainder",
+                          /*parallel_copy=*/false),
+          data::kInfiniteCardinality),
+      NDef("Sink", "Identity", {"batch"}, {}),
+  });
+  item.fetch.push_back("Sink");
+
+  MutableGraphView graph(&item.graph);
+  NodeDef* sink_node = nullptr;
+  TF_ASSERT_OK(graph_utils::GetFetchNode(graph, item, &sink_node));
+  std::vector<std::string> ineligible_reason;
+  EXPECT_TRUE(internal::IsEligibleRewriteBatchSize(*sink_node, graph,
+                                                   &ineligible_reason))
+      << absl::StrJoin(ineligible_reason, ",");
 }
 
 }  // namespace

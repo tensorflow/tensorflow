@@ -190,6 +190,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     GetEagerContext()->SetLogDevicePlacement(enable);
   }
 
+  void SetRunEagerOpAsFunction(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetRunEagerOpAsFunction(enable);
+  }
+
   tensorflow::EagerExecutor& Executor() override {
     return GetEagerContext()->Executor();
   }

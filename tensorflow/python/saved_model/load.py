@@ -14,10 +14,6 @@
 # ==============================================================================
 """Import a trackable object from a SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import sys
 
@@ -68,10 +64,19 @@ def _unused_handle():
   error_message = ("Trying to access a placeholder that is not supposed to be "
                    "executed. This means you are executing a graph generated "
                    "from the cross-replica context in an in-replica context.")
+  save_error_message = (
+      "It seems that you are trying to save a "
+      "tf.types.experimental.ConcreteFunction that involves a distributed "
+      "model, and the model contains parts that are loaded form a SavedModel. "
+      "It's supported to save such tf.types.experimental.ConcreteFunction. Try"
+      " save a tf.function with input_signature instead, and file a bug there "
+      "are still issues.")
 
   assert_op = control_flow_ops.Assert(
-      array_ops.placeholder_with_default(False, shape=()),
-      [error_message])
+      array_ops.placeholder_with_default(False, shape=()), [error_message])
+  if (not context.executing_eagerly()
+     ) and ops.get_default_graph().building_function:
+    ops.get_default_graph().mark_as_unsaveable(save_error_message)
 
   with ops.control_dependencies([assert_op]):
     return array_ops.placeholder(dtype=dtypes.resource)
@@ -349,7 +354,7 @@ class Loader(object):
       # TODO(andresp): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
-      concrete_function.set_external_captures(bound_inputs)
+      captured_inputs_list = []
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
       if bound_inputs:
         for bound_input, internal_capture in zip(
@@ -357,7 +362,20 @@ class Loader(object):
           if distribute_utils.is_distributed_variable(bound_input):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
+            captured_inputs_list.append(bound_input)
+          elif distribute_utils.is_distributed_table(bound_input):
+            closure, spec = bound_input.resource_handle_call_time_value()
+            concrete_function.graph.replace_capture_with_deferred_capture(
+                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                closure,
+                spec,
+                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                placeholder=internal_capture)
+            captured_inputs_list.append(
+                concrete_function.graph.deferred_external_captures[-1])
+
           else:
+            captured_inputs_list.append(bound_input)
             concrete_function.graph.replace_capture(bound_input,
                                                     internal_capture)
             if internal_capture.dtype == dtypes.resource:
@@ -376,6 +394,8 @@ class Loader(object):
             # placeholder for this input.
             concrete_function.graph.capture(bound_input)
 
+      concrete_function.set_external_captures(captured_inputs_list)
+
   def _get_tensor_from_node(self, node_id, fn_name):
     """Resolves a node id into a tensor to be captured for a function."""
     if self._node_filters is not None and self._nodes[node_id] is None:
@@ -387,6 +407,8 @@ class Loader(object):
     with ops.init_scope():
       obj = self._nodes[node_id]
       if distribute_utils.is_distributed_variable(obj):
+        return obj
+      elif distribute_utils.is_distributed_table(obj):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle

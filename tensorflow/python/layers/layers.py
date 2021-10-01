@@ -16,10 +16,6 @@
 # pylint: disable=line-too-long
 """This library provides a set of high-level neural networks layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=g-bad-import-order,unused-import
 
 # Base objects.

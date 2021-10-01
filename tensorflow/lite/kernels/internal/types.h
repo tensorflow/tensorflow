@@ -140,6 +140,22 @@ inline bool operator==(const QuantizationParams& qp1,
   return qp1.zero_point == qp2.zero_point && qp1.scale == qp2.scale;
 }
 
+// Quantization parameters for each channel, determining the mapping of
+// quantized values to real values. See QuantizationParams for a single set of
+// parameters per tensor. This has one parameters set per each channel.
+//
+// The correspondence is as follows:
+//
+//   real_value = scale[channel] * (quantized_value - zero_point[channel]);
+//
+struct PerChannelQuantizationParams {
+  // The following members typically point to the corresponding members of a
+  // TfLiteAffineQuantization struct.
+  const float* scale;
+  const int32_t* zero_point;
+  int32_t quantized_dimension;
+};
+
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
   if (num_dims == 0) {

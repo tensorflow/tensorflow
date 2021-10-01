@@ -577,6 +577,14 @@ PartitionedHlo PartitionedHlo::PadWithValue(
   return PartitionedHlo(result, base_shape_, state_);
 }
 
+PartitionedHlo PartitionedHlo::PadWithZero(
+    absl::Span<const int64_t> left_padded_dims,
+    absl::Span<const int64_t> skipped_dims) const {
+  auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(hlo_->shape().element_type())));
+  return PadWithValue(zero, left_padded_dims, skipped_dims);
+}
+
 absl::optional<PartitionedHlo::WindowedInputShardReturnValue>
 PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                        const HloSharding& target,

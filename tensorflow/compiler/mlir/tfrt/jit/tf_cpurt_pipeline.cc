@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -86,7 +88,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
 
-  // Transform HLO operations to LinAlg and fuse them.
+  // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
@@ -107,9 +109,10 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
-  // Codegen strategy for reductions.
-  if (options.codegen_reductions) {
+  // Perform tiling-padding-vectorization if vectorization is enabled.
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
@@ -150,12 +153,17 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
   pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
-  if (options.codegen_reductions) {
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::createConvertLinalgTiledLoopsToSCFPass());
   }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  mlir::VectorTransferToSCFOptions vec_to_scf_options;
+  vec_to_scf_options.unroll = true;
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
 }
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {

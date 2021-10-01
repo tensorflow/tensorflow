@@ -18,10 +18,6 @@ In `tf.losses` and `tf.metrics`, we support limited weight broadcasting. This
 file includes operations for those broadcasting rules.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops

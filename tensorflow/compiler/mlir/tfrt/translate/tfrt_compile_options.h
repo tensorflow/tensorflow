@@ -22,9 +22,11 @@ limitations under the License.
 namespace tensorflow {
 
 enum class TfrtTpuInfraTarget {
-  kNoTpu,       // No TPU support.
-  kTpurt,       // Target TPURT dialect and kernels.
-  kTfFallback,  // Target TPU kernels in TF Fallback.
+  kNoTpu,           // No TPU support.
+  kTpurt,           // Target TPURT dialect and kernels.
+  kTfFallback,      // Target TPU kernels in TF Fallback.
+  kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
+                    // whether the graph has unsupported feature in Bridge
 };
 
 struct TfrtCompileOptions {
@@ -64,6 +66,10 @@ struct TfrtCompileOptions {
   // If true, resource gather ops in the device graph are moved to host graphs
   // in order to saved TPU memory usage. This option is experimental.
   bool tpu_move_resource_gather_to_host = false;
+
+  // If true, fallback executeops that produce inputs to tpu program will use
+  // tpu host allocator. This options is experimental.
+  bool use_tpu_host_allocator_for_inputs = false;
 
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the

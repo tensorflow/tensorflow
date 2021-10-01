@@ -25,10 +25,6 @@
    - Delete directory tf_saved_model unless you want to use it.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import Session
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import def_function

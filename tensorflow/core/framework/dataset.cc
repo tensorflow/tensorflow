@@ -52,7 +52,7 @@ static std::unordered_set<string>* get_dataset_op_registry() {
 }
 
 std::string UniqueNodeName(const std::string& base) {
-  static std::atomic<int64> counter(0);
+  static std::atomic<int64_t> counter(0);
   return strings::StrCat(base, "/", counter.fetch_add(1));
 }
 

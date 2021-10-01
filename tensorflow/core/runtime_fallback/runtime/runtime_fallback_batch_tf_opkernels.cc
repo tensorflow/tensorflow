@@ -194,7 +194,7 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
           std::unique_ptr<FallbackBatchResource> new_resource;
           TF_RETURN_IF_ERROR(FallbackBatchResource::Create(
               num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-              max_enqueued_batches_, allowed_batch_sizes_, bef_func_.CopyRef(),
+              max_enqueued_batches_, allowed_batch_sizes_, bef_func_,
               enable_large_batch_splitting_, *exec_ctx, &new_resource));
           *r = new_resource.release();
           return Status::OK();
