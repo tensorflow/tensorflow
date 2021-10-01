@@ -71,8 +71,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class AutotuneResult;
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -553,10 +551,11 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                    /*is_contrib=*/false}};
 
     auto config_or = AutotuneFusedConv<T>(
-        cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters,
-        context, input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        dnn_activation_mode, kConvScale, kSideInputScale, input_ptr, filter_ptr,
-        output_ptr, bias_ptr, side_input_ptr, ConvolveScratchSize());
+        cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
+        conv_parameters, context, input_desc, filter_desc, bias_desc,
+        output_desc, conv_desc, dnn_activation_mode, kConvScale,
+        kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
+        side_input_ptr, ConvolveScratchSize());
     OP_REQUIRES_OK(context, config_or.status());
     auto algorithm_config = config_or.ConsumeValueOrDie();
 

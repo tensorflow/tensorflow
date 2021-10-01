@@ -1105,7 +1105,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     conv_desc.group_count()};
 
   auto config_or = AutotuneUnfusedConv(
-      cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters, ctx,
+      cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
   OP_REQUIRES_OK(ctx, config_or.status());
