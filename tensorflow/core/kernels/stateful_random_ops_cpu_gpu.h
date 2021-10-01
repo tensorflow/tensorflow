@@ -80,8 +80,7 @@ class ScopedUnlockUnrefVar;
 struct UpdateVariableAndFill_Philox_Arg {
   int64_t output_size;
   int64_t alg_tag_skip;
-  // TODO(b/201572028): Rename `not_used`.
-  ScopedUnlockUnrefVar* not_used;
+  ScopedUnlockUnrefVar* state_var_guard;
   Tensor* state_tensor;
 };
 
