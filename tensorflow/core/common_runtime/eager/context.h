@@ -148,6 +148,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   bool RunEagerOpAsFunction() const;
 
+  void SetRunEagerOpAsFunction(bool enable) override;
+
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;
@@ -326,6 +328,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::vector<Device*> ListLocalTfDevices() override {
     return local_device_mgr()->ListDevices();
   }
+
+  std::vector<Device*> ListAllTfDevices() override;
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }

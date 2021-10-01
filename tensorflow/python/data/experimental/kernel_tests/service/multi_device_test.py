@@ -14,10 +14,6 @@
 # ==============================================================================
 """Multi-device tests for tf.data service ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base

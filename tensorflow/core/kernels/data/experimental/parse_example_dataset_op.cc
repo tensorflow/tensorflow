@@ -502,6 +502,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           }
           result.end_of_input = reader->Contains(full_name(strings::StrCat(
               kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
+          RecordBufferEnqueue(ctx, result.return_values);
           result.notification.Notify();
         }
         return Status::OK();
@@ -605,8 +606,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             },
             std::move(input_element));
         auto node = model_node();
-        const bool collect_usage =
-            node && ctx->model() && ctx->model()->collect_resource_usage();
+        const bool collect_usage = node && ctx->model();
         // `ctx->runner()` may execute its logic synchronous so we wrap it in
         // `RecordStop` and `RecordStart` to prevent invalid nesting of
         // `RecordStart` calls.

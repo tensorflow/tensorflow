@@ -152,11 +152,6 @@ class ProcessFunctionLibraryRuntime {
   Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
                           std::vector<Device*>* output_devices) const;
 
-  // Returns true if function with handle `handle` was instantiated on device
-  // `device_name`. Returns false for multi-device functions.
-  bool IsInstantiatedOnDevice(const string& device_name,
-                              FunctionLibraryRuntime::Handle handle) const;
-
   // Instantiates the function. See framework/function.h for more details.
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
@@ -317,23 +312,6 @@ class ProcessFunctionLibraryRuntime {
   MultiDeviceFunctionData* IsMultiDevice(
       FunctionLibraryRuntime::Handle handle) const;
 
-  void RunMultiDevice(
-      const FunctionLibraryRuntime::Options& opts,
-      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
-      std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
-      FunctionLibraryRuntime::DoneCallback done,
-      std::function<Status(const ComponentFunctionData& comp_data,
-                           InternalArgs* args)>
-          get_component_args) const;
-
-  Status CreateRendezvous(const FunctionLibraryRuntime::Options& opts,
-                          Rendezvous** created_rendezvous) const;
-
-  FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
-      std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-      const Rendezvous* rendezvous) const;
-
   DistributedFunctionLibraryRuntime* const parent_;
 
  private:
@@ -389,6 +367,8 @@ class ProcessFunctionLibraryRuntime {
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
 
+  bool HasMultiDeviceHandle(FunctionLibraryRuntime::Handle handle) const;
+
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
                    gtl::ArraySlice<FunctionArg> args,
@@ -396,8 +376,42 @@ class ProcessFunctionLibraryRuntime {
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
+  Status CreateRendezvous(FunctionLibraryRuntime::Options& opts,
+                          Rendezvous** created_rendezvous) const;
+
+  void CleanupCreatedRendezvous(const Rendezvous* created_rendezvous,
+                                const int64_t step_id) const;
+
+  FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
+      std::vector<std::unique_ptr<CleanUpItem>>* items,
+      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
+      const Rendezvous* rendezvous) const;
+
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
+
+  static Status GetComponentArgs(gtl::ArraySlice<Tensor> args,
+                                 const ComponentFunctionData& comp_data,
+                                 InternalArgs* comp_args);
+
+#if !defined(IS_MOBILE_PLATFORM)
+  static Status GetComponentArgs(const FunctionArgsInterface& args,
+                                 const ComponentFunctionData& comp_data,
+                                 InternalArgs* comp_args);
+#endif  // IS_MOBILE_PLATFORM
+
+  Status PrepareRunMultiDevice(const FunctionLibraryRuntime::Options& opts,
+                               FunctionLibraryRuntime::Handle handle,
+                               const MultiDeviceFunctionData** data) const;
+
+  void RunMultiDevice(
+      const FunctionLibraryRuntime::Options& opts,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
+      std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+      FunctionLibraryRuntime::DoneCallback done,
+      std::function<Status(const ComponentFunctionData& comp_data,
+                           InternalArgs* args)>
+          get_component_args) const;
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.

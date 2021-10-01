@@ -385,6 +385,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_QUANTIZE:
+      if (op_sig.ext_options.quantize.is_per_channel_quantized) {
+        return 3;
+      }
+      if (op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_FLOOR_DIV:
       if (op_sig.inputs.at(0).type == kTfLiteFloat32) {
         return 2;
@@ -788,6 +797,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       return 2;
+    case BuiltinOperator_CAST:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt32) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }

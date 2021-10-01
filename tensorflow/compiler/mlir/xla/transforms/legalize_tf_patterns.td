@@ -82,6 +82,7 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
                          [TF_MinimumOp, HLOClient_BroadcastMinOp],
+                         [TF_ModOp, HLOClient_BroadcastRemOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
                          [TF_NextAfterOp, HLOClient_BroadcastNextAfterOp],
                          [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
@@ -790,6 +791,16 @@ def ToPrecisionConfigsAttr : NativeCodeCall<"GetPrecisionConfigAttr($0, &$_build
 def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
 
 def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
+
+//===----------------------------------------------------------------------===//
+// XlaDotOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
+          (HLO_DotGeneralOp $lhs, $rhs,
+                            (ToDotDimNumsAttr $dimension_numbers),
+                            (ToPrecisionConfigsAttr $precision_config)),
+          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//
 // XlaDotV2Op op.

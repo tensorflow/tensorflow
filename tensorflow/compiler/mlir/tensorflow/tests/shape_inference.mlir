@@ -1339,4 +1339,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0:6 = "tf.JustPretend"() : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
     return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
   }
+
+  // CHECK-LABEL: infer_output_type_for_restore
+  func @infer_output_type_for_restore(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) {
+    %cst = constant dense<"client/1"> : tensor<1x!tf_type.string>
+    %cst_0 = constant dense<"train/0"> : tensor<1x!tf_type.string>
+    %cst_1 = constant dense<""> : tensor<1x!tf_type.string>
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "foo"} : () -> tensor<!tf_type.resource<tensor<192x2680xf32>>>
+    // CHECK: (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<192x2680xf32>
+    %1 = "tf.RestoreV2"(%arg0, %cst, %cst_1) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<*xf32>
+    "tf.AssignVariableOp"(%0, %1) : (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<*xf32>) -> ()
+    %2 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<128xf32>>>
+    // CHECK: (tensor<!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<128xf32>
+    %3 = "tf.Restore"(%arg0, %cst_0) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<*xf32>
+    "tf.AssignVariableOp"(%2, %3) : (tensor<!tf_type.resource<tensor<128xf32>>>, tensor<*xf32>) -> ()
+    return %0, %2 : tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>
+  }
 }

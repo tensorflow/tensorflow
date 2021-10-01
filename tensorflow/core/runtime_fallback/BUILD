@@ -185,6 +185,7 @@ alias(
         ":internal",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//third_party/tf_runtime_google:__subpackages__",
     ],
 )
 

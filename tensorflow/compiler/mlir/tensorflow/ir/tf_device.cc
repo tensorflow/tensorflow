@@ -374,8 +374,6 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
 }
 
 void Print(ReplicateOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-
   // Print comma separated operands of the following format:
   //   replicated_input
   //     [%a, ...] as %block_arg0: type
@@ -383,7 +381,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   //     %b as %block_arg1: type
   const int32_t n = op.n();
   const int32_t num_replicated_inputs =
-      (*op.operand_segment_sizes().int_value_begin()).getSExtValue();
+      (*op.operand_segment_sizes().value_begin<APInt>()).getSExtValue();
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (op.getNumOperands()) {

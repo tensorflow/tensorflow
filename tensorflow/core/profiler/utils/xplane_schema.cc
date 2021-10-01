@@ -48,6 +48,9 @@ const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
+const absl::string_view kDeviceVendorNvidia = "Nvidia";
+const absl::string_view kDeviceVendorAMD = "AMD";
+
 namespace {
 
 constexpr int kNumHostEventTypes =
@@ -228,6 +231,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},

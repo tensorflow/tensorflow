@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -335,6 +336,18 @@ class FunctionInstantiationHelper {
       (*gnode->mutable_attr())[p.first] = p.second;
     }
 
+    // Experimental_debug_info.
+    if (fnode.has_experimental_debug_info()) {
+      gnode->mutable_experimental_debug_info()->MergeFrom(
+          fnode.experimental_debug_info());
+    }
+
+    // Tye info.
+    // TODO(mdan): Might this need adjustment at instantiation?
+    if (fnode.has_experimental_type()) {
+      *gnode->mutable_experimental_type() = fnode.experimental_type();
+    }
+
     return Status::OK();
   }
 
@@ -503,7 +516,11 @@ string Print(const OpDef::ArgDef& arg) {
 }
 
 // TODO(josh11b): Merge this with SummarizeAttrValue().
-string Print(const AttrValue& attr_value) {
+// When hash_string_attrs = true, string attributes are hashed instead of being
+// truncated with ellipses. This is done to reduce the chance of collisions when
+// looking up functions using the canonical representation.
+string Print(const AttrValue& attr_value,
+             const bool hash_string_attrs = false) {
   if (attr_value.value_case() == AttrValue::kType) {
     return DataTypeString(attr_value.type());
   } else if ((attr_value.value_case() == AttrValue::kList) &&
@@ -526,6 +543,8 @@ string Print(const AttrValue& attr_value) {
     std::sort(entries.begin(), entries.end());
     return strings::StrCat(attr_value.func().name(), "[",
                            absl::StrJoin(entries, ", "), "]");
+  } else if (attr_value.value_case() == AttrValue::kS && hash_string_attrs) {
+    return strings::StrCat(Fingerprint64(attr_value.s()));
   }
   return SummarizeAttrValue(attr_value);
 }
@@ -709,7 +728,6 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
-// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
@@ -1038,7 +1056,8 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
                   options.input_devices.size());
   for (const auto& p : attrs) {
     if (p.first != kExecutorAttr) {
-      entries.push_back(AttrKeyAndValue(p.first, -1, Print(p.second)));
+      entries.push_back(AttrKeyAndValue(
+          p.first, -1, Print(p.second, /*hash_string_attrs=*/true)));
     }
   }
   if (!options.target.empty()) {
@@ -1836,6 +1855,14 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   }
   if (!this->device.empty()) {
     n.set_device(this->device);
+  }
+  if (!this->original_node_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_node_names() = {
+        this->original_node_names.begin(), this->original_node_names.end()};
+  }
+  if (!this->original_func_names.empty()) {
+    *n.mutable_experimental_debug_info()->mutable_original_func_names() = {
+        this->original_func_names.begin(), this->original_func_names.end()};
   }
   return n;
 }

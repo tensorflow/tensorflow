@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for Stack and ParallelStack Ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -254,12 +250,14 @@ class StackOpTest(test.TestCase):
 
   def testDimOutOfRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegex(ValueError, r"axis = 2 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Argument `axis` = 2 not in range \[-2, 2\)"):
       array_ops.stack(t, axis=2)
 
   def testDimOutOfNegativeRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegex(ValueError, r"axis = -3 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Argument `axis` = -3 not in range \[-2, 2\)"):
       array_ops.stack(t, axis=-3)
 
   def testComplex(self):

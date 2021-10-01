@@ -22,10 +22,6 @@ We don't import these modules from ragged/__init__.py, since we want to avoid
 circular dependencies.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_array_ops

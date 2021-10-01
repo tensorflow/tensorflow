@@ -29,7 +29,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <p>For example, if a model takes only one input and returns only one output:
  *
  * <pre>{@code
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
  * }
  * }</pre>
@@ -42,7 +43,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
  * ith_output.order(ByteOrder.nativeOrder());
  * map_of_indices_to_outputs.put(i, ith_output);
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
  * }
  * }</pre>
@@ -52,7 +54,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
  * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
- * try (InterpreterApi interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ * try (InterpreterApi interpreter =
+ *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
  * }
  * }</pre>
@@ -75,6 +78,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
+ *
+ * @see InterpreterFactory
  */
 public interface InterpreterApi extends AutoCloseable {
 
@@ -216,7 +221,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     null, or if an error occurs when running inference.
    */
   public void runForMultipleInputsOutputs(
-      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs);
+      Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs);
 
   /**
    * Explicitly updates allocations for all tensors, if necessary.

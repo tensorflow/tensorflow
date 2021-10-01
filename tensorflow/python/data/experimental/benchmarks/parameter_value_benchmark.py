@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks to compare effect of different paramemter values on the performance."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 import numpy as np
 

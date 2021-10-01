@@ -168,18 +168,13 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
     SmallVector<Value, 2> buffer_args(operands.begin(), operands.end());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
 
-    // TODO(silvasean): Move this helper to MLIR core.
-    auto make_elements_attr = [&rewriter](ArrayRef<int64_t> integers) {
-      auto type = RankedTensorType::get({static_cast<int64_t>(integers.size())},
-                                        rewriter.getIntegerType(64));
-      return DenseIntElementsAttr::get(type, integers);
-    };
     auto dotOp = rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None,
                                                buffer_args, op->getAttrs());
     // MHLO's Dot uses rank-2 operands, of the form ([N, M], [M, O]) -> [N, O].
-    auto dimension_numbers = mhlo::DotDimensionNumbers::get(
-        make_elements_attr({}), make_elements_attr({}), make_elements_attr({1}),
-        make_elements_attr({0}), rewriter.getContext());
+    auto dimension_numbers = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), /*lhsBatchingDimensions=*/{},
+        /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
+        /*rhsContractingDimensions=*/{0});
     dotOp.dot_dimension_numbersAttr(dimension_numbers);
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return success();
@@ -258,8 +253,6 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
       mhlo::ReduceOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    // TODO(b/137624192) Implement variadic reduce.
-    if (op.getNumResults() != 1) return failure();
     if (!llvm::hasSingleElement(op.body())) {
       return op.emitOpError()
              << "tensor to buffer conversion expects a single block "
@@ -275,8 +268,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
 
     // Convert the region signature to memref and add extra result.
     auto& entry_block = new_op.body().front();
-    TypeConverter::SignatureConversion sig_conversion(
-        entry_block.getNumArguments() + 1);
+    TypeConverter::SignatureConversion sig_conversion(operands.size());
     for (auto arg : entry_block.getArguments()) {
       auto old_type = arg.getType().cast<TensorType>();
       auto new_type =
@@ -284,9 +276,23 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
       sig_conversion.addInputs(arg.getArgNumber(), new_type);
     }
     auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
-    auto result_type = return_op.results().front().getType().cast<TensorType>();
-    sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
-                                              result_type.getElementType())});
+    if (auto tuple_ty =
+            return_op.results().front().getType().dyn_cast<TupleType>()) {
+      auto tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
+      return_op.getOperation()->dropAllReferences();
+      rewriter.eraseOp(tuple_op);
+      return_op.getOperation()->setOperands(tuple_op->getOperands());
+      for (auto ty : tuple_ty) {
+        auto tensor_ty = ty.cast<TensorType>();
+        sig_conversion.addInputs(
+            MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType()));
+      }
+    } else {
+      auto result_type =
+          return_op.results().front().getType().cast<TensorType>();
+      sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
+                                                result_type.getElementType())});
+    }
     rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
@@ -415,7 +421,6 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
  public:
   HloLegalizeToLhlo() = default;
-  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {}
 
   void runOnOperation() override {
     auto& context = getContext();

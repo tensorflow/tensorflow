@@ -31,7 +31,7 @@ tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py37,-no_cuda1
 
 set +e
 bazel test \
-  --config=release_gpu_linux_11_4 \
+  --config=release_gpu_linux \
   --repo_env=PYTHON_BIN_PATH="$(which python3.7)" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \

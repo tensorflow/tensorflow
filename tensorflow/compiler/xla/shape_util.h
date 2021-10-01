@@ -366,6 +366,10 @@ class ShapeUtil {
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
+  // Creates a tuple shape from a slice of element shapes within the tuple. If
+  // only one shape is passed, returns that.
+  static Shape MakeMaybeTupleShape(absl::Span<const Shape> shapes);
+
   // Creates an opaque shape. These are generally used for threading a context
   // into a custom operation.
   static Shape MakeOpaqueShape();
@@ -387,6 +391,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Appends a minor dimension to the shape with the given bound.
+  static void AppendMinorDimension(int bound, Shape* shape);
 
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);

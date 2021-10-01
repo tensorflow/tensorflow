@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 
+#include <cstdint>
 #include <set>
 #include <utility>
 #include <vector>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -42,6 +44,14 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
+
+#if BEF_EXECUTABLE
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -50,13 +60,6 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-
-#if BEF_EXECUTABLE
-#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
 
 namespace xla {
@@ -77,6 +80,14 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
 
 }  // namespace
 
+void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
+#if BEF_EXECUTABLE
+  tfrt::AlignedFree(ptr);
+#else
+  assert(false && "OwnedBefBuffer only supported with BEF_EXECUTABLE");
+#endif
+}
+
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(GpuExecutable::Params params)
@@ -91,6 +102,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
+      verbose_buffer_assignment_string_dumper_(
+          params.verbose_buffer_assignment_string_dumper),
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
@@ -355,10 +368,13 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
-          memory_allocator->Allocate(device_ordinal, buffer_size));
-      buffer_address = buffer.Release();
+      StatusOr<se::OwningDeviceMemory> buffer =
+          memory_allocator->Allocate(device_ordinal, buffer_size);
+      if (!buffer.ok()) {
+        return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
+                                 verbose_buffer_assignment_string_dumper_());
+      }
+      buffer_address = buffer->Release();
     }
     return buffer_address;
   }
@@ -605,6 +621,13 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Lock the GPU with a shared lock so that we don't interfere with autotuning
+  // that may be running during JIT compilation while allowing multiple XLA
+  // computations to use the same GPU simultaneously.
+  auto gpu_lock = LockGpuShared(executor);
+
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -613,8 +636,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
     TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
-
-  se::StreamExecutor* executor = run_options->stream()->parent();
 
   auto device_ordinal = executor->device_ordinal();
   ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
@@ -703,10 +724,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
-        TF_ASSIGN_OR_RETURN(
-            se::OwningDeviceMemory allocated_buffer,
-            memory_allocator->Allocate(device_ordinal, allocation_size));
-        result_buffer = allocated_buffer.Release();
+        StatusOr<se::OwningDeviceMemory> allocated_buffer =
+            memory_allocator->Allocate(device_ordinal, allocation_size);
+        if (!allocated_buffer.ok()) {
+          return ResourceExhausted("%s\n%s\n",
+                                   allocated_buffer.status().error_message(),
+                                   verbose_buffer_assignment_string_dumper_());
+        }
+        result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
@@ -733,15 +758,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   }
 
 #if BEF_EXECUTABLE
-  if (absl::holds_alternative<tfrt::BefBuffer>(thunks_or_bef_)) {
-    const tfrt::BefBuffer& bef_buffer =
-        absl::get<tfrt::BefBuffer>(thunks_or_bef_);
+  if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef_)) {
+    const auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef_);
 
     TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
     tfrt::HostContext* host = runtime_and_queue.core_runtime->GetHostContext();
-    tfrt::RCReference<tfrt::BEFFile> bef_file =
-        tfrt::BEFFile::Open(bef_buffer, host->GetKernelRegistry(),
-                            host->diag_handler(), host->allocator());
+    tfrt::RCReference<tfrt::BEFFile> bef_file = tfrt::BEFFile::Open(
+        {bef_buffer.get(), bef_buffer.get_deleter().size},
+        host->GetKernelRegistry(), host->diag_handler(), host->allocator());
     if (!bef_file) {
       return InternalError("Failed to load BEF file.");
     }

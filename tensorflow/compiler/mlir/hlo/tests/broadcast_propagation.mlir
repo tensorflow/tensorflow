@@ -416,3 +416,37 @@ func @redundant_cstr_broadcastable(%arg0: tensor<?xindex>,
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @move_assuming_all_over_assuming_region
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<?xindex>, %[[ARG1:.*]]: tensor<?xindex>, %[[ARG2:.*]]: tensor<?xindex>, %[[ARG3:.*]]: tensor<?xindex>, %[[ARG4:.*]]: tensor<?xindex>
+func @move_assuming_all_over_assuming_region(%arg0: tensor<?xindex>,
+    %arg1 : tensor<?xindex>, %arg2 : tensor<?xindex>, %arg3 : tensor<?xindex>,
+    %arg4 : tensor<?xindex>) {
+  // CHECK-DAG: %[[CSTR0:.*]] = shape.cstr_broadcastable %[[ARG0]], %[[ARG1]]
+  // CHECK-DAG: %[[CSTR1:.*]] = shape.cstr_broadcastable %[[ARG1]], %[[ARG2]]
+  // CHECK-DAG: %[[CSTR_ALL01:.*]] = shape.assuming_all %[[CSTR0]], %[[CSTR1]]
+  // CHECK-DAG: %[[CSTR2:.*]] = shape.cstr_broadcastable %[[ARG2]], %[[ARG3]]
+  // CHECK-DAG: %[[CSTR3:.*]] = shape.cstr_broadcastable %[[ARG3]], %[[ARG4]]
+  // CHECK-DAG: %[[CSTR_ALL23:.*]] = shape.assuming_all %[[CSTR2]], %[[CSTR3]]
+  // CHECK-DAG: %[[CSTR_ALL0123:.*]] = shape.assuming_all %[[CSTR_ALL01]], %[[CSTR_ALL23]]
+  // CHECK:     shape.assuming %[[CSTR_ALL0123]] {
+  // CHECK:       "some.op"()
+  // CHECK:       "some.op"()
+  // CHECK:     }
+  // CHECK:     return
+  %0 = shape.cstr_broadcastable %arg0, %arg1 : tensor<?xindex>, tensor<?xindex>
+  %1 = shape.cstr_broadcastable %arg1, %arg2 : tensor<?xindex>, tensor<?xindex>
+  %2 = shape.assuming_all %0, %1
+  shape.assuming %2 -> () {
+    "some.op"() : () -> ()
+  }
+  %3 = shape.cstr_broadcastable %arg2, %arg3 : tensor<?xindex>, tensor<?xindex>
+  %4 = shape.cstr_broadcastable %arg3, %arg4 : tensor<?xindex>, tensor<?xindex>
+  %5 = shape.assuming_all %3, %4
+  shape.assuming %5 -> () {
+    "some.op"() : () -> ()
+  }
+  return
+}

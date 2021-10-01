@@ -138,6 +138,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Configure device placement policy logging.
   virtual void SetLogDevicePlacement(bool enable) = 0;
 
+  // Enables running eager ops as functions.
+  virtual void SetRunEagerOpAsFunction(bool enable) = 0;
+
   // Sets the device placement policy for the current thread.
   virtual void SetThreadLocalDevicePlacementPolicy(
       ContextDevicePlacementPolicy policy) = 0;
@@ -205,6 +208,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Return a list of local tensorflow::Device*.
   // TODO(tfrt-devs): We shouldn't expose legacy device in this API.
   virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
+
+  // Return a list of all tensorflow::Device*.
+  virtual std::vector<tensorflow::Device*> ListAllTfDevices() = 0;
 
   //===--------------------------------------------------------------------===//
   // Following are helper functions to assist integrating TFRT with current

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Public API for tf.linalg.sparse namespace."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.linalg.sparse.conjugate_gradient import conjugate_gradient

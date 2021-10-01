@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import time
 import unittest
@@ -1368,7 +1364,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.cached_session():
-      with self.assertRaisesRegex(ValueError, "maxlen must be scalar"):
+      with self.assertRaisesRegex(ValueError, "`maxlen` must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
   def testOneDimensionalWithMaxlen(self):

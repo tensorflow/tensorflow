@@ -330,9 +330,9 @@ class Subgraph {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -607,10 +607,13 @@ class Subgraph {
   // restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
-  // incompatibility with the TfLite runtime, e.g., the model graph is already
+  // incompatibility with the TF Lite runtime, e.g., the model graph is already
   // immutable when applying the delegate. However, the Subgraph is still in a
   // invokable state.
-  // 4. kTfLiteError: Unexpected/runtime failure.
+  // 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  // operator that cannot be resolved. This can happen when the op is not
+  // registered or built with the TF Lite framework.
+  // 5. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains
@@ -629,6 +632,9 @@ class Subgraph {
 
   // Returns true if the subgraph has delegates applied.
   bool HasDelegates();
+
+  // Returns true if the subgraph has been fully delegated.
+  bool IsFullyDelegated() const;
 
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
@@ -767,8 +773,8 @@ class Subgraph {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
-  std::vector<std::pair<int, TfLiteCustomAllocation>> custom_allocations_;
+  // Maps tensor index to custom allocation for all applicable tensors.
+  std::map<int, TfLiteCustomAllocation> custom_allocations_;
 
   // Tracking bit for whether a tensor was resized in the course of an op
   // invocation. This is a useful hint to ensure that dynamic tensor outputs

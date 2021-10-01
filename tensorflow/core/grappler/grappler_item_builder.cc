@@ -143,7 +143,7 @@ Status UpdatePlaceholderShape(
                             ": ", make_shape_status, ", skipping this input");
   }
 
-  // Some placeholder nodes have a mis-match between the node
+  // Some placeholder nodes have a mismatch between the node
   // attribute "shape" and a different node attribute "_output_shapes".
   // Specifically, a shape with shape.dims() == 0 could indicate either
   // a scalar or an unknown shape. In those cases, we check _output_shapes
@@ -278,7 +278,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr,
+                     tensorflow::GraphOptimizer::Options());
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.

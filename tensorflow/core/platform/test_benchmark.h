@@ -33,10 +33,6 @@ using ::benchmark::State;  // NOLINT
 namespace tensorflow {
 namespace testing {
 
-namespace internal {
-void UseCharPointer(char const volatile*);
-}
-
 inline void RunBenchmarks() { benchmark::RunSpecifiedBenchmarks(); }
 inline void InitializeBenchmarks(int* argc, char** argv) {
   benchmark::Initialize(argc, argv);
@@ -44,12 +40,7 @@ inline void InitializeBenchmarks(int* argc, char** argv) {
 
 template <class T>
 void DoNotOptimize(const T& var) {
-#if defined(_MSC_VER)
-  internal::UseCharPointer(reinterpret_cast<char const volatile*>(&var));
-  _ReadWriteBarrier();
-#else
-  asm volatile("" : "+m"(const_cast<T&>(var)));
-#endif
+  ::benchmark::DoNotOptimize(var);
 }
 }  // namespace testing
 }  // namespace tensorflow

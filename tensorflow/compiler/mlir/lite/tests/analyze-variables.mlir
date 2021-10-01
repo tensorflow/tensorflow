@@ -57,7 +57,7 @@ module {
 
 // -----
 
-// CHECK: module attributes {tfl._legalize_tfl_variables = false}
+// CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {
   func @main() -> tensor<i32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>

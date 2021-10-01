@@ -26,6 +26,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework.test_util import IsMklEnabled
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -126,7 +127,13 @@ class NodeFileWriterTest(test.TestCase):
       node_defs = self._get_new_node_defs()
       self.assertLen(node_defs, 2)
       node_def1, node_def2 = node_defs  # pylint: disable=unbalanced-tuple-unpacking
-      self.assertEqual(node_def1.op, 'MatMul')
+      if not IsMklEnabled():
+        self.assertEqual(node_def1.op, 'MatMul')
+      else:
+        # Under certain conditions ops can be rewritten by oneDNN optimization
+        # pass.
+        self.assertIn(node_def1.op, ['MatMul', '_MklMatMul'])
+
       self.assertEqual(
           self._get_input_dtypes(node_def1), [dtypes.float32, dtypes.float32])
       self.assertEqual(self._get_input_shapes(node_def1), [(2, 3), (3, 2)])
@@ -141,7 +148,12 @@ class NodeFileWriterTest(test.TestCase):
       node_defs = self._get_new_node_defs()
       self.assertLen(node_defs, 1)
       (node_def3,) = node_defs  # pylint: disable=unbalanced-tuple-unpacking
-      self.assertEqual(node_def3.op, 'MatMul')
+      if not IsMklEnabled():
+        self.assertEqual(node_def3.op, 'MatMul')
+      else:
+        # Under certain conditions ops can be rewritten by oneDNN optimization
+        # pass.
+        self.assertIn(node_def3.op, ['MatMul', '_MklMatMul'])
       self.assertEqual(
           self._get_input_dtypes(node_def3), [dtypes.float32, dtypes.float32])
       self.assertEqual(self._get_input_shapes(node_def3), [(4, 3), (3, 2)])

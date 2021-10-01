@@ -193,17 +193,16 @@ func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @gather
 func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
     -> tensor<5x7xf32> {
-  %result =
-    "mhlo.gather"(%operand, %idxs)
-      { dimension_numbers =
-        { collapsed_slice_dims = dense<0> : tensor<1xi64>
-        , index_vector_dim = 1 : i64
-        , offset_dims = dense<1> : tensor<1xi64>
-        , start_index_map = dense<0> : tensor<1xi64> }
-      , indices_are_sorted = false
-      , name = "gather.71"
-      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
-      : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
+  %result = "mhlo.gather"(%operand, %idxs) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0],
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 7]> : tensor<2xi64>
+  } : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
   // CHECK: "lmhlo.gather"(%{{.*}}, %{{.*}}, %{{.*}})
   return %result : tensor<5x7xf32>
 }
@@ -459,12 +458,11 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
 // CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
 //      CHECK: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
-//        dot_dimension_numbers = {
-//          lhs_batching_dimensions = dense<> : tensor<0xi64>,
-//          lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
-//          rhs_batching_dimensions = dense<> : tensor<0xi64>,
-//          rhs_contracting_dimensions = dense<0> : tensor<1xi64>}}
-//        : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+//      CHECK:  dot_dimension_numbers =
+//      CHECK-NOT:    lhs_batching_dimensions =
+//      CHECK-NOT:    rhs_batching_dimensions =
+//      CHECK-SAME:   lhs_contracting_dimensions = [1]
+//      CHECK-SAME:   rhs_contracting_dimensions = [0]
   %dot = "mhlo.dot"(%arg0, %arg0)
           : (tensor<1024x1024xf32>, tensor<1024x1024xf32>)
               -> tensor<1024x1024xf32>
@@ -523,6 +521,36 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
   }) {dimensions = dense<1> : tensor<1xi64>}
       : (tensor<1x8xf32>, tensor<f32>) -> tensor<1xf32>
   return %0 : tensor<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_multiple_operand
+func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
+  (tensor<1xf32>, tensor<1xi32>) {
+  // CHECK: %[[OUT_F:.*]] = memref.alloc() : memref<1xf32>
+  // CHECK: %[[OUT_I:.*]] = memref.alloc() : memref<1xi32>
+  // CHECK: "lmhlo.reduce"(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}, %[[OUT_F]], %[[OUT_I]]) ( {
+  // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<i32>, %[[ARG3:.*]]: memref<f32>, %[[ARG4:.*]]: memref<i32>,
+  // CHECK-SAME:  %[[ARG5:.*]]: memref<f32>, %[[ARG6:.*]]: memref<i32>):
+  // CHECK:    %[[TMP_OUT0:.*]] = memref.alloc() : memref<f32>
+  // CHECK:    "lmhlo.add"(%[[ARG1]], %[[ARG3]], %[[TMP_OUT0]])
+  // CHECK:    %[[TMP_OUT1:.*]] = memref.alloc() : memref<i32>
+  // CHECK:    "lmhlo.add"(%[[ARG2]], %[[ARG4]], %[[TMP_OUT1]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT0]], %[[ARG5]])
+  // CHECK:    "lmhlo.copy"(%[[TMP_OUT1]], %[[ARG6]])
+  // CHECK:    "lmhlo.terminator"() : () -> ()
+  // CHECK:  }) {dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-SAME: : (memref<1x8xf32>, memref<1x8xi32>, memref<f32>, memref<i32>, memref<1xf32>, memref<1xi32>) -> ()
+  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+  ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
+    %1 = mhlo.add %arg4, %arg6 : tensor<f32>
+    %2 = mhlo.add %arg5, %arg7 : tensor<i32>
+    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} 
+    : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+  return %0#0, %0#1 : tensor<1xf32>, tensor<1xi32>
 }
 
 // -----

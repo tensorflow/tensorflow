@@ -14,10 +14,6 @@
 # ==============================================================================
 """State management for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
@@ -79,9 +75,13 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
+    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
 
 
+# This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
   """Execute elementary eager ops (non-function) wrapped in a call op.
 
@@ -90,12 +90,23 @@ def enable_run_eager_op_as_function():
   TF2 programs in the runtime, thereby improving consistency (in terms of
   optimizations and rewrites for instance) and maintainability.
   """
-  # Must be called before context is actually built.
   global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
   _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_run_eager_op_as_function():
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = False
 
 
 def run_eager_op_as_function_enabled():
+  if context_safe() is not None:
+    return context_safe().run_eager_op_as_function
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
 
 
@@ -698,7 +709,7 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def enable_coordination_service(self, service_type):
+  def configure_coordination_service(self, service_type):
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
                       "effective because the context is already initialized.")
@@ -1609,9 +1620,16 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
     self.ensure_initialized()
     # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
@@ -1759,6 +1777,16 @@ class Context(object):
 
     self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
+
+  @property
+  def run_eager_op_as_function(self):
+    return self._run_eager_op_as_function
+
+  @run_eager_op_as_function.setter
+  def run_eager_op_as_function(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
+    self._run_eager_op_as_function = enable
 
   @property
   def device_policy(self):

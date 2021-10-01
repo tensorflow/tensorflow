@@ -705,6 +705,20 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrValueProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* output_attr_value,
     TF_Status* status);
 
+// Get the number of attributes the operation has.
+TF_CAPI_EXPORT extern int TF_OperationGetNumAttrs(TF_Operation* oper);
+
+// Get the length of the name of the ith attribute, or -1 if there is not an
+// ith attribute.
+TF_CAPI_EXPORT extern int TF_OperationGetAttrNameLength(TF_Operation* oper,
+                                                        int i);
+
+// Get the name of the ith attribute.  output should have the size of
+// TF_OperationGetAttrNameLength(oper, i).
+TF_CAPI_EXPORT extern void TF_OperationGetAttrName(TF_Operation* oper, int i,
+                                                   char* output,
+                                                   TF_Status* status);
+
 // Returns the operation in the graph with `oper_name`. Returns nullptr if
 // no operation found.
 TF_CAPI_EXPORT extern TF_Operation* TF_GraphOperationByName(

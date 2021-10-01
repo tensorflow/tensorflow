@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for parameter_server_strategy_v2.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import os
@@ -51,7 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
-from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
@@ -286,7 +282,7 @@ class ParameterServerStrategyV2Test(test.TestCase):
     found_gather = False
 
     tmp_dir = self.get_temp_dir()
-    save.save(model, tmp_dir, signatures=model.func)
+    tf_save.save(model, tmp_dir, signatures=model.func)
 
     with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
       saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())

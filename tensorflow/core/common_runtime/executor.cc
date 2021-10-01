@@ -239,7 +239,7 @@ class ExecutorImpl : public Executor {
 //   * `TaggedNode front() const`
 //   * `void pop_front()`
 //   * `bool empty() const`
-// * A type `TaggedNodeSeq`, representing a list of nodes to be schedules, with
+// * A type `TaggedNodeSeq`, representing a list of nodes to be scheduled, with
 //   public members (having the same meanings as in an
 //   `std::vector<TaggedNode>`):
 //   * `size_t size() const`
@@ -993,10 +993,11 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       if (stats_collector_) {
         string err = stats_collector_->ReportAllocsOnResourceExhausted(
             s.error_message());
-        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+        s = errors::CreateWithUpdatedMessage(
+            s, strings::StrCat(s.error_message(), err));
       } else {
-        s = Status(
-            s.code(),
+        s = errors::CreateWithUpdatedMessage(
+            s,
             strings::StrCat(
                 s.error_message(),
                 "\nHint: If you want to see a list of allocated tensors when "

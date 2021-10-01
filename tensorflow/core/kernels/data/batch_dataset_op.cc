@@ -126,6 +126,28 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    const int64 cardinality = Cardinality();
+    if (index < 0 || index >= cardinality) {
+      return errors::OutOfRange("Index out of range [0, ", cardinality,
+                                "):", index);
+    }
+    int batch_start_index = batch_size_ * index;
+    std::vector<std::vector<Tensor>> batch_elements;
+    int input_cardinality = input_->Cardinality();
+    for (int i = batch_start_index;
+         i < batch_start_index + batch_size_ && i < input_cardinality; ++i) {
+      std::vector<Tensor> batch_element_tuple;
+      TF_RETURN_IF_ERROR(input_->Get(ctx, i, &batch_element_tuple));
+      batch_elements.emplace_back(std::move(batch_element_tuple));
+    }
+    TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
+                                 parallel_copy_,
+                                 /*allocation_callback=*/nullptr, out_tensors));
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -199,9 +221,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      TF_RETURN_IF_ERROR(
-          CopyBatch(ctx, batch_elements, dataset()->parallel_copy_,
-                    /*allocation_callback=*/nullptr, out_tensors));
+      TF_RETURN_IF_ERROR(CopyBatch(
+          CopyBatchParams(ctx), batch_elements, dataset()->parallel_copy_,
+          /*allocation_callback=*/nullptr, out_tensors));
 
       *end_of_sequence = false;
       return Status::OK();

@@ -103,9 +103,9 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     const int64_t num_to_sample = num_to_sample_tensor.scalar<int64_t>()();
     const int64_t seed = seed_tensor.scalar<int64_t>()();
     const int64_t num_retries_per_sample = [&]() {
-      const int64_t value = num_retries_per_sample_tensor.scalar<int64>()();
+      const int64_t value = num_retries_per_sample_tensor.scalar<int64_t>()();
       return value >= 0 ? value
-                        : 2 + static_cast<int64>(std::log(num_to_sample));
+                        : 2 + static_cast<int64_t>(std::log(num_to_sample));
     }();
 
     OP_REQUIRES(context, num_points > 0,

@@ -54,8 +54,8 @@ IrFunction::IrFunction(const string& function_name,
 }
 
 IrFunction::~IrFunction() {
-  // Emit function return value.
-  b_->CreateRetVoid();
+  // Branch to function return.
+  b_->CreateBr(return_block_);
 }
 
 DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
@@ -172,10 +172,18 @@ void IrFunction::Initialize(const string& function_name,
     function_->addParamAttr(argument.getArgNo(), llvm::Attribute::NoAlias);
   }
 
+  return_block_ =
+      llvm::BasicBlock::Create(/*Context=*/llvm_module_->getContext(),
+                               /*Name=*/"return", /*Parent=*/function_);
+
+  b_->SetInsertPoint(return_block_);
+  b_->CreateRetVoid();
+
   b_->SetInsertPoint(llvm::BasicBlock::Create(
       /*Context=*/llvm_module_->getContext(),
       /*Name=*/"entry",
-      /*Parent=*/function_));
+      /*Parent=*/function_,
+      /*InsertBefore=*/return_block_));
 }
 
 llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {

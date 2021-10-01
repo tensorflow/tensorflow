@@ -347,6 +347,9 @@ class PartitionedHlo {
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
 
+  PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
+                             absl::Span<const int64_t> skipped_dims = {}) const;
+
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
 

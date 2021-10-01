@@ -14,11 +14,6 @@
 # ==============================================================================
 """Companion classes for mid level API for TPU Embeddings in TF2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import abc
 import math
 import typing

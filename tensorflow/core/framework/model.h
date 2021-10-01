@@ -202,9 +202,7 @@ class Node {
   }
 
   // Returns an indication whether autotuning is enabled for this node.
-  bool autotune() const TF_LOCKS_EXCLUDED(mu_) {
-    return autotune_;
-  }
+  bool autotune() const TF_LOCKS_EXCLUDED(mu_) { return autotune_; }
 
   // Returns the number of bytes stored in this node's buffer.
   int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
@@ -284,9 +282,7 @@ class Node {
   }
 
   // Records that the node produced an element.
-  void record_element() TF_LOCKS_EXCLUDED(mu_) {
-    num_elements_++;
-  }
+  void record_element() TF_LOCKS_EXCLUDED(mu_) { num_elements_++; }
 
   // Records that a node thread has started executing.
   void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
@@ -648,9 +644,6 @@ class Model {
   Model();
   ~Model();
 
-  // Indicates whether to collect resource usage.
-  bool collect_resource_usage() const { return collect_resource_usage_; }
-
   // Returns a pointer to the model's output node.
   const std::shared_ptr<Node> output() {
     mutex_lock l(mu_);
@@ -771,14 +764,6 @@ class Model {
   condition_variable optimize_cond_var_;
   int64_t id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_) = nullptr;
-
-  // Indicates whether the modeling framework should collect resource usage
-  // (e.g. CPU, memory). The logic for collecting this information assumes that
-  // the collection is not repeatedly disabled and enabled. As a consequence,
-  // the implementation starts collecting resource usage when it encounters a
-  // tunable parameter (because the information is used for tuning the value of
-  // the parameter) and never stops.
-  std::atomic<bool> collect_resource_usage_;
 
   // Determines the time the optimization loop should wait between
   // running optimizations.

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -49,7 +50,7 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
     DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
                   ->GetDescriptor()
                   ->field_count(),
-              6)
+              7)
         << "The NodeDef format has changed, and the attr-stripping code may "
            "need to be updated.";
   }
@@ -63,6 +64,9 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), &ret);
   MergeDebugInfo(original, &ret);
+  if (original.has_experimental_type()) {
+    *ret.mutable_experimental_type() = original.experimental_type();
+  }
   return ret;
 }
 
@@ -72,7 +76,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  ScopedMemoryDebugAnnotation op_annotation(name_view().data());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));

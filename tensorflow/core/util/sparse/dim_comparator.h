@@ -95,8 +95,8 @@ class DimComparator {
 template <int ORDER_DIM>
 class FixedDimComparator : DimComparator {
  public:
-  FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                     const VarDimArray& shape)
+  FixedDimComparator(const TTypes<int64_t>::Matrix& ix,
+                     const VarDimArray& order, const VarDimArray& shape)
       : DimComparator(ix, order, shape) {
     DCHECK_EQ(order.size(), ORDER_DIM);
   }

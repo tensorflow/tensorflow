@@ -524,14 +524,15 @@ class RunManyGraphs {
     if (resp->status_code() != error::Code::OK) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
-      ReportBadStatus(Status(resp->status_code(),
-                             strings::StrCat("From ", *call->worker_name, ":\n",
-                                             resp->status_error_message())));
+      Status resp_status = call->resp->status();
+      ReportBadStatus(errors::CreateWithUpdatedMessage(
+          resp_status, strings::StrCat("From ", *call->worker_name, ":\n",
+                                       resp_status.error_message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
-      ReportBadStatus(
-          Status(s.code(), strings::StrCat("From ", *call->worker_name, ":\n",
-                                           s.error_message())));
+      ReportBadStatus(errors::CreateWithUpdatedMessage(
+          s, strings::StrCat("From ", *call->worker_name, ":\n",
+                             s.error_message())));
     }
     pending_.DecrementCount();
   }

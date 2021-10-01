@@ -38,3 +38,9 @@ def TosaConvertTFLUint8Pass : FunctionPass<"tosa-convert-tfl-uint8"> {
   let constructor = "createConvertTFLUint8Pass()";
   let dependentDialects = ["TosaDialect"];
 }
+
+def TosaStripQuantTypesPass : FunctionPass<"tosa-strip-quant-types"> {
+  let summary = "Convert all quant types to their storage type.";
+  let constructor = "createStripQuantTypesPass()";
+  let dependentDialects = ["TosaDialect"];
+}

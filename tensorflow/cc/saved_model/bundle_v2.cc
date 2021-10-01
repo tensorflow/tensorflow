@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
 namespace {
@@ -112,6 +113,11 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   }
   bundle->meta_graph_def_ =
       std::move(*saved_model_proto.mutable_meta_graphs(0));
+
+  // Correct the endiness of Tensor content on big-endian system
+  if (!port::kLittleEndian) {
+    TF_RETURN_IF_ERROR(ByteSwapTensorContent(&(bundle->meta_graph_def_)));
+  }
 
   // Load GraphDebugInfo.
   TF_RETURN_IF_ERROR(

@@ -265,20 +265,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
                dnums.kernel_output_feature_dimension()) != 1;
   };
 
-  auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(output_base_shape.element_type())));
   if (ShapeSizeInBytes(lhs.base_shape()) < ShapeSizeInBytes(rhs.base_shape())) {
     if (unsupported_sharding(aligned_lhs_sharding, rhs.sharding())) {
       return nullptr;
     }
-    lhs = lhs.Reshard(aligned_lhs_sharding).PadWithValue(zero);
-    rhs = rhs.PadWithValue(zero);
+    lhs = lhs.Reshard(aligned_lhs_sharding).PadWithZero();
+    rhs = rhs.PadWithZero();
   } else {
     if (unsupported_sharding(lhs.sharding(), aligned_rhs_sharding)) {
       return nullptr;
     }
-    lhs = lhs.PadWithValue(zero);
-    rhs = rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero);
+    lhs = lhs.PadWithZero();
+    rhs = rhs.Reshard(aligned_rhs_sharding).PadWithZero();
   }
 
   if (original_hlo->feature_group_count() > 1 &&
@@ -452,6 +450,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
 
   HloInstruction* conv_lhs = lhs.hlo();
   if (need_dynamic_slice_lhs) {
+    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(lhs.hlo()->shape().element_type())));
     auto pad = b->AddInstruction(
         HloInstruction::CreatePad(pad_shape, lhs.hlo(), zero, pad_config));
     conv_lhs = b->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -482,6 +482,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     int64_t padded_full_shape_size =
         offset_on_padded_shape.Calculate(shard_counts[i] - 1) +
         new_window.dimensions(i).size();
+    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(rhs.hlo()->shape().element_type())));
     auto concat = ExchangeHaloAndGetValidData(
         rhs_with_halo, rhs.base_shape(), left_halo_size_functions[dim],
         right_halo_size_functions[dim], explicit_left_padding_on_full_shape,
@@ -574,21 +576,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
                dnums.kernel_output_feature_dimension()) != 1;
   };
 
-  auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(output_base_shape.element_type())));
   if (ShapeSizeInBytes(lhs.base_shape()) < ShapeSizeInBytes(rhs.base_shape())) {
     if (unsupported_sharding(aligned_lhs_sharding, rhs.sharding())) {
       return nullptr;
     }
-    lhs = lhs.Reshard(aligned_lhs_sharding).PadWithValue(zero);
-    rhs = rhs.PadWithValue(zero, reversed_rhs_dims);
+    lhs = lhs.Reshard(aligned_lhs_sharding).PadWithZero();
+    rhs = rhs.PadWithZero(reversed_rhs_dims);
   } else {
     if (unsupported_sharding(lhs.sharding(), aligned_rhs_sharding)) {
       return nullptr;
     }
-    lhs = lhs.PadWithValue(zero);
-    rhs =
-        rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero, reversed_rhs_dims);
+    lhs = lhs.PadWithZero();
+    rhs = rhs.Reshard(aligned_rhs_sharding).PadWithZero(reversed_rhs_dims);
   }
 
   if (original_hlo->feature_group_count() > 1 &&
@@ -709,6 +708,9 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     auto offset_on_padded_shape =
         OffsetCalculation(MultiplyAddDivideOffsetCalculation());
     int64_t padded_full_shape_size = 0;
+
+    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(lhs.hlo()->shape().element_type())));
     auto concat = ExchangeHaloAndGetValidData(
         lhs_with_halo, lhs.base_shape(), left_halo_size_functions[dim],
         right_halo_size_functions[dim], explicit_left_padding_on_full_shape,

@@ -371,6 +371,10 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `ELU`
+
+* Inputs and outputs must be in 8-bit signed quantized format.
+
 #### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 8-bit quantized format (bias, if present, must
@@ -379,9 +383,13 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `LOGISTIC`
+
+* Inputs and outputs must be in 8-bit quantized format.
+
 #### `MAX_POOL_2D`
 
-* Inputs and outputs must be in 32-bit floating-point format.
+* Inputs and outputs must be in 8-bit quantized format.
 * 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
@@ -398,6 +406,12 @@ Below is the list of currently supported quantized operators:
 * The second input (the input with the padding specification) must be static
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
+
+#### `SUB`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 
 ### Sparse Inference
 

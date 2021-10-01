@@ -48,6 +48,10 @@ class TacModule {
     // This will output different alternative subgraphs in mlir format for debug
     // purpose.
     bool debug_mode = false;
+    // Whether to enable inliner passes or not.
+    bool enable_inliner = false;
+    // Whether to legalize ops to TFLite ops before exporting.
+    bool legalize_to_tflite_ops = false;
   };
 
   virtual ~TacModule() {}

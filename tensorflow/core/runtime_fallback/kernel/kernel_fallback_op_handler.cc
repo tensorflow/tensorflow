@@ -38,7 +38,7 @@ class KernelFallbackOpHandler : public tfrt::OpHandler {
 
   // TODO(b/166199701) obtain result device from the result tensor, similar to
   // what runtime fallback op handler does.
-  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_.CopyRef(); }
+  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_; }
 
   tfrt::Device* device() const { return device_.get(); }
 
@@ -142,7 +142,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
       },
       // device and arg_tensor_type are currently not used in kernel fallback
       // ops.
-      /*is_fallback=*/true, /*device=*/device_.CopyRef());
+      /*is_fallback=*/true, /*device=*/device_);
 }
 
 llvm::Expected<tfrt::OpHandler*> CreateKernelFallbackOpHandler(

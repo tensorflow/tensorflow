@@ -66,7 +66,7 @@ class RuntimeFallbackOpHandler : public tfrt::OpHandler {
 
   const std::string& TfDeviceName() const { return tf_device_name_; }
 
-  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_.CopyRef(); }
+  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_; }
 
  private:
   explicit RuntimeFallbackOpHandler(tfrt::CoreRuntime* runtime,
@@ -271,7 +271,7 @@ Expected<CoreRuntimeOp> RuntimeFallbackOpHandler::MakeOp(string_view op_name) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       },
       // device and arg_tensor_type are not used in runtime fallback ops.
-      /*is_fallback=*/true, /*device=*/device_.CopyRef());
+      /*is_fallback=*/true, /*device=*/device_);
 }
 
 llvm::Expected<tfrt::OpHandler*> CreateRuntimeFallbackOpHandler(

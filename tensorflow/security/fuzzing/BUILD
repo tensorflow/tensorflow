@@ -7,6 +7,10 @@ load(
     "tf_fuzz_target",
     "tf_py_fuzz_target",
 )
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     licenses = ["notice"],
@@ -139,6 +143,33 @@ tf_fuzz_target(
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "checkpoint_reader_fuzz",
+    srcs = ["checkpoint_reader_fuzz.cc"],
+    corpus = glob(["checkpoint_reader_testdata/*"]),
+    deps = [
+        ":checkpoint_reader_fuzz_input_proto_cc",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_libprotobuf_mutator//:libprotobuf_mutator",
+    ],
+)
+
+tf_proto_library(
+    name = "checkpoint_reader_fuzz_input_proto",
+    srcs = ["checkpoint_reader_fuzz_input.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/core/util:saved_tensor_slice_proto",
     ],
 )
 

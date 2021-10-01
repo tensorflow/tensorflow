@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
+import copy
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
@@ -118,10 +115,9 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
                 "bothers you.")
           if slot_variable in node_ids:
             raise NotImplementedError(
-                ("A slot variable was re-used as a dependency of a "
-                 "Trackable object: %s. This is not currently "
-                 "allowed. File a feature request if this limitation bothers "
-                 "you.") % slot_variable)
+                "A slot variable was re-used as a dependency of a Trackable "
+                f"object: {slot_variable}. This is not currently allowed. "
+                "File a feature request if this limitation bothers you.")
           checkpoint_name = naming_scheme(
               variable_path=object_names[original_variable],
               slot_name=slot_name)
@@ -159,6 +155,22 @@ class ObjectGraphView(object):
     self._root_ref = root
     self._saveables_cache = saveables_cache
     self._attached_dependencies = attached_dependencies
+
+  def __deepcopy__(self, memo):
+    if isinstance(self._root_ref, weakref.ref):
+      # By default, weak references are not copied, which leads to surprising
+      # deepcopy behavior. To fix, we first we copy the object itself, then we
+      # make a weak reference to the copy.
+      strong_root = self._root_ref()
+      if strong_root is not None:
+        strong_copy = copy.deepcopy(strong_root, memo)
+        memo[id(self._root_ref)] = weakref.ref(strong_copy)
+    # super() does not have a __deepcopy__, so we need to re-implement it
+    copied = super().__new__(type(self))
+    memo[id(self)] = copied
+    for key, value in vars(self).items():
+      setattr(copied, key, copy.deepcopy(value, memo))
+    return copied
 
   def list_dependencies(self, obj):
     # pylint: disable=protected-access
@@ -319,10 +331,9 @@ class ObjectGraphView(object):
               for new_feed_key in saveable_feed_dict.keys():
                 if new_feed_key in feed_additions:
                   raise AssertionError(
-                      ("The object %s tried to feed a value for the Tensor %s "
-                       "when saving, but another object is already feeding a "
-                       "value.")
-                      % (trackable, new_feed_key))
+                      f"The object {trackable} tried to feed a value for the "
+                      f"Tensor {new_feed_key} when saving, but another object "
+                      "is already feeding a value.")
               feed_additions.update(saveable_feed_dict)
           named_saveable_objects.append(saveable)
         if optional_restore is None:

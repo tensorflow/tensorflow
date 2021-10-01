@@ -136,6 +136,10 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     return context_.GetEagerContext()->local_device_mgr()->ListDevices();
   }
 
+  std::vector<tensorflow::Device*> ListAllTfDevices() override {
+    return context_.GetEagerContext()->ListAllTfDevices();
+  }
+
   tensorflow::Status AddDevices(
       std::vector<std::unique_ptr<tensorflow::Device>> devices) override;
 
@@ -184,6 +188,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     // TODO(tfrt-devs): Move this flag to a common place that can be shared
     // by current TF and TFRT.
     GetEagerContext()->SetLogDevicePlacement(enable);
+  }
+
+  void SetRunEagerOpAsFunction(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetRunEagerOpAsFunction(enable);
   }
 
   tensorflow::EagerExecutor& Executor() override {

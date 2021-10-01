@@ -983,9 +983,6 @@ TEST(SaveModelTest, Model) {
   EXPECT_EQ(optimization_params.model_input_time(),
             restored_optimization_params.model_input_time());
 
-  // Check that original and restored models hold the same data.
-  EXPECT_EQ(model.collect_resource_usage(),
-            restored_model->collect_resource_usage());
   std::shared_ptr<Node> restored_root = restored_model->output();
   std::shared_ptr<Node> restored_current = restored_root;
   current = root;

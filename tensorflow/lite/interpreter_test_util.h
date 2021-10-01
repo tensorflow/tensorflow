@@ -43,12 +43,17 @@ class InterpreterTest : public ::testing::Test {
  protected:
   TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
-  std::vector<Interpreter::TfLiteDelegatePtr>*
-  mutable_lazy_delegate_providers() {
+  Interpreter::TfLiteDelegateCreators* mutable_lazy_delegate_providers() {
     return &interpreter_.lazy_delegate_providers_;
   }
 
   bool HasDelegates() { return interpreter_.HasDelegates(); }
+
+  bool IsFullyDelegated() const { return interpreter_.IsFullyDelegated(); }
+
+  TfLiteStatus ApplyLazyDelegateProviders() {
+    return interpreter_.ApplyLazyDelegateProviders();
+  }
 
   void BuildSignature(const std::string& signature_key,
                       const std::map<std::string, uint32_t>& inputs,

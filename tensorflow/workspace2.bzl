@@ -19,7 +19,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
-load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -33,6 +32,7 @@ load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
@@ -56,7 +56,6 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    aws()
     benchmark()
     clog()
     cpuinfo()
@@ -71,6 +70,7 @@ def _initialize_third_party():
     icu()
     jpeg()
     kissfft()
+    libprotobuf_mutator()
     nasm()
     opencl_headers()
     pasta()
@@ -133,11 +133,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f3b3256b6dcde8002159df50380b86087ae9ee927464b4179a22028be8a5ac20",
-        strip_prefix = "XNNPACK-0f6613555829d59cbc165f1be87bdcd5137e23d2",
+        sha256 = "0a6ecf3c6fa38e4d4f655fec7e5d33afc9c8a91c8a437033c61f52c5189f3b9b",
+        strip_prefix = "XNNPACK-694d2524757f9040e65a02c374e152a462fe57eb",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
-            "https://github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/694d2524757f9040e65a02c374e152a462fe57eb.zip",
+            "https://github.com/google/XNNPACK/archive/694d2524757f9040e65a02c374e152a462fe57eb.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -188,17 +188,18 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
-        strip_prefix = "oneDNN-2.3-rc2",
+        sha256 = "a19e5fcf04d6ff775cc5f9d9d0ef01e4c74e77519caf4077052f16f037eba6a6",
+        strip_prefix = "oneDNN-2.4-rc",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
+        patch_file = "//third_party/mkl_dnn:onednn_acl_primitives.patch",
         sha256 = "ccb2dbd9da36cd873cf573b4201d61bdba7438f12b144e6c7d061eb12a641751",
         strip_prefix = "oneDNN-2.3",
         urls = [
@@ -608,12 +609,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
-        strip_prefix = "curl-7.77.0",
+        sha256 = "ed936c0b02c06d42cf84b39dd12bb14b62d77c7c4e875ade022280df5dcc81d7",
+        strip_prefix = "curl-7.78.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.77.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.78.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.78.0.tar.gz",
         ],
     )
 

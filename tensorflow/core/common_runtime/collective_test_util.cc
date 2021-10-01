@@ -216,14 +216,14 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     col_params->group.num_devices_per_task[task_name] =
         test_env.num_devices_per_worker;
     for (int di = 0; di < test_env.num_devices_per_worker; ++di) {
-      DeviceAttributes device;
-      device.set_name(strings::StrCat(
+      CollGroupMember member;
+      member.device.set_name(strings::StrCat(
           task_name, "/device:", test_env.device_type.type_string(), ":", di));
-      col_params->group.devices.push_back(device);
-      col_params->group.task_names.push_back(task_name);
+      member.task = task_name;
       // Normally each device would set is_local to its own perspective but
       // this test runs in a single process so is_local is always true.
-      col_params->task.is_local.push_back(true);
+      member.is_local = true;
+      col_params->group.members.push_back(member);
     }
   }
 
@@ -328,6 +328,7 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   op_params.forward_from_array = &forward_from;
   AllocatorAttributes generic_alloc_attr;
   op_params.output_attr_array = &generic_alloc_attr;
+  op_params.resource_manager = device->resource_manager();
   OpKernelContext ctx(&op_params, 1);
 
   // Prepare a collective instance.

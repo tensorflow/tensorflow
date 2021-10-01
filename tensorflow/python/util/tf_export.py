@@ -37,10 +37,6 @@ foo = 1
 tf_export('consts.foo').export_constant(__name__, 'foo')
 ```
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import sys

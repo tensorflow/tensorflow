@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
@@ -28,7 +28,7 @@ specializations = [
 ]
 
 
-class TfBinaryBcastTest(googletest.TestCase):
+class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_1d(self):
     mlir_function = """
@@ -41,7 +41,9 @@ class TfBinaryBcastTest(googletest.TestCase):
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
         %2 = "tf.Mul"(%1, %arg2)
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
-        return %2 : tensor<?x4xf32>
+        %3 = "tf.Atan2"(%2, %arg2)
+             : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
+        return %3 : tensor<?x4xf32>
       }"""
 
     n = np.random.randint(1, 10)
@@ -54,7 +56,7 @@ class TfBinaryBcastTest(googletest.TestCase):
       compiled = cpurt.compile(mlir_function, 'test', specialize)
 
       [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
-      ref = (np.log1p(arg0) - arg1) * arg2
+      ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
       np.testing.assert_allclose(res, ref, atol=1e-05)
 
   def test_bcast_2d_2d(self):
@@ -193,4 +195,4 @@ class TfBinaryBcastTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

@@ -191,7 +191,7 @@ An n-way switch statement, implementing the following:
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -216,22 +216,6 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
       return BroadcastCompatible(l, r);
     }
   }];
-}
-
-def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
-  let summary = "An Op to reduce inputs across replicated TPU instances.";
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
-    TF_Int32Tensor:$group_assignment,
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
@@ -296,12 +280,14 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, then_branchAttr());
     }
 
     // Get the else branch function.
     FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, else_branchAttr());
     }
   }];
 }
@@ -411,7 +397,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 }
@@ -568,7 +554,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -631,12 +617,12 @@ body: A function that takes a list of tensors and returns another
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
 
     // Get the body function.
     FuncOp body_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
   }];
 }
@@ -985,7 +971,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 

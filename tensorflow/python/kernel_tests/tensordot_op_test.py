@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matmul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -56,7 +52,7 @@ class TensordotTest(test_lib.TestCase):
       return
     with self.cached_session() as sess:
       with self.assertRaisesOpError(
-          r"In\[0\] mismatch In\[1\] shape: 2 vs\. 3: \[2,2\] \[3,2\]"):
+          r"Matrix size-incompatible: In\[0\]: \[2,2\], In\[1\]: \[3,2\]"):
         a_ph = array_ops.placeholder(dtypes.float32)
         b_ph = array_ops.placeholder(dtypes.float32)
         axes_ph = array_ops.placeholder(dtypes.int32)

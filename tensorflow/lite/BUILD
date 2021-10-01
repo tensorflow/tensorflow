@@ -443,7 +443,28 @@ cc_library(
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings(),
+    copts = tflite_copts() + tflite_copts_warnings() +
+            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
+            # could be specified simultaneously, use two selects here.
+            select({
+                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
+                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
+                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+                ],
+                "//tensorflow:emscripten": [
+                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+                ],
+                "//conditions:default": [],
+            }) + select({
+        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
+        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
+            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+        ],
+        "//tensorflow:emscripten": [
+            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -685,11 +706,11 @@ cc_library(
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
     deps = select({
-        "//tensorflow:android_arm64": [":tflite_with_xnnpack_enabled"],
-        "//tensorflow:android_arm": [":tflite_with_xnnpack_enabled"],
+        "//tensorflow:android": [":tflite_with_xnnpack_enabled"],
         # XNNPACK delivers significant benefits w/ WASM and is already in use
         # by most WASM clients.
         "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
+        "//tensorflow:ios": [":tflite_with_xnnpack_enabled"],
         "//tensorflow:macos": [],
         "//tensorflow:windows": [":tflite_with_xnnpack_enabled"],
         "//conditions:default": [],
@@ -777,7 +798,9 @@ cc_test(
         ":string",
         ":string_util",
         ":util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -1000,6 +1023,22 @@ cc_library(
 cc_library(
     name = "create_op_resolver_with_builtin_ops",
     srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
+)
+
+# Defines CreateOpResolver with a selected subset of ops.
+cc_library(
+    name = "create_op_resolver_with_selected_ops",
+    srcs = ["create_op_resolver_with_selected_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     copts = tflite_copts(),
     deps = [

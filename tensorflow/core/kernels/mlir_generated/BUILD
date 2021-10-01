@@ -83,7 +83,10 @@ cc_library(
 cc_library(
     name = "base_gpu_op",
     hdrs = ["base_gpu_op.h"],
-    deps = [":base_op"],
+    deps = [
+        ":base_op",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(
@@ -129,6 +132,7 @@ tf_kernel_library(
         "gpu_op_rint.cc",
         "gpu_op_round.cc",
         "gpu_op_rsqrt.cc",
+        "gpu_op_sigmoid.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
@@ -177,6 +181,7 @@ tf_kernel_library(
         ":gpu_rint_kernels",
         ":gpu_round_kernels",
         ":gpu_rsqrt_kernels",
+        ":gpu_sigmoid_kernels",
         ":gpu_sign_kernels",
         ":gpu_sin_kernels",
         ":gpu_sinh_kernels",
@@ -643,6 +648,17 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_selu_kernels",
     op = "selu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_sigmoid_kernels",
+    op = "sigmoid",
     tile_size = "256",
     types = [
         "f16",

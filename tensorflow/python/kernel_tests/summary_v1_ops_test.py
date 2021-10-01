@@ -19,10 +19,6 @@ overall tf.summary API surface also has its own tests in summary_test.py that
 check calling the API methods but not the exact serialized proto output.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops

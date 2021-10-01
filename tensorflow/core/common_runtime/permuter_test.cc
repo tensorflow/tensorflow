@@ -147,10 +147,10 @@ class PermuterTest : public ::testing::Test {
       col_params_ = CreateCollectiveParams(*test_env_, rank, "Permute",
                                            PERMUTE_COLLECTIVE, dtype, shape);
       col_params_->instance.permutation = std::move(permutation);
-      for (const DeviceAttributes& device : col_params_->group.devices) {
-        col_params_->instance.devices.push_back(device.name());
+      for (const CollGroupMember& member : col_params_->group.members) {
+        col_params_->instance.devices.push_back(member.device.name());
       }
-      string dev_name = col_params_->group.devices[rank].name();
+      string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();

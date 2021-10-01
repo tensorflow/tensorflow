@@ -1122,12 +1122,12 @@ func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
-    scatter_dimension_numbers = {
-      update_window_dims = dense<[1]> : tensor<1xi64>,
-      inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-      scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-      index_vector_dim = 1 : i64
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      inserted_window_dims = [0, 1],
+      index_vector_dim = 1,
+      update_window_dims = [1],
+      scatter_dims_to_operand_dims = [0, 1],
+    >,
     indices_are_sorted = true,
     unique_indices = true
   } : (memref<200x100x300xf32>, memref<10x2xi32>, memref<10x300xf32>, memref<200x100x300xf32>) -> ()

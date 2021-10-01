@@ -69,6 +69,7 @@ REGISTER_OP("Switch")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInputs(2))
     .SetShapeFn(SwitchShape);
 
 REGISTER_OP("RefSwitch")
@@ -150,6 +151,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetForwardTypeFn(full_type::ReplicateIdenticalInputs())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")

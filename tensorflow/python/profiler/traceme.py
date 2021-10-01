@@ -14,10 +14,6 @@
 # ==============================================================================
 """TraceMe allows the profiler to trace Python events."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.profiler.trace import Trace as TraceMe
 
 

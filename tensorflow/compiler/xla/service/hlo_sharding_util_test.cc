@@ -316,7 +316,7 @@ TEST(HloShardingUtilTest, UngroupSharding_ReplicatedAndManual) {
 
   EXPECT_EQ(
       ungroup_sharding.ToString(),
-      "{devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dims={replicated, manual}}");
+      "{devices=[1,2,2,2]0,2,1,3,4,6,5,7 last_tile_dims={manual, replicated}}");
 }
 
 TEST(HloShardingUtilTest, UngroupSharding_ManualAndReplicated) {
@@ -360,7 +360,7 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated) {
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
 
   EXPECT_EQ(ungroup_sharding.ToString(),
-            "{devices=[1,1,2,2]0,2,1,3 last_tile_dims={replicated, manual}}");
+            "{devices=[1,1,2,2]0,1,2,3 last_tile_dims={manual, replicated}}");
 }
 
 TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {

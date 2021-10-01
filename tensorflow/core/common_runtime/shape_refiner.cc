@@ -457,6 +457,11 @@ Status ShapeRefiner::ConstantPartialShape(
   if (src_context == nullptr) return errors::Internal("Missing src context");
   ShapeHandle src_shape = src_context->output(input_edge->src_output());
 
+  // All shapes are expected to be 1D integer tensors with the exception of the
+  // sentinel that represents an unknown shape (scalar/rank 0 tensor with -1 as
+  // value). Handle the special case first before considering the more general
+  // rank 1 case.
+
   if (src_context->Value(src_context->Rank(src_shape)) == 0) {
     Tensor t;
     bool evaluated = false;

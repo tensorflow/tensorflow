@@ -17,10 +17,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -164,6 +168,25 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   } else {
     return errors::InvalidArgument("unknown hlo format type.");
   }
+
+  // Set the input names.
+  auto main_func = module->lookupSymbol<mlir::FuncOp>("main");
+  if (!main_func) return errors::Internal("Failed to find the main function.");
+  // Retrive input names from model flags.
+  std::vector<std::string> input_names;
+  for (const auto& input : model_flags.input_arrays()) {
+    input_names.push_back(input.name());
+  }
+
+  const auto& inputs = absl::StrJoin(input_names, ",");
+  mlir::OpBuilder builder(*module);
+  llvm::SmallVector<mlir::NamedAttribute> attrs;
+  attrs.push_back(
+      builder.getNamedAttr("inputs", builder.getStringAttr(inputs)));
+  // Jax wrapped the output nodes in a tuple, so it's pretty hard to us
+  // to tell the output at this point, we will set the output at the export
+  // phase.
+  main_func->setAttr("tf.entry_function", builder.getDictionaryAttr(attrs));
 
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

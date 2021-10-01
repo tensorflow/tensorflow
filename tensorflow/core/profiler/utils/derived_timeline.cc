@@ -299,9 +299,9 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
   host_plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     line.ForEachEvent([&](const XEventVisitor& event) {
-      absl::optional<int64> group_id;
-      absl::optional<int64> device_id;
-      absl::optional<int64> correlation_id;
+      absl::optional<int64_t> group_id;
+      absl::optional<int64_t> device_id;
+      absl::optional<int64_t> correlation_id;
       // Filter out API calls for cuEventRecord/cuEventQuery/cuCtxSynchronize
       // etc for now. TODO: find a better way to filter out only the memcpy and
       // kernel launch events.

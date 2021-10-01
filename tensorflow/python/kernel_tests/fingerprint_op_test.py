@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.fingerprint_op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.ops import array_ops

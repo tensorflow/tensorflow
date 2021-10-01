@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of Cluster Resolvers for Cloud TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 
@@ -285,8 +281,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     ```python
 
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    tpu_system_medata = resolver.get_tpu_system_metadata()
-    num_hosts = tpu_system_medata.num_hosts
+    tpu_system_metadata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_metadata.num_hosts
     ```
 
     Returns:

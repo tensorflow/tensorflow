@@ -14,10 +14,6 @@
 # ==============================================================================
 """Script to test TF-TensorRT conversion of CombinedNMS op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.compiler.tensorrt import utils as trt_utils
@@ -86,13 +82,19 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {
-        'TRTEngineOp_0': [
-            'combined_nms/CombinedNonMaxSuppression',
-            'max_output_size_per_class', 'max_total_size', 'iou_threshold',
-            'score_threshold'
-        ]
-    }
+    if not run_params.dynamic_shape:
+      return {
+          'TRTEngineOp_0': [
+              'combined_nms/CombinedNonMaxSuppression',
+              'max_output_size_per_class', 'max_total_size', 'iou_threshold',
+              'score_threshold'
+          ]
+      }
+    else:
+      # The CombinedNMS op is currently not converted in dynamic shape mode.
+      # This branch shall be removed once the converter is updated to handle
+      # input with dynamic shape.
+      return dict()
 
   def ShouldRunTest(self, run_params):
     should_run, reason = super().ShouldRunTest(run_params)

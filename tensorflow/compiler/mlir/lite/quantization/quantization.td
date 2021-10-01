@@ -115,6 +115,11 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
       "bool", "RequiredSameOperandsAndResultsScale",
       (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
     >,
+    InterfaceMethod<
+      [{Returns whether operands and results must have the same quantized axis.}],
+      "bool", "RequiredSameQuantizedAxes",
+      (ins), [{}], [{return true;}]
+    >,
   ];
 
   let verify = [{

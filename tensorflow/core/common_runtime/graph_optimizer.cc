@@ -35,15 +35,10 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(
-    FunctionLibraryRuntime* runtime, Env* env, const Device* device,
-    std::unique_ptr<Graph>* graph,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
-        shape_map,
-    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
-    bool inline_multi_device_functions,
-    bool inline_impl_selection_group_functions,
-    bool inline_with_single_device_body_placer, bool ignore_noinline) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              const Device* device,
+                              std::unique_ptr<Graph>* graph,
+                              const Options& options) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -73,8 +68,8 @@ void GraphOptimizer::Optimize(
     if (opts_.do_constant_folding()) {
       const uint64 pass_start_us = Env::Default()->NowMicros();
       ConstantFoldingOptions cf_opts;
-      cf_opts.shape_map = shape_map;
-      cf_opts.consider = cf_consider_fn;
+      cf_opts.shape_map = options.shape_map;
+      cf_opts.consider = options.cf_consider_fn;
       if (opts_.max_folded_constant_in_bytes() > 0) {
         cf_opts.max_constant_size_in_bytes =
             opts_.max_folded_constant_in_bytes();
@@ -103,7 +98,7 @@ void GraphOptimizer::Optimize(
 
     if (opts_.do_common_subexpression_elimination()) {
       const uint64 pass_start_us = Env::Default()->NowMicros();
-      if (OptimizeCSE(g, cse_consider_fn)) {
+      if (OptimizeCSE(g, options.cse_consider_fn)) {
         DumpGraph("OptimizeCSE", g);
         changed = true;
       }
@@ -118,12 +113,12 @@ void GraphOptimizer::Optimize(
           InlinedFunctionBodyPlacer::SingleDevice();
 
       // Force single device placement strategy for multi-device function body.
-      if (inline_with_single_device_body_placer) {
+      if (options.inline_with_single_device_body_placer) {
         expand_inline_opts.multi_device_options.inlined_function_body_placer =
             InlinedFunctionBodyPlacer::SingleDevice();
       }
 
-      if (!inline_multi_device_functions) {
+      if (!options.inline_multi_device_functions) {
         // GraphOptimizer is running:
         //   (1) After partitioning when executing with a Session API.
         //   (2) For a single device function body after instantiation.
@@ -131,14 +126,14 @@ void GraphOptimizer::Optimize(
         // might lead to multiple device assignments.
         expand_inline_opts.multi_device_options.disable_inlining = true;
       }
-      if (inline_impl_selection_group_functions) {
+      if (options.inline_impl_selection_group_functions) {
         expand_inline_opts.native_options
             .inline_impl_selection_group_functions = true;
         expand_inline_opts.multi_device_options
             .inline_impl_selection_group_functions = true;
       }
 
-      if (ignore_noinline) {
+      if (options.ignore_noinline) {
         expand_inline_opts.multi_device_options.ignore_noinline = true;
         expand_inline_opts.native_options.ignore_noinline = true;
       }
@@ -162,17 +157,6 @@ void GraphOptimizer::Optimize(
   *graph = g->Clone();
 
   DumpGraph("ReCopy", graph->get());
-}
-
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              const Device* device,
-                              std::unique_ptr<Graph>* graph,
-                              const Options& options) {
-  Optimize(
-      runtime, env, device, graph, options.shape_map, options.cse_consider_fn,
-      options.cf_consider_fn, options.inline_multi_device_functions,
-      options.inline_impl_selection_group_functions,
-      options.inline_with_single_device_body_placer, options.ignore_noinline);
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,

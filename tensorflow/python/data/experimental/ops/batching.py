@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Batching dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
@@ -193,8 +189,12 @@ def map_and_batch_with_legacy_function(map_func,
   elif num_parallel_batches is not None and num_parallel_calls is None:
     num_parallel_calls = batch_size * num_parallel_batches
   elif num_parallel_batches is not None and num_parallel_calls is not None:
-    raise ValueError("The `num_parallel_batches` and `num_parallel_calls` "
-                     "arguments are mutually exclusive.")
+    raise ValueError(
+        "`map_and_batch_with_legacy_function` allows only one of "
+        "`num_parallel_batches` and "
+        "`num_parallel_calls` to be set, but "
+        f"`num_parallel_batches` was set to {num_parallel_batches} "
+        f"and `num_parallel_calls` as set to {num_parallel_calls}.")
 
   def _apply_fn(dataset):
     return _MapAndBatchDataset(dataset, map_func, batch_size,
@@ -254,8 +254,11 @@ def map_and_batch(map_func,
   elif num_parallel_batches is not None and num_parallel_calls is None:
     num_parallel_calls = batch_size * num_parallel_batches
   elif num_parallel_batches is not None and num_parallel_calls is not None:
-    raise ValueError("The `num_parallel_batches` and `num_parallel_calls` "
-                     "arguments are mutually exclusive.")
+    raise ValueError(
+        "`map_and_batch` allows only one of `num_parallel_batches` and "
+        "`num_parallel_calls` to be set, but "
+        f"`num_parallel_batches` was set to {num_parallel_batches} "
+        f"and `num_parallel_calls` as set to {num_parallel_calls}.")
 
   def _apply_fn(dataset):
     return _MapAndBatchDataset(dataset, map_func, batch_size,
@@ -301,9 +304,10 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
     if not isinstance(
         dataset_ops.get_legacy_output_types(input_dataset), dtypes.DType):
-      raise TypeError("DenseToSparseDataset requires an input whose elements "
-                      "have a single component, whereas the input has %r." %
-                      dataset_ops.get_legacy_output_types(input_dataset))
+      raise TypeError("`dense_to_sparse_batch` requires an input dataset whose "
+                      "elements have a single component, but the given dataset "
+                      "has the following component types: "
+                      f"{dataset_ops.get_legacy_output_types(input_dataset)}.")
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape

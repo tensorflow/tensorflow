@@ -123,7 +123,8 @@ FuncOp CloneFunctionIfNeeded(FuncOp func) {
     return func;
   FuncOp cloned = func.clone();
   cloned.setPrivate();
-  cloned.setName(func.getName().str() + "_lifted");
+  cloned.setName(
+      StringAttr::get(func.getContext(), func.getName().str() + "_lifted"));
   SymbolTable(module).insert(cloned);
   return cloned;
 }

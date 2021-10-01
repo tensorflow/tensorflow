@@ -115,6 +115,7 @@ cc_library(
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToSCF",
     ],
     alwayslink = 1,
 )
@@ -130,6 +131,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
+        "@tf_runtime//backends/cpu:cpurt",
     ],
 )
 
@@ -305,6 +307,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_clustering",
@@ -348,9 +351,9 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//:bef",
         "@tf_runtime//:data_opdefs",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
     ],
     alwayslink = 1,
 )
@@ -377,10 +380,10 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@tf_runtime//:bef",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
         "@tf_runtime//:tensor",
     ],
 )
@@ -410,10 +413,10 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "@tf_runtime//:bef",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
         "@tf_runtime//:tensor",
     ] + if_google([
         "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
@@ -449,8 +452,8 @@ cc_library(
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/platform:status",
+        "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
     ] + if_google([
         "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
     ]),
@@ -478,7 +481,7 @@ cc_library(
         "//platforms/xla/tests/gpu:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core/platform:errors",
@@ -492,6 +495,7 @@ cc_library(
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:mlirtobef_translate",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
         "@tf_runtime//backends/gpu:gpu_system",
     ],
 )
@@ -626,6 +630,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
 )
 

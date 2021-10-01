@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 #define EIGEN_USE_THREADS
@@ -1195,10 +1196,13 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
     metrics::RecordTPUXlaSpmdCoresPerReplica(num_cores_per_replica);
   });
+  OP_REQUIRES_ASYNC(
+      ctx, ordinal_selector_ != nullptr,
+      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
-  absl::ReleasableMutexLock lock(&mu_);
   int32_t device_ordinal = 0;
   OP_REQUIRES_OK_ASYNC(
       ctx,
@@ -1206,6 +1210,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                         &device_ordinal),
       done);
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
+  absl::ReleasableMutexLock lock(&mu_);
 
   const std::vector<DeviceAndFHandle>* functions;
 
@@ -2544,11 +2549,10 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                         [dummy_rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
-                            ctx->SetStatus(status);
+                            done->UpdateStatus(status);
                           }
                           delete dummy_rets;
                           done->Unref();
@@ -2571,11 +2575,10 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
   auto* rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, args, rets,
                         [rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
-                            ctx->SetStatus(status);
+                            done->UpdateStatus(status);
                           } else {
                             for (int i = 0; i < rets->size(); ++i) {
                               ctx->set_output(i, (*rets)[i]);
@@ -2592,7 +2595,6 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
-  opts.cancellation_manager = ctx->cancellation_manager();
   opts.stats_collector = ctx->stats_collector();
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
   // i.e., using device-specific threadpools when available.
@@ -2603,14 +2605,20 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   OpInputList arguments;
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
+  auto* local_cm = new CancellationManager(ctx->cancellation_manager());
   auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
+  opts.cancellation_manager = local_cm;
   opts.rendezvous = rendez;
 
   StatusCallback callback(
-      [rendez = rendez, done = std::move(done), device_ordinal = device_ordinal,
-       req_id = ordinal_selector_req_id,
+      [rendez = rendez, local_cm, done = std::move(done),
+       device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
        ordinal_selector = ordinal_selector_](const Status& status) {
+        delete local_cm;
         delete rendez;
+        if (!status.ok()) {
+          ctx->SetStatus(status);
+        }
         done();
         if (req_id >= 0) {
           ordinal_selector->DequeueFromCoreSelector(device_ordinal, req_id);

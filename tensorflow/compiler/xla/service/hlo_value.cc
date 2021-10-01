@@ -105,6 +105,8 @@ string HloValue::ToString(int indent) const {
   for (const HloUse& use : uses()) {
     StrAppend(&out, indentation, "  ", use.ToString(), "\n");
   }
+  StrAppend(&out, indentation, " from instruction:", instruction()->ToString(),
+            "\n");
   return out;
 }
 

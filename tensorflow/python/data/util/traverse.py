@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Helpers to traverse the Dataset dependency structure."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes

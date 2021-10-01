@@ -17,10 +17,6 @@
 See [Importing Data](https://tensorflow.org/guide/data) for an overview.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data import experimental
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE

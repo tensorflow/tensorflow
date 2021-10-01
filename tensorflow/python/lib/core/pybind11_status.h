@@ -21,6 +21,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 
@@ -51,7 +52,7 @@ inline PyObject* TFStatusToPyExc(const TF_Status* status) {
 
 inline pybind11::dict StatusPayloadToDict(const Status& status) {
   pybind11::dict dict;
-  const auto& payloads = status.GetAllPayloads();
+  const auto& payloads = errors::GetPayloads(status);
   for (auto& pair : payloads) {
     dict[PyBytes_FromString(pair.first.c_str())] =
         PyBytes_FromString(pair.second.c_str());
