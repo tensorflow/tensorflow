@@ -618,7 +618,12 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//third_party/py/numpy",
     ],
 )
 
