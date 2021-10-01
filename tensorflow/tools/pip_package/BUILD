@@ -260,10 +260,7 @@ filegroup(
     ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
-            "@absl_py//absl:LICENSE",
-            "@absl_py//absl/logging:LICENSE",
-            "@absl_py//absl/flags:LICENSE",
-            "@absl_py//absl/testing:LICENSE",
+            "@absl_py//:LICENSE",
             "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         ],
     ) + if_not_system_lib(
