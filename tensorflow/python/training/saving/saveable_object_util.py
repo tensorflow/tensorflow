@@ -358,34 +358,14 @@ def validate_and_slice_inputs(names_to_saveables):
   return saveables
 
 
-def trace_save_restore_functions(object_to_save):
-  """Gathers all SaveableObjects and traces the save and restore ops."""
-  saveable_map = {}  # Maps name -> (save function, restore function)
-  for name, saveable_factory in (
-      object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
-    if not callable(saveable_factory):
-      if isinstance(saveable_factory, saveable_object.SaveableObject):
-        logging.debug(
-            "Trackable {} should return callable factories, not SaveableObjects"
-            " in `_gather_saveables_for_checkpoint`. This could lead to "
-            "problems loading the SavedModel back into Python."
-            .format(object_to_save))
-      continue
+def trace_save_restore_functions(saveable_factory, obj):
+  """Traces save and restore functions."""
+  if is_factory_for_restored_saveable_object(saveable_factory):
+    return (saveable_factory.keywords["save_function"],
+            saveable_factory.keywords["restore_function"])
 
-    if is_factory_for_restored_saveable_object(saveable_factory):
-      saveable_map[name] = (saveable_factory.keywords["save_function"],
-                            saveable_factory.keywords["restore_function"])
-    else:
-      concrete_save_fn, concrete_restore_fn = _trace_save_and_restore_function(
-          saveable_factory, object_to_save)
-      if concrete_save_fn is not None:
-        saveable_map[name] = (concrete_save_fn, concrete_restore_fn)
-  return saveable_map
-
-
-def _trace_save_and_restore_function(saveable_factory, object_to_save):
-  """Traces the save and restore concrete functions."""
-  saveables = []
+  saveables = []  # Store the saveables in a data structure accessible to both
+                  # the save and restore functions.
 
   @def_function.function(
       input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
@@ -403,18 +383,14 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
                     "slice_spec": spec.slice_spec})
     return ret
 
-  concrete_save_fn = save_fn.get_concrete_function()
-  if any(isinstance(saveable, trackable.PythonStateSaveable)
-         for saveable in saveables):
-    logging.warn(
-        "Note that object {} stores python values into the checkpoint. "
-        "These values will not be restored when loading the SavedModel "
-        "into python.".format(object_to_save))
-    return None, None
-  if any(isinstance(saveable, trackable.NoRestoreSaveable)
-         for saveable in saveables):
+  concrete_save = save_fn.get_concrete_function()
+
+  # The SaveableObjects are produced when `save_fn` is traced.
+  saveables = validate_saveables_for_saved_model(saveables, obj)
+  if not saveables:
     return None, None
 
+  # Use the SaveSpecs to define the input signature of the restore function.
   restored_type_specs = []
   tensor_structure = []
   for saveable in saveables:
@@ -431,10 +407,25 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
     for saveable, restored_tensors in zip(saveables,
                                           structured_restored_tensors):
       saveable.restore(restored_tensors, restored_shapes=None)
-    return 1
+    return 1  # Return dummy tensor
 
-  concrete_restore_fn = restore_fn.get_concrete_function()
-  return concrete_save_fn, concrete_restore_fn
+  concrete_restore = restore_fn.get_concrete_function()
+  return concrete_save, concrete_restore
+
+
+def validate_saveables_for_saved_model(saveables, obj):
+  """Makes sure SaveableObjects are compatible with SavedModel."""
+  if any(isinstance(saveable, trackable.PythonStateSaveable)
+         for saveable in saveables):
+    logging.warn(
+        f"Note that object {obj} stores python values into the checkpoint. "
+        "These values will not be restored when loading the SavedModel "
+        "into python.")
+    return []
+  if any(isinstance(saveable, trackable.NoRestoreSaveable)
+         for saveable in saveables):
+    return []
+  return saveables
 
 
 class RestoredSaveableObject(saveable_object.SaveableObject):

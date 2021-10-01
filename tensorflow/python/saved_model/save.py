@@ -198,8 +198,10 @@ class _SaveableView(object):
     self._trace_all_concrete_functions()
 
     (self._trackable_objects, self.node_paths, self._node_ids,
-     self._slot_variables) = (
+     self._slot_variables, self.object_names) = (
          self.checkpoint_view.objects_ids_and_slot_variables_and_paths())
+
+    self._initialize_save_and_restore_functions()
     self._initialize_nodes_and_concrete_functions()
 
     # Maps names of concrete functions in the object to names of wrapped
@@ -210,12 +212,32 @@ class _SaveableView(object):
         for original, wrapped in self._wrapped_functions.items()}
     self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
 
+  def _initialize_save_and_restore_functions(self):
+    """Generates all checkpoint save/restore functions.
+
+    The save and restore functions are generated in the eager context (or in the
+    user's Graph/Session) before being copied to the exported GraphDef. These
+    functions record the ops for saving/restoring the entire object or
+    individual objects (e.g. variables and hash tables).
+
+    The global save and restore functions are generated for compatibility with
+    TF1 and loading from C++, and is saved in the `MetaGraphDef.saver_def`.
+
+    The individual functions are generated for the Python TF2 use case, where
+    users use the loaded SavedModel as-is, or compose new models using parts
+    of the object loaded from the SavedModel. These functions are recorded in
+    the `saveable_objects` map in the `SavedObject` proto.
+    """
+    checkpoint_factory_map = graph_view.get_checkpoint_factories_and_keys(
+        self.object_names)
+    self._saveable_objects_map = (
+        _gen_save_and_restore_functions(checkpoint_factory_map))
+
   def _initialize_nodes_and_concrete_functions(self):
     """Creates graph with nodes for trackable objects and functions.
 
     Adds functions for each trackable object to `self.nodes` and associated
-    concrete functions to `self.concrete_functions` for serialization. Also adds
-    the object's save and restore functions for loading values from checkpoint.
+    concrete functions to `self.concrete_functions` for serialization.
     """
     self.nodes = list(self._trackable_objects)
     self.concrete_functions = []
@@ -223,25 +245,15 @@ class _SaveableView(object):
     self.gradient_defs = []
     self._seen_function_names = set()
     self._untraced_functions = []
-    # Maps node -> local name -> (save function, restore function)
-    self._saveable_objects_map = object_identity.ObjectIdentityDictionary()
 
     for obj in self._trackable_objects:
       for function in self.checkpoint_view.list_functions(obj).values():
         self._add_function_to_graph(function)
-      # Resource (and TPU/Mirrored) variables are automatically revived with
-      # their saveables defined, so there is no need to trace the save
-      # and restore functions.
-      if resource_variable_ops.is_resource_variable(obj):
-        continue
-      # Trace object save and restore functions to populate `saveables_map`
-      # field in the SavedModel proto.
-      saveable_map = saveable_object_util.trace_save_restore_functions(obj)
-      if saveable_map:
-        for save_fn, restore_fn in saveable_map.values():
+
+      if obj in self._saveable_objects_map:
+        for save_fn, restore_fn in self._saveable_objects_map[obj].values():
           self._add_function_to_graph(save_fn)
           self._add_function_to_graph(restore_fn)
-        self._saveable_objects_map[obj] = saveable_map
 
     if self._untraced_functions:
       logging.warning(
@@ -256,7 +268,7 @@ class _SaveableView(object):
     return self.concrete_functions + self.gradient_functions
 
   def _add_function_to_graph(self, function):
-    """Adds function to serialize to graph."""
+    """Adds function to serialize to object graph."""
     # Updates self.nodes, self._node_ids, self.concrete_functions,
     # and self._untraced_functions.
     if function not in self._node_ids:
@@ -419,6 +431,51 @@ class _SaveableView(object):
     self._node_ids[node] = node_id
     self.captured_tensor_node_ids[capture] = node_id
     return node_id
+
+
+def _gen_save_and_restore_functions(checkpoint_factory_map):
+  """Generates global and individual save/restore concrete functions.
+
+  The global functions records the ops to save and restore the entire object to
+  a file prefix, while the individual functions save and restore value tensors
+  for resources.
+
+  This function is intended to run on the output of
+  `graph_view.get_checkpoint_factories_and_keys(object_names)`, which returns
+  the generated a map of `_CheckpointFactoryData`.
+
+  Args:
+    checkpoint_factory_map: A dictionary mapping trackable objects to
+      _CheckpointFactoryData.
+
+  Returns:
+    Tuple of (
+      saveable_fn_map: Maps obj -> factory name -> (concrete save, restore)
+      )
+  """
+  # Maps obj -> factory attribute_name -> (concrete save, concrete restore)
+  # This
+  saveable_fn_map = object_identity.ObjectIdentityDictionary()
+
+  for obj, factory_data_list in checkpoint_factory_map.items():
+    for factory_data in factory_data_list:
+      saveable_factory = factory_data.factory
+      attribute_name = factory_data.name
+
+      # If object revives as a resource (or TPU/Mirrored) variable,
+      # there is no need to trace the save and restore functions.
+      if (resource_variable_ops.is_resource_variable(obj) or
+          resource_variable_ops.is_resource_variable(saveable_factory) or
+          not callable(saveable_factory)):
+        continue
+      concrete_save, concrete_restore = (
+          saveable_object_util.trace_save_restore_functions(
+              saveable_factory, obj))
+      if not concrete_save:
+        continue
+      saveable_fn_map.setdefault(obj, {})[attribute_name] = (
+          concrete_save, concrete_restore)
+  return saveable_fn_map
 
 
 def _tensor_dict_to_tensorinfo(tensor_dict):
