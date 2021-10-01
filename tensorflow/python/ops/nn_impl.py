@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -1361,6 +1362,10 @@ def moments(
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
+      mean = clip_ops.clip_by_value(
+          mean, dtypes.float16.min, dtypes.float16.max)
+      variance = clip_ops.clip_by_value(
+          variance, dtypes.float16.min, dtypes.float16.max)
       return (math_ops.cast(mean, dtypes.float16),
               math_ops.cast(variance, dtypes.float16))
     else:
