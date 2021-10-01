@@ -448,6 +448,8 @@ message HloModuleProto {
 
   // True if the module contains dynamic computation.
   bool is_dynamic = 11;
+
+  xla.OpSharding spmd_output_sharding = 12;
 }
 
 // Serialization of LogicalBuffer.
