@@ -117,10 +117,12 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // will be removed from launch causing an error.
   pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
 
+  // TODO(b/173622615): This can be removed once more passes support outside
+  // compilation represented by op and conversion back to attribute is removed.
+  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<FuncOp>(
       TF::CreateDropWhileShapeInvariantInDeviceClusterPass());
