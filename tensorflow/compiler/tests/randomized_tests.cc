@@ -1092,15 +1092,16 @@ TEST_F(OpTest, ApproximateEqual) {
 
 TEST_F(OpTest, ArgMax) {
   Repeatedly([this]() {
+    auto type = Choose<DataType>({DT_BOOL, DT_FLOAT});
     std::vector<int64_t> dims = RandomDims(1, 5, 1);
     int num_dims = dims.size();
     int reduce_dim =
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMax")
-            .RandomUniqueInput(DT_FLOAT, dims)
+            .RandomInput(type, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
-            .Attr("T", DT_FLOAT)
+            .Attr("T", type)
             .Attr("Tidx", DT_INT32)
             .Attr("output_type", DT_INT32));
   });
@@ -1108,15 +1109,16 @@ TEST_F(OpTest, ArgMax) {
 
 TEST_F(OpTest, ArgMin) {
   Repeatedly([this]() {
+    auto type = Choose<DataType>({DT_BOOL, DT_FLOAT});
     std::vector<int64_t> dims = RandomDims(1, 5, 1);
     int num_dims = dims.size();
     int reduce_dim =
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMin")
-            .RandomUniqueInput(DT_FLOAT, dims)
+            .RandomInput(type, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
-            .Attr("T", DT_FLOAT)
+            .Attr("T", type)
             .Attr("Tidx", DT_INT32)
             .Attr("output_type", DT_INT32));
   });
