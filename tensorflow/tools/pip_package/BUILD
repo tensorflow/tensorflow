@@ -187,11 +187,11 @@ filegroup(
         "//third_party/fft2d:LICENSE",
         "//third_party/icu/data:LICENSE",
         "@ruy//:LICENSE",
+        "@absl_py//:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astunparse_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
-        "@absl_py//:LICENSE"
         "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
