@@ -191,7 +191,6 @@ filegroup(
         "@astunparse_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
-        "@absl_py//:LICENSE"
         "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
