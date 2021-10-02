@@ -24,25 +24,25 @@ jobs:
     name: PyLint
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Get file changes
-      id: get_file_changes
-      uses: trilom/file-changes-action@v1.2.4
-      with:
-        output: ' '
-    - name: Report list of changed files
-      run: |
-        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.8
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pylint numpy wheel
-        pip install keras_preprocessing --no-deps
-    - name: Run PyLint on changed files
-      run: |
-        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
+      - name: Checkout code
+        uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f # pin@v2
+      - name: Get file changes
+        id: get_file_changes
+        uses: trilom/file-changes-action@a6ca26c14274c33b15e6499323aac178af06ad4b # pin@v1.2.4
+        with:
+          output: ' '
+      - name: Report list of changed files
+        run: |
+          echo Changed files: ${{ steps.get_file_changes.outputs.files }}
+      - name: Set up Python 3.8
+        uses: actions/setup-python@152ba7c4dd6521b8e9c93f72d362ce03bf6c4f20 # pin@v1
+        with:
+          python-version: 3.8
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint numpy wheel
+          pip install keras_preprocessing --no-deps
+      - name: Run PyLint on changed files
+        run: |
+          echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc

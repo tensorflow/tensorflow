@@ -14,16 +14,17 @@
 # ============================================================================
 
 on:
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch: # Allow manual triggers
+    null
   schedule:
-    - cron: 0 4 * * *  # 4am UTC is 9pm PDT and 8pm PST
+    - cron: 0 4 * * * # 4am UTC is 9pm PDT and 8pm PST
 name: Set nightly branch to master HEAD
 jobs:
   master-to-nightly:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: ubuntu-latest
     steps:
-    - uses: zofrex/mirror-branch@v1
-      name: Set nightly branch to master HEAD
-      with:
-        target-branch: 'nightly'
+      - uses: zofrex/mirror-branch@e7be3484994bd59ebbc7a222b41d8646f1977c49 # pin@v1
+        name: Set nightly branch to master HEAD
+        with:
+          target-branch: 'nightly'
