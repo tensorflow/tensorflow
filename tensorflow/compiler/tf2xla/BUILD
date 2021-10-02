@@ -252,7 +252,6 @@ cc_library(
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:stringpiece",
-    ] + [
         # Extra dependencies required for multithreaded runtime objects.
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:logging",
@@ -267,6 +266,7 @@ cc_library(
     hdrs = ["xla_compiled_cpu_function.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",

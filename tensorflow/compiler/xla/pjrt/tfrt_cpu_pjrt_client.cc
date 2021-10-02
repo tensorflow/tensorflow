@@ -1516,9 +1516,18 @@ TfrtCpuExecutable::ExecuteHelper(
     tensorflow::port::ScopedFlushDenormal flush;
     tensorflow::port::ScopedSetRound round(FE_TONEAREST);
 
+    XlaCustomCallStatus status;
+
     // Call generated function.
     cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                       buffer_pointers.data(), nullptr);
+                                       buffer_pointers.data(), &status,
+                                       nullptr);
+
+    absl::optional<absl::string_view> error_message =
+        xla::CustomCallStatusGetMessage(&status);
+    if (error_message) {
+      return InternalError("Generated function failed: %s", *error_message);
+    }
   } else {
     // TODO(zhangqiaorjc): Only async launch expensive computations. Need
     // heuristics to decide what computation is expensive.
@@ -1558,12 +1567,23 @@ TfrtCpuExecutable::ExecuteHelper(
           tensorflow::port::ScopedFlushDenormal flush;
           tensorflow::port::ScopedSetRound round(FE_TONEAREST);
 
+          XlaCustomCallStatus status;
+
           // Call generated function.
           cpu_executable->compute_function()(result_buffer, &run_options,
                                              nullptr, buffer_pointers.data(),
-                                             nullptr);
-          // CPU computation completes.
-          execute_event.SetStateConcrete();
+                                             &status, nullptr);
+
+          absl::optional<absl::string_view> error_message =
+              xla::CustomCallStatusGetMessage(&status);
+          if (error_message) {
+            // CPU computation fails with an error.
+            execute_event.SetError(absl::StrFormat(
+                "Generated function failed: %s", *error_message));
+          } else {
+            // CPU computation completes.
+            execute_event.SetStateConcrete();
+          }
         });
   }
 
