@@ -331,6 +331,7 @@ do_external_licenses_check(){
   # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@absl_py//absl" \
     -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
