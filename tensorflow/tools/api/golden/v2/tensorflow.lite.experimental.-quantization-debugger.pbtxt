@@ -1,0 +1,29 @@
+path: "tensorflow.lite.experimental.QuantizationDebugger"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.tools.optimize.debugging.python.debugger.QuantizationDebugger\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "options"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'quant_debug_model_path\', \'quant_debug_model_content\', \'float_model_path\', \'float_model_content\', \'debug_dataset\', \'debug_options\', \'converter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_debug_quantized_model"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_nondebug_quantized_model"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "layer_statistics_dump"
+    argspec: "args=[\'self\', \'file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

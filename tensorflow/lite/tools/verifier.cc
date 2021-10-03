@@ -353,7 +353,8 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
     }
     int block_dim_size =
         sparsity->dim_metadata()->Get(i + original_rank)->dense_size();
-    if (block_dim_size == 0) {
+    // If size is <= 0 we just return as it is invalid.
+    if (block_dim_size <= 0) {
       return absl::nullopt;
     }
 

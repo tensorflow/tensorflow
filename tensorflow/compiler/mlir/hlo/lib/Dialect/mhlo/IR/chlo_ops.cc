@@ -95,7 +95,8 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
   llvm::SmallVector<int64_t, 4> broadcast_dimensions;
   if (broadcast_dimensions_attr) {
     // Explicit broadcast dimensions.
-    for (const APInt& int_value : broadcast_dimensions_attr.getIntValues()) {
+    for (const APInt& int_value :
+         broadcast_dimensions_attr.getValues<APInt>()) {
       broadcast_dimensions.push_back(int_value.getSExtValue());
     }
     if (broadcast_dimensions.size() != shape_small.size()) {

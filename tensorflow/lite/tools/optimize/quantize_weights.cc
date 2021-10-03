@@ -292,52 +292,6 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
   return kTfLiteOk;
 }
 
-// Returns the index of the Dequantize op_code.
-// If a Dequantize op_code doesn't exist, adds it and returns its index.
-int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
-  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (GetBuiltinCode(model->operator_codes[i].get()) ==
-        BuiltinOperator_DEQUANTIZE) {
-      return i;
-    }
-  }
-  model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
-  int op_code_idx = model->operator_codes.size() - 1;
-  model->operator_codes[op_code_idx]->builtin_code = BuiltinOperator_DEQUANTIZE;
-  model->operator_codes[op_code_idx]->deprecated_builtin_code =
-      static_cast<int8_t>(BuiltinOperator_DEQUANTIZE);
-  // Version 2 and onwards supports INT8 inputs.
-  model->operator_codes[op_code_idx]->version = 2;
-
-  // Return the index of the newly placed OperatorCodeT.
-  return op_code_idx;
-}
-
-// Creates a Dequantize OperatorT object.
-void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
-                            int32_t input, int32_t output) {
-  OperatorT* op_raw = new OperatorT;
-  op_raw->opcode_index = GetOrInsertDequantizeOpCodeIndex(model);
-  op_raw->inputs = {input};
-  op_raw->outputs = {output};
-
-  op->reset(op_raw);
-}
-
-// Create a new TensorT object.
-void MakeTensor(const string& name, const std::vector<int32_t>& shape,
-                const std::vector<int32_t>& shape_signature,
-                std::unique_ptr<TensorT>* tensor) {
-  TensorT* tensor_raw = new TensorT;
-  tensor_raw->name = name;
-  tensor_raw->shape = shape;
-  if (!shape_signature.empty()) {
-    tensor_raw->shape_signature = shape_signature;
-  }
-
-  tensor->reset(tensor_raw);
-}
-
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
   for (int i = 0, end = model->operator_codes.size(); i < end; ++i) {

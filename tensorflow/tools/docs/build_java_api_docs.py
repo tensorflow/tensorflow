@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Generate Java reference docs for TensorFlow.org."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pathlib
 import shutil
 import subprocess

@@ -63,7 +63,7 @@ namespace mlir {
 namespace TF {
 namespace {
 
-using mhlo::DotDimensionNumbers;
+using mhlo::DotDimensionNumbersAttr;
 
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
  public:
@@ -612,27 +612,42 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                           .cast<ShapedType>()
                                           .getElementType();
 
+    // The mhlo dynamic_slice's start_indices can be either signed/unsigned
+    // int32/int64. However, TF only takes in either i32 or i64 types for begin,
+    // so we will always put a cast.
+    Type signed_start_indices_element_type;
+    if (start_indices_element_type.isInteger(32)) {
+      signed_start_indices_element_type = rewriter.getI32Type();
+    } else {
+      signed_start_indices_element_type = rewriter.getI64Type();
+    }
+
     // Clamp indices to [0, input_size - output_size]
     llvm::SmallVector<Value, 4> start_indices_vector;
     start_indices_vector.reserve(op.start_indices().size());
     Value clamp_min = rewriter.create<ConstOp>(
-        op.getLoc(), rewriter.getIntegerAttr(start_indices_element_type, 0));
+        op.getLoc(),
+        rewriter.getIntegerAttr(signed_start_indices_element_type, 0));
     for (uint64_t i = 0, e = op.start_indices().size(); i < e; ++i) {
+      // Always put a cast there.
+      auto start = op.start_indices()[i];
+      auto cast_type = start.getType().cast<ShapedType>().clone(
+          signed_start_indices_element_type);
+      auto cast_op = rewriter.create<CastOp>(op.getLoc(), cast_type, start);
       Value clamp_max = rewriter.create<ConstOp>(
           op.getLoc(),
-          rewriter.getIntegerAttr(start_indices_element_type,
+          rewriter.getIntegerAttr(signed_start_indices_element_type,
                                   input_type.getShape()[i] -
                                       op.slice_sizes().getValue<int64_t>({i})));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
-          op.getLoc(), op.start_indices()[i].getType(), clamp_min,
-          op.start_indices()[i], clamp_max);
+          op.getLoc(), cast_type, clamp_min, cast_op, clamp_max);
       start_indices_vector.push_back(clamped_index);
     }
 
     // Pack individual start indices to start indices tensor.
     Type start_indices_type = RankedTensorType::get(
         {static_cast<int64_t>(start_indices_vector.size())},
-        start_indices_element_type);
+        signed_start_indices_element_type);
     Value start_indices_op = rewriter.create<PackOp>(
         op.getLoc(), start_indices_type, ValueRange(start_indices_vector));
 
@@ -819,18 +834,204 @@ class ConvertDynamicUpdateSliceOp
   };
 };
 
+// It returns "true" when Value $iota is obtained from the following mlir code:
+//
+// $iota = "mhlo.iota"(){iota_dimension = $dimensions[0]},
+//
+// where $dimensions must have size 1 and iota can have rank>=1.
+// It usually used for mathcing rank 1 iota since the iotaOp will be folded to
+// IotaOp + BroadCastInDimOp except for the case when result shape is rank 1.
+bool MatchSingleIota(DenseIntElementsAttr dimensions, Value iota) {
+  auto iota_op = dyn_cast_or_null<mhlo::IotaOp>(iota.getDefiningOp());
+  if (!iota_op || dimensions.getNumElements() != 1) return false;
+  auto dim = *dimensions.value_begin<APInt>();
+  return dim == iota_op.iota_dimension();
+}
+
+// It matches %iota generated from the following mlir codes:
+//
+// %iota_r1 = "mhlo.iota"(){iota_dimension = 0} :() -> tensor<Lxi32>
+// %iota = "mhlo.broadcast_in_dim(%iota_r1){
+//    broadcast_dimensions = dense<[$dimensions[0]]>},
+//
+// where %dimensions is of size 1. It ususally comes from an IotaOp that is
+// folded to IotaOp (rank1) + BroadCastInDimOp.
+bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  auto iota_broadcast =
+      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  if (!isa_and_nonnull<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
+    return false;
+  return true;
+}
+
+// It matches %iota generated from the following mlir codes:
+//
+// %iota_r1 = mhlo.constant dense<[0, 1, 2, ..., L]>
+// %iota = "mhlo.broadcast_in_dim(%iota_r1){
+//    broadcast_dimensions = dense<[$dimensions[0]]>},
+//
+// where $dimensions is of size 1. It ususally comes from an IotaOp that is
+// folded to ConstOp (folded rank1 iota) + BroadCastInDimOp.
+bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
+  if (dimensions.getNumElements() != 1) return false;
+  auto iota_broadcast =
+      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
+  if (!iota_broadcast || iota_broadcast.broadcast_dimensions() != dimensions)
+    return false;
+  DenseElementsAttr range_const;
+  if (!matchPattern(iota_broadcast.operand(), m_Constant(&range_const)))
+    return false;
+  int index = 0;
+  for (auto value : range_const.getValues<APInt>()) {
+    if (value != index++) return false;
+  }
+  return true;
+}
+
+// It matches %iota generated from the following mlir codes (rank 2 example):
+//
+// %iota = mhlo.constant dense<[[0, 1, 2, ..., L],
+//                              [0, 1, 2, ..., L]
+//                              ...
+//                              [0, 1, 2, ..., L]]>,
+// where $dimensions is of size 1 and iota dimension = dimensions[0] = rank - 1.
+// In other words, %iota[s1][s2]...[sr][i] = i holds for each i in 0, ..., L.
+// It ususally comes from a fully folded IotaOp.
+// Currently we only support the case where dimensions[0] = rank - 1.
+// TODO(renjieliu): Support non-inner dimension as well.
+bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
+  DenseElementsAttr iota_const_attr;
+  if (matchPattern(iota, m_Constant(&iota_const_attr))) {
+    // The inner most dimension must match the reduce dimension.
+    auto iota_type = iota_const_attr.getType();
+    auto reduce_dim = *dimensions.value_begin<APInt>();
+    if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
+    if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
+        (iota_type.getRank() - 1) != reduce_dim) {
+      return false;
+    }
+
+    // The inner dimension must match [0, 1, ...., size];
+    const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
+    if (inner_dim < 1) return false;
+
+    int64_t index = 0;
+    // We are checking whether the iota_const values are having the pattern
+    // like:
+    // 0 1 2 ... n - 1    <= inner most.   -------
+    // 0 1 2 ... n - 1                       |
+    //  ....                             outer_loop
+    //  ....                                 |
+    // 0 1 2 ... n - 1                    ---------
+    for (auto value : iota_const_attr.getValues<APInt>()) {
+      if (value != index) return false;
+      index = (index + 1) % inner_dim;
+    }
+    return true;
+  }
+  return false;
+}
+
+// The following 4 different forms of mhlo::iota will be matched:
+// 1. IotaOp.
+// 2. IotaOp + BroadCastInDim.
+// 3. Constant (folded Iota) + BroadCastInDim.
+// 4. Constant (folded result).
+// Moreover, the dimensions has to match the iota_dimension.
+bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
+  return MatchSingleIota(dimensions, iota) ||
+         MatchIotaBroadCastInDim(dimensions, iota) ||
+         MatchConstIotaBroadCastInDim(dimensions, iota) ||
+         MatchIotaConst(dimensions, iota);
+}
+
+bool MatchTopKComparator(Region &comparator) {
+  if (!comparator.hasOneBlock()) return false;
+  Block &comparator_blk = comparator.front();
+  using OpListType = llvm::iplist<Operation>;
+  OpListType &operations = comparator_blk.getOperations();
+  if (operations.size() != 2) return false;
+  auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
+  auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
+  if (!compare_op || !return_op) return false;
+  // TODO(xuanyuanluo): Support "LT" direction.
+  if (compare_op.comparison_direction() != "GT") return false;
+  if (compare_op.lhs() != comparator_blk.getArgument(0) ||
+      compare_op.rhs() != comparator_blk.getArgument(1))
+    return false;
+  return return_op.getOperands().front() == compare_op.getResult();
+}
+
+// In general, we convert the following form of sort to tf.TopK:
+//
+// %result = "mhlo.sort" (%keys, %indices) ({
+//  ^bb0(%key_0, %key_1, %index_0, %index_1):
+//     %1 = "mhlo.compare"(%key_0, %key_1) {"GT"} -> tensor<i1>
+//  }),
+//
+// where the indices is obtained by an IotaOp (maybe folded).
+class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SortOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (op->getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(
+          op, "only match for the case where operands is of size 2");
+    auto keys = op.operands()[0];
+    auto indices = op.operands()[1];
+    auto keys_ty = keys.getType().dyn_cast_or_null<ShapedType>();
+    auto indices_ty = indices.getType().dyn_cast_or_null<ShapedType>();
+    if (!keys_ty || !keys_ty.hasStaticShape() ||
+        !keys_ty.getElementType().isIntOrFloat())
+      return rewriter.notifyMatchFailure(
+          op,
+          "only match for the case where the first operand has a static "
+          "int/float shapeType");
+    if (!indices_ty || !indices_ty.hasStaticShape() ||
+        !indices_ty.getElementType().isInteger(32))
+      return rewriter.notifyMatchFailure(
+          op,
+          "only match for the case where the second operand an I32 shapeType");
+    auto sort_dim = op.dimension();
+    auto k = indices_ty.getDimSize(sort_dim);
+    auto rank = keys_ty.getRank();
+    if (sort_dim != rank - 1 || k < 1)
+      return rewriter.notifyMatchFailure(
+          op, "only match for sort dim = rank - 1 and DimSize >= 1");
+
+    // In the following, we'll check indices is obtained by a iota.
+    auto sort_dim_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getI64Type()), {sort_dim});
+    if (!MatchIota(sort_dim_attr, indices))
+      return rewriter.notifyMatchFailure(
+          op, "the second operand is supposed to be obtained from IOTA");
+    if (!MatchTopKComparator(op.comparator()))
+      return rewriter.notifyMatchFailure(op, "only match for GT comparator");
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
+    rewriter.replaceOpWithNewOp<TopKV2Op>(op, keys.getType(), indices.getType(),
+                                          keys, k_cst);
+    return success();
+  };
+};
+
 // A struct to hold information about dimensions of dot_general operands.
 class DotDimensionsInfo {
  public:
-  DotDimensionsInfo(ShapedType type, DenseIntElementsAttr batch_dimensions,
-                    DenseIntElementsAttr contracting_dimensions) {
+  DotDimensionsInfo(ShapedType type, ArrayRef<int64_t> batch_dimensions,
+                    ArrayRef<int64_t> contracting_dimensions) {
     const int rank = type.getRank();
-    for (const int dim : batch_dimensions.getValues<int64_t>()) {
+    for (const int dim : batch_dimensions) {
       batch_dimensions_.axes.push_back(dim);
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int dim : contracting_dimensions.getValues<int64_t>()) {
+    for (const int dim : contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
@@ -877,7 +1078,7 @@ class DotDimensionsInfo {
 };
 
 Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
-                 DotDimensionNumbers dot_dimension_numbers,
+                 DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
   auto lhs_type = lhs.getType().cast<ShapedType>();
   auto rhs_type = rhs.getType().cast<ShapedType>();
@@ -886,11 +1087,11 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
 
   // Collects lhs and rhs dimensions information.
   DotDimensionsInfo lhs_dot_dimensions_info(
-      lhs_type, dot_dimension_numbers.lhs_batching_dimensions(),
-      dot_dimension_numbers.lhs_contracting_dimensions());
+      lhs_type, dot_dimension_numbers.getLhsBatchingDimensions(),
+      dot_dimension_numbers.getLhsContractingDimensions());
   DotDimensionsInfo rhs_dot_dimensions_info(
-      rhs_type, dot_dimension_numbers.rhs_batching_dimensions(),
-      dot_dimension_numbers.rhs_contracting_dimensions());
+      rhs_type, dot_dimension_numbers.getRhsBatchingDimensions(),
+      dot_dimension_numbers.getRhsContractingDimensions());
 
   // Transposes lhs shape to be in the order of {batch_dimensions,
   // out_dimensions, contracting dimensions}.
@@ -972,13 +1173,13 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
 Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
   auto dot_op = cast<mhlo::DotOp>(old_op);
   auto lhs_rank = dot_op.lhs().getType().cast<ShapedType>().getRank();
-  auto dot_dimension_numbers = DotDimensionNumbers::get(
-      /*lhs_batching_dimensions=*/rewriter.getI64TensorAttr({}),
-      /*rhs_batching_dimensions=*/rewriter.getI64TensorAttr({}),
-      /*lhs_contracting_dimensions=*/
-      rewriter.getI64TensorAttr({lhs_rank == 1 ? 0 : 1}),
-      /*rhs_contracting_dimensions=*/rewriter.getI64TensorAttr({0}),
-      rewriter.getContext());
+  auto dot_dimension_numbers =
+      DotDimensionNumbersAttr::get(rewriter.getContext(),
+                                   /*lhs_batching_dimensions=*/{},
+                                   /*rhs_batching_dimensions=*/{},
+                                   /*lhs_contracting_dimensions=*/
+                                   {lhs_rank == 1 ? 0 : 1},
+                                   /*rhs_contracting_dimensions=*/{0});
   return ConvertDot(rewriter, dot_op.lhs(), dot_op.rhs(), dot_dimension_numbers,
                     dot_op.getResult().getType().cast<ShapedType>(),
                     dot_op.getLoc());
@@ -1170,12 +1371,12 @@ class ConvertReduceOpToTfArgMinMax
     DenseElementsAttr iota_init;
     if (!matchPattern(reduce_op.init_values().back(), m_Constant(&iota_init)))
       return failure();
-    if (*iota_init.getIntValues().begin() != 0) return failure();
+    if (*iota_init.getValues<APInt>().begin() != 0) return failure();
 
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
     Value iota = reduce_op.inputs().back();
-    if (!MatchIota(reduce_op, iota)) return failure();
+    if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
     if (failed(matchReduceComputation(reduce_op.body()))) return failure();
@@ -1287,58 +1488,6 @@ class ConvertReduceOpToTfArgMinMax
   virtual const char *CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
-
- private:
-  // It's possible the iota is passed as a constant or a `mhlo.iota` followed
-  // by a `mhlo.broadcast_in_dim`, we should match for both.
-  bool MatchIota(mhlo::ReduceOp reduce_op, Value iota) const {
-    Operation *iota_op = iota.getDefiningOp();
-    if (!iota_op) return false;
-
-    // Try to match for const first.
-    DenseElementsAttr iota_const_attr;
-    if (matchPattern(iota, m_Constant(&iota_const_attr))) {
-      // The inner most dimension must match the reduce dimension.
-      auto iota_type = iota_const_attr.getType();
-      auto reduce_dim = *reduce_op.dimensions().getIntValues().begin();
-      if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
-      if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
-          (iota_type.getRank() - 1) != reduce_dim) {
-        return false;
-      }
-
-      // The inner dimension must match [0, 1, ...., size];
-      // TODO(renjieliu): Support non-inner dimension as well.
-      const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
-      if (inner_dim < 1) return false;
-
-      int64_t index = 0;
-      // We are checking whether the iota_const values are having the pattern
-      // like:
-      // 0 1 2 ... n - 1    <= inner most.   -------
-      // 0 1 2 ... n - 1                       |
-      //  ....                             outer_loop
-      //  ....                                |
-      // 0 1 2 ... n - 1                    ---------
-      for (auto value : iota_const_attr.getIntValues()) {
-        if (value != index) return false;
-        index = (index + 1) % inner_dim;
-      }
-      return true;
-    }
-
-    // Continue to try to match for `mhlo.iota` -> `mhlo.broadcast_in_dim`.
-    mhlo::BroadcastInDimOp iota_broadcast =
-        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota_op);
-    if (!iota_broadcast ||
-        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
-      return false;
-    if (!isa_and_nonnull<mhlo::IotaOp>(
-            iota_broadcast.operand().getDefiningOp()))
-      return false;
-
-    return true;
-  }
 };
 
 class ConvertReduceOpToTfArgmax
@@ -1351,7 +1500,7 @@ class ConvertReduceOpToTfArgmax
     if (attr.getNumElements() != 1 ||
         !attr.getType().getElementType().isa<FloatType>())
       return false;
-    auto value = *attr.getFloatValues().begin();
+    auto value = *attr.value_begin<APFloat>();
     return value.isNegative() && value.isInfinity();
   }
 };
@@ -1366,7 +1515,7 @@ class ConvertReduceOpToTfArgmin
     if (attr.getNumElements() != 1 ||
         !attr.getType().getElementType().isa<FloatType>())
       return false;
-    auto value = *attr.getFloatValues().begin();
+    auto value = *attr.value_begin<APFloat>();
     return !value.isNegative() && value.isInfinity();
   }
 };
@@ -1754,10 +1903,9 @@ bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
     return IsSign(floatv_spl, sgn_cst_spl);
   } else if (floatv.isa<DenseElementsAttr>()) {
     auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
-    return llvm::all_of(floatv_dns.getAttributeValues(), [&](Attribute value) {
-      FloatAttr value_f = value.cast<FloatAttr>();
-      return IsSign(value_f.getValue(), sgn_cst_spl);
-    });
+    return llvm::all_of(
+        floatv_dns.getValues<FloatAttr>(),
+        [&](FloatAttr value) { return IsSign(value.getValue(), sgn_cst_spl); });
   }
   return false;
 }
@@ -1795,7 +1943,17 @@ bool IsIotaAttr(const DenseIntElementsAttr &attr, int64_t size) {
   if (attr.getType().getRank() != 1) return false;
   if (attr.getNumElements() != size) return false;
   int64_t iota = 0;
-  for (auto s : attr.getIntValues()) {
+  for (auto s : attr.getValues<APInt>()) {
+    if (s != iota) return false;
+    ++iota;
+  }
+  return true;
+}
+
+bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size) {
+  if (arr.size() != size) return false;
+  int64_t iota = 0;
+  for (auto s : arr) {
     if (s != iota) return false;
     ++iota;
   }
@@ -1805,6 +1963,15 @@ bool IsIotaAttr(const DenseIntElementsAttr &attr, int64_t size) {
 class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
+
+  // Helper params for representing the transpose params for the "canonicalized"
+  // output to the real output.
+  struct TransposeParams {
+    std::vector<int64_t> permutation;
+    // The following are the "canocanilzed" output shape with offset dims.
+    std::vector<int64_t> canonicalized_output_shape;
+    std::vector<int64_t> canonicalized_offset_dims;
+  };
 
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gather_op, ArrayRef<Value> args,
@@ -1823,7 +1990,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
 
     // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
     int64_t index_vector_dim =
-        gather_op.dimension_numbers().index_vector_dim().getInt();
+        gather_op.dimension_numbers().getIndexVectorDim();
     if (failed(NormalizeIndexVector(gather_op, start_indices,
                                     start_indices_type, index_vector_dim,
                                     rewriter))) {
@@ -1832,11 +1999,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
 
     // Verify that start_index_map and collapsed_slice_dims contains the same
     // values.
-    auto start_index_map = gather_op.dimension_numbers().start_index_map();
+    auto start_index_map = gather_op.dimension_numbers().getStartIndexMap();
     auto collapsed_slice_dims =
-        gather_op.dimension_numbers().collapsed_slice_dims();
-    if (start_index_map.getNumElements() !=
-        collapsed_slice_dims.getNumElements()) {
+        gather_op.dimension_numbers().getCollapsedSliceDims();
+    if (start_index_map.size() != collapsed_slice_dims.size()) {
       return rewriter.notifyMatchFailure(
           gather_op,
           "different size for start index map and collapsed slice dims");
@@ -1868,9 +2034,15 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     }
 
     // Verify that offset_dims are the tailing dimensions in the output tensor.
-    auto offset_dims = gather_op.dimension_numbers().offset_dims();
+    auto offset_dims = gather_op.dimension_numbers().getOffsetDims();
+    SmallVector<int64_t, 4> offset_dims_vector(offset_dims.begin(),
+                                               offset_dims.end());
+    const TransposeParams &transpose_params =
+        CanonicalizeOffset(/*result_type=*/result_type,
+                           /*original_offset_dims=*/offset_dims_vector);
+
     int64_t offset = start_indices_type.getRank() - 1;
-    for (int64_t o : offset_dims.getValues<int64_t>()) {
+    for (int64_t o : transpose_params.canonicalized_offset_dims) {
       if (o != offset) {
         return rewriter.notifyMatchFailure(gather_op,
                                            "unsupported offset dims");
@@ -1882,8 +2054,8 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     llvm::SmallVector<int64_t, 4> transpose_dimensions;
     llvm::SmallVector<int64_t, 4> transpose_shape;
     for (auto s : start_index_map) {
-      transpose_dimensions.push_back(s.getZExtValue());
-      transpose_shape.push_back(operand_type.getShape()[s.getZExtValue()]);
+      transpose_dimensions.push_back(s);
+      transpose_shape.push_back(operand_type.getShape()[s]);
     }
     for (int64_t i = 0, e = operand_type.getRank(); i < e; ++i) {
       if (llvm::count(start_index_map, i) == 0) {
@@ -1897,9 +2069,103 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         gather_op.getLoc(), operand_type, operand,
         rewriter.getI64TensorAttr(transpose_dimensions));
 
-    rewriter.replaceOpWithNewOp<TF::GatherNdOp>(gather_op, result_type, operand,
-                                                start_indices);
+    // Check whether we need to append a transpose op after the gather nd.
+    bool need_transpose_after = false;
+    for (int i = 0; i < transpose_params.permutation.size(); ++i) {
+      if (i != transpose_params.permutation[i]) {
+        need_transpose_after = true;
+        break;
+      }
+    }
+
+    auto tf_gather_nd_result_type =
+        RankedTensorType::get(transpose_params.canonicalized_output_shape,
+                              result_type.getElementType());
+    auto tf_gather_nd_op = rewriter.create<TF::GatherNdOp>(
+        gather_op->getLoc(), tf_gather_nd_result_type, operand, start_indices);
+    if (!need_transpose_after) {
+      rewriter.replaceOp(gather_op, tf_gather_nd_op->getOpResults());
+      return success();
+    }
+
+    // Insert the transpose op after the gather_nd.
+    rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+        gather_op, result_type, tf_gather_nd_op,
+        rewriter.getI64TensorAttr(transpose_params.permutation));
+
     return success();
+  }
+
+ private:
+  // Canonicalize the offset dims to make sure the offset dims are the trailing
+  // dimensions of the output tensor.
+  // We will also return the permutation for (the transpose op).
+  // However, it's not guaranteed the canonicalized offset dims can make it
+  // always legalizable to tf.
+  TransposeParams CanonicalizeOffset(
+      ShapedType result_type, ArrayRef<int64_t> original_offset_dims) const {
+    TransposeParams transpose_params;
+    int output_rank = result_type.getRank();
+    // The canonicalized offset should be the trailing of the output rank.
+    for (int start = output_rank - original_offset_dims.size();
+         start < output_rank; ++start) {
+      transpose_params.canonicalized_offset_dims.push_back(start);
+    }
+
+    // For those dims NOT inside the original_offset_dims are considered "batch
+    // dims".
+    std::vector<int64_t> batch_dims;
+    // Offset dims are guaranteed to be sorted.
+    int offset_index = 0;
+    for (int64_t i = 0; i < output_rank; ++i) {
+      if (offset_index >= original_offset_dims.size() ||
+          original_offset_dims[offset_index] != i) {
+        batch_dims.push_back(i);
+      } else {
+        ++offset_index;
+      }
+    }
+
+    // Populate the trnaspose permutation params from a "canonicalized" output
+    // to the real output.
+    // The canonicalized layout would be batch_dims followed by sliced_dims.
+    // The current layout is essentially a transpose after the canonicalized
+    // layout.
+    // Take the following as an example:
+    // If we have the:
+    // original_offset_dims like [1, 2, 4]
+    // batch_dims like [0, 3]
+    // It's like performing transpose on a "canonicalized"
+    // [batch_dims, sliced_dims]: [B1, B2, O1, O2, O3]
+    // into the current layout: [B1, O1, O2, B2, O3]
+    // where the permutation is [0, 2, 3, 1, 4]
+    int batch_idx = 0;
+    int offset_idx = 0;
+    int batch_dim_size = batch_dims.size();
+    for (int i = 0; i < output_rank; ++i) {
+      if (batch_idx >= batch_dims.size()) {
+        transpose_params.permutation.push_back(batch_dim_size + offset_idx);
+        ++offset_idx;
+      } else if (offset_idx < original_offset_dims.size() &&
+                 original_offset_dims[offset_idx] < batch_dims[batch_idx]) {
+        transpose_params.permutation.push_back(batch_dim_size + offset_idx);
+        ++offset_idx;
+      } else {
+        transpose_params.permutation.push_back(batch_idx++);
+      }
+    }
+
+    // Finally, let's find out what are the "canonicalized" output shape looks
+    // like.
+    for (auto dim : batch_dims) {
+      transpose_params.canonicalized_output_shape.push_back(
+          result_type.getDimSize(dim));
+    }
+    for (auto dim : original_offset_dims) {
+      transpose_params.canonicalized_output_shape.push_back(
+          result_type.getDimSize(dim));
+    }
+    return transpose_params;
   }
 };
 
@@ -1971,9 +2237,10 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
       return failure();
     }
 
+    auto scatter_dimension_numbers = scatter_op.scatter_dimension_numbers();
+
     // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
-    int64_t index_vector_dim =
-        scatter_op.scatter_dimension_numbers().index_vector_dim().getInt();
+    int64_t index_vector_dim = scatter_dimension_numbers.getIndexVectorDim();
     if (failed(NormalizeIndexVector(scatter_op, indices, indices_type,
                                     index_vector_dim, rewriter))) {
       return failure();
@@ -1983,9 +2250,9 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
     // both an iota with the same number of elements as the last dimension of
     // start_indices.
     auto inserted_window_dims =
-        scatter_op.scatter_dimension_numbers().inserted_window_dims();
+        scatter_dimension_numbers.getInsertedWindowDims();
     auto scatter_dims_to_operand_dims =
-        scatter_op.scatter_dimension_numbers().scatter_dims_to_operand_dims();
+        scatter_dimension_numbers.getScatterDimsToOperandDims();
     if (!IsIotaAttr(inserted_window_dims, indices_type.getShape().back()) ||
         !IsIotaAttr(scatter_dims_to_operand_dims,
                     indices_type.getShape().back())) {
@@ -1999,10 +2266,9 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
 
     // Verify that update window dims are the tailing dimensions in the update
     // tensor.
-    auto update_window_dims =
-        scatter_op.scatter_dimension_numbers().update_window_dims();
+    auto update_window_dims = scatter_dimension_numbers.getUpdateWindowDims();
     int64_t offset = indices_type.getRank() - 1;
-    for (int64_t o : update_window_dims.getValues<int64_t>()) {
+    for (int64_t o : update_window_dims) {
       if (o != offset) {
         return rewriter.notifyMatchFailure(scatter_op,
                                            "unsupported update window dims");
@@ -2118,7 +2384,7 @@ static PassRegistration<LegalizeHloToTf> pass;
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
   patterns->insert<
-      ConvertWhileOp, ConvertAvgPoolOp, ConvertConvOp,
+      ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp, ConvertConvOp,
       ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
       ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
       ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,

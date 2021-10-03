@@ -69,7 +69,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       size = dim_size;
     }
 
-    auto reducing_dimension = *reduce_op.dimensions().int_value_begin();
+    auto reducing_dimension = *reduce_op.dimensions().value_begin<APInt>();
 
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;

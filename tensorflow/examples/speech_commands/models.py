@@ -15,10 +15,6 @@
 """Model definitions for simple speech recognition.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 import tensorflow as tf
@@ -612,7 +608,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
   # Transpose to shape [batch, num_units]
   units_output = tf.transpose(a=units_output)
 
-  # Appy bias.
+  # Apply bias.
   bias = tf.compat.v1.get_variable(name='bias',
                                    initializer=tf.compat.v1.zeros_initializer,
                                    shape=[num_units])

@@ -288,7 +288,7 @@ class MklQuantizeV2Op : public OpKernel {
     // Estimate scale for quantization
     float scale_factor = 0;
     const int number_of_bits = sizeof(T) * 8;
-    const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+    const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
     scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
 
     float* src_data = const_cast<float*>(src_tensor.flat<float>().data());
@@ -461,7 +461,7 @@ class MklQuantizeV2Op : public OpKernel {
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       // Estimate scale for qunatization
       const int number_of_bits = sizeof(T) * 8;
-      const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+      const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
       scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
     }
 

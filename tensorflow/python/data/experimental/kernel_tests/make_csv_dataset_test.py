@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.make_csv_dataset()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gzip
 import os
 import zlib
@@ -259,7 +255,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
     with self.assertRaisesRegex(ValueError,
-                                "compression_type .ZLIB. is not supported"):
+                                "`compression_type` ZLIB is not supported"):
       self._test_dataset(
           inputs,
           expected_output=expected_output,

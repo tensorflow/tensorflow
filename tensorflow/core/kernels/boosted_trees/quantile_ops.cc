@@ -190,7 +190,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
             context,
             summaries_output_list.allocate(
                 index,
-                TensorShape({static_cast<int64>(summary_entry_list.size()), 4}),
+                TensorShape(
+                    {static_cast<int64_t>(summary_entry_list.size()), 4}),
                 &output_t));
         auto output = output_t->matrix<float>();
         for (auto row = 0; row < summary_entry_list.size(); row++) {
@@ -248,7 +249,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
         const auto summary_list = stream->GetFinalSummary().GetEntryList();
         Tensor* output_t;
         const int64_t summary_list_size =
-            static_cast<int64>(summary_list.size());
+            static_cast<int64_t>(summary_list.size());
         OP_REQUIRES_OK(context, summaries_output_list.allocate(
                                     index, TensorShape({summary_list_size, 4}),
                                     &output_t));
@@ -477,10 +478,10 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
       for (int64_t stream_idx = begin; stream_idx < end; stream_idx++) {
         const auto& boundaries = stream_resource->boundaries(stream_idx);
         Tensor* bucket_boundaries_t = nullptr;
-        OP_REQUIRES_OK(context,
-                       bucket_boundaries_list.allocate(
-                           stream_idx, {static_cast<int64>(boundaries.size())},
-                           &bucket_boundaries_t));
+        OP_REQUIRES_OK(
+            context, bucket_boundaries_list.allocate(
+                         stream_idx, {static_cast<int64_t>(boundaries.size())},
+                         &bucket_boundaries_t));
         auto* quantiles_flat = bucket_boundaries_t->flat<float>().data();
         memcpy(quantiles_flat, boundaries.data(),
                sizeof(float) * boundaries.size());

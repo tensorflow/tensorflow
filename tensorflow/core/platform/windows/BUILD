@@ -50,7 +50,6 @@ cc_library(
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:env_time",
-        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
@@ -157,7 +156,7 @@ cc_library(
     ],
     deps = [
         ":error_windows",
-        "//tensorflow/core/platform:error",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
     ],
 )

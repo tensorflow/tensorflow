@@ -27,10 +27,6 @@ python tensorflow/examples/speech_commands/label_wav.py \
 --wav=/tmp/speech_dataset/left/a5d485dc_nohash_0.wav
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/public/version.h"
@@ -84,11 +85,11 @@ Status OpenTableTensorSliceReader(const string& fname,
         *result = new TensorSliceReaderTable(f.release(), table);
         return Status::OK();
       } else {
-        s = Status(s.code(),
-                   strings::StrCat(s.error_message(),
-                                   ": perhaps your file is in a different "
-                                   "file format and you need to use a "
-                                   "different restore operator?"));
+        s = errors::CreateWithUpdatedMessage(
+            s, strings::StrCat(s.error_message(),
+                               ": perhaps your file is in a different "
+                               "file format and you need to use a "
+                               "different restore operator?"));
       }
     }
   }

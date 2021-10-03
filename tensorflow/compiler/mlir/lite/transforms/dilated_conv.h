@@ -182,9 +182,11 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // Make sure that the axis in `expand_op` is constant.
     if (auto const_op =
             llvm::dyn_cast<TF::ConstOp>(expand_op.dim().getDefiningOp())) {
-      expand_axis =
-          (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
-              .getSExtValue();
+      expand_axis = (*const_op.value()
+                          .cast<DenseElementsAttr>()
+                          .getValues<APInt>()
+                          .begin())
+                        .getSExtValue();
       // Canonicalize axis. Some TF python functions, such as
       // `tf.nn.convolution`, use negative axis.
       if (expand_axis < 0) {

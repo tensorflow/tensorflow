@@ -148,6 +148,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   bool RunEagerOpAsFunction() const;
 
+  void SetRunEagerOpAsFunction(bool enable) override;
+
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;

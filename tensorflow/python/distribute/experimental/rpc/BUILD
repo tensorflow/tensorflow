@@ -1,5 +1,7 @@
 # Python bindings for RPC client and server ops.
 
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -8,7 +10,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+pytype_library(
     name = "rpc_ops",
     srcs = [
         "rpc_ops.py",
@@ -23,6 +25,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 

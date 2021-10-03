@@ -43,6 +43,31 @@ tf_py_test(
 )
 
 py_library(
+    name = "base_delegate",
+    srcs = ["base_delegate.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_test(
+    name = "base_delegate_test",
+    srcs = ["base_delegate_test.py"],
+    deps = [
+        ":base",
+        ":base_delegate",
+        ":util",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+    ],
+)
+
+py_library(
     name = "tracking",
     srcs = ["tracking.py"],
     srcs_version = "PY3",
@@ -156,7 +181,10 @@ py_library(
 tf_py_test(
     name = "util_test",
     srcs = ["util_test.py"],
-    tags = ["notsan"],  # b/74395663
+    tags = [
+        "no_windows",  # TODO(b/201457117)
+        "notsan",  # TODO(b/74395663)
+    ],
     deps = [
         ":base",
         ":graph_view",

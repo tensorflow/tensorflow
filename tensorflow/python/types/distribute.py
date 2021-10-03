@@ -14,10 +14,6 @@
 # ==============================================================================
 """Types specific to tf.distribute."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # TODO(mdan, anjalisridhar): Decide the location of this file.
 

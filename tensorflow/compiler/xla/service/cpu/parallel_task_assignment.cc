@@ -150,7 +150,8 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
     return 1;
   }
 
-  // Only allow known good instructions.
+  // Only allow instructions that can be trivially parallelized (where all
+  // outputs can be computed independently of each other).
   if (instruction->IsElementwise() || instruction->IsLoopFusion() ||
       opcode == HloOpcode::kBroadcast || opcode == HloOpcode::kConcatenate ||
       opcode == HloOpcode::kDynamicSlice ||

@@ -51,21 +51,23 @@ tflite::TensorType GetTTEnum<int64_t>() {
   return tflite::TensorType_INT64;
 }
 
+template <typename INPUT_TYPE>
 class RandomUniformOpModel : public tflite::SingleOpModel {
  public:
-  RandomUniformOpModel(const std::initializer_list<int>& input,
-                       tflite::TensorData output, bool dynamic_input) {
+  RandomUniformOpModel(const std::initializer_list<INPUT_TYPE>& input,
+                       TensorType input_type, tflite::TensorData output,
+                       bool dynamic_input) {
     if (dynamic_input) {
-      input_ = AddInput({tflite::TensorType_INT32, {3}});
+      input_ = AddInput({input_type, {3}});
     } else {
-      input_ = AddConstInput(tflite::TensorType_INT32, input,
-                             {static_cast<int>(input.size())});
+      input_ =
+          AddConstInput(input_type, input, {static_cast<int>(input.size())});
     }
     output_ = AddOutput(output);
     SetCustomOp("RandomUniform", {}, ops::custom::Register_RANDOM_UNIFORM);
     BuildInterpreter({GetShape(input_)});
     if (dynamic_input) {
-      PopulateTensor<int32_t>(input_, std::vector<int32_t>(input));
+      PopulateTensor<INPUT_TYPE>(input_, std::vector<INPUT_TYPE>(input));
     }
   }
 
@@ -81,14 +83,15 @@ class RandomUniformOpModel : public tflite::SingleOpModel {
   }
 };
 
+template <typename INPUT_TYPE>
 class RandomUniformIntOpModel : public tflite::SingleOpModel {
  public:
-  RandomUniformIntOpModel(const std::initializer_list<int>& input,
-                          tflite::TensorData output, int min_val, int max_val) {
-    input_ = AddConstInput(tflite::TensorType_INT32, input,
-                           {static_cast<int>(input.size())});
-    input_minval_ = AddConstInput(tflite::TensorType_INT32, {min_val}, {1});
-    input_maxval_ = AddConstInput(tflite::TensorType_INT32, {max_val}, {1});
+  RandomUniformIntOpModel(const std::initializer_list<INPUT_TYPE>& input,
+                          TensorType input_type, tflite::TensorData output,
+                          INPUT_TYPE min_val, INPUT_TYPE max_val) {
+    input_ = AddConstInput(input_type, input, {static_cast<int>(input.size())});
+    input_minval_ = AddConstInput(input_type, {min_val}, {1});
+    input_maxval_ = AddConstInput(input_type, {max_val}, {1});
     output_ = AddOutput(output);
     SetCustomOp("RandomUniformInt", {},
                 ops::custom::Register_RANDOM_UNIFORM_INT);
@@ -126,8 +129,36 @@ TYPED_TEST_SUITE(RandomUniformTest, TestTypes);
 TYPED_TEST(RandomUniformTest, TestOutput) {
   using Float = typename TestFixture::Float;
   for (const auto dynamic : {true, false}) {
-    tflite::RandomUniformOpModel m({1000, 50, 5},
-                                   {tflite::GetTTEnum<Float>(), {}}, dynamic);
+    tflite::RandomUniformOpModel<int32_t> m(
+        {1000, 50, 5}, tflite::TensorType_INT32,
+        {tflite::GetTTEnum<Float>(), {}}, dynamic);
+    m.Invoke();
+    auto output = m.GetOutput<Float>();
+    EXPECT_EQ(output.size(), 1000 * 50 * 5);
+
+    double sum = 0;
+    for (const auto r : output) {
+      sum += r;
+    }
+    double avg = sum / output.size();
+    ASSERT_LT(std::abs(avg - 0.5), 0.05);  // Average should approximately 0.5
+
+    double sum_squared = 0;
+    for (const auto r : output) {
+      sum_squared += std::pow(r - avg, 2);
+    }
+    double var = sum_squared / output.size();
+    EXPECT_LT(std::abs(1. / 12 - var),
+              0.05);  // Variance should be approximately 1./12
+  }
+}
+
+TYPED_TEST(RandomUniformTest, TestOutputInt64) {
+  using Float = typename TestFixture::Float;
+  for (const auto dynamic : {true, false}) {
+    tflite::RandomUniformOpModel<int64_t> m(
+        {1000, 50, 5}, tflite::TensorType_INT64,
+        {tflite::GetTTEnum<Float>(), {}}, dynamic);
     m.Invoke();
     auto output = m.GetOutput<Float>();
     EXPECT_EQ(output.size(), 1000 * 50 * 5);
@@ -161,8 +192,30 @@ TYPED_TEST_SUITE(RandomUniformIntTest, TestTypesInt);
 
 TYPED_TEST(RandomUniformIntTest, TestOutput) {
   using Int = typename TestFixture::Int;
-  tflite::RandomUniformIntOpModel m({1000, 50, 5},
-                                    {tflite::GetTTEnum<Int>(), {}}, 0, 5);
+  tflite::RandomUniformIntOpModel<int32_t> m(
+      {1000, 50, 5}, tflite::TensorType_INT32, {tflite::GetTTEnum<Int>(), {}},
+      0, 5);
+  m.Invoke();
+  auto output = m.GetOutput<Int>();
+  EXPECT_EQ(output.size(), 1000 * 50 * 5);
+
+  int counters[] = {0, 0, 0, 0, 0, 0};
+  for (const auto r : output) {
+    ASSERT_GE(r, 0);
+    ASSERT_LE(r, 5);
+    ++counters[r];
+  }
+  // Check that all numbers are meet with near the same frequency.
+  for (int i = 1; i < 6; ++i) {
+    EXPECT_LT(std::abs(counters[i] - counters[0]), 1000);
+  }
+}
+
+TYPED_TEST(RandomUniformIntTest, TestOutputInt64) {
+  using Int = typename TestFixture::Int;
+  tflite::RandomUniformIntOpModel<int64_t> m(
+      {1000, 50, 5}, tflite::TensorType_INT64, {tflite::GetTTEnum<Int>(), {}},
+      0, 5);
   m.Invoke();
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), 1000 * 50 * 5);

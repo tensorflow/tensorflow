@@ -75,6 +75,7 @@ limitations under the License.
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
 using tensorflow::AllocationDescription;
+using tensorflow::AttrValueMap;
 using tensorflow::DataType;
 using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
@@ -103,6 +104,7 @@ using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
+using tensorflow::errors::OutOfRange;
 using tensorflow::gtl::ArraySlice;
 using tensorflow::strings::StrCat;
 
@@ -397,12 +399,48 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
   }
 }
 
+// TF_TensorToTensorV1 decodes a string serialization to DT_RESOURCE.
+// In the TFv1 convention, TF_Tensor can hold a string serialization of
+// DT_RESOURCE. The string serialization is converted back to a
+// ResourceHandle during Session run where the TF_Tensor is converted to a
+// Tensor.
+// TFv2 does not depend on this conversion. There is no matching
+// TF_TensorFromTensorV1 because the conversion to string is performed by the
+// python side of Session.
+static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
+  Status status = TF_TensorToTensor(src, dst);
+  if (!status.ok()) {
+    return status;
+  }
+  if (dst->dtype() == tensorflow::DT_RESOURCE) {
+    const auto tensor_interface =
+        tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor);
+
+    if (dst->dims() != 0) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
+          "shape ",
+          dst->shape().DebugString());
+    }
+    *dst = tensorflow::Tensor(tensorflow::DT_RESOURCE, dst->shape());
+    if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
+            string(static_cast<const char*>(tensor_interface->Data()),
+                   tensor_interface->ByteSize()))) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: unable to parse resource handle");
+    }
+    return Status::OK();
+  }
+  return Status::OK();
+}
+
 static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
                           std::vector<std::pair<string, Tensor>>* input_pairs,
                           TF_Status* status) {
   const int ninputs = input_pairs->size();
   for (int i = 0; i < ninputs; ++i) {
-    status->status = TF_TensorToTensor(c_inputs[i], &(*input_pairs)[i].second);
+    status->status =
+        TF_TensorToTensorV1(c_inputs[i], &(*input_pairs)[i].second);
     if (!status->status.ok()) return false;
   }
   return true;
@@ -1527,6 +1565,40 @@ void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
   const auto* attr = GetAttrValue(oper, attr_name, status);
   if (!status->status.ok()) return;
   status->status = MessageToBuffer(*attr, output_attr_value);
+}
+
+int TF_OperationGetNumAttrs(TF_Operation* oper) {
+  return oper->node.attrs().size();
+}
+
+int TF_OperationGetAttrNameLength(TF_Operation* oper, int i) {
+  auto attrs = oper->node.attrs();
+  int count = 0;
+  AttrValueMap::const_iterator it;
+  for (it = attrs.begin(); it != attrs.end(); it++) {
+    if (count == i) {
+      return it->first.length();
+    }
+    count++;
+  }
+  return -1;
+}
+
+void TF_OperationGetAttrName(TF_Operation* oper, int i, char* output,
+                             TF_Status* status) {
+  auto attrs = oper->node.attrs();
+  int count = 0;
+  AttrValueMap::const_iterator it;
+  for (it = attrs.begin(); it != attrs.end(); it++) {
+    if (count == i) {
+      strncpy(output, it->first.c_str(), it->first.length());
+      status->status = Status::OK();
+      return;
+    }
+    count++;
+  }
+  status->status = OutOfRange("Operation only has ", count,
+                              " attributes, can't get the ", i, "th");
 }
 
 void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,

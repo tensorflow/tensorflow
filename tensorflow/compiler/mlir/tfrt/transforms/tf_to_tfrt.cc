@@ -912,7 +912,8 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
     }
 
     auto new_op = rewriter.create<tfrt::compiler::CallOp>(
-        op.getLoc(), result_types, callee.getRootReference(), new_operands);
+        op.getLoc(), result_types, callee.getRootReference().getValue(),
+        new_operands);
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
     if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
@@ -1594,6 +1595,8 @@ class TfToTfrtConversionPass
     tpu_use_bundled_transfer_ = options.tpu_use_bundled_transfer;
     tpu_lower_to_fallback_ = options.tpu_lower_to_fallback;
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
+    use_tpu_host_allocator_for_inputs_ =
+        options.use_tpu_host_allocator_for_inputs;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1616,10 +1619,10 @@ class TfToTfrtConversionPass
 
     if (target_tpurt_)
       AddTPUTargetDialectAndPatterns(
-          &target, &patterns, &context, &corert_converter,
-          TfrtTpuExecuteOpConversionOptions{tpu_use_core_selector_,
-                                            tpu_use_bundled_transfer_,
-                                            tpu_transfer_result_to_host_},
+          &target, &patterns, &context, &corert_converter, &fallback_converter,
+          TfrtTpuExecuteOpConversionOptions{
+              tpu_use_core_selector_, tpu_use_bundled_transfer_,
+              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_},
           tpu_lower_to_fallback_);
 
     mlir::TypeConverter *func_type_converter;
@@ -1789,6 +1792,10 @@ class TfToTfrtConversionPass
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpSeq>(
                        fallback_op)) {
       return execute_op_seq.operands().size();
+    } else if (auto execute_op_allocator =
+                   llvm::dyn_cast<tfrt::fallback_async::ExecuteOpWithAllocator>(
+                       fallback_op)) {
+      return execute_op_allocator.operands().size();
     }
     llvm_unreachable("invalid fallback op type");
   }
@@ -1829,6 +1836,12 @@ class TfToTfrtConversionPass
       llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
                      "to host."),
       llvm::cl::init(true)};
+
+  Option<bool> use_tpu_host_allocator_for_inputs_{
+      *this, "use-tpu-host-allocator-for-inputs",
+      llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
+                     "program will use tpu host allocator."),
+      llvm::cl::init(false)};
 
   Option<uint64_t> cost_threshold_{
       *this, "tfrt-cost-threshold",
@@ -2030,8 +2043,10 @@ LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
   // Replace device cluster with a cpurt.call operation.
   auto module_name = *compiled_module.module.sym_name();
   auto func_name = compiled_func.sym_name();
-  auto func_flat_ref = builder.getSymbolRefAttr(func_name);
-  auto func_ref = builder.getSymbolRefAttr(module_name, {func_flat_ref});
+  auto func_flat_ref =
+      mlir::SymbolRefAttr::get(builder.getContext(), func_name);
+  auto func_ref = mlir::SymbolRefAttr::get(builder.getContext(), module_name,
+                                           {func_flat_ref});
 
   auto cluster_func_op = builder.create<tfrt::cpu::jit::CallOp>(
       loc, cluster.getResultTypes(), func_ref,

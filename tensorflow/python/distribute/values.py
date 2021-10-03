@@ -14,10 +14,6 @@
 # ==============================================================================
 """Various classes representing distributed values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import weakref
 
@@ -1734,11 +1730,11 @@ class OnWritePolicy(VariablePolicy):
 
 
 class PerWorkerResource():
-  """A per-worker CachableResource class for non-ParameterServer strategy.
+  """A per-worker CapturableResource class for non-ParameterServer strategy.
 
   Resources that populate `host_to_resources` should be instances of classes
-  subclassing CachableResource, although currently it's only used and tested for
-  StaticHashTable with TPUStrategy.
+  subclassing CapturableResource, although currently it's only used and tested
+  for StaticHashTable with TPUStrategy.
   """
 
   def __init__(self, strategy, host_to_resources):

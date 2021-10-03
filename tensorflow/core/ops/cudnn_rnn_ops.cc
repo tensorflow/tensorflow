@@ -81,11 +81,17 @@ REGISTER_OP("CudnnRNN")
     .Attr("seed2: int = 0")
     .Attr("is_training: bool = true")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(input_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(input_h_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
+
       auto seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
+
       string direction;
       TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
       string rnn_mode;
@@ -124,8 +130,13 @@ REGISTER_OP("CudnnRNNV2")
     .Attr("seed2: int = 0")
     .Attr("is_training: bool = true")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(input_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(input_h_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
+
       auto seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
@@ -171,16 +182,26 @@ REGISTER_OP("CudnnRNNV3")
     .Attr("is_training: bool = true")
     .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
       auto input_c_shape = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(input_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(input_h_shape, 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &unused));
+
       auto max_seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
+
       string direction;
       TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
       string rnn_mode;
       TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
+      if (rnn_mode == "lstm") {
+        TF_RETURN_IF_ERROR(c->WithRank(input_c_shape, 3, &unused));
+      }
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
       TF_RETURN_IF_ERROR(c->Multiply(num_units, dir_count, &output_size));

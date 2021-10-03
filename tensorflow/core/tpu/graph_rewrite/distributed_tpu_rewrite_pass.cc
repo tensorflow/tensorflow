@@ -1840,15 +1840,9 @@ static Status BuildGeneralDeviceAssignment(
 
   // Checks num_replicas is sane first to avoid integer overflow.
   if (num_replicas > num_tpu_devices) {
-#ifdef PLATFORM_CLOUD_TPU
     return errors::InvalidArgument("Requested num_replicas=", num_replicas,
                                    " but there are only ", num_tpu_devices,
                                    " cores in the TPU topology.");
-#else
-    return errors::InvalidArgument("Requested num_replicas=", num_replicas,
-                                   " but there are only ", num_tpu_devices,
-                                   " cores in the TPU topology.");
-#endif
   }
   if (num_replicas * num_cores_per_replica > num_tpu_devices) {
     return errors::InvalidArgument(
@@ -2627,15 +2621,16 @@ bool XlaBroadcastKindSupported(
 }
 
 bool EnableXlaParamBroadcast(
-    bool enable_xla_param_broadcast,
+    bool enable_xla_param_broadcast, bool mpmd,
     const DistributedTPURewritePass::ParameterInfo& params_info, int param_num,
     DataType dtype) {
   // Conditions necessary to use XLA collectives for arg broadcast:
   // 1. Globally enabled via enable_xla_param_broadcast.
   // 2. DataType must be supported.
   // 3. Parameter must be a variable, and not distributed or broadcasted.
+  // 4. For multi-core models (num_cores_per_replica > 1), must use SPMD.
   return enable_xla_param_broadcast && XlaBroadcastTypeSupported(dtype) &&
-         XlaBroadcastKindSupported(params_info, param_num);
+         XlaBroadcastKindSupported(params_info, param_num) && !mpmd;
 }
 
 }  // namespace
@@ -2675,6 +2670,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
         return s.type() == xla::OpSharding::MAXIMAL;
       });
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
+  const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   // Get and fill padding map.
   if (replicate_node != nullptr) {
@@ -2724,8 +2720,8 @@ Status DistributedTPURewritePass::BuildCompileNode(
     // Use XLA collective primitives to distribute variables to all replicas.
     arg->set_requires_xla_broadcast(
         params_info.NumReplicas() > 1 &&
-        EnableXlaParamBroadcast(enable_xla_param_broadcast_, params_info, i,
-                                arg_shape.handle_type /*arg.dtype?*/));
+        EnableXlaParamBroadcast(enable_xla_param_broadcast_, mpmd, params_info,
+                                i, arg_shape.handle_type /*arg.dtype?*/));
 
     // As long as the argument is not a per-replica one, it should have the same
     // value for all replicas. For clarity, we keep the (redundant) checks for
@@ -3044,7 +3040,7 @@ Status ComputeShardedArgShapes(TensorShape* shape,
     sharded_rank--;
   }
   for (int dim_idx = 0; dim_idx < sharded_rank; ++dim_idx) {
-    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64>(
+    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64_t>(
         shape->dim_size(dim_idx), sharding.tile_assignment_dimensions(dim_idx));
     shape->set_dim(dim_idx, sharded_dim);
   }
@@ -3212,7 +3208,7 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     const DistributedTPURewritePass::ParameterInfo& params_info,
     const std::vector<xla::OpSharding>& arg_shardings,
     const Node& replicate_node, const bool enable_xla_param_broadcast,
-    const int num_cores_per_replica, int replica_id,
+    const bool mpmd, const int num_cores_per_replica, int replica_id,
     const std::vector<InferredShape>& arg_shapes,
     absl::flat_hash_map<string, std::vector<NodeOut>>* per_host_var_copies,
     Graph* graph) {
@@ -3261,7 +3257,7 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
                            params_info.NumBroadcastArgs();
     DataType dtype = read->output_type(0);
     bool use_xla_broadcast =
-        EnableXlaParamBroadcast(enable_xla_param_broadcast, params_info,
+        EnableXlaParamBroadcast(enable_xla_param_broadcast, mpmd, params_info,
                                 orig_arg_num, dtype) &&
         replica_id != 0;
     if (index_mapping[i].node == nullptr) {
@@ -3326,6 +3322,17 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   absl::flat_hash_map<int, std::vector<int>>
       replicate_output_fan_out_dst_inputs;
   std::vector<Node*> to_be_removed_nodes;
+
+  const bool use_spmd =
+      UseSpmdForXlaPartitioning(&replicate_node) && allow_xla_spmd_partition_ &&
+      !absl::c_any_of(arg_shardings,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) &&
+      !absl::c_any_of(retval_shardings, [](const xla::OpSharding& s) {
+        return s.type() == xla::OpSharding::MAXIMAL;
+      });
+  const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   for (const Edge* e : replicate_input_edges) {
     if (e->src()->type_string() == kTPUPartitionedInput) {
@@ -3708,13 +3715,13 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                 CreateOrGetPerHostVariableCopy(
                     device, variable_num, variable_reads, params_info,
                     arg_shardings, replicate_node, enable_xla_param_broadcast_,
-                    num_cores_per_replica, replica, arg_shapes,
+                    mpmd, num_cores_per_replica, replica, arg_shapes,
                     &per_host_var_copies, graph));
 
             if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
               ShardedInputInfo sharded_input_info;
 
-              if (EnableXlaParamBroadcast(enable_xla_param_broadcast_,
+              if (EnableXlaParamBroadcast(enable_xla_param_broadcast_, mpmd,
                                           params_info, orig_arg_num, dtype)) {
                 // Populates the sharded dummy vars for non-zero replicas.
                 TF_RETURN_IF_ERROR(CreatePartitionedDummyVarArgs(

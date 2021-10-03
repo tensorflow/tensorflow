@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -112,7 +114,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   }
 
   // The canonical form of the rhs is
-  // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
+  // [BatchDims, ContractingsDimsProduct, NonContractingDimsProduct]
   // If NonContractingDimsProduct is 1, it is omitted.
   std::vector<int64_t> rhs_transpose;
   rhs_transpose.reserve(rhs_rank);
@@ -161,15 +163,19 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
       ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
 
-  return computation->ReplaceInstruction(
-      original_dot, computation->AddInstruction(HloInstruction::CreateReshape(
-                        original_dot->shape(), dot)));
+  std::unique_ptr<HloInstruction> replacement =
+      HloInstruction::CreateReshape(original_dot->shape(), dot);
+  VLOG(3) << "Canonicalizing dot:\n"
+          << "\t old: " << original_dot->ToString() << "\n"
+          << "\t new: " << dot->ToString() << "\n"
+          << "\t   -> " << replacement->ToString();
+  return computation->ReplaceWithNewInstruction(original_dot,
+                                                std::move(replacement));
 }
 
 }  // namespace
 
 StatusOr<bool> DotDecomposer::Run(HloModule* module) {
-  XLA_VLOG_LINES(2, "DotDecomposer ENTRY\n" + module->ToString());
   // Gather all Non-canonical Dot operations.
   std::vector<HloInstruction*> non_canonical_dots;
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -178,8 +184,7 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
         continue;
       }
       const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
-      // A dot it not canonical if there are more than one contracting
-      // dimension.
+      // A dot it not canonical if there is more than one contracting dimension.
       if (dnums.lhs_contracting_dimensions_size() != 1) {
         non_canonical_dots.push_back(instruction);
         continue;
@@ -198,9 +203,7 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
         non_canonical_dots.push_back(instruction);
         continue;
       }
-      if (dnums.lhs_batch_dimensions().empty()) {
-        continue;
-      }
+      // Check that batch dims, if present, are canonical.
       std::vector<int64_t> canonical_batch_dims(
           dnums.lhs_batch_dimensions_size());
       absl::c_iota(canonical_batch_dims, 0);
@@ -215,7 +218,6 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(CanonicalizeDot(dot));
     changed = true;
   }
-  XLA_VLOG_LINES(2, "DotDecompose EXIT\n" + module->ToString());
   return changed;
 }
 

@@ -342,10 +342,7 @@ func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
   // CHECK:      linalg.generic
   // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : {{.*}})
   // CHECK:        addf
-  // CHECK:        cmpf ogt
-  // CHECK:        select
-  // CHECK:        cmpf uno
-  // CHECK:        select
+  // CHECK:        maxf
   // CHECK-NEXT:   linalg.yield
   // CHECK-NOT:  linalg.generic
   %0 = "tf.BiasAdd"(%arg0, %arg1)
@@ -406,4 +403,17 @@ func @constant_folding() -> tensor<2xi32> {
   %2 = "tf.Pack"(%0, %1) {axis = 0 : i64}
        : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
   return %2 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @add_floormod_add
+builtin.func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %0 = "tf.AddV2"(%arg0, %arg0)
+      : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = "tf.FloorMod"(%0, %arg0)
+      : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "tf.AddV2"(%1, %arg0)
+      : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
 }

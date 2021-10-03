@@ -63,17 +63,6 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const tfrt::OpAttrsRef& attrs);
 
-// `frame` is used to consume the inputs and hold the outputs from kernel
-// execution.
-//
-// TODO(tfrt-devs): switch `attrs` to using tfrt::AggregateAttr after
-// cl/343983780.
-Status KernelFallbackSyncExecuteCompat(const tfrt::ExecutionContext& exec_ctx,
-                                       absl::string_view op_name,
-                                       absl::string_view device_name,
-                                       tfrt::SyncKernelFrame* frame,
-                                       const tfrt::OpAttrsRef& attrs);
-
 // TODO(tfrt-devs): Consider moving following method to a separate file.
 llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
                                     const tfrt::Device& device);

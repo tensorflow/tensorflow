@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTO_SHARD_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTO_SHARD_H_
 
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
@@ -44,6 +49,13 @@ class AutoShard : public TFDataOptimizerBase {
   int64_t index_;
   tensorflow::data::AutoShardPolicy auto_shard_policy_;
 };
+
+// For testing only
+namespace internal {
+bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
+                                const MutableGraphView& graph,
+                                std::vector<std::string>* ineligible_reason);
+}
 
 }  // namespace grappler
 }  // namespace tensorflow

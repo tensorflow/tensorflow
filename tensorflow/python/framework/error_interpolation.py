@@ -18,10 +18,6 @@ Exposes the function `interpolate` to interpolate messages with tags of the form
 {{type name}}.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import itertools
 import os

@@ -246,6 +246,7 @@ pytype_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -600,7 +601,6 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -633,7 +633,6 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",

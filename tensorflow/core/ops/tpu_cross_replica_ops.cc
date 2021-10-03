@@ -32,6 +32,7 @@ REGISTER_OP("AllToAll")
     .Attr("split_count: int")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
+      ShapeHandle group_assignment = c->input(1);
       if (!c->RankKnown(input)) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
@@ -42,6 +43,21 @@ REGISTER_OP("AllToAll")
       int split_dimension;
       int split_count;
       TF_RETURN_IF_ERROR(c->GetAttr("split_count", &split_count));
+      if (split_count < 1) {
+        return errors::InvalidArgument("split_count ", split_count,
+                                       " must at least be one.");
+      }
+      if (c->RankKnown(group_assignment) && c->Rank(group_assignment) != 2) {
+        return errors::InvalidArgument("group_assignment must have rank 2.");
+      }
+      DimensionHandle num_replicas_per_group = c->Dim(group_assignment, 1);
+      if (c->ValueKnown(num_replicas_per_group) &&
+          (c->Value(num_replicas_per_group) != split_count)) {
+        return errors::InvalidArgument(
+            "split_count ", split_count,
+            " must equal the size of the second dimension of group_assignment ",
+            c->Value(num_replicas_per_group));
+      }
 
       TF_RETURN_IF_ERROR(c->GetAttr("concat_dimension", &concat_dimension));
 
@@ -65,6 +81,12 @@ REGISTER_OP("AllToAll")
           dims[i] = c->MakeDim(c->Value(dims[i]) * split_count);
         }
         if (i == split_dimension) {
+          if (c->ValueKnown(dims[i]) &&
+              (c->Value(dims[i]) % split_count != 0)) {
+            return errors::InvalidArgument(
+                "input dimension ", c->Value(dims[i]),
+                " not divisible by split_count ", split_count);
+          }
           dims[i] = c->MakeDim(c->Value(dims[i]) / split_count);
         }
       }

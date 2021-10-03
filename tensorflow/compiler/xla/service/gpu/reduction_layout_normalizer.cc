@@ -35,85 +35,144 @@ namespace xla {
 namespace gpu {
 
 class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
-  Status HandleReduce(HloInstruction *reduce) override {
+  Status HandleReduce(HloInstruction *hlo) override {
+    auto reduce = Cast<HloReduceInstruction>(hlo);
     VLOG(5) << "Input: " << reduce->ToString();
-    HloInstruction *operand = reduce->mutable_operand(0);
-    const Shape &operand_shape = operand->shape();
-    const Layout &operand_layout = operand_shape.layout();
-    const Shape &reduce_shape = reduce->shape();
 
-    if (!reduce_shape.IsArray()) {
-      // TODO(cheshire): Handle variadic reduction.
-      return Status::OK();
-    }
+    int operand_idx = -1;
 
-    std::vector<int64_t> new_reduce_dimensions;
-    std::vector<int64_t> new_operand_shape_data;
-    std::vector<int64_t> new_reduce_shape_data;
+    absl::InlinedVector<HloInstruction *, 2> canonical_reduce_inputs;
+    absl::InlinedVector<Shape, 2> new_reduce_shapes;
 
-    // The layout order of the reduction output can be different to the
-    // ordering of kept dimensions in the input operand, thus we need to
-    // calculate the new layout.
-    std::vector<int64_t> new_reduce_shape_layout(reduce_shape.rank());
-    std::vector<int64_t> reduce_shape_logical_to_physical =
-        LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
+    absl::InlinedVector<int64_t, 6> out_reduce_dimensions;
+    const Shape &first_instruction_shape = reduce->inputs()[0]->shape();
 
-    auto to_reduce_logical_dim = [&](int64_t op_logical_dim) {
-      return op_logical_dim -
-             absl::c_count_if(reduce->dimensions(), [&](int64_t dim) {
-               CHECK(dim != op_logical_dim);
-               return dim < op_logical_dim;
-             });
-    };
+    for (HloInstruction *operand : reduce->inputs()) {
+      operand_idx++;
 
-    for (int i = 0; i < operand_shape.rank(); i++) {
-      // Process the dimensions in the major-to-minor order in order to enforce
-      // the default layout.
-      int64_t major_to_minor_dim_idx = operand_shape.rank() - i - 1;
-      int64_t logical_dim =
-          operand_layout.minor_to_major(major_to_minor_dim_idx);
-      int64_t dim_size = operand_shape.dimensions(logical_dim);
-      VLOG(5) << "Processing logical dimension " << logical_dim << " of size "
-              << dim_size;
-      new_operand_shape_data.push_back(dim_size);
+      if (operand_idx != 0 &&
+          operand->shape().layout() != first_instruction_shape.layout()) {
+        HloInstruction *copy =
+            reduce->parent()->AddInstruction(HloInstruction::CreateUnary(
+                operand->shape(), HloOpcode::kCopy, operand));
 
-      if (absl::c_linear_search(reduce->dimensions(), logical_dim)) {
-        new_reduce_dimensions.push_back(i);
+        LayoutUtil::ClearLayout(copy->mutable_shape());
+        TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+            first_instruction_shape, copy->mutable_shape()));
+
+        copy->set_metadata(operand->metadata());
+        operand = copy;
+        VLOG(3) << "Copying to establish consistent inputs layout: "
+                << copy->ToString();
+      }
+
+      const Shape &operand_shape = operand->shape();
+      const Layout &operand_layout = operand_shape.layout();
+
+      const Shape &reduce_shape =
+          reduce->shape().IsTuple() ? reduce->shape().tuple_shapes(operand_idx)
+                                    : reduce->shape();
+
+      absl::InlinedVector<int64_t, 6> new_reduce_dimensions;
+      absl::InlinedVector<int64_t, 6> new_operand_shape_data;
+      absl::InlinedVector<int64_t, 6> new_reduce_shape_data;
+
+      // The layout order of the reduction output can be different to the
+      // ordering of kept dimensions in the input operand, thus we need to
+      // calculate the new layout.
+      absl::InlinedVector<int64_t, 6> new_reduce_shape_layout(
+          reduce_shape.rank());
+      std::vector<int64_t> reduce_shape_logical_to_physical =
+          LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
+
+      auto to_reduce_logical_dim = [&](int64_t op_logical_dim) {
+        return op_logical_dim -
+               absl::c_count_if(reduce->dimensions(), [&](int64_t dim) {
+                 CHECK(dim != op_logical_dim);
+                 return dim < op_logical_dim;
+               });
+      };
+
+      for (int i = 0; i < operand_shape.rank(); i++) {
+        // Process the dimensions in the major-to-minor order in order to
+        // enforce the default layout.
+        int64_t major_to_minor_dim_idx = operand_shape.rank() - i - 1;
+        int64_t logical_dim =
+            operand_layout.minor_to_major(major_to_minor_dim_idx);
+        int64_t dim_size = operand_shape.dimensions(logical_dim);
+        VLOG(5) << "Processing logical dimension " << logical_dim << " of size "
+                << dim_size;
+        new_operand_shape_data.push_back(dim_size);
+
+        if (absl::c_linear_search(reduce->dimensions(), logical_dim)) {
+          new_reduce_dimensions.push_back(i);
+        } else {
+          new_reduce_shape_data.push_back(dim_size);
+          int64_t logical_reduce_dim = to_reduce_logical_dim(logical_dim);
+          int64_t physical_reduce_dim =
+              reduce_shape_logical_to_physical[logical_reduce_dim];
+          VLOG(5) << "logical_reduce_dim = " << logical_reduce_dim << ", "
+                  << "physical_reduce_dim = " << physical_reduce_dim;
+          new_reduce_shape_layout[reduce_shape.rank() - physical_reduce_dim -
+                                  1] = new_reduce_shape_data.size() - 1;
+        }
+      }
+
+      Shape new_operand_shape = ShapeUtil::MakeShape(
+          operand_shape.element_type(), new_operand_shape_data);
+      Shape new_reduce_shape = ShapeUtil::MakeShapeWithLayout(
+          reduce_shape.element_type(), new_reduce_shape_data,
+          new_reduce_shape_layout);
+
+      if (new_operand_shape == operand_shape && reduce->inputs().size() == 1) {
+        return Status::OK();
+      }
+
+      HloInstruction *canonical_reduce_input =
+          new_operand_shape != operand_shape
+              ? reduce->parent()->AddInstruction(
+                    HloInstruction::CreateBitcast(new_operand_shape, operand))
+              : operand;
+      canonical_reduce_input->set_metadata(operand->metadata());
+      VLOG(5) << "Reduction input: " << canonical_reduce_input->ToString();
+
+      new_reduce_shapes.push_back(new_reduce_shape);
+      canonical_reduce_inputs.push_back(canonical_reduce_input);
+
+      if (out_reduce_dimensions.empty()) {
+        out_reduce_dimensions = new_reduce_dimensions;
       } else {
-        new_reduce_shape_data.push_back(dim_size);
-        int64_t logical_reduce_dim = to_reduce_logical_dim(logical_dim);
-        int64_t physical_reduce_dim =
-            reduce_shape_logical_to_physical[logical_reduce_dim];
-        VLOG(5) << "logical_reduce_dim = " << logical_reduce_dim << ", "
-                << "physical_reduce_dim = " << physical_reduce_dim;
-        new_reduce_shape_layout[reduce_shape.rank() - physical_reduce_dim - 1] =
-            new_reduce_shape_data.size() - 1;
+        TF_RET_CHECK(out_reduce_dimensions == new_reduce_dimensions);
       }
     }
 
-    Shape new_operand_shape = ShapeUtil::MakeShape(operand_shape.element_type(),
-                                                   new_operand_shape_data);
-    if (new_operand_shape == operand_shape) {
-      return Status::OK();
-    }
+    Shape new_reduce_shape = ShapeUtil::MakeMaybeTupleShape(new_reduce_shapes);
 
-    Shape new_reduce_shape = ShapeUtil::MakeShapeWithLayout(
-        reduce_shape.element_type(), new_reduce_shape_data,
-        new_reduce_shape_layout);
-    HloInstruction *canonical_reduce_input = reduce->parent()->AddInstruction(
-        HloInstruction::CreateBitcast(new_operand_shape, operand));
-    canonical_reduce_input->set_metadata(reduce->metadata());
-
-    VLOG(5) << "Reduction input: " << canonical_reduce_input->ToString();
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
-        new_reduce_shape, canonical_reduce_input, reduce->mutable_operand(1),
-        new_reduce_dimensions, reduce->to_apply());
+        new_reduce_shape, canonical_reduce_inputs, reduce->init_values(),
+        out_reduce_dimensions, reduce->to_apply());
     VLOG(5) << "Generated new reduction: " << new_reduce->ToString();
+    const Shape &orig_reduce_shape = reduce->shape();
 
-    if (new_reduce_shape != reduce_shape) {
+    if (new_reduce_shape != orig_reduce_shape) {
       HloInstruction *wrapped_reduce =
           reduce->parent()->AddInstruction(std::move(new_reduce));
-      new_reduce = HloInstruction::CreateBitcast(reduce_shape, wrapped_reduce);
+
+      if (!new_reduce_shape.IsTuple()) {
+        new_reduce =
+            HloInstruction::CreateBitcast(reduce->shape(), wrapped_reduce);
+      } else {
+        // Bitcast each element of the tuple.
+        absl::InlinedVector<HloInstruction *, 2> out;
+        for (int oidx = 0; oidx < reduce->input_count(); oidx++) {
+          HloInstruction *gte = reduce->parent()->AddInstruction(
+              HloInstruction::CreateGetTupleElement(wrapped_reduce, oidx));
+          out.push_back(
+              reduce->parent()->AddInstruction(HloInstruction::CreateBitcast(
+                  orig_reduce_shape.tuple_shapes(oidx), gte)));
+        }
+        new_reduce = HloInstruction::CreateTuple(out);
+      }
     }
 
     VLOG(5) << "Generated output: " << new_reduce->ToString();

@@ -154,8 +154,8 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
     ArrayAttr shape_rank1_size1_attr =
         rewriter.getI64ArrayAttr(reshape_rank1_size1_shape);
     for (int i = 0; i < inputs.size(); i++) {
-      auto a0_reshape_op = rewriter.create<tosa::ReshapeOp>(
-          op->getLoc(), reshape_rank1_size1_type, inputs[i],
+      auto a0_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+          rewriter, op->getLoc(), reshape_rank1_size1_type, inputs[i],
           shape_rank1_size1_attr);
       inputs[i] = a0_reshape_op.getResult();
     }
@@ -240,8 +240,8 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   for (int i = 0; i < inputs.size(); i++) {
     inputs_0.push_back(inputs[i]);
   }
-  auto a1_concat_op = rewriter.create<tosa::ConcatOp>(
-      op->getLoc(), concat_type, inputs_0, concat_axis_attr);
+  auto a1_concat_op = CreateOpAndInfer<tosa::ConcatOp>(
+      rewriter, op->getLoc(), concat_type, inputs_0, concat_axis_attr);
 
   // Doesn't need reshape or transpose if input tensor is rank 0, since inputs
   // are reshaped beforehand.
@@ -251,8 +251,9 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType reshape_output_type =
       RankedTensorType::get(reshape_output_shape, result_type.getElementType());
 
-  auto a2_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(), reshape_output_type, a1_concat_op.getResult(), shape_attr);
+  auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(), reshape_output_type, a1_concat_op.getResult(),
+      shape_attr);
 
   // If axis is equal to input tensor rank, then we need extra transpose
   // [N, A, B, C] to [A, B, C, N]
@@ -262,10 +263,9 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
 
     if (!a3_transpose_perm) return llvm::None;
 
-    return rewriter
-        .create<tosa::TransposeOp>(op->getLoc(), result_type,
-                                   a2_reshape_op.getResult(),
-                                   a3_transpose_perm.getValue())
+    return CreateOpAndInfer<tosa::TransposeOp>(
+               rewriter, op->getLoc(), result_type, a2_reshape_op.getResult(),
+               a3_transpose_perm.getValue())
         .getResult();
   }
 
@@ -314,8 +314,8 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
       a1_transpose_shape[i] = input_shape[perm[i]];
     }
 
-    auto a1_transpose_op = rewriter.create<tosa::TransposeOp>(
-        op->getLoc(),
+    auto a1_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+        rewriter, op->getLoc(),
         RankedTensorType::get(a1_transpose_shape, input_type.getElementType()),
         input_value, a1_transpose_perm.getValue());
 
@@ -350,14 +350,14 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    auto a2_slice_op = rewriter.create<tosa::SliceOp>(
-        op->getLoc(),
+    auto a2_slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
         RankedTensorType::get(size_vals,
                               transposed_input_type.getElementType()),
         transposed_input_value, begin, size);
 
-    auto a3_reshape_op = rewriter.create<tosa::ReshapeOp>(
-        op->getLoc(),
+    auto a3_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(),
         RankedTensorType::get(shape_vals,
                               transposed_input_type.getElementType()),
         a2_slice_op.getResult(), rewriter.getI64ArrayAttr(shape_vals));
@@ -388,9 +388,8 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
   // the same rank as the then/else clauses.
   if (result_type.getRank() == condition_type.getRank()) {
     // Nothing to reshape.
-    return rewriter
-        .create<tosa::SelectOp>(op->getLoc(), result_type, condition_value,
-                                x_value, y_value)
+    return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), result_type,
+                                            condition_value, x_value, y_value)
         .getResult();
   }
 
@@ -402,14 +401,13 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
     new_cond_dims.push_back(condition_type.getShape()[i]);
   }
 
-  auto reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(new_cond_dims, condition_type.getElementType()),
       condition_value, rewriter.getI64ArrayAttr(new_cond_dims));
 
-  return rewriter
-      .create<tosa::SelectOp>(op->getLoc(), result_type, reshape_op, x_value,
-                              y_value)
+  return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), result_type,
+                                          reshape_op, x_value, y_value)
       .getResult();
 }
 
@@ -436,9 +434,8 @@ llvm::Optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
       RankedTensorType::get(input_shape, input_type.getElementType());
   Attribute zero_attr = rewriter.getZeroAttr(zero_type);
 
-  return rewriter
-      .create<tosa::ConstOp>(op->getLoc(), zero_type,
-                             zero_attr.cast<ElementsAttr>())
+  return CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), zero_type,
+                                         zero_attr.cast<ElementsAttr>())
       .getResult();
 }
 
@@ -495,16 +492,16 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
         rewriter, op, input_lhs_val, 1.0f, input_lhs_qtype.getZeroPoint());
     Value op2_rescale_rhs = buildRescaleToInt32(
         rewriter, op, input_rhs_val, 1.0f, input_rhs_qtype.getZeroPoint());
-    auto op3_mul_op1_op2 = rewriter.create<tosa::MulOp>(
-        op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs, 0);
+    auto op3_mul_op1_op2 =
+        CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
+                                      op1_rescale_lhs, op2_rescale_rhs, 0);
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
                         true, scale32);
   }
 
-  return rewriter
-      .create<tosa::MulOp>(op->getLoc(), output_type, input_lhs_val,
-                           input_rhs_val, 0)
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                       input_lhs_val, input_rhs_val, 0)
       .getResult();
 }
 
@@ -527,10 +524,11 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto sub_op = rewriter.create<tosa::SubOp>(op->getLoc(), result_type, x, y);
-  return rewriter
-      .create<tosa::MulOp>(op->getLoc(), result_type, sub_op.getResult(),
-                           sub_op.getResult(), 0)
+  auto sub_op =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
+                                       sub_op.getResult(), sub_op.getResult(),
+                                       0)
       .getResult();
 }
 
@@ -550,12 +548,12 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
     return llvm::None;
   }
 
-  auto add_op = rewriter.create<tosa::AddOp>(
-      op->getLoc(), result_type, input,
+  auto add_op = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), result_type, input,
       getTosaConstTensorSingleF32(rewriter, op, 0.5));
 
-  return rewriter
-      .create<tosa::FloorOp>(op->getLoc(), result_type, add_op.getResult())
+  return CreateOpAndInfer<tosa::FloorOp>(rewriter, op->getLoc(), result_type,
+                                         add_op.getResult())
       .getResult();
 }
 
@@ -628,8 +626,8 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto concat_op = rewriter.create<tosa::ConcatOp>(
-      op->getLoc(), result_value.getType(), values_rescaled,
+  auto concat_op = CreateOpAndInfer<tosa::ConcatOp>(
+      rewriter, op->getLoc(), result_value.getType(), values_rescaled,
       rewriter.getI64IntegerAttr(axis));
 
   return concat_op.getResult();
@@ -796,8 +794,8 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
       DenseElementsAttr::get(a0_pad_const_attr_type,
                              llvm::makeArrayRef(a0_pad_const)));
 
-  auto a1_pad_input_op = rewriter.create<tosa::PadOp>(
-      op->getLoc(),
+  auto a1_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(padded_shape, result_type.getElementType()),
       input_value, a0_pad_const_op.getResult());
 
@@ -828,8 +826,8 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a2_shape[1 + block_rank * 2 + i] = input_shape[1 + block_rank + i];
   }
 
-  auto a2_reshape_a1_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto a2_reshape_a1_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a2_shape, result_type.getElementType()),
       a1_pad_input_op.getResult(), rewriter.getI64ArrayAttr(a2_shape));
 
@@ -863,8 +861,8 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
 
   if (!a3_transpose_const) return llvm::None;
 
-  auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(),
+  auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a3_transpose_shape, result_type.getElementType()),
       a2_reshape_a1_op.getResult(), a3_transpose_const.getValue());
 
@@ -895,10 +893,10 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a4_reshape_shape[1 + block_rank + i] = input_shape[1 + block_rank + i];
   }
 
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), result_type,
-                               a3_transpose_a2_op.getResult(),
-                               rewriter.getI64ArrayAttr(a4_reshape_shape))
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+             rewriter, op->getLoc(), result_type,
+             a3_transpose_a2_op.getResult(),
+             rewriter.getI64ArrayAttr(a4_reshape_shape))
       .getResult();
 }
 
@@ -1046,8 +1044,8 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   for (int i = 0; i < input_rank - 1; i++)
     a1_shape[i + block_rank + 1] = input_shape[i + 1];
 
-  auto a1_reshape_input_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto a1_reshape_input_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a1_shape, result_type.getElementType()),
       input_value, rewriter.getI64ArrayAttr(a1_shape));
 
@@ -1082,8 +1080,8 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
 
   if (!a2_transpose_perm) return llvm::None;
 
-  auto a2_transpose_a1_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(),
+  auto a2_transpose_a1_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a2_transpose_shape, result_type.getElementType()),
       a1_reshape_input_op.getResult(), a2_transpose_perm.getValue());
 
@@ -1103,8 +1101,8 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     a4_shape[1 + block_rank + i] = input_shape[block_rank + 1 + i];
   }
 
-  auto a3_reshape_a2 = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto a3_reshape_a2 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a4_shape, result_type.getElementType()),
       a2_transpose_a1_op.getResult(), rewriter.getI64ArrayAttr(a4_shape));
 
@@ -1131,12 +1129,11 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     }
   }
 
-  return rewriter
-      .create<tosa::SliceOp>(
-          op->getLoc(),
-          RankedTensorType::get(a4_size_vals, result_type.getElementType()),
-          a3_reshape_a2.getResult(), rewriter.getI64ArrayAttr(a4_begin_vals),
-          rewriter.getI64ArrayAttr(a4_size_vals))
+  return CreateOpAndInfer<tosa::SliceOp>(
+             rewriter, op->getLoc(),
+             RankedTensorType::get(a4_size_vals, result_type.getElementType()),
+             a3_reshape_a2.getResult(), rewriter.getI64ArrayAttr(a4_begin_vals),
+             rewriter.getI64ArrayAttr(a4_size_vals))
       .getResult();
 }
 
@@ -1186,9 +1183,8 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
 
   ArrayAttr shape_attr = rewriter.getI64ArrayAttr(reshape_dims);
 
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), output_type, input_value,
-                               shape_attr)
+  return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), output_type,
+                                           input_value, shape_attr)
       .getResult();
 }
 
@@ -1246,9 +1242,8 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
 
   ArrayAttr shape_attr = rewriter.getI64ArrayAttr(reshape_dims);
 
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), output_type, input_value,
-                               shape_attr)
+  return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), output_type,
+                                           input_value, shape_attr)
       .getResult();
 }
 
@@ -1282,21 +1277,21 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
 
   Value zero_const_op = getTosaConstTensorSingleF32(rewriter, op, 0.0);
 
-  auto a1_exp_in_op =
-      rewriter.create<tosa::ExpOp>(op->getLoc(), output_type, features_value);
+  auto a1_exp_in_op = CreateOpAndInfer<tosa::ExpOp>(
+      rewriter, op->getLoc(), output_type, features_value);
 
-  auto a2_sub_a1_one_op = rewriter.create<tosa::SubOp>(
-      op->getLoc(), output_type, a1_exp_in_op.getResult(), one_const_op);
+  auto a2_sub_a1_one_op =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
+                                    a1_exp_in_op.getResult(), one_const_op);
 
-  auto a3_ge_in_zero_op = rewriter.create<tosa::GreaterEqualOp>(
-      op->getLoc(),
+  auto a3_ge_in_zero_op = CreateOpAndInfer<tosa::GreaterEqualOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(output_type.getShape(), rewriter.getIntegerType(1)),
       features_value, zero_const_op);
 
-  return rewriter
-      .create<tosa::SelectOp>(op->getLoc(), output_type,
-                              a3_ge_in_zero_op.getResult(), features_value,
-                              a2_sub_a1_one_op.getResult())
+  return CreateOpAndInfer<tosa::SelectOp>(
+             rewriter, op->getLoc(), output_type, a3_ge_in_zero_op.getResult(),
+             features_value, a2_sub_a1_one_op.getResult())
       .getResult();
 }
 
@@ -1360,12 +1355,12 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
                        in_quant_type.getZeroPoint(), 0, false, true);
 
-      auto op2_reducemax_op1 = rewriter.create<tosa::ReduceMaxOp>(
-          op->getLoc(), int32_rsum_type, op1_rescale_in,
+      auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
           rewriter.getI64IntegerAttr(input_rank - 1));
 
-      auto op3_sub_op1_op2 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_logits_type, op1_rescale_in,
+      auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
           op2_reducemax_op1.getResult());
 
       // Step 2. get exp() result
@@ -1388,58 +1383,63 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Input is 9.7, where lower 7 bits are all zeros.
       // Output is 23 bits, where lower 7 bits should be all zeros as well,
       // since there's no interpolation here.
-      auto op5_table_op4_upper = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_logits_type, op4_rescale_op3,
+      auto op5_table_op4_upper = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
           exp_table_const_upper);
 
-      auto op6_table_op4_lower = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_logits_type, op4_rescale_op3,
+      auto op6_table_op4_lower = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
           exp_table_const_lower);
 
       // To get 16 bits upper/lower value, we need to right shift 7 bits
       // And then we reconstruct 32-bit value we need (upper << 16) + lower
       // So effectively we left shift upper with 9 bits
-      auto op7_lshift_op5 = rewriter.create<tosa::LogicalLeftShiftOp>(
-          op->getLoc(), int32_logits_type, op5_table_op4_upper.getResult(),
+      auto op7_lshift_op5 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op5_table_op4_upper.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 9));
 
       // Right shift 7 bits to get lower 16 bits.
-      auto op8_rshift_op6 = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), int32_logits_type, op6_table_op4_lower.getResult(),
+      auto op8_rshift_op6 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op6_table_op4_lower.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
       // Recover lower bits from [-32768, 32767] back to [0, 65535]
-      auto op9_add_op8_32768 = rewriter.create<tosa::AddOp>(
-          op->getLoc(), int32_logits_type, op8_rshift_op6.getResult(),
+      auto op9_add_op8_32768 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type, op8_rshift_op6.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 32768));
 
-      auto op10_add_op7_op9 = rewriter.create<tosa::AddOp>(
-          op->getLoc(), int32_logits_type, op7_lshift_op5.getResult(),
+      auto op10_add_op7_op9 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type, op7_lshift_op5.getResult(),
           op9_add_op8_32768.getResult());
 
       // Step 3. get sum(exp()). output 12.19
-      auto op11_rshift_op10_12 = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), int32_logits_type, op10_add_op7_op9.getResult(),
+      auto op11_rshift_op10_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op10_add_op7_op9.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 12), true);
 
-      auto op12_reducesum_op11 = rewriter.create<tosa::ReduceSumOp>(
-          op->getLoc(), int32_rsum_type, op11_rshift_op10_12.getResult(),
+      auto op12_reducesum_op11 = CreateOpAndInfer<tosa::ReduceSumOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
+          op11_rshift_op10_12.getResult(),
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
       // CLZ returns headroom_plus_one
-      auto op13_clz_op12 = rewriter.create<tosa::ClzOp>(
-          op->getLoc(), int32_rsum_type, op12_reducesum_op11.getResult());
+      auto op13_clz_op12 =
+          CreateOpAndInfer<tosa::ClzOp>(rewriter, op->getLoc(), int32_rsum_type,
+                                        op12_reducesum_op11.getResult());
 
       // minus one to get headroom
-      auto op14_sub_op13 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_rsum_type, op13_clz_op12.getResult(),
+      auto op14_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op13_clz_op12.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 1));
 
       // Left shift to get s1.30 format
-      auto op15_lshift_op12_op14 = rewriter.create<tosa::LogicalLeftShiftOp>(
-          op->getLoc(), int32_rsum_type, op12_reducesum_op11.getResult(),
-          op14_sub_op13.getResult());
+      auto op15_lshift_op12_op14 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
+          op12_reducesum_op11.getResult(), op14_sub_op13.getResult());
 
       // Step 5. Calculate one_over_one_plus_x() with Newton-Raphson division
       // with 3 iterations.
@@ -1456,42 +1456,43 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // F2 x = constant_48_over_17 + half_denominator *
       // constant_neg_32_over_17;
-      auto op16_mul_half_denominator = rewriter.create<tosa::MulOp>(
-          op->getLoc(), int32_rsum_type, half_denominator,
+      auto op16_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), int32_rsum_type, half_denominator,
           constant_neg_32_over_17, 31);
 
-      auto op17_add_op16 = rewriter.create<tosa::AddOp>(
-          op->getLoc(), int32_rsum_type, op16_mul_half_denominator.getResult(),
-          constant_48_over_17);
+      auto op17_add_op16 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
+          op16_mul_half_denominator.getResult(), constant_48_over_17);
 
       // Newton-Raphson 3x iteration
       Value nr_x = op17_add_op16.getResult();
       for (int i = 0; i < 3; i++) {
         // half_denominator_times_x =
         // SaturatingRoundingDoublingHighMul(half_denominator, x)
-        auto op18_mul_x_half_denominator = rewriter.create<tosa::MulOp>(
-            op->getLoc(), int32_rsum_type, nr_x, half_denominator, 31);
+        auto op18_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+            rewriter, op->getLoc(), int32_rsum_type, nr_x, half_denominator,
+            31);
 
         // F2 one_minus_half_denominator_times_x = F2::One() -
         // half_denominator_times_x
-        auto op19_sub_one_op18 = rewriter.create<tosa::SubOp>(
-            op->getLoc(), int32_rsum_type, F2_one,
+        auto op19_sub_one_op18 = CreateOpAndInfer<tosa::SubOp>(
+            rewriter, op->getLoc(), int32_rsum_type, F2_one,
             op18_mul_x_half_denominator.getResult());
 
         // SaturatingRoundingDoublingHighMul(x,
         // one_minus_half_denominator_times_x)
-        auto op20_mul_x_op19 =
-            rewriter.create<tosa::MulOp>(op->getLoc(), int32_rsum_type, nr_x,
-                                         op19_sub_one_op18.getResult(), 31);
+        auto op20_mul_x_op19 = CreateOpAndInfer<tosa::MulOp>(
+            rewriter, op->getLoc(), int32_rsum_type, nr_x,
+            op19_sub_one_op18.getResult(), 31);
 
         // x + Rescale<2>(x * one_minus_half_denominator_times_x)
-        auto op21_mul_op20_four =
-            rewriter.create<tosa::MulOp>(op->getLoc(), int32_rsum_type,
-                                         op20_mul_x_op19.getResult(), four, 0);
+        auto op21_mul_op20_four = CreateOpAndInfer<tosa::MulOp>(
+            rewriter, op->getLoc(), int32_rsum_type,
+            op20_mul_x_op19.getResult(), four, 0);
 
-        auto op22_add_x_op21 =
-            rewriter.create<tosa::AddOp>(op->getLoc(), int32_rsum_type, nr_x,
-                                         op21_mul_op20_four.getResult());
+        auto op22_add_x_op21 = CreateOpAndInfer<tosa::AddOp>(
+            rewriter, op->getLoc(), int32_rsum_type, nr_x,
+            op21_mul_op20_four.getResult());
 
         nr_x = op22_add_x_op21.getResult();
       }
@@ -1499,23 +1500,23 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 6. multiply exp(x) with 1 / sum(exp(x))
       // combined with Rescale<0>(ExactMulByPot<-1>(x))
       // so shift 30 instead of 31
-      auto op23_mul_op10_x = rewriter.create<tosa::MulOp>(
-          op->getLoc(), int32_logits_type, op10_add_op7_op9.getResult(), nr_x,
-          31 - 1);
+      auto op23_mul_op10_x = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op10_add_op7_op9.getResult(), nr_x, 31 - 1);
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
       // (12 - headroom_plus_one) + 31 - 8 =
       // (12 + 31 - 8) - headroom_plus_one
-      auto op24_sub_op13 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_rsum_type,
+      auto op24_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
           getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8),
           op13_clz_op12.getResult());
 
       auto op25_rshift_op23_op24 =
-          rewriter.create<tosa::ArithmeticRightShiftOp>(
-              op->getLoc(), int32_logits_type, op23_mul_op10_x.getResult(),
-              op24_sub_op13.getResult(), true);
+          CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+              rewriter, op->getLoc(), int32_logits_type,
+              op23_mul_op10_x.getResult(), op24_sub_op13.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
                           op25_rshift_op23_op24.getResult(), 1.0, 0,
@@ -1527,13 +1528,13 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
                        in_quant_type.getZeroPoint(), 0, false, true);
 
-      auto op2_reducemax_op1 = rewriter.create<tosa::ReduceMaxOp>(
-          op->getLoc(), int32_rsum_type, op1_rescale_in,
+      auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // output range is [-65535, 0]
-      auto op3_sub_op1_op2 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_logits_type, op1_rescale_in,
+      auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
           op2_reducemax_op1.getResult());
 
       auto exp_func = [](double x) -> double { return std::exp(x); };
@@ -1553,42 +1554,45 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Output is 15.7.
       // In 8-bit case, no interpolation here, since input should be right on
       // table entry.
-      auto op5_table_op4 = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_logits_type, op4_rescale_op3, exp_table_const);
+      auto op5_table_op4 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          exp_table_const);
 
       // Right shift 7 bits. output 15. Shouldn't lose any precision since last
       // 7 bits should be all 0.
-      auto op6_rshift_op5 = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), int32_logits_type, op5_table_op4.getResult(),
+      auto op6_rshift_op5 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type, op5_table_op4.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
       // Step 4. get sum(exp()). output 16.15
-      auto op7_reducesum_op6 = rewriter.create<tosa::ReduceSumOp>(
-          op->getLoc(), int32_rsum_type, op6_rshift_op5.getResult(),
+      auto op7_reducesum_op6 = CreateOpAndInfer<tosa::ReduceSumOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op6_rshift_op5.getResult(),
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // Step 5. calculate reciprocal(sum(exp()))
       // CLZ returns 32 - first non zero bit
-      auto op8_clz_op7 = rewriter.create<tosa::ClzOp>(
-          op->getLoc(), int32_rsum_type, op7_reducesum_op6.getResult());
+      auto op8_clz_op7 =
+          CreateOpAndInfer<tosa::ClzOp>(rewriter, op->getLoc(), int32_rsum_type,
+                                        op7_reducesum_op6.getResult());
 
-      auto op9_sub_op8 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_rsum_type, op8_clz_op7.getResult(),
+      auto op9_sub_op8 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op8_clz_op7.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 1));
 
       // Left shift to get  1.30 format
-      auto op10_lshift_op7_op9 = rewriter.create<tosa::LogicalLeftShiftOp>(
-          op->getLoc(), int32_rsum_type, op7_reducesum_op6.getResult(),
-          op9_sub_op8.getResult());
+      auto op10_lshift_op7_op9 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
+          op7_reducesum_op6.getResult(), op9_sub_op8.getResult());
 
       // Subtract (1 << 30) to make 0 <= x <= 1 under 0.30 format
-      auto op11_sub_op10 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_rsum_type, op10_lshift_op7_op9.getResult(),
+      auto op11_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
+          op10_lshift_op7_op9.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, (1u << 30)));
 
       // Right shift 14 bits to get output range [0, 65535]
-      auto op12_rshift_op11 = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), int32_rsum_type, op11_sub_op10.getResult(),
+      auto op12_rshift_op11 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op11_sub_op10.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 14), true);
 
       // Remap input to [-32768, 32767] for LUT input
@@ -1605,31 +1609,32 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           rewriter, op, one_over_one_plus_x_func, 0.0, 1.0);
 
       // Get (1 / sum(exp(x))) result as 23 bits (including sign bit)
-      auto op14_table_op13 = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_rsum_type, op13_rescale_op12,
+      auto op14_table_op13 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op13_rescale_op12,
           one_over_one_plus_x_table_const);
 
       // Right shift 7 bits back to 0.15
-      auto op15_rshift_op14 = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), int32_rsum_type, op14_table_op13.getResult(),
+      auto op15_rshift_op14 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op14_table_op13.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
       // Step 6. multiply exp(max-x) with 1 / sum(exp(max-x))
       // lhs: 0.15, rhs: 0.15, output: 0.30
-      auto op16_mul_op15_op6 = rewriter.create<tosa::MulOp>(
-          op->getLoc(), int32_logits_type, op15_rshift_op14, op6_rshift_op5, 0);
+      auto op16_mul_op15_op6 = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), int32_logits_type, op15_rshift_op14,
+          op6_rshift_op5, 0);
 
-      auto op17_sub_op8 = rewriter.create<tosa::SubOp>(
-          op->getLoc(), int32_rsum_type,
+      auto op17_sub_op8 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type,
           getTosaConstTensorSingleI32(rewriter, op, 31),
           op8_clz_op7.getResult());
 
       // Apply the clz back, we get 0.15 output
       // [0, 32767] corresponding to [0.0, 1.0]
       auto op18_rshift_op16_op17 =
-          rewriter.create<tosa::ArithmeticRightShiftOp>(
-              op->getLoc(), int32_logits_type, op16_mul_op15_op6.getResult(),
-              op17_sub_op8.getResult(), true);
+          CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+              rewriter, op->getLoc(), int32_logits_type,
+              op16_mul_op15_op6.getResult(), op17_sub_op8.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
                           op18_rshift_op16_op17.getResult(),
@@ -1651,22 +1656,22 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // op2 = reduce_sum(op1, -1)
     // op3 = reciprocal(op2)
     // op4 = mul(op1, op3)
-    auto op1_exp_in =
-        rewriter.create<tosa::ExpOp>(op->getLoc(), output_type, logits_value);
+    auto op1_exp_in = CreateOpAndInfer<tosa::ExpOp>(rewriter, op->getLoc(),
+                                                    output_type, logits_value);
     RankedTensorType rsum_type =
         RankedTensorType::get(rsum_shape, output_type.getElementType());
 
     // Keep dims so we don't need to reshape later
-    auto op2_reducesum_op1 = rewriter.create<tosa::ReduceSumOp>(
-        op->getLoc(), rsum_type, op1_exp_in.getResult(),
+    auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
+        rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
         rewriter.getI64IntegerAttr(input_rank - 1));
-    auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-        op->getLoc(), op2_reducesum_op1.getType(),
+    auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
+        rewriter, op->getLoc(), op2_reducesum_op1.getType(),
         op2_reducesum_op1.getResult());
 
-    return rewriter
-        .create<tosa::MulOp>(op->getLoc(), output_type, op1_exp_in.getResult(),
-                             op3_reciprocal_op2.getResult(), 0)
+    return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                         op1_exp_in.getResult(),
+                                         op3_reciprocal_op2.getResult(), 0)
         .getResult();
   }
 }
@@ -1708,8 +1713,8 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto op1_exp_in =
-      rewriter.create<tosa::ExpOp>(op->getLoc(), output_type, logits_value);
+  auto op1_exp_in = CreateOpAndInfer<tosa::ExpOp>(rewriter, op->getLoc(),
+                                                  output_type, logits_value);
 
   // reduce_sum on last dimension
   int32_t input_rank = input_type.getShape().size();
@@ -1719,19 +1724,19 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   RankedTensorType rsum_type =
       RankedTensorType::get(rsum_shape, output_type.getElementType());
   // Keep dims so we don't need to reshape later
-  auto op2_reducesum_op1 = rewriter.create<tosa::ReduceSumOp>(
-      op->getLoc(), rsum_type, op1_exp_in.getResult(),
+  auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
+      rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
       rewriter.getI64IntegerAttr(input_rank - 1));
-  auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), op2_reducesum_op1.getType(), op2_reducesum_op1.getResult());
+  auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
+      rewriter, op->getLoc(), op2_reducesum_op1.getType(),
+      op2_reducesum_op1.getResult());
 
-  auto op4_mul_op1_op3 = rewriter.create<tosa::MulOp>(
-      op->getLoc(), output_type, op1_exp_in.getResult(),
+  auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, op1_exp_in.getResult(),
       op3_reciprocal_op2.getResult(), 0);
 
-  return rewriter
-      .create<tosa::LogOp>(op->getLoc(), output_type,
-                           op4_mul_op1_op3.getResult())
+  return CreateOpAndInfer<tosa::LogOp>(rewriter, op->getLoc(), output_type,
+                                       op4_mul_op1_op3.getResult())
       .getResult();
 }
 
@@ -1798,8 +1803,8 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   RankedTensorType a_reshape_output_type =
       RankedTensorType::get(a_reshape_dims, output_type.getElementType());
-  auto a2_reshape_a_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(), a_reshape_output_type, input_value,
+  auto a2_reshape_a_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(), a_reshape_output_type, input_value,
       rewriter.getI64ArrayAttr(a_reshape_dims));
 
   llvm::Optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
@@ -1807,9 +1812,9 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   if (!a3_transpose_perm) return llvm::None;
 
-  auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(), a_reshape_output_type, a2_reshape_a_op.getResult(),
-      a3_transpose_perm.getValue());
+  auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(), a_reshape_output_type,
+      a2_reshape_a_op.getResult(), a3_transpose_perm.getValue());
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -1819,10 +1824,10 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   RankedTensorType a3_reshape_output_type =
       RankedTensorType::get(a3_reshape_dims, output_type.getElementType());
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), a3_reshape_output_type,
-                               a3_transpose_a2_op.getResult(),
-                               rewriter.getI64ArrayAttr(a3_reshape_dims))
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+             rewriter, op->getLoc(), a3_reshape_output_type,
+             a3_transpose_a2_op.getResult(),
+             rewriter.getI64ArrayAttr(a3_reshape_dims))
       .getResult();
 }
 
@@ -1885,8 +1890,8 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   RankedTensorType a_reshape_output_type =
       RankedTensorType::get(a_reshape_dims, output_type.getElementType());
-  auto a2_reshape_a_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(), a_reshape_output_type, input_value,
+  auto a2_reshape_a_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(), a_reshape_output_type, input_value,
       rewriter.getI64ArrayAttr(a_reshape_dims));
 
   llvm::Optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
@@ -1894,9 +1899,9 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   if (!a3_transpose_perm) return llvm::None;
 
-  auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(), a_reshape_output_type, a2_reshape_a_op.getResult(),
-      a3_transpose_perm.getValue());
+  auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(), a_reshape_output_type,
+      a2_reshape_a_op.getResult(), a3_transpose_perm.getValue());
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -1906,10 +1911,10 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   RankedTensorType a3_reshape_output_type =
       RankedTensorType::get(a3_reshape_dims, output_type.getElementType());
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), a3_reshape_output_type,
-                               a3_transpose_a2_op.getResult(),
-                               rewriter.getI64ArrayAttr(a3_reshape_dims))
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+             rewriter, op->getLoc(), a3_reshape_output_type,
+             a3_transpose_a2_op.getResult(),
+             rewriter.getI64ArrayAttr(a3_reshape_dims))
       .getResult();
 }
 
@@ -1939,7 +1944,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis > 0 && axis < input_shape.size());
+  assert(axis >= 0 && axis < input_shape.size());
   assert((input_shape[axis] % num_split) == 0);
   assert(num_split > 0);
 
@@ -1963,8 +1968,8 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    auto slice_op = rewriter.create<tosa::SliceOp>(
-        op->getLoc(),
+    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
         RankedTensorType::get(size_vals, result_type.getElementType()),
         input_value, begin, size);
 
@@ -2000,7 +2005,7 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis > 0 && axis < input_shape.size());
+  assert(axis >= 0 && axis < input_shape.size());
   int32_t size_split_sum = 0;
   for (int i = 0; i < size_split.size(); i++) {
     size_split_sum += size_split[i];
@@ -2028,8 +2033,8 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    auto slice_op = rewriter.create<tosa::SliceOp>(
-        op->getLoc(),
+    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
         RankedTensorType::get(size_vals, result_type.getElementType()),
         input_value, begin, size);
 
@@ -2100,8 +2105,8 @@ llvm::Optional<Value> convertStridedSliceOp(
   const int32_t all_masks_one = (1 << strides_size) - 1;
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return rewriter
-        .create<tensor::CastOp>(op->getLoc(), result_type, input_value)
+    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
+                                            input_value)
         .getResult();
   }
 
@@ -2117,8 +2122,8 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return rewriter
-        .create<tensor::CastOp>(op->getLoc(), result_type, input_value)
+    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
+                                            input_value)
         .getResult();
   }
 
@@ -2203,34 +2208,34 @@ llvm::Optional<Value> convertStridedSliceOp(
   assert(residual == 1);
 
   // Step 1: Slice the input array
-  auto a1_slice_op = rewriter.create<tosa::SliceOp>(
-      op->getLoc(), RankedTensorType::get(a1_size, input_type.getElementType()),
-      input_value, rewriter.getI64ArrayAttr(a1_begin),
-      rewriter.getI64ArrayAttr(a1_size));
+  auto a1_slice_op = CreateOpAndInfer<tosa::SliceOp>(
+      rewriter, op->getLoc(),
+      RankedTensorType::get(a1_size, input_type.getElementType()), input_value,
+      rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return rewriter
-        .create<tensor::CastOp>(op->getLoc(), result_type, a1_slice_op)
+    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
+                                            a1_slice_op)
         .getResult();
   }
 
   // Step 2: reshape the sliced array
-  auto a2_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a2_shape, input_type.getElementType()),
       a1_slice_op.getResult(), rewriter.getI64ArrayAttr(a2_shape));
 
   // Step 3: take a slice along the strides
-  auto a3_slice_op = rewriter.create<tosa::SliceOp>(
-      op->getLoc(), RankedTensorType::get(a3_size, input_type.getElementType()),
+  auto a3_slice_op = CreateOpAndInfer<tosa::SliceOp>(
+      rewriter, op->getLoc(),
+      RankedTensorType::get(a3_size, input_type.getElementType()),
       a2_reshape_op.getResult(), rewriter.getI64ArrayAttr(a3_begin),
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), result_type,
-                               a3_slice_op.getResult(),
-                               rewriter.getI64ArrayAttr(a4_shape))
+  return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
+                                           a3_slice_op.getResult(),
+                                           rewriter.getI64ArrayAttr(a4_shape))
       .getResult();
 }
 
@@ -2245,27 +2250,25 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // return a3;
-  RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType output_type = result_value.getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!output_type) return llvm::None;
 
   Type element_type = output_type.getElementType();
 
   if (element_type.isa<IntegerType>()) {
-    return rewriter
-        .create<tosa::DivOp>(op->getLoc(), output_type, lhs_value, rhs_value)
+    return CreateOpAndInfer<tosa::DivOp>(rewriter, op->getLoc(), output_type,
+                                         lhs_value, rhs_value)
         .getResult();
   }
 
-  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), rhs_value.getType(), rhs_value);
-  auto a2_mul_lhs_a1_op =
-      rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
-                                   a1_reciprocal_rhs_op.getResult(), 0);
-  return rewriter
-      .create<tosa::FloorOp>(op->getLoc(), output_type,
-                             a2_mul_lhs_a1_op.getResult())
+  auto a1_reciprocal_rhs_op = CreateOpAndInfer<tosa::ReciprocalOp>(
+      rewriter, op->getLoc(), rhs_value.getType(), rhs_value);
+  auto a2_mul_lhs_a1_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, lhs_value,
+      a1_reciprocal_rhs_op.getResult(), 0);
+  return CreateOpAndInfer<tosa::FloorOp>(rewriter, op->getLoc(), output_type,
+                                         a2_mul_lhs_a1_op.getResult())
       .getResult();
 }
 
@@ -2286,17 +2289,16 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
-  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), rhs_value.getType(), rhs_value);
-  auto a2_mul_lhs_a1_op =
-      rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
-                                   a1_reciprocal_rhs_op.getResult(), 0);
-  auto a3_floor_a2_op = rewriter.create<tosa::FloorOp>(
-      op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
-  return rewriter
-      .create<tosa::SubOp>(op->getLoc(), output_type,
-                           a2_mul_lhs_a1_op.getResult(),
-                           a3_floor_a2_op.getResult())
+  auto a1_reciprocal_rhs_op = CreateOpAndInfer<tosa::ReciprocalOp>(
+      rewriter, op->getLoc(), rhs_value.getType(), rhs_value);
+  auto a2_mul_lhs_a1_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, lhs_value,
+      a1_reciprocal_rhs_op.getResult(), 0);
+  auto a3_floor_a2_op = CreateOpAndInfer<tosa::FloorOp>(
+      rewriter, op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
+  return CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
+                                       a2_mul_lhs_a1_op.getResult(),
+                                       a3_floor_a2_op.getResult())
       .getResult();
 }
 
@@ -2323,8 +2325,8 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       int32_t quantized_0 = input_qtype.getZeroPoint();
       int32_t quantized_max = input_qtype.getStorageTypeMax();
 
-      auto clamp_op = rewriter.create<tosa::ClampOp>(
-          op->getLoc(), input_type, input_value,
+      auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
+          rewriter, op->getLoc(), input_type, input_value,
           rewriter.getI64IntegerAttr(quantized_0),
           rewriter.getI64IntegerAttr(quantized_max),
           rewriter.getF32FloatAttr(0), rewriter.getF32FloatAttr(0));
@@ -2335,8 +2337,8 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       int32_t quantized_6 = std::llround((6.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
 
-      auto clamp_op = rewriter.create<tosa::ClampOp>(
-          op->getLoc(), input_type, input_value,
+      auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
+          rewriter, op->getLoc(), input_type, input_value,
           rewriter.getI64IntegerAttr(quantized_0),
           rewriter.getI64IntegerAttr(quantized_6), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
@@ -2348,8 +2350,8 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       int32_t quantized_1 = std::llround((1.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
 
-      auto clamp_op = rewriter.create<tosa::ClampOp>(
-          op->getLoc(), input_type, input_value,
+      auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
+          rewriter, op->getLoc(), input_type, input_value,
           rewriter.getI64IntegerAttr(quantized_n1),
           rewriter.getI64IntegerAttr(quantized_1), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
@@ -2370,31 +2372,32 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       }
 
       if (fused_activation_fn.getValue() == "RELU") {
-        return rewriter
-            .create<tosa::ClampOp>(
-                op->getLoc(), input_type, input_value,
-                rewriter.getI64IntegerAttr(0),
-                rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-                rewriter.getF32FloatAttr(0.0f),
-                rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
+        return CreateOpAndInfer<tosa::ClampOp>(
+                   rewriter, op->getLoc(), input_type, input_value,
+                   rewriter.getI64IntegerAttr(0),
+                   rewriter.getI64IntegerAttr(
+                       std::numeric_limits<int32_t>::max()),
+                   rewriter.getF32FloatAttr(0.0f),
+                   rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU6") {
-        return rewriter
-            .create<tosa::ClampOp>(
-                op->getLoc(), input_type, input_value,
-                rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
-                rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f))
+        return CreateOpAndInfer<tosa::ClampOp>(
+                   rewriter, op->getLoc(), input_type, input_value,
+                   rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
+                   rewriter.getF32FloatAttr(0.0f),
+                   rewriter.getF32FloatAttr(6.0f))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-        return rewriter
-            .create<tosa::ClampOp>(
-                op->getLoc(), input_type, input_value,
-                rewriter.getI64IntegerAttr(-1), rewriter.getI64IntegerAttr(1),
-                rewriter.getF32FloatAttr(-1.0), rewriter.getF32FloatAttr(1.0))
+        return CreateOpAndInfer<tosa::ClampOp>(rewriter, op->getLoc(),
+                                               input_type, input_value,
+                                               rewriter.getI64IntegerAttr(-1),
+                                               rewriter.getI64IntegerAttr(1),
+                                               rewriter.getF32FloatAttr(-1.0),
+                                               rewriter.getF32FloatAttr(1.0))
             .getResult();
       } else if (fused_activation_fn.getValue() == "TANH") {
-        return rewriter
-            .create<tosa::TanhOp>(op->getLoc(), input_type, input_value)
+        return CreateOpAndInfer<tosa::TanhOp>(rewriter, op->getLoc(),
+                                              input_type, input_value)
             .getResult();
       } else {
         // Unsupported activation type. Bail out.
@@ -2424,8 +2427,8 @@ llvm::Optional<Value> convertReduceOpCommon(
 
   if (axes_elems.getNumElements() == 0) {
     // No axes means return the original tensor.
-    auto identity_op =
-        rewriter.create<tosa::IdentityOp>(op->getLoc(), output_type, val);
+    auto identity_op = CreateOpAndInfer<tosa::IdentityOp>(
+        rewriter, op->getLoc(), output_type, val);
     val = identity_op.getResult();
   } else {
     // Reduce along each axis
@@ -2444,8 +2447,8 @@ llvm::Optional<Value> convertReduceOpCommon(
       RankedTensorType reduce_type =
           RankedTensorType::get(shape_vec, reduce_element_type);
 
-      auto reduce_op =
-          rewriter.create<T>(op->getLoc(), reduce_type, val, axis_attr);
+      auto reduce_op = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type,
+                                           val, axis_attr);
 
       val = reduce_op.getResult();
     }
@@ -2459,8 +2462,8 @@ llvm::Optional<Value> convertReduceOpCommon(
 
     // Optionally squeeze out the reduced axes.
     if (!keep_dims) {
-      auto reshape_op = rewriter.create<tosa::ReshapeOp>(
-          op->getLoc(), output_type, val,
+      auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+          rewriter, op->getLoc(), output_type, val,
           rewriter.getI64ArrayAttr(output_shape));
       val = reshape_op.getResult();
     }
@@ -2666,9 +2669,8 @@ llvm::Optional<Value> convertReduceMeanOp(
 
   if (!input_is_qtype) {
     Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);
-    return rewriter
-        .create<tosa::MulOp>(op->getLoc(), output_type, val.getValue(),
-                             div_const, 0)
+    return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                         val.getValue(), div_const, 0)
         .getResult();
   }
 
@@ -2803,9 +2805,9 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
         return llvm::None;
       }
 
-      auto resize_op = rewriter.create<tosa::ResizeOp>(
-          op->getLoc(), output_acc_type, input_value, output_size, stride,
-          offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
+      auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
+          rewriter, op->getLoc(), output_acc_type, input_value, output_size,
+          stride, offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
           rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
 
 #ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
@@ -2821,24 +2823,26 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       Value cst_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
       Value cst_twenty = getTosaConstTensorSingleI32(rewriter, op, 20);
 
-      auto ge_op = rewriter.create<tosa::GreaterEqualOp>(
-          op->getLoc(), output_bool_type, resize_op.getResult(), cst_zero);
+      auto ge_op = CreateOpAndInfer<tosa::GreaterEqualOp>(
+          rewriter, op->getLoc(), output_bool_type, resize_op.getResult(),
+          cst_zero);
 
-      auto abs_op = rewriter.create<tosa::AbsOp>(op->getLoc(), output_acc_type,
-                                                 resize_op.getResult());
+      auto abs_op = CreateOpAndInfer<tosa::AbsOp>(
+          rewriter, op->getLoc(), output_acc_type, resize_op.getResult());
 
-      auto rshift_op = rewriter.create<tosa::ArithmeticRightShiftOp>(
-          op->getLoc(), output_acc_type, abs_op.getResult(), cst_twenty, true);
+      auto rshift_op = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), output_acc_type, abs_op.getResult(),
+          cst_twenty, true);
 
-      auto negate_op = rewriter.create<tosa::NegateOp>(
-          op->getLoc(), output_acc_type, rshift_op.getResult());
+      auto negate_op = CreateOpAndInfer<tosa::NegateOp>(
+          rewriter, op->getLoc(), output_acc_type, rshift_op.getResult());
 
-      auto select_op = rewriter.create<tosa::SelectOp>(
-          op->getLoc(), output_acc_type, ge_op.getResult(),
+      auto select_op = CreateOpAndInfer<tosa::SelectOp>(
+          rewriter, op->getLoc(), output_acc_type, ge_op.getResult(),
           rshift_op.getResult(), negate_op.getResult());
 
-      auto cast_op = rewriter.create<tosa::CastOp>(op->getLoc(), output_type,
-                                                   select_op.getResult());
+      auto cast_op = CreateOpAndInfer<tosa::CastOp>(
+          rewriter, op->getLoc(), output_type, select_op.getResult());
 
       return cast_op.getResult();
 #else
@@ -2849,9 +2853,9 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 #endif
 
     } else if (mode == "NEAREST_NEIGHBOR") {
-      auto resize_op = rewriter.create<tosa::ResizeOp>(
-          op->getLoc(), output_type, input_value, output_size, stride, offset,
-          shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
+      auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
+          rewriter, op->getLoc(), output_type, input_value, output_size, stride,
+          offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
           rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
       return resize_op.getResult();
     } else {
@@ -2860,8 +2864,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       return llvm::None;
     }
   } else {
-    auto resize_op = rewriter.create<tosa::ResizeOp>(
-        op->getLoc(), output_type, input_value, output_size,
+    auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
+        rewriter, op->getLoc(), output_type, input_value, output_size,
         rewriter.getI64ArrayAttr({0, 0}), rewriter.getI64ArrayAttr({0, 0}),
         rewriter.getI32IntegerAttr(0),
         rewriter.getF32ArrayAttr(
@@ -2875,15 +2879,13 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        RankedTensorType output_type,
+                                        Operation* op, ShapedType output_type,
                                         Value input_value, double scale,
                                         int64_t zeropoint) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
-  auto output_shape = output_type.getShape();
   auto output_element_type = output_type.getElementType();
 
   // output element type could only be quantized integer
@@ -2893,30 +2895,31 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  RankedTensorType output_fp_type =
-      RankedTensorType::get(output_shape, rewriter.getF32Type());
+  ShapedType output_fp_type = output_type.clone(rewriter.getF32Type());
 
   Value zp_val =
       getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
 
-  auto op1_mul_in = rewriter.create<tosa::MulOp>(
-      op->getLoc(), output_fp_type, input_value,
+  auto op1_mul_in = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_fp_type, input_value,
       getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
 
-  auto op2_add_op1 = rewriter.create<tosa::AddOp>(
-      op->getLoc(), output_fp_type, op1_mul_in.getResult(), zp_val);
+  auto op2_add_op1 = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), output_fp_type, op1_mul_in.getResult(), zp_val);
 
-  auto op3_cast_op2 = rewriter.create<tosa::CastOp>(op->getLoc(), output_type,
-                                                    op2_add_op1.getResult());
+  auto op3_cast_op2 = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, op->getLoc(), output_type, op2_add_op1.getResult());
 
   return op3_cast_op2.getResult();
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
-llvm::Optional<Value> convertDequantizeOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ArrayRef<float> scale, ArrayRef<float> zeropoint,
-    int64_t dim) {
+llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input_value,
+                                          ArrayRef<float> scale,
+                                          ArrayRef<float> zeropoint,
+                                          int64_t dim) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2949,22 +2952,22 @@ llvm::Optional<Value> convertDequantizeOp(
 
   if (!zp_val || !scale_val) return llvm::None;
 
-  auto op1_cast_in =
-      rewriter.create<tosa::CastOp>(op->getLoc(), output_type, input_value);
+  auto op1_cast_in = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                    output_type, input_value);
 
-  auto op2_sub_op1 = rewriter.create<tosa::SubOp>(
-      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val.getValue());
+  auto op2_sub_op1 =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
+                                    op1_cast_in.getResult(), zp_val.getValue());
 
-  return rewriter
-      .create<tosa::MulOp>(op->getLoc(), output_type, op2_sub_op1.getResult(),
-                           scale_val.getValue(), 0)
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                       op2_sub_op1.getResult(),
+                                       scale_val.getValue(), 0)
       .getResult();
 }
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
+                                         Operation* op, ShapedType output_type,
                                          Value input_value, double min,
                                          double max, int64_t num_bits,
                                          bool narrow_range) {
@@ -3000,30 +3003,31 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
 
   // This code originates from
   // tensorflow/core/kernels/fake_quant_ops_functor.h.
-  auto op1_min_in = rewriter.create<tosa::MinimumOp>(op->getLoc(), output_type,
-                                                     input_value, cst_max);
+  auto op1_min_in = CreateOpAndInfer<tosa::MinimumOp>(
+      rewriter, op->getLoc(), output_type, input_value, cst_max);
 
-  auto op2_max_op1 = rewriter.create<tosa::MaximumOp>(
-      op->getLoc(), output_type, op1_min_in.getResult(), cst_min);
+  auto op2_max_op1 = CreateOpAndInfer<tosa::MaximumOp>(
+      rewriter, op->getLoc(), output_type, op1_min_in.getResult(), cst_min);
 
-  auto op3_sub_op2 = rewriter.create<tosa::SubOp>(
-      op->getLoc(), output_type, op2_max_op1.getResult(), cst_min);
+  auto op3_sub_op2 = CreateOpAndInfer<tosa::SubOp>(
+      rewriter, op->getLoc(), output_type, op2_max_op1.getResult(), cst_min);
 
-  auto op4_mul_op3 = rewriter.create<tosa::MulOp>(
-      op->getLoc(), output_type, op3_sub_op2.getResult(), cst_inv_scale, 0);
+  auto op4_mul_op3 =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                    op3_sub_op2.getResult(), cst_inv_scale, 0);
 
-  auto op5_add_op4 = rewriter.create<tosa::AddOp>(
-      op->getLoc(), output_type, op4_mul_op3.getResult(), cst_half);
+  auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
+      rewriter, op->getLoc(), output_type, op4_mul_op3.getResult(), cst_half);
 
-  auto op6_floor_op5 = rewriter.create<tosa::FloorOp>(op->getLoc(), output_type,
-                                                      op5_add_op4.getResult());
+  auto op6_floor_op5 = CreateOpAndInfer<tosa::FloorOp>(
+      rewriter, op->getLoc(), output_type, op5_add_op4.getResult());
 
-  auto op7_mul_op6 = rewriter.create<tosa::MulOp>(
-      op->getLoc(), output_type, op6_floor_op5.getResult(), cst_scale, 0);
+  auto op7_mul_op6 =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                    op6_floor_op5.getResult(), cst_scale, 0);
 
-  return rewriter
-      .create<tosa::AddOp>(op->getLoc(), output_type, op7_mul_op6.getResult(),
-                           cst_min)
+  return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
+                                       op7_mul_op6.getResult(), cst_min)
       .getResult();
 }
 
@@ -3050,8 +3054,8 @@ llvm::Optional<Value> convertTFConv2DCommon(
 
   if (!a1_filter_transpose_perm) return llvm::None;
 
-  auto a1_filter_transpose_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(),
+  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(a1_transpose_dims, filter_type.getElementType()),
       filter, a1_filter_transpose_perm.getValue());
 
@@ -3107,10 +3111,9 @@ llvm::Optional<Value> convertTFConv2DCommon(
     }
   }
 
-  return rewriter
-      .create<tosa::Conv2DOp>(op->getLoc(), output_type, input,
-                              a1_filter_transpose_op.getResult(), bias, pad,
-                              stride, dilation)
+  return CreateOpAndInfer<tosa::Conv2DOp>(
+             rewriter, op->getLoc(), output_type, input,
+             a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
       .getResult();
 }
 
@@ -3333,39 +3336,39 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   if (!params_transpose_perm_val || !result_transpose_perm_val)
     return llvm::None;
 
-  auto params_transpose_op = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(),
+  auto params_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(params_transpose_shape,
                             params_type.getElementType()),
       params_value, params_transpose_perm_val.getValue());
 
-  auto tosa_values_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_values_shape, params_type.getElementType()),
       params_transpose_op.getResult(),
       rewriter.getI64ArrayAttr(tosa_values_shape));
 
-  auto tosa_indices_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_indices_shape, indices_type.getElementType()),
       indices_value, rewriter.getI64ArrayAttr(tosa_indices_shape));
 
-  auto tosa_gather_op = rewriter.create<tosa::GatherOp>(
-      op->getLoc(),
+  auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_gather_result_shape,
                             result_type.getElementType()),
       tosa_values_reshape_op.getResult(), tosa_indices_reshape_op.getResult());
 
-  auto tosa_result_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto tosa_result_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(result_reshape_shape, params_type.getElementType()),
       tosa_gather_op.getResult(),
       rewriter.getI64ArrayAttr(result_reshape_shape));
 
-  return rewriter
-      .create<tosa::TransposeOp>(op->getLoc(), result_type,
-                                 tosa_result_reshape_op.getResult(),
-                                 result_transpose_perm_val.getValue())
+  return CreateOpAndInfer<tosa::TransposeOp>(
+             rewriter, op->getLoc(), result_type,
+             tosa_result_reshape_op.getResult(),
+             result_transpose_perm_val.getValue())
       .getResult();
 }
 
@@ -3474,14 +3477,14 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   SmallVector<int64_t, 2> indices_matrix_shape({W, ND});
   SmallVector<int64_t, 3> tosa_gather_result_shape({N, W, C});
 
-  auto tosa_values_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_values_shape, params_type.getElementType()),
       params_value, rewriter.getI64ArrayAttr(tosa_values_shape));
 
   // Flatten the input indices tensor to an [W, ND] matrix.
-  auto indices_matrix_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto indices_matrix_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(indices_matrix_shape,
                             indices_type.getElementType()),
       indices_value, rewriter.getI64ArrayAttr(indices_matrix_shape));
@@ -3503,39 +3506,38 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   if (!flattened_coeff_value) return llvm::None;
 
   // Multiply the coefficients by the coordinates
-  auto flattened_indices_mul_op = rewriter.create<tosa::MulOp>(
-      op->getLoc(),
+  auto flattened_indices_mul_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(indices_matrix_shape,
                             indices_type.getElementType()),
       indices_matrix_reshape_op.getResult(), flattened_coeff_value.getValue(),
       0);
 
   // Sum up the products of the coefficients and coordinates
-  auto flattened_indices_reduce_op = rewriter.create<tosa::ReduceSumOp>(
-      op->getLoc(),
+  auto flattened_indices_reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_indices_shape, indices_type.getElementType()),
       flattened_indices_mul_op.getResult(), rewriter.getI64IntegerAttr(1));
 
   // And reshape to [N, W]
-  auto tosa_indices_reshape_op = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_indices_shape, indices_type.getElementType()),
       flattened_indices_reduce_op.getResult(),
       rewriter.getI64ArrayAttr(tosa_indices_shape));
 
   // Now the gather op itself
-  auto tosa_gather_op = rewriter.create<tosa::GatherOp>(
-      op->getLoc(),
+  auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get(tosa_gather_result_shape,
                             result_type.getElementType()),
       tosa_values_reshape_op.getResult(), tosa_indices_reshape_op.getResult());
 
   // Finally, reshape back to the original output shape of [Indices,
   // ParamChannels].
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), result_type,
-                               tosa_gather_op.getResult(),
-                               rewriter.getI64ArrayAttr(result_type.getShape()))
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+             rewriter, op->getLoc(), result_type, tosa_gather_op.getResult(),
+             rewriter.getI64ArrayAttr(result_type.getShape()))
       .getResult();
 }
 
@@ -3614,45 +3616,45 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Reshape on_value to [1, 1, 1]
-  auto op1_reshape_on_value = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto op1_reshape_on_value = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({1, 1, 1}, on_value_type.getElementType()),
       on_value, rewriter.getI64ArrayAttr({1, 1, 1}));
 
   // And tile to [N, W, C]
-  auto op2_tile_op1 = rewriter.create<tosa::TileOp>(
-      op->getLoc(),
+  auto op2_tile_op1 = CreateOpAndInfer<tosa::TileOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({N, W, C}, on_value_type.getElementType()),
       op1_reshape_on_value.getResult(), rewriter.getI64ArrayAttr({N, W, C}));
 
   // Reshape off_value to [1, 1, 1]
-  auto op3_reshape_off_value = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto op3_reshape_off_value = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({1, 1, 1}, off_value_type.getElementType()),
       off_value, rewriter.getI64ArrayAttr({1, 1, 1}));
 
   // And tile to [N, K, C]
-  auto op4_tile_op3 = rewriter.create<tosa::TileOp>(
-      op->getLoc(),
+  auto op4_tile_op3 = CreateOpAndInfer<tosa::TileOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({N, K, C}, on_value_type.getElementType()),
       op3_reshape_off_value.getResult(), rewriter.getI64ArrayAttr({N, K, C}));
 
   // Reshape indices to [N, W]
-  auto op5_reshape_indices = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto op5_reshape_indices = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({N, W}, indices_type.getElementType()),
       indices_value, rewriter.getI64ArrayAttr({N, W}));
 
   // Scatter to [N, K, C]
-  auto op6_scatter_op4_op5_op2 = rewriter.create<tosa::ScatterOp>(
-      op->getLoc(),
+  auto op6_scatter_op4_op5_op2 = CreateOpAndInfer<tosa::ScatterOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({N, K, C}, result_type.getElementType()),
       op4_tile_op3.getResult(), op5_reshape_indices.getResult(),
       op2_tile_op1.getResult());
 
   // Reshaped to [LeftDims, RightDims, K]. C being squeezed out since it's 1.
-  auto op7_reshape_op6 = rewriter.create<tosa::ReshapeOp>(
-      op->getLoc(),
+  auto op7_reshape_op6 = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({left_dim, right_dim, K},
                             result_type.getElementType()),
       op6_scatter_op4_op5_op2.getResult(),
@@ -3664,17 +3666,16 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
 
   if (!perm_const) return llvm::None;
 
-  auto op8_transpose_op7 = rewriter.create<tosa::TransposeOp>(
-      op->getLoc(),
+  auto op8_transpose_op7 = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
       RankedTensorType::get({left_dim, K, right_dim},
                             result_type.getElementType()),
       op7_reshape_op6.getResult(), perm_const.getValue());
 
   // Reshaped to result.shape.
-  return rewriter
-      .create<tosa::ReshapeOp>(op->getLoc(), result_type,
-                               op8_transpose_op7.getResult(),
-                               rewriter.getI64ArrayAttr(result_type.getShape()))
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+             rewriter, op->getLoc(), result_type, op8_transpose_op7.getResult(),
+             rewriter.getI64ArrayAttr(result_type.getShape()))
       .getResult();
 }
 

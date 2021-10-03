@@ -247,6 +247,16 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
+  // Make sure any previous activity on this executor is done. We don't want
+  // other work still running on the GPU to interfere with autotuning.
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    auto options = HloPrintOptions::Canonical();
+    options.set_print_backend_config(true);
+    return InternalError(
+        "Failed to synchronize GPU for autotuning gemm instruction: %s",
+        instr->ToString(options));
+  }
+
   TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
                       DoUncachedGemmAutotune(instr, stream, allocator));
 
@@ -273,6 +283,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
   if (gemm_algorithm) {
+    VLOG(4) << "GEMM autotuning picked algorithm = " << *gemm_algorithm;
     updated_config.set_selected_algorithm(*gemm_algorithm);
   }
   TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));

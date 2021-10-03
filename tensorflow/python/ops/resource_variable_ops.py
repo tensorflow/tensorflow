@@ -15,10 +15,6 @@
 """Ops to use variables as resources."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import weakref
@@ -462,6 +458,16 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
+
+  def __tf_function_cache_spec__(self):
+    res = f"d{self.dtype.as_datatype_enum}s"
+    for dim_size in self.shape:
+      res += f"{dim_size}-"
+
+    return res
+
+  def __tf_resource_id__(self):
+    return self._handle._id  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):

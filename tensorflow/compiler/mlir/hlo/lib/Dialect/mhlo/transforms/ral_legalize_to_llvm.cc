@@ -342,9 +342,8 @@ LogicalResult DispatchOpToLLVMPattern::matchAndRewrite(
   // the third argument is the args for target function
   callOpOperands.push_back(packedArgs);
 
-  rewriter.create<LLVM::CallOp>(loc, llvm::None,
-                                rewriter.getSymbolRefAttr(dispatch_func),
-                                callOpOperands);
+  rewriter.create<LLVM::CallOp>(
+      loc, llvm::None, mlir::SymbolRefAttr::get(dispatch_func), callOpOperands);
 
   SmallVector<Value, 1> results;
   llvm::transform(resultPtrs, std::back_inserter(results), [&](Value v) {
@@ -476,7 +475,7 @@ LogicalResult ConvertLaunchFuncOpToRalCallPattern::matchAndRewrite(
       rewriter, symbol_table_, op, name_buffer.str(), binary_attr.getValue());
 
   // Make sure the trailing zero is included in the constant.
-  auto kernel_name = launch_op.getKernelName();
+  auto kernel_name = launch_op.getKernelName().getValue();
   SmallString<128> kernel_name_buffer(kernel_name);
   kernel_name_buffer.push_back('\0');
 

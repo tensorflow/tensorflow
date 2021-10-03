@@ -1065,7 +1065,7 @@ void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
             std::find(cur_branch->begin(), cur_branch->end(), next_node);
         LOG(WARNING) << "Cycle detected:";
         while (iter != cur_branch->end()) {
-          LOG(WARNING) << SummarizeNodeDef(get_node_def(*iter));
+          LOG(WARNING) << *iter;
           ++iter;
         }
         LOG(WARNING) << "End of cycle";

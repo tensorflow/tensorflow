@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -211,6 +212,9 @@ class TimestampOp : public OpKernel {
   explicit TimestampOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
+    OP_REQUIRES(context, !OpDeterminismRequired(),
+                errors::FailedPrecondition(
+                    "Timestamp cannot be called when determinism is enabled"));
     TensorShape output_shape;  // Default shape is 0 dim, 1 element
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,

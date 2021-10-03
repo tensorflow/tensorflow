@@ -259,11 +259,11 @@ void LogFusedConvForwardAutotuneResults(
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored. The "plans" can be null when Cudnn frontend APIs are not
-// used.
+// allowed and ignored. The "plans" can be null or empty when Cudnn frontend
+// APIs are not used.
 Status BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>* plans,
     se::dnn::AlgorithmConfig* algo);
 
 }  // namespace tensorflow

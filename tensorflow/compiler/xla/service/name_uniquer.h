@@ -42,7 +42,7 @@ class NameUniquer {
 
   // Sanitizes and returns the name. Unallowed characters will be replaced with
   // '_'. The result will match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
-  static string GetSanitizedName(const string& name);
+  static string GetSanitizedName(absl::string_view name);
 
  private:
   // Used to track and generate new identifiers for the same instruction name

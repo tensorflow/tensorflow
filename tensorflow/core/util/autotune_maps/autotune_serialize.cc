@@ -38,19 +38,20 @@ using stream_executor::dnn::AlgorithmConfigProto;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
-ConvMapProto ConvMapToProto() {
+ConvMapProto ConvMapToProto(
+    const AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig> &autotune_map) {
   ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
   // according to the serialized string of ConvParametersProto in order to
   // enable deterministic serialization. The actual order is meaningless.
   //
-  // This step also filters out dupilicate entries (only device_id's are
+  // This step also filters out duplicate entries (only device_id's are
   // different) in the autotune maps. So that there is only one entry for a
   // convolution operation with a specific GPU device type.
   std::map<string, ConvMapProto::Entry> sorted_map;
 
-  for (auto const &p : AutotuneConv::GetInstance()->GetMap()) {
+  for (auto const &p : autotune_map.GetMap()) {
     const AlgorithmConfig &config = p.second;
     // Skip entries that use cuDNN Frontend API because currently they cannot be
     // serialized.
@@ -75,7 +76,9 @@ ConvMapProto ConvMapToProto() {
   return proto;
 }
 
-Status PopulateConvMap(const ConvMapProto &m) {
+Status PopulateConvMap(
+    const ConvMapProto &m,
+    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig> *autotune_map) {
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -113,9 +116,8 @@ Status PopulateConvMap(const ConvMapProto &m) {
       device_ids = iter->second;
     }
     for (int device_id : device_ids) {
-      AutotuneConv::GetInstance()->Insert(
-          ConvParameters(device_id, params_proto),
-          AlgorithmConfig(algorithm_config_proto));
+      autotune_map->Insert(ConvParameters(device_id, params_proto),
+                           AlgorithmConfig(algorithm_config_proto));
     }
   }
   return Status::OK();
@@ -127,7 +129,9 @@ Status PopulateConvMap(const ConvMapProto &m) {
 Status SerializeAutotuneMaps(std::string *output) {
   AutotuneMapsProto proto;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  *proto.mutable_conv_map() = ConvMapToProto();
+  *proto.mutable_conv_map() = ConvMapToProto(*ConvAutotuneMap::GetInstance());
+  *proto.mutable_fused_conv_map() =
+      ConvMapToProto(*FusedConvAutotuneMap::GetInstance());
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   *output = autotune_maps_utils::SerializeProtoDeterministic(proto);
   return Status::OK();
@@ -143,7 +147,10 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
     return errors::InvalidArgument(
         "Failed to parse the autotune maps from string.");
   }
-  TF_RETURN_IF_ERROR(PopulateConvMap(proto.conv_map()));
+  TF_RETURN_IF_ERROR(
+      PopulateConvMap(proto.conv_map(), ConvAutotuneMap::GetInstance()));
+  TF_RETURN_IF_ERROR(PopulateConvMap(proto.fused_conv_map(),
+                                     FusedConvAutotuneMap::GetInstance()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Status::OK();
@@ -151,7 +158,8 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
 
 void ResetAutotuneMaps() {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  AutotuneConv::GetInstance()->ClearMap();
+  ConvAutotuneMap::GetInstance()->ClearMap();
+  FusedConvAutotuneMap::GetInstance()->ClearMap();
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 

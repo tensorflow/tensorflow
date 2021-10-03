@@ -73,6 +73,9 @@ class LlvmIrGenTestBase : public CodegenTestBase {
   StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       absl::string_view hlo);
 
+  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
+      std::unique_ptr<HloModule> hlo_module);
+
  private:
   LLVMCompiler* GetLLVMCompiler();
 

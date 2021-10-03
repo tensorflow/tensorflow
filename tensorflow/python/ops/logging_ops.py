@@ -14,10 +14,6 @@
 # ==============================================================================
 """Logging and Summary Operations."""
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as py_collections
 import os
 import pprint

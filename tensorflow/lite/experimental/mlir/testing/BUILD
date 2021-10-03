@@ -57,7 +57,6 @@ py_library(
     # copybara:comment_end
     shard_count = 20,
     tags = tags + [
-        "nomac",  # TODO(b/190747043): Remove when the breakage is fixed.
         "gen_zip_test",
         "tflite_not_portable_intentional",
     ],

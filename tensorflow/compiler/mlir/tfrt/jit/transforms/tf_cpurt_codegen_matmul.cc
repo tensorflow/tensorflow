@@ -33,6 +33,36 @@ struct CodegenStrategyForMatMulPass
     full_alloca_promotion.setUseFullTileBuffersByDefault(true).setUseAlloca(
         true);
 
+    // TODO(ezhulenev): Set up tiling options depending on the target machine.
+
+    // Tile and vectorize linalg.matmul operations.
+    mlir::linalg::LinalgTilingOptions matmul_tiling;
+    matmul_tiling.setTileSizes({12, 32, 16});
+
+    mlir::linalg::CodegenStrategy matmul_strategy;
+    matmul_strategy
+        .tile(mlir::linalg::MatmulOp::getOperationName(), matmul_tiling)
+        .promote(mlir::linalg::MatmulOp::getOperationName(),
+                 full_alloca_promotion)
+        .vectorize(mlir::linalg::MatmulOp::getOperationName());
+    // TODO: propagate pass failure properly.
+    if (failed(matmul_strategy.transform(getFunction())))
+      return signalPassFailure();
+
+    // Tile and vectorize linalg.vecmat operations. Interchange loop order to
+    // linearly read from the matrix memref.
+    mlir::linalg::LinalgTilingOptions vecmat_tiling;
+    vecmat_tiling.setTileSizes({16, 8}).setInterchange({1, 0});
+
+    mlir::linalg::CodegenStrategy vecmat_strategy;
+    vecmat_strategy
+        .tile(mlir::linalg::VecmatOp::getOperationName(), vecmat_tiling)
+        .promote(mlir::linalg::VecmatOp::getOperationName(),
+                 full_alloca_promotion)
+        .vectorize(mlir::linalg::VecmatOp::getOperationName());
+    if (failed(vecmat_strategy.transform(getFunction())))
+      return signalPassFailure();
+
     // Vector contraction options.
     mlir::vector::VectorTransformsOptions vector_transforms_ops;
     vector_transforms_ops.setVectorTransformsOptions(
@@ -42,32 +72,14 @@ struct CodegenStrategyForMatMulPass
     mlir::VectorTransferToSCFOptions vector_transfer_opts;
     vector_transfer_opts.setUnroll(true);
 
-    // TODO(ezhulenev): Set up tiling options depending on the target machine.
-
-    // Tile and vectorize linalg.matmul operations.
-    mlir::linalg::LinalgTilingOptions matmul_tiling;
-    matmul_tiling.setTileSizes({12, 32, 16});
-
-    mlir::linalg::CodegenStrategy matmul_strategy;
-    matmul_strategy.tile<mlir::linalg::MatmulOp>(matmul_tiling)
-        .promote<mlir::linalg::MatmulOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::MatmulOp>()
+    mlir::linalg::CodegenStrategy vector_lowering_strategy;
+    vector_lowering_strategy.setEnableVectorTransferPartialRewrite(true)
+        .setEnableVectorContractLowering(true)
+        .setEnableVectorToSCFConversion(true)
         .setVectorTransformsOptions(vector_transforms_ops)
         .setVectorTransferToSCFOptions(vector_transfer_opts);
-    matmul_strategy.transform(getFunction());
-
-    // Tile and vectorize linalg.vecmat operations. Interchange loop order to
-    // linearly read from the matrix memref.
-    mlir::linalg::LinalgTilingOptions vecmat_tiling;
-    vecmat_tiling.setTileSizes({16, 8}).setInterchange({1, 0});
-
-    mlir::linalg::CodegenStrategy vecmat_strategy;
-    vecmat_strategy.tile<mlir::linalg::VecmatOp>(vecmat_tiling)
-        .promote<mlir::linalg::VecmatOp>(full_alloca_promotion)
-        .vectorize<mlir::linalg::VecmatOp>()
-        .setVectorTransformsOptions(vector_transforms_ops)
-        .setVectorTransferToSCFOptions(vector_transfer_opts);
-    vecmat_strategy.transform(getFunction());
+    if (failed(vector_lowering_strategy.transform(getFunction())))
+      return signalPassFailure();
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {

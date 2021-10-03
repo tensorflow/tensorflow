@@ -305,7 +305,7 @@ Status SparsifyGatherInternal(
             if (axis_t.dtype() == DT_INT32) {
               axis = axis_t.scalar<int32>()();
             } else if (axis_t.dtype() == DT_INT64) {
-              axis = axis_t.scalar<int64>()();
+              axis = axis_t.scalar<int64_t>()();
             } else {
               return tensorflow::errors::FailedPrecondition(
                   "Gather axis was not int32 or int64.");

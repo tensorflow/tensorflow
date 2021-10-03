@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for deterministic functionality of SoftmaxCrossEntropyWithLogits op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -200,5 +196,5 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
 
 
 if __name__ == "__main__":
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

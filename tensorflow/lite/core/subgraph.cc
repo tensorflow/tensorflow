@@ -75,7 +75,7 @@ TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
   context->ReportError(
-      context, "Node number %d (%s) %s.\n", node_index,
+      context, "Node number %d (%s) %s.", node_index,
       registration.custom_name
           ? registration.custom_name
           : EnumNameBuiltinOperator(
@@ -165,6 +165,24 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
     return op_reg.custom_name;
   }
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+}
+
+// Verifies custom allocation for tensor, if applicable.
+TfLiteStatus VerifyCustomAllocationForTensor(
+    TfLiteContext* context,
+    const std::map<int, TfLiteCustomAllocation>& tensor_idx_to_alloc,
+    const int tensor_idx) {
+  auto& tensor = context->tensors[tensor_idx];
+  if (tensor.allocation_type != kTfLiteCustom) return kTfLiteOk;
+  const auto idx_and_alloc = tensor_idx_to_alloc.find(tensor_idx);
+  TF_LITE_ENSURE(context, idx_and_alloc != tensor_idx_to_alloc.end());
+  if (idx_and_alloc->second.bytes < tensor.bytes) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Custom allocation is too small for tensor idx: %d",
+                       tensor_idx);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -724,17 +742,27 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
-  // Explicit (re)allocation is necessary if nodes have been changed or tensors
-  // have been resized. For inputs marked as dynamic, we can't short-circuit the
-  // allocation as the client may have done the resize manually.
-  if (state_ != kStateUninvokable &&
-      !HasDynamicTensorImpl(context_, inputs(), &dynamic_tensor_index_)) {
+  // The runtime doesn't need to adjust any allocations if the state is
+  // invokable & no inputs are dynamic (which implies memory plan is unchanged).
+  const bool no_reallocations_necessary =
+      state_ != kStateUninvokable &&
+      !HasDynamicTensorImpl(context_, inputs(), &dynamic_tensor_index_);
+  if (no_reallocations_necessary) {
+    // If non-persistent memory was released, re-allocate it.
     if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
-      // If the only change was the release of non-persistent memory via
-      // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
-      // of memory-planning change (for eg, ResizeInputTensor), the state would
-      // be kStateUninvokable.
       memory_planner_->AcquireNonPersistentMemory();
+    }
+    // Check custom allocations, which may have been modified since last
+    // AllocateTensors() call.
+    if (!custom_allocations_.empty()) {
+      for (const auto& idx_and_alloc : custom_allocations_) {
+        const int idx = idx_and_alloc.first;
+        TfLiteTensor* tensor_at_index = tensor(idx);
+        TF_LITE_ENSURE_EQ(context(), tensor_at_index->allocation_type,
+                          kTfLiteCustom);
+        TF_LITE_ENSURE_STATUS(VerifyCustomAllocationForTensor(
+            context(), custom_allocations_, idx));
+      }
     }
     return kTfLiteOk;
   }
@@ -969,7 +997,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
             "https://www.tensorflow.org/lite/guide/ops_custom",
             op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
-      return kTfLiteError;
+      return kTfLiteUnresolvedOps;
     }
     // Resolved ops can have a null Prepare function.
     return kTfLiteOk;
@@ -994,9 +1022,11 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
-    if (OpPrepare(registration, &node) != kTfLiteOk) {
-      return ReportOpError(&context_, node, registration, node_index,
-                           "failed to prepare");
+    const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
+    if (op_prepare_status != kTfLiteOk) {
+      ReportOpError(&context_, node, registration, node_index,
+                    "failed to prepare");
+      return op_prepare_status;
     }
 
     *last_execution_plan_index_prepared = execution_plan_index;
@@ -1058,20 +1088,28 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
       next_execution_plan_index_to_plan_allocation_,
       last_exec_plan_index_prepared));
 
-  // Ensure custom allocations are large enough for applicable tensors.
-  // This causes some extra validations for cases with dynamic tensors, but the
-  // overhead should be minimal since the number of custom-allocated tensors
-  // will typically be low.
-  for (int i = 0; i < custom_allocations_.size(); ++i) {
-    auto index_and_alloc = custom_allocations_[i];
-    TfLiteTensor* tensor_at_index = tensor(index_and_alloc.first);
-    const auto& alloc = index_and_alloc.second;
-    TF_LITE_ENSURE_EQ(context(), tensor_at_index->allocation_type,
-                      kTfLiteCustom);
-    if (alloc.bytes < tensor_at_index->bytes) {
-      ReportError("Custom allocation is too small for tensor idx: %d",
-                  index_and_alloc.first);
-      return kTfLiteError;
+  if (!custom_allocations_.empty()) {
+    // Verify custom allocations for output tensors from the ops that have just
+    // been prepared. Other output tensors might be resized later.
+    if (!nodes_and_registration_.empty()) {
+      for (int node_idx = next_execution_plan_index_to_plan_allocation_;
+           node_idx <= last_exec_plan_index_prepared; ++node_idx) {
+        TfLiteNode& node = nodes_and_registration_[node_idx].first;
+        for (int i = 0; i < node.outputs->size; ++i) {
+          const int output_tensor_idx = node.outputs->data[i];
+          if (output_tensor_idx == kTfLiteOptionalTensor) continue;
+          TF_LITE_ENSURE_STATUS(VerifyCustomAllocationForTensor(
+              context(), custom_allocations_, output_tensor_idx));
+        }
+      }
+    }
+    // Check input custom allocs only if we just prepared nodes from the idx 0.
+    if (next_execution_plan_index_to_plan_allocation_ == 0) {
+      for (const int input_tensor_idx : inputs_) {
+        if (input_tensor_idx == kTfLiteOptionalTensor) continue;
+        TF_LITE_ENSURE_STATUS(VerifyCustomAllocationForTensor(
+            context(), custom_allocations_, input_tensor_idx));
+      }
     }
   }
 
@@ -1570,6 +1608,14 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
 
 bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
 
+bool Subgraph::IsFullyDelegated() const {
+  for (const int nid : execution_plan_) {
+    const TfLiteNode& node = nodes_and_registration_[nid].first;
+    if (node.delegate == nullptr) return false;
+  }
+  return true;
+}
+
 void Subgraph::EnsureTensorsVectorCapacity() {
   const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
   if (required_capacity > tensors_.capacity()) {
@@ -1639,7 +1685,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
         0, execution_plan_, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
-      ReportError(
+      TFLITE_LOG(
+          tflite::TFLITE_LOG_WARNING,
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "
           "dynamic-sized tensor).",
@@ -1721,18 +1768,10 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
     TF_LITE_ENSURE(context(), data_ptr_value % kDefaultTensorAlignment == 0);
   }
 
-  // If tensor already has a custom alloc, just reassign.
-  const auto alloc_it = std::find_if(
-      custom_allocations_.begin(), custom_allocations_.end(),
-      [tensor_index](
-          const std::pair<int, TfLiteCustomAllocation>& existing_alloc) {
-        return existing_alloc.first == tensor_index;
-      });
-  if (alloc_it == custom_allocations_.end()) {
-    custom_allocations_.emplace_back(tensor_index, allocation);
-  } else {
-    // If tensor already has a custom alloc, just reassign.
-    alloc_it->second = allocation;
+  const auto iter_and_success =
+      custom_allocations_.insert({tensor_index, allocation});
+  if (!iter_and_success.second) {
+    iter_and_success.first->second = allocation;
   }
 
   tensor->allocation_type = kTfLiteCustom;

@@ -22,9 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 using Eigen::GpuDevice;
-template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int64>,
+template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int64_t>,
                               int64>;
-template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int64>,
+template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int64_t>,
                               int64>;
 template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int32>,
                               int32>;

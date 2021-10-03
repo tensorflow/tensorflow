@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -split-input-file -embed-tf-framework |\
+// RUN: kernel-gen-opt %s -split-input-file -verify-diagnostics -embed-tf-framework |\
 // RUN: FileCheck %s
 
 // CHECK-LABEL: func @tf_entry(
@@ -33,16 +33,12 @@ func @non_tf_entry(%size_0 : index , %size_2 : index) -> index {
 
 // -----
 
-// CHECK-LABEL: func @tf_entry(
-func @tf_entry(%size : index) attributes {tf_entry} {
+func @tf_entry_no_ctx(%size : index) attributes {tf_entry} {
+  // expected-error @+1 {{failed to legalize operation 'memref.alloc' that was explicitly marked illegal}}
   %buf = memref.alloc()[%size] : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
   memref.dealloc %buf : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
   std.return
 }
-// CHECK_NOT: tf_framework.alloc
-// CHECK: alloc()
-// CHECK_NOT: tf_framework.dealloc
-// CHECK: dealloc %
 
 // -----
 

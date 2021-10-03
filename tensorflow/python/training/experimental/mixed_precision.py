@@ -14,10 +14,6 @@
 # ==============================================================================
 """Contains functions to use mixed precision with the graph rewrite."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import config
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer
@@ -170,7 +166,7 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
 
   Raises:
     `ValueError`, if the `tf.keras.mixed_precision` API is also used by calling
-    `tf.keras.mixed_precision.experimental.set_policy`. Only one mixed precision
+    `tf.keras.mixed_precision.set_global_policy`. Only one mixed precision
     API can be used.
 
   Args:
@@ -189,7 +185,7 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
         'The mixed precision graph rewrite cannot be enabled, because the '
         'global Keras dtype Policy has been set to a mixed precision policy. '
         'At most, one of the following can be called:\n\n'
-        '  1. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
+        '  1. tf.keras.mixed_precision.set_global_policy() with a mixed '
         'precision policy (You called this first)\n\n'
         '  2. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
         '(You called this second)\n'

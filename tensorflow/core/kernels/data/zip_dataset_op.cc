@@ -114,6 +114,19 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return Status::OK();
   }
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    out_tensors->reserve(output_dtypes().size());
+    for (int i = 0; i < inputs_.size(); ++i) {
+      std::vector<Tensor> input_tensors;
+      TF_RETURN_IF_ERROR(inputs_[i]->Get(ctx, index, &input_tensors));
+      out_tensors->insert(out_tensors->end(), input_tensors.begin(),
+                          input_tensors.end());
+    }
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

@@ -60,8 +60,9 @@ string SubdivPermDebugString(const CollectiveParams& col_params) {
     for (int di = 0; di < subdiv_perms[sdi].size(); ++di) {
       int idx = subdiv_perms[sdi][di];
       if (idx >= 0) {
-        CHECK_GT(col_params.group.devices.size(), idx);
-        strings::StrAppend(&buf, col_params.group.devices[idx].name(), "\n");
+        CHECK_GT(col_params.group.members.size(), idx);
+        strings::StrAppend(&buf, col_params.group.members[idx].device.name(),
+                           "\n");
       }
     }
     strings::StrAppend(&buf, " subdiv_offsets: ");

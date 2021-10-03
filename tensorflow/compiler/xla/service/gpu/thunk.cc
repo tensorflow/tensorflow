@@ -70,8 +70,6 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
       return "kInfeed";
     case Thunk::kKernel:
       return "kKernel";
-    case Thunk::kMemcpy:
-      return "kMemcpy";
     case Thunk::kMemset32BitValue:
       return "kMemset32BitValue";
     case Thunk::kMemzero:

@@ -27,9 +27,9 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(6, 6), (12, 12)}
+// CHECK-NEXT:  Userange: {(7, 7), (13, 13)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(8, 8), (14, 14)}
+// CHECK-NEXT:  Userange: {(9, 9), (15, 15)}
 
 // -----
 
@@ -58,15 +58,15 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 22)}
+// CHECK-NEXT:  Userange: {(11, 23)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 22)}
+// CHECK-NEXT:  Userange: {(11, 23)}
 //      CHECK:  Value: %2 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 24)}
+// CHECK-NEXT:  Userange: {(11, 25)}
 //      CHECK:  Value: %3 {{ *}}
-// CHECK-NEXT:  Userange: {(26, 26)}
+// CHECK-NEXT:  Userange: {(27, 27)}
 //      CHECK:  Value: %4 {{ *}}
-//      CHECK:  Userange: {(18, 18)}
+//      CHECK:  Userange: {(19, 19)}
 
 // -----
 
@@ -94,14 +94,14 @@ func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(4, 6), (14, 26)}
+// CHECK-NEXT:  Userange: {(5, 7), (15, 27)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 16)}
+// CHECK-NEXT:  Userange: {(11, 17)}
 //      CHECK:  Value: %3 {{ *}}
-// CHECK-NEXT:  Userange: {(18, 18)}
+// CHECK-NEXT:  Userange: {(19, 19)}
 //      CHECK:  Value: %4 {{ *}}
-// CHECK-NEXT:  Userange: {(22, 22)}
+// CHECK-NEXT:  Userange: {(23, 23)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-SAME:  Userange: {(14, 16)}
+// CHECK-SAME:  Userange: {(15, 17)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-SAME:  Userange: {(26, 26)}
+// CHECK-SAME:  Userange: {(27, 27)}

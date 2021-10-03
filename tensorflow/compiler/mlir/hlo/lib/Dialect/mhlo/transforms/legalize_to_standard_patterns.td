@@ -40,8 +40,11 @@ def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (CeilFOp $i)>;
 
 // Binary Lowering Patterns.
-def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r),
+def : Pat<(HLO_AndOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (AndOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
+def : Pat<(HLO_OrOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+          (OrOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (AddFOp $l, $r),
@@ -73,3 +76,7 @@ def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r),
 def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (SignedRemIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
+
+def : Pat<(HLO_SelectOp HLO_PredTensor:$pred, HLO_Tensor:$tv, HLO_Tensor:$fv),
+          (SelectOp $pred, $tv, $fv),
+          [(IsSameSizeConstraint $pred, $tv), (IsSameSizeConstraint $tv, $fv)]>;

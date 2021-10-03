@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace data {
 
 TEST(DatasetTest, FullName) {
-  EXPECT_EQ(data::FullName("prefix", "name"),
+  EXPECT_EQ(FullName("prefix", "name"),
             "60d899aa0d8ce4351e7c3b419e92d25b|prefix:name");
 }
 
@@ -49,10 +51,10 @@ TEST_P(DatasetTestTotalBytes, TestTotalBytes) {
   const DatasetTestParam& test_case = GetParam();
   if (test_case.type == _tf_string_) {
     // TotalBytes() is approximate and gives an upper bound for strings
-    EXPECT_LE(data::GetTotalBytes(test_case.tensor_factory()),
+    EXPECT_LE(GetTotalBytes(test_case.tensor_factory()),
               test_case.expected_bytes);
   } else {
-    EXPECT_EQ(data::GetTotalBytes(test_case.tensor_factory()),
+    EXPECT_EQ(GetTotalBytes(test_case.tensor_factory()),
               test_case.expected_bytes);
   }
 }
@@ -100,16 +102,16 @@ class MergeOptionsTest
 
 TEST_P(MergeOptionsTest, MergeOptions) {
   const MergeOptionsTestParam& test_case = GetParam();
-  data::Options source;
+  Options source;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.source,
                                                           &source));
-  data::Options destination;
+  Options destination;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.destination,
                                                           &destination));
-  data::Options expected;
+  Options expected;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.expected,
                                                           &expected));
-  data::internal::MergeOptions(source, &destination);
+  internal::MergeOptions(source, &destination);
   EXPECT_EQ(expected.SerializeAsString(), destination.SerializeAsString());
 }
 
@@ -132,4 +134,28 @@ INSTANTIATE_TEST_SUITE_P(
          /*destination=*/"external_state_policy: POLICY_FAIL",
          /*expected=*/"external_state_policy: POLICY_IGNORE"}}));
 
+TEST(DatasetTest, IsDatasetOp) {
+  OpDef op_def;
+  // Test zero outputs.
+  EXPECT_FALSE(DatasetOpKernel::IsDatasetOp(op_def));
+
+  // Test invalid output type.
+  op_def.add_output_arg()->set_type(DT_STRING);
+  EXPECT_FALSE(DatasetOpKernel::IsDatasetOp(op_def));
+
+  // Test invalid op name.
+  op_def.mutable_output_arg(0)->set_type(DT_VARIANT);
+  op_def.set_name("Identity");
+  EXPECT_FALSE(DatasetOpKernel::IsDatasetOp(op_def));
+
+  // Test valid op names.
+  for (const auto& name :
+       {"Dataset", "RangeDataset", "MapDatasetV1",
+        "ParallelInterleaveDatasetV42", "DataServiceDatasetV1000"}) {
+    op_def.set_name(name);
+    EXPECT_TRUE(DatasetOpKernel::IsDatasetOp(op_def));
+  }
+}
+
+}  // namespace data
 }  // namespace tensorflow

@@ -33,6 +33,7 @@ constexpr char kHillClimb[] = "hill_climb";
 constexpr char kGradientDescent[] = "gradient_descent";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
+constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 
 // Default share of available RAM that can be used by model's internal buffers.
 constexpr double kRamBudgetShare = 0.5;
@@ -128,7 +129,15 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   }
 
   TraceMeMetadata GetTraceMeMetadata() const override {
-    return dataset()->traceme_metadata_;
+    tensorflow::data::TraceMeMetadata traceme_metadata =
+        dataset()->traceme_metadata_;
+    const int64_t mem_bw = port::GetMemoryBandwidthInfo().bw_used;
+    if (mem_bw != INT64_MAX) {
+      traceme_metadata.push_back(std::make_pair(
+          kMemBandwidth,
+          strings::Printf("%lld", static_cast<long long>(mem_bw))));
+    }
+    return traceme_metadata;
   }
 
  private:

@@ -18,19 +18,17 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import os
 import re
 import threading
 import time
 import weakref
+
 from six.moves import queue
 
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.eager import cancellation
@@ -245,10 +243,11 @@ class Closure(object):
 
     with ops.device(worker.device_name):
       with context.executor_scope(worker.executor):
-        with metric_utils.monitored_timer("closure_execution"):
-          output_values = self._function(
-              *nest.map_structure(_maybe_get_remote_value, replica_args),
-              **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
+        with coordinator_context.with_dispatch_context(worker):
+          with metric_utils.monitored_timer("closure_execution"):
+            output_values = self._function(
+                *nest.map_structure(_maybe_get_remote_value, replica_args),
+                **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
     self.maybe_call_with_output_remote_value(
         lambda r: r._set_values(output_values))  # pylint: disable=protected-access
 

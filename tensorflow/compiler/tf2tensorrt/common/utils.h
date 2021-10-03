@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 
+#include <numeric>
 #include <tuple>
+
+#include "absl/strings/str_join.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -32,8 +35,40 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion();
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "third_party/tensorrt/NvInfer.h"
+
+// Use this macro within functions that return a Status or StatusOR<T> to check
+// boolean conditions. If the condition fails, it returns an
+// errors::Internal message with the file and line number.
+#define TRT_ENSURE(x)                                                        \
+  if (!(x)) {                                                                \
+    return errors::Internal(__FILE__, ":", __LINE__, " TRT_ENSURE failure"); \
+  }
+
+// Checks that a Status or StatusOr<T> object does not carry an error message.
+// If it does have an error, returns an errors::Internal instance
+// containing the error message, along with the file and line number. For
+// pointer-containing StatusOr<T*>, use the below TRT_ENSURE_PTR_OK macro.
+#define TRT_ENSURE_OK(x)                                   \
+  if (!x.ok()) {                                           \
+    return errors::Internal(__FILE__, ":", __LINE__,       \
+                            " TRT_ENSURE_OK failure:\n  ", \
+                            x.status().ToString());        \
+  }
+
+// Checks that a StatusOr<T* >object does not carry an error, and that the
+// contained T* is non-null. If it does have an error status, returns an
+// errors::Internal instance containing the error message, along with the file
+// and line number.
+#define TRT_ENSURE_PTR_OK(x)                            \
+  TRT_ENSURE_OK(x);                                     \
+  if (*x == nullptr) {                                  \
+    return errors::Internal(__FILE__, ":", __LINE__,    \
+                            " pointer had null value"); \
+  }
 
 namespace tensorflow {
 namespace tensorrt {
@@ -53,6 +88,50 @@ void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+namespace nvinfer1 {
+// Prints nvinfer1::Dims or any drived type to the given ostream. Per GTest
+// printing requirements, this must be in the nvinfer1 namespace.
+inline std::ostream& operator<<(std::ostream& os, const nvinfer1::Dims& v) {
+  os << "nvinfer1::Dims[";
+  os << absl::StrJoin(std::vector<int>(v.d, v.d + v.nbDims), ",");
+  os << "]";
+  return os;
+}  // namespace nvinfer1
+
+// Returns true if any two derived nvinfer1::Dims type structs are equivalent.
+inline bool operator==(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
+  if (rhs.nbDims != lhs.nbDims) {
+    return false;
+  }
+  for (int i = 0; i < lhs.nbDims; i++) {
+    if (rhs.d[i] != lhs.d[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns false if any 2 subclasses of nvinfer1::Dims are equivalent.
+inline bool operator!=(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
+  return !(rhs == lhs);
+}
+
+// Prints nvinfer1::INetworkDefinition* information to the given ostream.
+inline std::ostream& operator<<(std::ostream& os,
+                                nvinfer1::INetworkDefinition* n) {
+  os << "nvinfer1::INetworkDefinition{\n";
+  std::vector<int> layer_idxs(n->getNbLayers());
+  std::iota(layer_idxs.begin(), layer_idxs.end(), 0);
+  os << absl::StrJoin(layer_idxs, "\n ",
+                      [n](std::string* out, const int layer_idx) {
+                        out->append(n->getLayer(layer_idx)->getName());
+                      });
+  os << "}";
+  return os;
+}
+
+}  // namespace nvinfer1
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 

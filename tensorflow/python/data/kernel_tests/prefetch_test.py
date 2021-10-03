@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.prefetch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl.testing import parameterized
@@ -74,6 +70,11 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
       time.sleep(0.5)
       sess.close()
       thread.join()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).prefetch(1, name="prefetch")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

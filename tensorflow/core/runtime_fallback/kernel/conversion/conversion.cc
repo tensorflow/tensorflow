@@ -95,8 +95,8 @@ static KernelFallbackTensor ConvertDenseHostTensorToKernelFallbackTensor(
     const tfrt::CpuDevice& dst, const tfrt::ExecutionContext& exec_ctx) {
   assert(&src == &dst);
 
-  auto tf_tensor = MoveHostBufferToTfTensor(tensor.buffer().CopyRef(),
-                                            tensor.dtype(), tensor.shape());
+  auto tf_tensor =
+      MoveHostBufferToTfTensor(tensor.buffer(), tensor.dtype(), tensor.shape());
   return KernelFallbackTensor(tensor.shape(), tensor.dtype(), tf_tensor);
 }
 

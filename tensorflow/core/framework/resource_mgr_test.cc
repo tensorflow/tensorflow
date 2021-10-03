@@ -121,6 +121,9 @@ TEST(ResourceMgrTest, Basic) {
   TF_CHECK_OK(rm.Delete<Resource>("foo", "bar"));
   HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
            "Resource foo/bar");
+  // Deleting foo/bar/Resource a second time is not OK.
+  HasError(rm.Delete<Resource>("foo", "bar"), error::NOT_FOUND,
+           "Resource foo/bar");
 
   TF_CHECK_OK(rm.Create("foo", "bar", new Resource("kitty")));
   EXPECT_EQ("R/kitty", Find<Resource>(rm, "foo", "bar"));
@@ -137,6 +140,79 @@ TEST(ResourceMgrTest, Basic) {
 
   // Dropping a non-existent container is also ok.
   TF_CHECK_OK(rm.Cleanup("bar"));
+}
+
+TEST(ResourceMgrTest, CreateUnowned) {
+  core::RefCountPtr<Resource> cat{new Resource("cat")};
+  core::RefCountPtr<Resource> kitty{new Resource("kitty")};
+
+  ASSERT_TRUE(cat->RefCountIsOne());
+  ASSERT_TRUE(kitty->RefCountIsOne());
+
+  ResourceMgr rm;
+
+  TF_CHECK_OK(rm.CreateUnowned("foo", "bar", cat.get()));
+  EXPECT_TRUE(cat->RefCountIsOne());
+
+  // Expected to fail.
+  HasError(rm.CreateUnowned("foo", "bar", kitty.get()), error::ALREADY_EXISTS,
+           "Resource foo/bar");
+  EXPECT_TRUE(kitty->RefCountIsOne());
+
+  // Expected to be found.
+  EXPECT_EQ("R/cat", Find<Resource>(rm, "foo", "bar"));
+
+  // Expected to be not found.
+  HasError(FindErr<Resource>(rm, "bar", "foo"), error::NOT_FOUND,
+           "Container bar");
+  HasError(FindErr<Resource>(rm, "foo", "xxx"), error::NOT_FOUND,
+           "Resource foo/xxx");
+
+  // Delete foo/bar/Resource.
+  TF_CHECK_OK(rm.Delete<Resource>("foo", "bar"));
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Resource foo/bar");
+  // Deleting foo/bar/Resource a second time is not OK.
+  HasError(rm.Delete<Resource>("foo", "bar"), error::NOT_FOUND,
+           "Resource foo/bar");
+
+  TF_CHECK_OK(rm.CreateUnowned("foo", "bar", kitty.get()));
+  EXPECT_TRUE(kitty->RefCountIsOne());
+  EXPECT_EQ("R/kitty", Find<Resource>(rm, "foo", "bar"));
+
+  {
+    core::RefCountPtr<Resource> dog{new Resource("dog")};
+    TF_CHECK_OK(rm.CreateUnowned("foo", "bark", dog.get()));
+    EXPECT_EQ("R/dog", Find<Resource>(rm, "foo", "bark"));
+    EXPECT_EQ(1, dog->WeakRefCount());
+    {
+      ResourceMgr rm1;
+      TF_CHECK_OK(rm1.CreateUnowned("foo", "bark", dog.get()));
+      EXPECT_EQ("R/dog", Find<Resource>(rm1, "foo", "bark"));
+      EXPECT_EQ(2, dog->WeakRefCount());
+    }
+    // If manager goes out of scope, the resource loses the weak ref.
+    EXPECT_EQ(1, dog->WeakRefCount());
+  }
+  // If resource goes out of scope, the look up reports not found.
+  HasError(FindErr<Resource>(rm, "foo", "bark"), error::NOT_FOUND,
+           "Resource foo/bark");
+
+  // Drop the whole container foo.
+  TF_CHECK_OK(rm.Cleanup("foo"));
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Container foo");
+
+  // Dropping it a second time is OK.
+  TF_CHECK_OK(rm.Cleanup("foo"));
+  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
+           "Container foo");
+
+  // Dropping a non-existent container is also ok.
+  TF_CHECK_OK(rm.Cleanup("bar"));
+
+  EXPECT_TRUE(cat->RefCountIsOne());
+  EXPECT_TRUE(kitty->RefCountIsOne());
 }
 
 TEST(ResourceMgrTest, CreateOrLookup) {

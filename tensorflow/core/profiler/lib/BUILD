@@ -223,6 +223,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -263,15 +272,24 @@ cc_library(
 )
 
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
+        "traceme.h",
+        "traceme_encode.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
         "device_profiler_session.h",
         "profiler_interface.h",
-        "scoped_annotation.h",
-        "traceme.h",
-        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

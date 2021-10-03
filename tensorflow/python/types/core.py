@@ -14,10 +14,6 @@
 # ==============================================================================
 """Core TensorFlow types."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import textwrap
 
@@ -258,8 +254,8 @@ class TensorProtocol(Protocol):
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.
-TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, complex,
-                   tuple, list, np.ndarray, np.generic]
+TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, bytes,
+                   complex, tuple, list, np.ndarray, np.generic]
 doc_typealias.document(
     obj=TensorLike,
     doc=textwrap.dedent("""\

@@ -14,21 +14,19 @@
 # ==============================================================================
 """Tests for tensorflow.ops.reverse_sequence_op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class ReverseSequenceTest(test.TestCase):
 
   def _testReverseSequence(self,

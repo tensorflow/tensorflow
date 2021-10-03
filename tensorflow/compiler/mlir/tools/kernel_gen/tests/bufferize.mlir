@@ -18,8 +18,8 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 // CHECK-LABEL: @tensor.from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> f32
 func @tensor.from_elements(%a : f32) -> f32 {
-  // CHECK: %[[B:.*]] = constant 1.2
-  // CHECK: %[[C:.*]] = constant 2.3
+  // CHECK-DAG: %[[B:.*]] = constant 1.2
+  // CHECK-DAG: %[[C:.*]] = constant 2.3
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: %[[C0:.*]] = constant 0 : index
@@ -42,8 +42,8 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -81,14 +81,14 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C5:.*]] = constant 5.000000e+00 : f32
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C5:.*]] = constant 5.000000e+00 : f32
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C6:.*]] = constant 6.000000e+00 : f32
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C6:.*]] = constant 6.000000e+00 : f32
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
   // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
   // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
   %result = constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
@@ -99,8 +99,8 @@ func @const() -> tensor<3xf32> {
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>
@@ -269,90 +269,4 @@ func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
   // CHECK: return %[[RES]] : memref<*xf32>
   %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
   return %0 : tensor<*xf32>
-}
-
-// -----
-
-//      CHECK:  func @tiled_dot
-func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
-                %C: tensor<f32>) -> tensor<f32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
-
-  %dot = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
-       ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
-       outs (%C_ = %C: tensor<f32>)
-       iterators["reduction"] {
-    %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %dot_sub = linalg.dot ins(%A_sub, %B_sub : tensor<?xf32>, tensor<?xf32>)
-                          outs(%C_ : tensor<f32>) -> tensor<f32>
-    linalg.yield %dot_sub : tensor<f32>
-  }
-  // CHECK: linalg.tiled_loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>,
-  // CHECK-SAME:      %[[B:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>
-  // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<f32>)
-
-  // CHECK-NEXT: %[[SV_A:.*]] = memref.subview %[[A]]
-  // CHECK-NEXT: %[[SV_B:.*]] = memref.subview %[[B]]
-  // CHECK:      %[[TMP:.*]] = memref.alloc
-  // CHECK-NEXT: linalg.copy(%[[C]], %[[TMP]])
-  // CHECK-NEXT: linalg.dot ins(%[[SV_A]], %[[SV_B]]
-  // CHECK-SAME:            outs(%[[TMP]] : memref<f32>)
-  // CHECK-NEXT: linalg.copy(%[[TMP]], %[[C]])
-  // CHECK-NEXT: linalg.yield
-  return %dot : tensor<f32>
-}
-
-// -----
-
-#map0 = affine_map<(d0) -> (d0)>
-
-func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
-                  %C: tensor<10xf32>) -> tensor<10xf32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
-
-  %sum = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
-       ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
-       outs (%C_ = %C: tensor<10xf32>) {
-    %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %C_sub = tensor.extract_slice %C_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %sum_sub = linalg.generic {
-      indexing_maps = [#map0, #map0, #map0],
-      iterator_types = ["parallel"]
-    } ins(%A_sub, %B_sub : tensor<?xf32>, tensor<?xf32>)
-      outs(%C_sub : tensor<?xf32>) {
-      ^bb0(%a: f32, %b: f32, %c: f32):
-        %0 = std.addf %a, %b : f32
-        linalg.yield %0 : f32
-    } -> tensor<?xf32>
-    %update = tensor.insert_slice %sum_sub into %C_[%i] [%c2] [1]
-      : tensor<?xf32> into tensor<10xf32>
-    linalg.yield %update : tensor<10xf32>
-  }
-  // CHECK: linalg.tiled_loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>,
-  // CHECK-SAME:      %[[B:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>
-  // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>)
-
-  // CHECK-NEXT:  %[[SV_A:.*]] = memref.subview %[[A]]
-  // CHECK-NEXT:  %[[SV_B:.*]] = memref.subview %[[B]]
-  // CHECK:       %[[TMP:.*]] = memref.alloc
-  // CHECK-NEXT:  linalg.generic
-  // CHECK-SAME:    ins(%[[SV_A]], %[[SV_B]]
-  // CHECK-SAME:    outs(%[[TMP]] : memref<?xf32>)
-  // CHECK:  %[[SV_C:.*]] = memref.subview %[[C]]
-  // CHECK-NEXT:  linalg.copy(%[[TMP]], %[[SV_C]])
-  // CHECK-NEXT:  linalg.yield
-  return %sum : tensor<10xf32>
 }

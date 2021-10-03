@@ -162,6 +162,8 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::TanhOp>(),
     TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDotV2Op>(),
     TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZetaOp>(),
 

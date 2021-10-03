@@ -15,10 +15,6 @@
 """A class used to partition a sequence into contiguous subsequences ("rows").
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
@@ -32,9 +28,9 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
-
 
 #===============================================================================
 # RowPartition
@@ -208,7 +204,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RowPartition` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or greater than or equal to zero if
-        `value_rowids` is empty). Defaults to `value_rowids[-1]` (or zero if
+        `value_rowids` is empty). Defaults to `value_rowids[-1] + 1` (or zero if
         `value_rowids` is empty).
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
@@ -226,7 +222,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     >>> print(RowPartition.from_value_rowids(
     ...     value_rowids=[0, 0, 0, 0, 2, 2, 2, 3],
     ...     nrows=4))
-    tf.RowPartition(row_splits=tf.Tensor([0 4 4 7 8], shape=(5,), dtype=int64))
+    tf.RowPartition(row_splits=[0 4 4 7 8])
     """
     # Local import bincount_ops to avoid import-cycle since bincount_ops
     # imports ragged_tensor.
@@ -827,6 +823,37 @@ class RowPartition(composite_tensor.CompositeTensor):
       return tensor_util.constant_value(self._uniform_row_length)
     return None
 
+  def offsets_in_rows(self):
+    """Return the offset of each value.
+
+    RowPartition takes an array x and converts it into sublists.
+    offsets[i] is the index of x[i] in its sublist.
+    Given a shape, such as:
+    [*,*,*],[*,*],[],[*,*]
+    This returns:
+    0,1,2,0,1,0,1
+
+    Returns:
+      an offset for every value.
+    """
+    return gen_ragged_math_ops.ragged_range(
+        starts=constant_op.constant(0, self.dtype),
+        limits=self.row_lengths(),
+        deltas=constant_op.constant(1, self.dtype)).rt_dense_values
+
+  def is_uniform(self):
+    """Returns true if the partition is known to be uniform statically.
+
+    This is based upon the existence of self._uniform_row_length. For example:
+    RowPartition.from_row_lengths([3,3,3]).is_uniform()==false
+    RowPartition.from_uniform_row_length(5, nvals=20).is_uniform()==true
+    RowPartition.from_row_lengths([2,0,2]).is_uniform()==false
+
+    Returns:
+      Whether a RowPartition is known to be uniform statically.
+    """
+    return self._uniform_row_length is not None
+
   #=============================================================================
   # Transformation
   #=============================================================================
@@ -863,7 +890,11 @@ class RowPartition(composite_tensor.CompositeTensor):
   #=============================================================================
 
   def __repr__(self):
-    return "tf.RowPartition(row_splits=%s)" % (self._row_splits)
+    if self._uniform_row_length is not None:
+      return (f"tf.RowPartition(nrows={self._nrows}, "
+              f"uniform_row_length={self._uniform_row_length})")
+    else:
+      return f"tf.RowPartition(row_splits={self._row_splits})"
 
   #=============================================================================
   # Precomputed Encodings

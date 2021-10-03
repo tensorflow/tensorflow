@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.from_tensors()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from absl.testing import parameterized
 
@@ -293,6 +289,11 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(iterator.initializer)
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42, name="from_tensors")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,

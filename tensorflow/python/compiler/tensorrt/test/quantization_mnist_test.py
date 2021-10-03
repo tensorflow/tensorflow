@@ -14,10 +14,6 @@
 # ==============================================================================
 """Script to test TF-TRT INT8 conversion without calibration on Mnist model."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow_datasets as tfds
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2

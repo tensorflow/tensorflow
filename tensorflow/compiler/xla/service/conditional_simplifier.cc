@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -572,6 +574,35 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   return true;
 }
 
+static bool ComputationCallsChannelInstructions(
+    const HloComputation& computation) {
+  std::vector<const HloComputation*> worklist = {&computation};
+  while (!worklist.empty()) {
+    const HloComputation* work = worklist.back();
+    worklist.pop_back();
+    for (const HloInstruction* instruction : work->instructions()) {
+      if (DynCast<HloChannelInstruction>(instruction) != nullptr) {
+        return true;
+      }
+      worklist.insert(worklist.end(),
+                      instruction->called_computations().begin(),
+                      instruction->called_computations().end());
+    }
+  }
+  return false;
+}
+
+static bool InstructionCallsChannelInstructions(
+    const HloInstruction& instruction) {
+  for (const HloComputation* called_computation :
+       instruction.called_computations()) {
+    if (ComputationCallsChannelInstructions(*called_computation)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(
       3, "ConditionalSimplifier::Run(), before:\n" + module->ToString());
@@ -584,6 +615,15 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   for (auto* comp : module->computations()) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
+        // Verifier wants a single send/recv with a given channel. This pass
+        // clones computations which can result in that getting violated.
+        if (InstructionCallsChannelInstructions(*instr)) {
+          continue;
+        }
+        if (instr->has_sharding()) {
+          // The code below doesn't handle sharding properly.
+          continue;
+        }
         conditional_ops.push_back(instr);
       }
     }
@@ -591,10 +631,6 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
 
   absl::flat_hash_set<HloInstruction*> removed_conditionals;
   for (HloInstruction* conditional_op : conditional_ops) {
-    if (conditional_op->has_sharding()) {
-      // The code below doesn't handle sharding properly.
-      continue;
-    }
     changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);

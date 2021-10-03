@@ -96,7 +96,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
       input_shapes, output_arrays, /*control_output_arrays=*/"",
       prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, /*upgrade_legacy=*/true,
-      /*enable_shape_inference=*/true, context);
+      /*enable_shape_inference=*/true,
+      /*unconditionally_use_set_output_shapes=*/false, context);
 }
 
 Status ConvertTFOpsToTfjsJSON(mlir::ModuleOp module, bool export_to_mlir,

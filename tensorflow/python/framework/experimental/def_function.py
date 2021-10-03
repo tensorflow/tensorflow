@@ -14,10 +14,6 @@
 # ==============================================================================
 """Experimental impl of tf.function using unified APIs, for testing only."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework.experimental import _unified_api
 from tensorflow.python.framework.experimental import context_stack as context_lib
 from tensorflow.python.util import nest

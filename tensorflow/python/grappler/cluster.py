@@ -14,10 +14,6 @@
 # ==============================================================================
 """A python interface for Grappler clusters."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 from tensorflow.core.framework import step_stats_pb2

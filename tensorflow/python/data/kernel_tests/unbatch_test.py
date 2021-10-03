@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.unbatch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -223,6 +219,11 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(
         (list(range(10)), None)).unbatch().map(lambda x, y: x)
     self.assertDatasetProduces(dataset, expected_output=range(10))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors([42]).unbatch(name="unbatch")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class UnbatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

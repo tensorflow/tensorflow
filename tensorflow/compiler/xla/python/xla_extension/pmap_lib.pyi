@@ -66,7 +66,8 @@ class ShardedDeviceArray:
   aval: Any
   indices: Any
   sharding_spec: ShardingSpec
-  device_buffers: Optional[List[Any]]
+  @property
+  def device_buffers(self) -> Optional[List[Any]]: ...
   _npy_value: Optional[np.ndarray]
   _one_replica_buffer_indices: Optional[Any]
 
@@ -84,6 +85,8 @@ class ShardedDeviceArray:
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
+  def __getstate__(self) -> Any: ...
+  def __setstate__(self, Any): ...
   __signature__: inspect.Signature
   def _cache_size(self) -> int: ...
 

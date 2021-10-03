@@ -35,14 +35,12 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-using linalg::TiledLoopOp;
-
 class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
  public:
   using OpConversionPattern<ConstantOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ConstantOp op, ArrayRef<Value> operands,
+      ConstantOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const final {
     // We only need to bufferize tensor constants.
     Location loc = op.getLoc();
@@ -70,7 +68,7 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     Value value;
     if (all_same_elems)
       value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
-    for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
+    for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
       Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);
@@ -84,126 +82,10 @@ class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      tensor::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    tensor::DimOp::Adaptor adaptor(operands);
     rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
-    return success();
-  }
-};
-
-bool IsBlockArgOfTiledLoop(Value tensor) {
-  if (auto block_arg = tensor.dyn_cast<BlockArgument>())
-    return isa<TiledLoopOp>(block_arg.getOwner()->getParentOp());
-  return false;
-}
-
-SmallVector<Value, 3> ConvertOperands(ValueRange operands,
-                                      BlockAndValueMapping &bvm) {
-  SmallVector<Value, 3> new_operands;
-  new_operands.reserve(operands.size());
-  for (auto operand : operands)
-    new_operands.push_back(bvm.lookupOrDefault(operand));
-  return new_operands;
-}
-
-class BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
- public:
-  using OpConversionPattern<TiledLoopOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      TiledLoopOp loop, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const final {
-    TiledLoopOp::Adaptor adaptor(operands, loop->getAttrDictionary());
-    if (loop.getNumResults() == 0) return failure();
-    // The following code to set distribution_type is due to the following bug
-    // causing distribution_types to return an ArrayAttr instead of an
-    // Optional<ArrayAttr>. https://bugs.llvm.org/show_bug.cgi?id=51622
-    llvm::Optional<ArrayAttr> distribution_types = adaptor.distribution_types();
-    if (!distribution_types.getValue()) distribution_types = llvm::None;
-    auto new_loop = rewriter.create<TiledLoopOp>(
-        loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
-        adaptor.step(), adaptor.inputs(), adaptor.outputs(),
-        adaptor.iterator_types(), distribution_types);
-
-    // Clone the region.
-    BlockAndValueMapping bvm;
-    bvm.map(loop.getInductionVars(), new_loop.getInductionVars());
-    bvm.map(loop.getRegionInputArgs(), new_loop.getRegionInputArgs());
-    bvm.map(loop.getRegionOutputArgs(), new_loop.getRegionOutputArgs());
-
-    OpBuilder inner_builder =
-        OpBuilder::atBlockEnd(new_loop.getBody(), rewriter.getListener());
-
-    for (auto &op : loop.getBody()->getOperations()) {
-      Location loc = op.getLoc();
-      if (auto extract_slice = dyn_cast<tensor::ExtractSliceOp>(op)) {
-        if (IsBlockArgOfTiledLoop(extract_slice.source())) {
-          auto new_operands = ConvertOperands(extract_slice.getOperands(), bvm);
-          auto src_memref_type =
-              bvm.lookup(extract_slice.source()).getType().cast<MemRefType>();
-          auto dst_memref_type =
-              memref::SubViewOp::inferResultType(
-                  src_memref_type,
-                  extractFromI64ArrayAttr(extract_slice.static_offsets()),
-                  extractFromI64ArrayAttr(extract_slice.static_sizes()),
-                  extractFromI64ArrayAttr(extract_slice.static_strides()))
-                  .cast<MemRefType>();
-
-          Value subview = inner_builder.create<memref::SubViewOp>(
-              loc, TypeRange{dst_memref_type}, new_operands,
-              extract_slice->getAttrs());
-          bvm.map(extract_slice.getResult(), subview);
-          continue;
-        }
-      }
-      if (auto insert_slice = dyn_cast<tensor::InsertSliceOp>(op)) {
-        if (IsBlockArgOfTiledLoop(insert_slice.dest())) {
-          continue;
-        }
-      }
-      if (auto yield = dyn_cast<linalg::YieldOp>(op)) {
-        Location loc = yield.getLoc();
-        for (OpOperand &operand : yield->getOpOperands()) {
-          if (auto insert =
-                  operand.get().getDefiningOp<tensor::InsertSliceOp>()) {
-            auto dst_memref_type = memref::SubViewOp::inferResultType(
-                getTypeConverter()
-                    ->convertType(insert.source().getType())
-                    .cast<MemRefType>(),
-                extractFromI64ArrayAttr(insert.static_offsets()),
-                extractFromI64ArrayAttr(insert.static_sizes()),
-                extractFromI64ArrayAttr(insert.static_strides()));
-
-            Value subview = inner_builder.create<memref::SubViewOp>(
-                loc, dst_memref_type, bvm.lookup(insert.dest()),
-                ConvertOperands(insert.offsets(), bvm),
-                ConvertOperands(insert.sizes(), bvm),
-                ConvertOperands(insert.strides(), bvm), insert.static_offsets(),
-                insert.static_sizes(), insert.static_strides());
-
-            Value cast = inner_builder.create<memref::BufferCastOp>(
-                loc,
-                getTypeConverter()
-                    ->convertType(insert.source().getType())
-                    .cast<MemRefType>(),
-                bvm.lookup(insert.source()));
-
-            inner_builder.create<linalg::CopyOp>(loc, cast, subview);
-            continue;
-          }
-          auto dst = new_loop.getRegionOutputArgs()[operand.getOperandNumber()];
-          Value cast = inner_builder.create<memref::BufferCastOp>(
-              loc, dst.getType(), bvm.lookup(operand.get()));
-          inner_builder.create<linalg::CopyOp>(loc, cast, dst);
-        }
-        continue;
-      }
-      inner_builder.clone(op, bvm);
-    }
-    inner_builder.create<linalg::YieldOp>(loop.getLoc());
-    rewriter.replaceOp(loop, new_loop.outputs());
     return success();
   }
 };
@@ -215,10 +97,8 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
       chlo::MinimumBroadcastShapesOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      chlo::MinimumBroadcastShapesOp broadcast_shapes_op,
-      ArrayRef<Value> operands,
+      chlo::MinimumBroadcastShapesOp broadcast_shapes_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    chlo::MinimumBroadcastShapesOp::Adaptor adaptor(operands);
     auto loc = broadcast_shapes_op.getLoc();
     ImplicitLocOpBuilder lb(loc, rewriter);
     Value zero = lb.create<ConstantIndexOp>(0);
@@ -522,7 +402,7 @@ struct BufferizeJITExecuteOp
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      tf_framework::JITExecuteOp op, ArrayRef<Value> operands,
+      tf_framework::JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     SmallVector<Type, 2> result_types;
     if (failed(getTypeConverter()->convertTypes(op.getResultTypes(),
@@ -530,7 +410,7 @@ struct BufferizeJITExecuteOp
       return failure();
     }
     rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, result_types, operands, op->getAttrs());
+        op, result_types, adaptor.getOperands(), op->getAttrs());
     return success();
   }
 };
@@ -539,21 +419,14 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      RankOp op, ArrayRef<Value> operands,
+      RankOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    RankOp::Adaptor adaptor(operands);
     rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.memrefOrTensor());
     return success();
   }
 };
 
 }  // namespace
-
-void populateTiledLoopBufferizePattern(MLIRContext *context,
-                                       BufferizeTypeConverter *converter,
-                                       RewritePatternSet *patterns) {
-  patterns->insert<BufferizeTiledLoopOp>(*converter, context);
-}
 
 void populateExtraBufferizePatterns(MLIRContext *context,
                                     BufferizeTypeConverter *converter,

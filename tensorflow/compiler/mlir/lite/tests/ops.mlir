@@ -318,8 +318,8 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testAddWithI64Broadcasting
 func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
 ^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
-  // CHECK: "tfl.add"(%arg0, %arg1)
-  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  // CHECK: tfl.add(%arg0, %arg1)
+  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
   return %0#0 : tensor<2x3xi64>
 }
 
@@ -373,7 +373,7 @@ func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
-  // CHECK: "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}
+  // CHECK: tfl.mul(%arg0, %arg1) {fused_activation_function = "RELU6"}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>>
   return %0#0 : tensor<? x !quant.any<i16:f32>>
 }
@@ -409,7 +409,7 @@ func @testDiv(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 // CHECK-LABEL: testLess
 func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // CHECK: "tfl.less"(%arg0, %arg1)
+  // CHECK: tfl.less(%arg0, %arg1)
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
   return %0#0 : tensor<? x i1>
 }
@@ -1770,6 +1770,34 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
 
 // -----
 
+func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  // CHECK: "tfl.transpose"
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+  return %1 : tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // CHECK: "tfl.transpose"
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
+func @transpose_uniform_per_axis_qtype_mismatch_axis(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>> {
+  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  // expected-error @+1 {{op has mismatched quantized axes of input and output}}
+  %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+  return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
+}
+
+// -----
+
 func @anyWithI64Axis(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
   // expected-error @+1 {{tfl.reduce_any' op operand #1 must be tensor of 32-bit signless integer values}}
   %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
@@ -2523,6 +2551,66 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   return %0#0 : tensor<i32>
 }
 
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
+  return %0, %1 : tensor<*xi32>, tensor<*xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
+  // expected-error @+1 {{number of arguments in condition function does not match number of arguments in body function}}
+  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<*xi32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+    %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+    "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
+  }) : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
+func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i1> {
+  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<2xf32>, %arg2: tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) {
+  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
+  return %0, %1, %arg2 : tensor<*xi32>, tensor<2xf32>, tensor<1xf32>
+}
+
+func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i32> {
+  // expected-error @+1 {{condition function's argument type does not match body function's argument type}}
+  %0:3 = "tfl.while"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):  // no predecessors
+    %1 = call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):  // no predecessors
+    %1:3 = call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
+    "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> ()
+  }) : (tensor<i32>, tensor<1xf32>, tensor<2xf32>) -> (tensor<i32>, tensor<2xf32>, tensor<1xf32>)
+  return %0#0 : tensor<i32>
+}
+
+// -----
+
 func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tfl.if"(%arg0) ( {
     "tfl.yield"(%arg1) : (tensor<1xf32>) -> ()
@@ -2534,6 +2622,7 @@ func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 }
 
 func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error @+1 {{'tfl.if' op expected 2 regions}}
   %0 = "tfl.if"(%arg0) ( {
     %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     "tfl.yield"(%1) : (tensor<1xf32>) -> ()

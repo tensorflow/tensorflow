@@ -42,8 +42,9 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
                            OpBuilder* b) {
   auto caller_func =
       b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+  auto func_name_attr = b->getStringAttr(func_name);
   auto callee_func =
-      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name);
+      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name_attr);
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 

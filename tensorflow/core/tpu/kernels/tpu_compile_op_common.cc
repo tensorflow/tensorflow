@@ -128,8 +128,9 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
-          .empty()) {
+  if (!compile_status
+           .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
@@ -317,6 +318,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
+    if (may_modify_variables.size() == 1) {
+      may_modify_variables.resize(metadata_.num_cores_per_replica(),
+                                  may_modify_variables[0]);
+    }
   }
   if (status.ok() &&
       num_cores_with_compiled_programs +
@@ -344,8 +349,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  if (status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
-          .empty()) {
+  if (!status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());

@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO general dot to a regular dot.
 
+#include <sys/types.h>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -81,8 +83,9 @@ Value TransposeReshape(Value arg, Location loc,
   return rewriter->create<ReshapeOp>(loc, reshaped_type, transpose_result);
 }
 
-Value ProcessDotArg(Value arg, Location loc, ElementsAttr contract_dims_attr,
-                    bool outer_dims_first, PatternRewriter *rewriter) {
+Value ProcessDotArg(Value arg, Location loc,
+                    ArrayRef<int64_t> contract_dims_attr, bool outer_dims_first,
+                    PatternRewriter *rewriter) {
   auto shape = arg.getType().cast<ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;
@@ -90,7 +93,7 @@ Value ProcessDotArg(Value arg, Location loc, ElementsAttr contract_dims_attr,
 
   // Compute the contract dimension ordering.
   llvm::SmallVector<int64_t, 5> contract_dims;
-  for (auto dim : contract_dims_attr.getValues<int64_t>()) {
+  for (auto dim : contract_dims_attr) {
     contract_dims.push_back(dim);
     is_outer_dim[dim] = false;
   }
@@ -128,17 +131,17 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto dot_element_type = getElementTypeOrSelf(op);
 
     auto dot_numbers = op.dot_dimension_numbers();
-    if (dot_numbers.lhs_batching_dimensions().getNumElements() != 0 ||
-        dot_numbers.rhs_batching_dimensions().getNumElements() != 0) {
+    if (!dot_numbers.getLhsBatchingDimensions().empty() ||
+        !dot_numbers.getRhsBatchingDimensions().empty()) {
       return failure();
     }
 
     auto lhs = ProcessDotArg(op.lhs(), op.getLoc(),
-                             dot_numbers.lhs_contracting_dimensions(),
+                             dot_numbers.getLhsContractingDimensions(),
                              /*outer_dims_first=*/true, &rewriter);
 
     auto rhs = ProcessDotArg(op.rhs(), op.getLoc(),
-                             dot_numbers.rhs_contracting_dimensions(),
+                             dot_numbers.getRhsContractingDimensions(),
                              /*outer_dims_first=*/false, &rewriter);
 
     // Accept only static shaped types.

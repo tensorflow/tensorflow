@@ -18,9 +18,11 @@ limitations under the License.
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -58,8 +60,8 @@ struct AddTensorflowProducerVersion
 // Assemble a TF-CPURT pipeline to lower from Tensorflow dialects to Linalg on
 // buffers via progressive lowering to MHLO and Linalg.
 // -------------------------------------------------------------------------- //
-
-void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
+void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
+                           const TfCpuRtPipelineOptions& options) {
   // Break Tensorflow fused operations into primitive operations before
   // lowering to HLO.
   pm.addNestedPass<mlir::FuncOp>(CreateFissionPass());
@@ -86,7 +88,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
 
-  // Transform HLO operations to LinAlg and fuse them.
+  // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
@@ -107,6 +109,14 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
+  // Perform tiling-padding-vectorization if vectorization is enabled.
+  if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
+    pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
+  }
+
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
@@ -114,11 +124,11 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
   // Now bufferize all the compute operations (hlo + linalg) and func signature.
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   pm.addPass(mlir::createTensorConstantBufferizePass());
-  // Run canonicalizer for dead code removal.
-  pm.addPass(mlir::createCanonicalizerPass());
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
@@ -142,11 +152,26 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm) {
 
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
   pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
+
+  if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::createConvertLinalgTiledLoopsToSCFPass());
+  }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  mlir::VectorTransferToSCFOptions vec_to_scf_options;
+  vec_to_scf_options.unroll = true;
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
 }
 
-static mlir::PassPipelineRegistration<> tf_cpurt_pipeline(
+void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {
+  TfCpuRtPipelineOptions options;
+  CreateTfCpuRtPipeline(pm, options);
+}
+
+static mlir::PassPipelineRegistration<TfCpuRtPipelineOptions> tf_cpurt_pipeline(
     "tf-cpurt-pipeline",
     "Convert Tensorflow dialect to TFRT's CPURT compatible dialects",
     CreateTfCpuRtPipeline);

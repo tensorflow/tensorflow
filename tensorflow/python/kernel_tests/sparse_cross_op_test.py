@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sparse_cross_op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy
 
 from tensorflow.python.client import session

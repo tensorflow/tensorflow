@@ -103,6 +103,26 @@ func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.t
 
 // -----
 
+// CHECK-LABEL:  cast_with_unranked_quant
+func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tensor<*xf32> {
+  %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  %1 = "tfr.cast"(%0) : (tensor<*xi8>) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+  %3 = "tf.DequantizeFloat"(%2) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+  return %3 : tensor<*xf32>
+  // The cast ops should not be removed in this case or it will result in an
+  // invalid DequantizeFloat op as following:
+  // %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  // %1 = "tf.DequantizeFloat"(%0) : (tensor<*xi8>) -> tensor<*xf32>
+// CHECK:          %[[MAXIMUMFLOAT_0:.*]] = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+// CHECK:          %[[CAST_0:.*]] = "tfr.cast"(%[[MAXIMUMFLOAT_0]]) : (tensor<*xi8>) -> !tfr.tensor
+// CHECK:          %[[CAST_1:.*]] = "tfr.cast"(%[[CAST_0]]) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+// CHECK:          %[[DEQUANTIZEFLOAT_0:.*]] = "tf.DequantizeFloat"(%[[CAST_1]]) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+// CHECK:          return %[[DEQUANTIZEFLOAT_0]] : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: quant_qparam
 func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tensor<f32>, tensor<i32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> !tfr.tensor
@@ -111,8 +131,8 @@ func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tenso
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<i32>
   return %1, %2 : tensor<f32>, tensor<i32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 
@@ -124,8 +144,8 @@ func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<3xi32>
   return %1, %2 : tensor<3xf32>, tensor<3xi32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 

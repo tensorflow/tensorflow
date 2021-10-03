@@ -277,7 +277,10 @@ bool ProcessTargetDevices(llvm::ArrayRef<std::string> specified_device_specs,
 
   // Make sure all the devices are registered.
   for (const std::string& device : *device_specs) {
-    if (GetTargetHardware(device) == nullptr) return false;
+    if (GetTargetHardware(device) == nullptr) {
+      llvm::errs() << "cannot get target hardware for device: " << device;
+      return false;
+    }
   }
 
   return true;
