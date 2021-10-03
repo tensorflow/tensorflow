@@ -111,6 +111,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
+    expected_aliases.reserve(expected.size());
     for (auto& pair : expected) {
       expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }

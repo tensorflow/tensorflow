@@ -400,7 +400,9 @@ class PodTpuDriver : public TpuDriver {
     auto deps = GetDependencyOperationIds(wait_for);
 
     std::vector<int64_t> children_ids;
-    for (int i = 0; i < children.size(); ++i) {
+    const auto children_ids_size = children.size();
+    children_ids_size.reserve(children_ids_size);
+    for (int i = 0; i < children_ids_size; ++i) {
       auto child_op_id =
           static_cast<PodBufferHandle* const>(children[i])->operation_id();
       deps.insert(child_op_id);
@@ -664,6 +666,9 @@ class PodTpuDriver : public TpuDriver {
 
     std::vector<int64_t> input_op_ids;
     std::vector<int64_t> output_op_ids;
+    const auto inputs_size = inputs.size();
+    input_op_ids.reserve(inputs_size);
+    output_op_ids.reserve(inputs_size);
 
     for (auto* input : inputs) {
       auto input_dep =

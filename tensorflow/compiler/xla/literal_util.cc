@@ -540,6 +540,7 @@ Literal ConvertType(LiteralSlice literal) {
 /* static */ Literal LiteralUtil::MakeTuple(
     absl::Span<const Literal* const> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto* element : elements) {
     element_shapes.push_back(element->shape());
   }
@@ -553,6 +554,7 @@ Literal ConvertType(LiteralSlice literal) {
 /* static */ Literal LiteralUtil::MakeTupleFromSlices(
     absl::Span<const LiteralSlice> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto& element : elements) {
     element_shapes.push_back(element.shape());
   }

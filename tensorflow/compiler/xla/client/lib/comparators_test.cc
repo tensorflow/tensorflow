@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
+#include <cmath>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -66,6 +67,7 @@ void BuildComparatorAndComparisons(ComparatorsTest* test,
 
   // Do pairwise comparisons.
   std::vector<XlaOp> all_comparisons;
+  all_comparisons.reserve(std::pow(all_constants.size(), 2));
   for (const XlaOp& lhs_constant : all_constants) {
     for (const XlaOp& rhs_constant : all_constants) {
       all_comparisons.push_back(Broadcast(

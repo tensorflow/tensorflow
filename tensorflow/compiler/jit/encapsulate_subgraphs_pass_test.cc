@@ -430,6 +430,7 @@ Node* SendFromHost(ops::NodeOut key_input, const string& cluster,
   node_builder.Input(inputs);
   node_builder.Input(std::move(key_input));
   std::vector<DataType> dtypes;
+  dtypes.reserve(inputs.size());
   for (const auto& node : inputs) {
     dtypes.push_back(node.dt);
   }

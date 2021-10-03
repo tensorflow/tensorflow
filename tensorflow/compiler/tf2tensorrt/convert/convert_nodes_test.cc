@@ -6190,6 +6190,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -6693,6 +6694,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));

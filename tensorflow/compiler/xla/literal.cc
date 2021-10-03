@@ -419,7 +419,9 @@ Literal Literal::SubLiteral(ShapeIndexView shape_index) {
 std::vector<Literal> Literal::DecomposeTuple() {
   CHECK(shape().IsTuple());
   std::vector<Literal> elements;
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(shape());
+  elements.reserve(tuple_element_count);
+  for (int i = 0; i < tuple_element_count; ++i) {
     elements.push_back(Literal(ShapeUtil::GetSubshape(shape(), {i}),
                                /*allocate_arrays=*/false));
     Literal& element = elements.back();
@@ -1185,6 +1187,8 @@ void TupleToStringHelper(const LiteralBase& literal,
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   pieces->push_back("(\n");
   std::vector<string> tuple_pieces;
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
+  tuple_pieces.reserve(tuple_element_count);
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
@@ -1601,7 +1605,9 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(shape());
+  elements.reserve(tuple_element_count);
+  for (int i = 0; i < tuple_element_count; ++i) {
     auto element = LiteralSlice(*this, {i});
     TF_ASSIGN_OR_RETURN(
         auto new_element,
@@ -1614,6 +1620,7 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
 /* static */ Literal MutableLiteralBase::MoveIntoTuple(
     absl::Span<Literal> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const Literal& element : elements) {
     element_shapes.push_back(element.shape());
   }

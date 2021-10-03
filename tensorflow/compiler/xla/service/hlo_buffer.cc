@@ -44,6 +44,7 @@ bool HloBuffer::operator==(const HloBuffer& other) const {
 
 std::vector<HloPosition> HloBuffer::ComputePositions() const {
   std::vector<HloPosition> positions;
+  positions.reserve(values_.size());
   for (const HloValue* value : values_) {
     positions.insert(positions.end(), value->positions().begin(),
                      value->positions().end());

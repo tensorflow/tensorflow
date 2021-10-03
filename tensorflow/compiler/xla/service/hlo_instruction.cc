@@ -666,8 +666,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         // vector of pointers essentially) so create a vector of shapes to pass
         // in.
         std::vector<Shape> operand_shapes;
+        const auto operand_shapes_with_layout = proto.operand_shapes_with_layout();
+        operand_shapes.reserve(operand_shapes_with_layout.size());
         for (const ShapeProto& shape_proto :
-             proto.operand_shapes_with_layout()) {
+             operand_shapes_with_layout) {
           operand_shapes.emplace_back(shape_proto);
         }
         instruction =
@@ -1826,6 +1828,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (auto element : elements) {
     element_shapes.push_back(element->shape());
   }

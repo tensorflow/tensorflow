@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -114,6 +115,7 @@ Shape ExpandedFilterShape(const Shape& shape, int64_t group_count,
 // consists of 'group_size' times the value i.
 std::vector<int32> GetMaskIds(int64_t group_size, int64_t group_count) {
   std::vector<int32> values;
+  values.reserve(std::pow(group_count, group_size));
   for (int i = 0; i < group_count; ++i) {
     for (int j = 0; j < group_size; ++j) {
       values.push_back(i);

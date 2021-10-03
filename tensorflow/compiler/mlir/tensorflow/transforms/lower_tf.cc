@@ -1103,6 +1103,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       batch / prod(block_shape),
     //       input_shape[1], ..., input_shape[N-1]]
     std::vector<int64_t> reshaped_shape;
+    reshaped_shape.reserve(block_shape.size());
     for (auto val : block_shape) {
       reshaped_shape.push_back(val.getSExtValue());
     }

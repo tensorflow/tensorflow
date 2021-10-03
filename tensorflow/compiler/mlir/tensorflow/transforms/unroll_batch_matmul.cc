@@ -173,7 +173,9 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
   auto matmul_type = RankedTensorType::get({rows, cols}, element_type);
 
   std::vector<Value> matmuls;
-  for (int batch_idx = 0; batch_idx < bcast.output_batch_size(); ++batch_idx) {
+  auto output_batch_size = bcast.output_batch_size();
+  matmul.reserve(output_batch_size);
+  for (int batch_idx = 0; batch_idx < output_batch_size; ++batch_idx) {
     int lhs_batch_idx, rhs_batch_idx;
     if (bcast.IsBroadcastingRequired()) {
       lhs_batch_idx = bcast.x_batch_indices()[batch_idx];

@@ -90,6 +90,7 @@ class LoaderTest : public ::testing::Test {
         signature_def.outputs().at(kRegressOutputs).name();
 
     std::vector<tstring> serialized_examples;
+    serialized_examples.reserve(4);
     for (float x : {0, 1, 2, 3}) {
       serialized_examples.push_back(MakeSerializedExample(x));
     }

@@ -66,7 +66,9 @@ bool HasOperandType(HloInstruction* hlo, PrimitiveType type) {
 Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
                              PrimitiveType to_type) {
   std::vector<Shape> new_tuple_subshapes;
-  for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  const int64_t n = ShapeUtil::TupleElementCount(shape);
+  new_tuple_subshapes.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
     CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {

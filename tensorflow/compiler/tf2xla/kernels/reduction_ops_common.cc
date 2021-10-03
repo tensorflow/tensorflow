@@ -72,7 +72,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   absl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64_t> xla_axes;
-  for (int64_t i = 0; i < axes_tensor_shape.num_elements(); ++i) {
+  auto num_elements = axes_tensor_shape.num_elements();
+  xla_axes.reserve(num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
     int64_t index = axes[i];
     OP_REQUIRES(ctx,
                 !(index < -data_shape.dims() || index >= data_shape.dims()),
@@ -90,7 +92,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   std::vector<int64_t> final_shape;
-  for (int i = 0; i < data_shape.dims(); ++i) {
+  auto dims = data_shape.dims();
+  final_shape.reserve(dims);
+  for (int i = 0; i < dims; ++i) {
     if (!bitmap[i]) {
       // If we are not reducing along dimension i.
       int64_t dim = data_shape.dim_size(i);

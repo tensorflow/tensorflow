@@ -37,6 +37,7 @@ typedef std::pair<string, DataType> IOSpec;
 
 std::vector<IOSpec> M(const std::initializer_list<string>& names) {
   std::vector<IOSpec> v;
+  v.reserve(names.size());
   for (const string& name : names) {
     v.push_back(IOSpec(name, DT_INVALID));
   }

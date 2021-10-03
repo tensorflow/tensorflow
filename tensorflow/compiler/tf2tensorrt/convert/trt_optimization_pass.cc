@@ -374,7 +374,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
 
   std::vector<string> nodes_to_preserve;
-  for (const auto& n : item.NodesToPreserve()) {
+  auto _nodes_to_preserve = item.NodesToPreserve();
+  nodes_to_preserve.reserve(_nodes_to_preserve.size());
+  for (const auto& n : _nodes_to_preserve) {
     auto tokens = str_util::Split(n, ":");
     string s = tokens.at(0);
     for (int i = 1; i < tokens.size() - 1; ++i) {

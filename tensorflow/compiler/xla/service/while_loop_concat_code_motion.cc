@@ -393,7 +393,9 @@ void ModifyHloPropertiesForConcatShape(const ConcatGroup& group,
       CHECK_EQ(hlo->operand(0)->shape().rank(), hlo->dimensions().size());
     }
     std::vector<int64_t> dims;
-    for (int64_t i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+    const int64_t rank = hlo->operand(0)->shape().rank();
+    dims.reserve(rank);
+    for (int64_t i = 0; i < rank; ++i) {
       if (i == operand_concat_dim && operand_inserted_concat_dim) {
         dims.push_back(group.concat_dim);
       } else {
@@ -869,7 +871,10 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
         Shape data_shape = hlo->operand(i)->shape();
         std::vector<int64_t> broadcast_dims;
         std::vector<int64_t> broadcast_shape;
-        for (int64_t j = 0; j < data_shape.rank(); ++j) {
+        const int64_t data_shape_rank = data_shape.rank();
+        broadcast_dims.reserve(data_shape_rank);
+        broadcast_shape.reserve(data_shape_rank + 1);
+        for (int64_t j = 0; j < ; ++j) {
           if (j < operand_concat_dim) {
             broadcast_dims.push_back(j);
           } else {

@@ -131,7 +131,9 @@ class DynamicPartitionOp : public XlaOpKernel {
     if (data_shape.rank() > partition_shape.rank()) {
       // Broadcast parititon_shape so that it can be the same as data_shape.
       std::vector<int64_t> broadcasted_dims;
-      for (int64_t i = 0; i < partition_shape.rank(); ++i) {
+      auto rank = partition_shape.rank();
+      broadcasted_dims.reserve(rank);
+      for (int64_t i = 0; i < rank; ++i) {
         broadcasted_dims.push_back(i);
       }
       partitions = xla::BroadcastInDim(partitions, data_shape.dimensions(),

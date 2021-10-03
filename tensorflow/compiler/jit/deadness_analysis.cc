@@ -1550,6 +1550,7 @@ DeadnessAnalysisImpl::GetPredicateFor(Node* n, int oidx) const {
 
 void DeadnessAnalysisImpl::Print() const {
   std::vector<TensorId> tensor_ids;
+  tensor_ids.reserve(predicate_map_.size());
   for (const auto& kv_pair : predicate_map_) {
     tensor_ids.push_back(kv_pair.first);
   }

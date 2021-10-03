@@ -5389,7 +5389,9 @@ class ConvertInfeedDequeueTupleOp
 
     // Emit get_tuple_element for each result.
     std::vector<Value> results;
-    for (auto idx_and_type : llvm::enumerate(result_types)) {
+    auto _result_types = llvm::enumerate(result_types);
+    results.reserve(_result_types.size());
+    for (auto idx_and_type : _result_types) {
       auto tuple_element = rewriter.create<GetTupleElementOp>(
           op.getLoc(), idx_and_type.value(), data_tuple,
           rewriter.getI32IntegerAttr(idx_and_type.index()));

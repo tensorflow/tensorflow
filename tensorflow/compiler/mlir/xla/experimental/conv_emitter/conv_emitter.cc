@@ -150,6 +150,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   }
 
   std::vector<int64_t> ancestor_dimensions;
+  ancestor_dimensions.reserve(ancestors.size());
   for (auto ancestor : ancestors) {
     CHECK(IsSimpleLoop(ancestor));
     ancestor_dimensions.push_back(

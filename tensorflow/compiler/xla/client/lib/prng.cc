@@ -195,7 +195,10 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   CHECK_GE(pair.split_dim, 0);
   std::vector<int64_t> half_shape_dims;
   std::vector<int64_t> concat_shape_dims;
-  for (int64_t i = 0; i < shape.rank(); ++i) {
+  const auto rank = shape.rank();
+  half_shape_dims.reserve(rank + 1);
+  concat_shape_dims.reserve(rank + 1);
+  for (int64_t i = 0; i < rank; ++i) {
     if (i == pair.split_dim) {
       // Create a new trivial dim for the later concat, which is more friendly
       // to sharding propagation.
