@@ -246,6 +246,7 @@ class ReduceTest : public ClientLibraryTestBase {
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     std::vector<float> expected;
+    expected.reserve(cols);
     for (int64_t colno = 0; colno < cols; ++colno) {
       float column_sum = 0;
       for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -456,6 +457,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -487,6 +489,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -533,6 +536,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t major = 0; major < 2; ++major) {
     for (int64_t colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;

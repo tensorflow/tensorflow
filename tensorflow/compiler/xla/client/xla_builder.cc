@@ -3019,8 +3019,8 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
 
     std::vector<int64_t> permutation;
     const auto rank = operand_shape->rank();
-    permutation.reserve(rank.size() + 1);
-    for (int64_t i = 0; i < operand_shape->rank(); ++i) {
+    permutation.reserve(rank + 1);
+    for (int64_t i = 0; i < rank; ++i) {
       int64_t dim_after_reshape = i >= split_dimension ? i + 1 : i;
       if (i == concat_dimension) {
         permutation.push_back(split_dimension);

@@ -3076,7 +3076,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // Merge two consecutive broadcasts into a single one.
   if (operand->opcode() == HloOpcode::kBroadcast) {
     std::vector<int64_t> new_dimensions;
-    new_dimensions.reserve(operand->dimensions()->size());
+    new_dimensions.reserve(operand->dimensions().size());
     for (auto dim : operand->dimensions()) {
       new_dimensions.push_back(dims[dim]);
     }
@@ -4777,7 +4777,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         }
       }
       std::vector<int64_t> new_reduce_dimensions;
-      for (int64_t i = 0; i < arg->operand(0)->shape().rank().size(); ++i) {
+      for (int64_t i = 0; i < arg->operand(0)->shape().rank(); ++i) {
         if (!dimensions_not_to_reduce.contains(i)) {
           new_reduce_dimensions.push_back(i);
         }

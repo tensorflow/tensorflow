@@ -711,8 +711,9 @@ Status ValidateDotDimensionNumbers(
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
   const auto lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
-  dimensions.reserve(lhs_batch_dimensions);
-  is_dynamic.reserve(lhs_batch_dimensions);
+  const auto lhs_batch_dimensions_size = lhs_batch_dimensions.size();
+  dimensions.reserve(lhs_batch_dimensions_size);
+  is_dynamic.reserve(lhs_batch_dimensions_size);
   for (const int64_t lhs_dim : lhs_batch_dimensions) {
     dimensions.push_back(lhs.dimensions(lhs_dim));
     is_dynamic.push_back(lhs.is_dynamic_dimension(lhs_dim));
@@ -2565,7 +2566,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<int64_t> sizes;
   const auto starts_size = starts.size();
-  size.reserve(starts_size);
+  sizes.reserve(starts_size);
   for (int64_t dimension = 0; dimension < starts_size; ++dimension) {
     int64_t start_index = starts[dimension];
     int64_t limit_index = limits[dimension];

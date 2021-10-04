@@ -108,7 +108,9 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   // Transform the ShapedBuffer arguments into literals which the evaluator
   // consumes.
   std::vector<Literal> arg_literals;
-  for (int64_t p = 0; p < computation->num_parameters(); ++p) {
+  const int64_t num_parameters = computation->num_parameters();
+  arg_literals.reserve(num_parameters);
+  for (int64_t p = 0; p < num_parameters; ++p) {
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
                             run_options->stream(), argument_buffers[p]));

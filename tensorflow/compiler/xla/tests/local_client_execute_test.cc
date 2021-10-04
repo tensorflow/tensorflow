@@ -420,6 +420,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
 
   // Add each element's tuple index value to every element.
   std::vector<XlaOp> result_elements;
+  result_elements.reserve(kElementCount);
   for (int i = 0; i < kElementCount; ++i) {
     auto element = GetTupleElement(param, i);
     result_elements.push_back(Add(element, ConstantR0<float>(&builder, i)));
@@ -430,6 +431,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   // Feed in a tuple where each two-element vector element is {tuple_index,
   // -tuple_index}.
   std::vector<Literal> arg_elements;
+  arg_elements.reserve(kElementCount);
   for (int i = 0; i < kElementCount; ++i) {
     arg_elements.push_back(LiteralUtil::CreateR1<float>({1.0f * i, -1.0f * i}));
   }
@@ -463,9 +465,11 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // The computation increments each leaf value by an amount equal to the leaf's
   // ordinal position in a traversal of the tuple.
   std::vector<XlaOp> result_elements;
+  result_elements.reserve(kFanout);
   for (int i = 0; i < kFanout; ++i) {
     auto outer_element = GetTupleElement(param, i);
     std::vector<XlaOp> inner_result_elements;
+    inner_result_elements.reserve(kFanout);
     for (int j = 0; j < kFanout; ++j) {
       auto inner_element = GetTupleElement(outer_element, j);
       inner_result_elements.push_back(
@@ -478,8 +482,10 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
 
   // Construct the argument to pass to the computation.
   std::vector<Literal> outer_tuple_elements;
+  outer_tuple_elements.reserve(kFanout);
   for (int i = 0; i < kFanout; ++i) {
     std::vector<Literal> inner_tuple_elements;
+    inner_tuple_elements.reserve(kFanout);
     for (int j = 0; j < kFanout; ++j) {
       inner_tuple_elements.push_back(LiteralUtil::CreateR0<float>(i + j));
     }

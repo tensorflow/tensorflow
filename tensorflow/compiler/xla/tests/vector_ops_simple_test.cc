@@ -89,6 +89,9 @@ XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
 
   std::vector<float> exponents_vector;
   std::vector<float> expected_vector;
+  const auto num_elements = exponents.num_elements();
+  exponents_vector.reserve(num_elements);
+  expected_vector.reserve(num_elements);
   for (int i = 0; i < exponents.num_elements(); ++i) {
     exponents_vector.push_back(static_cast<float>(i) /
                                exponents.num_elements());
@@ -206,6 +209,9 @@ XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
   std::vector<float> v1vec;
   std::vector<float> v2vec;
   std::vector<float> expected_vec;
+  v1vec.reserve(datalen);
+  v2vec.reserve(datalen);
+  expected_vec.reserve(datalen);
   for (int i = 0; i < datalen; ++i) {
     float smaller = i;
     float larger = i * 2;

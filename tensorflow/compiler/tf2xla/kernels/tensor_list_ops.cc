@@ -319,7 +319,7 @@ class TensorListElementShapeOp : public XlaOpKernel {
       case DT_INT32: {
         std::vector<int32> size;
         auto dimensions = list_shape.dimensions();
-        size.reserve(dimensions);
+        size.reserve(dimensions.size());
         for (int64_t s : dimensions) {
           size.push_back(s);
         }

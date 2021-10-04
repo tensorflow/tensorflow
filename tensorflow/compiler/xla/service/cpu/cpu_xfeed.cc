@@ -146,6 +146,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;
+  outfed_shapes.reserve(buffers.size());
   for (auto& buffer : buffers) {
     TF_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
     outfed_shapes.push_back(std::move(outfed_shape));

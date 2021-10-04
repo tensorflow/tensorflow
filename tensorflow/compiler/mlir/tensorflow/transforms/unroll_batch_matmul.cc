@@ -174,7 +174,7 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
 
   std::vector<Value> matmuls;
   auto output_batch_size = bcast.output_batch_size();
-  matmul.reserve(output_batch_size);
+  matmuls.reserve(output_batch_size);
   for (int batch_idx = 0; batch_idx < output_batch_size; ++batch_idx) {
     int lhs_batch_idx, rhs_batch_idx;
     if (bcast.IsBroadcastingRequired()) {

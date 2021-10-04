@@ -153,6 +153,7 @@ string DeviceFromFlag() {
 
 std::vector<int> GetAttrLayout(absl::Span<const int64_t> minor_to_mayor) {
   std::vector<int> layout;
+  layout.reserve(minor_to_mayor);
   for (auto dim : minor_to_mayor) {
     layout.push_back(static_cast<int>(dim));
   }
@@ -2052,6 +2053,7 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
 
   std::vector<xrt::XLAAllocation> allocs(kNumAllocs);
   std::vector<Output> handle_outputs;
+  handle_outputs.reserve(kNumAllocs);
   for (int i = 0; i < kNumAllocs; ++i) {
     *allocs[i].mutable_value() = BasedTwoElementTuple(i * 4.0f);
     auto value = ops::Const(root.WithDevice("/device:CPU:0"),
@@ -2066,12 +2068,15 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
   EXPECT_EQ(outputs.size(), handle_outputs.size());
 
   std::vector<int64_t> handles;
+  handles.reserve(outputs.size());
   for (auto& output : outputs) {
     handles.push_back(output.scalar<int64_t>()());
   }
   // Create holes by releasing even allocations.
   std::vector<Operation> handle_releases;
-  for (size_t i = 0; i < handles.size(); i += 2) {
+  const size_t n = handles.size();
+  handle_releases.reserve(n);
+  for (size_t i = 0; i < n; i += 2) {
     handle_releases.push_back(
         ops::XRTReleaseAllocationHandle(root, Input(handles[i])));
   }
@@ -2087,7 +2092,9 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
 
   // Read back the allocation left at odd indices.
   std::vector<Output> read_outputs;
-  for (size_t i = 1; i < handles.size(); i += 2) {
+  const size_t handles_size = handles.size();
+  handles_size.reserve(handles_size * 2 - 1);
+  for (size_t i = 1; i < handles_size; i += 2) {
     read_outputs.push_back(ops::XRTReadLiteral(root, Input(handles[i])));
   }
   TF_ASSERT_OK(root.status());

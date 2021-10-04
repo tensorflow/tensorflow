@@ -507,7 +507,9 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
                                                 /*row_count=*/row_count);
   std::vector<VectorVariable> vector_accumulators;
   std::vector<ScalarVariable> scalar_accumulators;
-  for (int i = 0; i < row_count; i++) {
+  vector_accumulators.reserve(row_count);
+  scalar_accumulators.reserve(row_count);
+  for (int64_t i = 0; i < row_count; i++) {
     vector_accumulators.emplace_back(&vsl_, vsl_.GetZeroVector());
     scalar_accumulators.emplace_back(&vsl_, vsl_.GetZeroScalar());
   }

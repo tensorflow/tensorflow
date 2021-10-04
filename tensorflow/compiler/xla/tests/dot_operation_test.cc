@@ -604,7 +604,9 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
 
   // Slice batches into individual matrices and multiply them.
   std::vector<XlaOp> out_slices;
-  for (int i = 0; i < 4; ++i) {
+  const auto n = 4;
+  out_slices.reserve(n);
+  for (int i = 0; i < n; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
     auto x_slice = Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     x_slice = Reshape(x_slice, {0, 1, 2}, {2, 2});

@@ -2074,7 +2074,7 @@ std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
     return result;
   }
   std::vector<string> buffers_replicated_strs;
-  buffers_replicated_strs.reserve(parameter_replicated_at_leaf_buffers_.size());
+  buffers_replicated_strs.reserve(parameter_replicated_at_leaf_buffers_->size());
   for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
     buffers_replicated_strs.push_back(replicated ? "true" : "false");
   }
