@@ -19,6 +19,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -339,7 +340,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
                name=None):
     """See `tf.data.experimental.parallel_interleave()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
       raise TypeError(
