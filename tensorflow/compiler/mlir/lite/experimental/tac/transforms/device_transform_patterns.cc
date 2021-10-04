@@ -609,7 +609,7 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
   DenseElementsAttr axis_const;
   if (!matchPattern(mean_op.axis(), m_Constant(&axis_const))) return failure();
   if (axis_const.size() != 2) return failure();
-  auto axis_values = axis_const.getIntValues();
+  auto axis_values = axis_const.getValues<APInt>();
   int i = 1;
   for (auto axis_value : axis_values) {
     if (axis_value != i++) return failure();

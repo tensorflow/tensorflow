@@ -1688,9 +1688,9 @@ class CudnnConvolveExecutionPlan : public dnn::ConvolveExecutionPlan {
  public:
   CudnnConvolveExecutionPlan(cudnn_frontend::ExecutionPlan plan)
       : plan_(std::move(plan)) {}
-  std::string getTag() override { return plan_.getTag(); };
-  void* get_raw_desc() override { return plan_.get_raw_desc(); }
-  int64_t getWorkspaceSize() override { return plan_.getWorkspaceSize(); }
+  std::string getTag() const override { return plan_.getTag(); };
+  void* get_raw_desc() const override { return plan_.get_raw_desc(); }
+  int64_t getWorkspaceSize() const override { return plan_.getWorkspaceSize(); }
 
  private:
   cudnn_frontend::ExecutionPlan plan_;
@@ -4066,60 +4066,13 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::AlgorithmConfig& plan_config,
-    ScratchAllocator* scratch_allocator,
+    const dnn::ConvolveExecutionPlan& execution_plan,
+    DeviceMemoryBase scratch_memory,
     dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  absl::optional<dnn::AlgorithmDesc> plan_or = plan_config.algorithm();
-  absl::optional<dnn::AlgorithmDesc> plan_no_scratch_or =
-      plan_config.algorithm_no_scratch();
-
-  std::unique_ptr<cudnn_frontend::ExecutionPlan> current_plan;
-  if (!plan_or.has_value()) {
-    SE_ASSIGN_OR_RETURN(
-        std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
-        GetCudnnOperationGraph(kind, element_type, stream, input_descriptor,
-                               filter_descriptor, output_descriptor,
-                               convolution_descriptor, cudnn));
-
-    SE_ASSIGN_OR_RETURN(current_plan, GetFirstWorkingExecutionPlan(
-                                          stream, element_type, op_graph, kind,
-                                          cudnn, scratch_allocator));
-  }
-
-  size_t workspace_size = 0;
-  cudnnBackendDescriptor_t plan_desc;
-  std::string exec_plan_id = "unknown";
-  if (current_plan) {
-    exec_plan_id = current_plan->getTag();
-    workspace_size = current_plan->getWorkspaceSize();
-    plan_desc = current_plan->get_raw_desc();
-  } else {
-    exec_plan_id = plan_or->exec_plan_id();
-    auto workspace_size_or = plan_config.scratch_size();
-    if (workspace_size_or.has_value()) {
-      workspace_size = *workspace_size_or;
-    }
-    plan_desc = plan_or->exec_plan_desc();
-  }
-  dnn::AlgorithmDesc selected_plan_(exec_plan_id, plan_desc);
-
-  DeviceMemory<uint8> scratch_memory;
-  if (workspace_size > 0) {
-    auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
-    if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
-    } else if (plan_no_scratch_or.has_value()) {
-      selected_plan_ = {plan_no_scratch_or->exec_plan_id(),
-                        plan_no_scratch_or->exec_plan_desc()};
-    } else {
-      return port::Status(port::error::UNKNOWN,
-                          "CUDNN failed to allocate the scratch space for the "
-                          "plan or to find a working no-scratch plan.");
-    }
-  }
+  size_t workspace_size = execution_plan.getWorkspaceSize();
 
   void* data_ptrs[] = {input_data.opaque(), output_data.opaque(),
                        filter_data.opaque()};
@@ -4131,7 +4084,7 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(variantPack);
 
-  VLOG(4) << "\nDo convolution with plan tag: " << selected_plan_.exec_plan_id()
+  VLOG(4) << "\nDo convolution with plan tag: " << execution_plan.getTag()
           << "\nWorkspace size in bytes: " << workspace_size
           << "\nVariantPack: " << variantPack.describe();
 
@@ -4149,7 +4102,7 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
   }
 
   cudnnStatus_t status =
-      cudnnBackendExecute(cudnn.handle(), selected_plan_.exec_plan_desc(),
+      cudnnBackendExecute(cudnn.handle(), execution_plan.get_raw_desc(),
                           variantPack.get_raw_desc());
   RETURN_IF_CUDNN_ERROR(status);
 
@@ -4157,7 +4110,8 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
     if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
-    output_profile_result->set_algorithm(selected_plan_);
+    output_profile_result->set_algorithm(
+        {execution_plan.getTag(), execution_plan.get_raw_desc()});
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());
@@ -5063,63 +5017,13 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
     const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-    ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
+    DeviceMemoryBase scratch_memory,
+    const dnn::ConvolveExecutionPlan& execution_plan,
     dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  absl::optional<dnn::AlgorithmDesc> plan_or = algorithm_config.algorithm();
-  absl::optional<dnn::AlgorithmDesc> plan_no_scratch_or =
-      algorithm_config.algorithm_no_scratch();
-
-  std::unique_ptr<cudnn_frontend::ExecutionPlan> current_plan;
-  if (!plan_or.has_value()) {
-    SE_ASSIGN_OR_RETURN(
-        std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
-        GetCudnnFusedOperationGraph(
-            dnn::ConvolutionKind::FORWARD, element_type, conv_input_scale,
-            side_input_scale, stream, conv_input_descriptor, filter_descriptor,
-            bias_descriptor, output_descriptor, convolution_descriptor,
-            activation_mode, cudnn));
-
-    SE_ASSIGN_OR_RETURN(current_plan, GetFirstWorkingExecutionPlan(
-                                          stream, element_type, op_graph,
-                                          dnn::ConvolutionKind::FORWARD, cudnn,
-                                          scratch_allocator));
-  }
-
-  size_t workspace_size = 0;
-  cudnnBackendDescriptor_t plan_desc;
-  std::string exec_plan_id = "unknown";
-  if (current_plan) {
-    exec_plan_id = current_plan->getTag();
-    workspace_size = current_plan->getWorkspaceSize();
-    plan_desc = current_plan->get_raw_desc();
-  } else {
-    exec_plan_id = plan_or->exec_plan_id();
-    auto workspace_size_or = algorithm_config.scratch_size();
-    if (workspace_size_or.has_value()) {
-      workspace_size = *workspace_size_or;
-    }
-    plan_desc = plan_or->exec_plan_desc();
-  }
-  dnn::AlgorithmDesc selected_plan(exec_plan_id, plan_desc);
-
-  DeviceMemory<uint8> scratch_memory;
-  if (workspace_size > 0) {
-    auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
-    if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
-    } else if (plan_no_scratch_or.has_value()) {
-      selected_plan = {plan_no_scratch_or->exec_plan_id(),
-                       plan_no_scratch_or->exec_plan_desc()};
-    } else {
-      return port::Status(port::error::UNKNOWN,
-                          "CUDNN failed to allocate the scratch space for the "
-                          "plan or to find a working no-scratch plan.");
-    }
-  }
+  size_t workspace_size = execution_plan.getWorkspaceSize();
 
   void* data_ptrs[] = {
       conv_input_data.opaque(), output_data.opaque(), filter_data.opaque(),
@@ -5133,8 +5037,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(variantPack);
 
-  VLOG(4) << "\nDo fused convolution with plan tag: "
-          << selected_plan.exec_plan_id()
+  VLOG(4) << "\nDo fused convolution with plan tag: " << execution_plan.getTag()
           << "\nWorkspace size in bytes: " << workspace_size
           << "\nVariantPack: " << variantPack.describe();
 
@@ -5152,10 +5055,10 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
   }
 
   cudnnStatus_t status =
-      cudnnBackendExecute(cudnn.handle(), selected_plan.exec_plan_desc(),
+      cudnnBackendExecute(cudnn.handle(), execution_plan.get_raw_desc(),
                           variantPack.get_raw_desc());
   if (status != CUDNN_STATUS_SUCCESS || !is_profiling) {
-    VLOG(4) << "conv with plan " << selected_plan.exec_plan_id()
+    VLOG(4) << "conv with plan " << execution_plan.getTag()
             << ", workspace_size=" << workspace_size << " -> "
             << ToString(status);
   }
@@ -5165,11 +5068,12 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
     if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
-    output_profile_result->set_algorithm(selected_plan);
+    output_profile_result->set_algorithm(
+        {execution_plan.getTag(), execution_plan.get_raw_desc()});
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());
-    VLOG(4) << "conv with plan " << selected_plan.exec_plan_id()
+    VLOG(4) << "conv with plan " << execution_plan.getTag()
             << ", workspace_size=" << workspace_size << " -> "
             << ToString(status) << " in " << timer->GetElapsedMilliseconds()
             << "ms";

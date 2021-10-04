@@ -24,10 +24,6 @@ run ./configure again).
 NOTE: this script is only used in opensource.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 from builtins import bytes  # pylint: disable=redefined-builtin
 import json

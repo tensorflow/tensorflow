@@ -100,6 +100,44 @@ cc_library(
 )
 
 cc_library(
+    name = "testutils",
+    testonly = 1,
+    srcs = ["utils/trt_testutils.cc"],
+    hdrs = [
+        "utils/trt_testutils.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":trt_conversion",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/framework:tensor_testutil",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "testutils_test",
+    size = "small",
+    srcs = ["utils/trt_testutils_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":testutils",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+    ]),
+)
+
+cc_library(
     name = "trt_op_kernels",
     srcs = [
         "kernels/get_calibration_data_op.cc",
@@ -167,6 +205,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":common_utils",
+        ":testutils",
         ":trt_engine_instance_proto_cc",
         ":trt_engine_resource_op_kernels",
         ":trt_engine_resource_ops_op_lib",
@@ -203,6 +242,7 @@ tf_cuda_cc_test(
         ":trt_op_libs",
         ":trt_resources",
         ":trt_conversion",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -399,17 +439,75 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
+tf_cuda_library(
+    name = "trt_weights",
+    srcs = ["convert/weights.cc"],
+    hdrs = [
+        "convert/weights.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_library(
+    name = "op_converter",
+    srcs = [],
+    hdrs = [
+        "convert/op_converter.h",
+    ],
+    deps = [
+        ":trt_weights",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_library(
+    name = "op_converter_registry",
+    srcs = ["convert/op_converter_registry.cc"],
+    hdrs = [
+        "convert/op_converter_registry.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        ":op_converter",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "op_converter_registry_test",
+    size = "small",
+    srcs = ["convert/op_converter_registry_test.cc"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":op_converter_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/ops/slice_ops.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
+        "convert/ops/layer_utils.h",
+        "convert/ops/slice_ops.h",
         "convert/trt_optimization_pass.h",
     ],
     deps = [
@@ -421,6 +519,9 @@ tf_cuda_library(
         ":trt_logging",
         ":trt_resources",
         ":utils",
+        ":trt_weights",
+        ":op_converter",
+        ":op_converter_registry",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/common_runtime:core_cpu",
@@ -463,6 +564,7 @@ tf_cuda_cc_test(
         ":trt_op_kernels",
         ":trt_op_libs",
         ":trt_conversion",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
@@ -484,7 +586,9 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "convert_nodes_test",
     size = "medium",
-    srcs = ["convert/convert_nodes_test.cc"],
+    srcs = [
+        "convert/convert_nodes_test.cc",
+    ],
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -496,6 +600,7 @@ tf_cuda_cc_test(
         ":trt_plugins",
         ":trt_engine_utils",
         ":utils",
+        ":testutils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -512,6 +617,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
     ] + if_tensorrt([
         ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",

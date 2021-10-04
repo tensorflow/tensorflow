@@ -1029,6 +1029,11 @@ TEST(Canonicalize, Basic) {
                                           {"transpose_b", true},
                                           {"transpose_a", false}})),
             "MatMul[T=double,transpose_a=false,transpose_b=true]");
+  EXPECT_EQ(Canonicalize("CheckNumericsV2",
+                         Attrs({{"T", DT_HALF},
+                                {"message", "Message should get hashed"}}),
+                         FunctionLibraryRuntime::InstantiateOptions()),
+            "CheckNumericsV2[T=half,message=811750450553548470]");
 }
 
 TEST(FunctionLibraryDefinitionTest, Contains) {

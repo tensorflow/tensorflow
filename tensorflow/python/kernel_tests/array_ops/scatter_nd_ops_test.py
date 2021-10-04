@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.scatter_nd."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
@@ -25,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -462,6 +459,30 @@ class StatefulScatterNdTest(test.TestCase):
         op(ref, indices, updates).eval()
 
 
+class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    ref = variables.Variable(array_ops.zeros([1]))
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    self.evaluate(variables.global_variables_initializer())
+    val = self.evaluate(state_ops.scatter_nd_update(ref, indices, values))
+    for _ in range(5):
+      ref2 = variables.Variable(array_ops.zeros([1]))
+      self.evaluate(variables.global_variables_initializer())
+      val2 = self.evaluate(state_ops.scatter_nd_update(ref2, indices, values))
+      self.assertAllEqual(val, val2)
+
+
 class ScatterNdTest(test.TestCase, parameterized.TestCase):
   non_aliasing_add_test = False
 
@@ -776,6 +797,32 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
     pass
 
 
+class ScatterNdDeterminismTest(ScatterNdTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    shape = [1]
+    val = self.evaluate(self.scatter_nd(indices, values, shape))
+    for _ in range(5):
+      val2 = self.evaluate(self.scatter_nd(indices, values, shape))
+      self.assertAllEqual(val, val2)
+
+
+class ScatterNdNonAliasingAddDeterminismTest(ScatterNdDeterminismTest,
+                                             ScatterNdNonAliasingAddTest):
+  pass
+
+
 class ScatterNdTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -935,6 +982,27 @@ class ScatterNdTensorTest(test.TestCase):
         b[6],
         constant_op.constant(
             [10., 11., 12., 13., 14., 15., 16., 17., 18., 19.]))
+
+
+class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
+
+  def setUp(self):
+    super().setUp()
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
+  def testDeterminism(self):
+    a = array_ops.zeros([1])
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
+    values = np.random.randn(100000)
+    val = self.evaluate(array_ops.tensor_scatter_update(a, indices, values))
+    for _ in range(5):
+      val2 = self.evaluate(array_ops.tensor_scatter_update(a, indices, values))
+      self.assertAllEqual(val, val2)
 
 
 if __name__ == "__main__":

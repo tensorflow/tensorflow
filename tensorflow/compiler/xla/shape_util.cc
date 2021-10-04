@@ -401,6 +401,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
+/* static */ Shape ShapeUtil::MakeMaybeTupleShape(
+    absl::Span<const Shape> shapes) {
+  if (shapes.size() == 1) {
+    return shapes[0];
+  }
+  return MakeTupleShape(shapes);
+}
+
 /* static */ Shape ShapeUtil::MakeOpaqueShape() {
   Shape result;
   result.set_element_type(OPAQUE_TYPE);
@@ -444,6 +452,21 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
   shape->mutable_layout()->add_minor_to_major(shape->rank());
+  shape->add_dimensions(bound);
+  TF_DCHECK_OK(ValidateShape(*shape));
+}
+
+/* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
+  CHECK(LayoutUtil::IsDenseArray(*shape));
+
+  // Bump up all values in the layout by one.
+  for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
+       dim_idx++) {
+    int layout_idx = shape->layout().minor_to_major(dim_idx);
+    shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
+  }
+  // Then we can safely add zero.
+  shape->mutable_layout()->add_minor_to_major(0);
   shape->add_dimensions(bound);
   TF_DCHECK_OK(ValidateShape(*shape));
 }
@@ -1775,9 +1798,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
 
 /*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
                                             const Shape& to) {
-  return ElementIsFloating(from) == ElementIsFloating(to) &&
-         ElementIsSigned(from) == ElementIsSigned(to) &&
-         HigherPrecisionElementType(from, to) == to.element_type();
+  return HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 /*static*/

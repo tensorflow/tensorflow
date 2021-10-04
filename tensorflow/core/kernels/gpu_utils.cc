@@ -215,7 +215,7 @@ void LogFusedConvForwardAutotuneResults(
 
 Status BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>* plans,
     se::dnn::AlgorithmConfig* algo) {
   auto compare_run_times = [](const AutotuneResult& lhs,
                               const AutotuneResult& rhs) {
@@ -238,10 +238,16 @@ Status BestCudnnConvAlgorithm(
   }
 
   if (idx == -1) {
-    return errors::NotFound("No algorithm worked!");
+    std::ostringstream msg;
+    msg << "No algorithm worked!  Error messages:";
+    // TODO(awpr): identify the algorithm as part of this error message, too.
+    for (const auto& result : results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return errors::NotFound(msg.str());
   }
 
-  if (plans == nullptr) {
+  if (!plans || plans->empty()) {
     VLOG(2) << "fastest algorithm: "
             << proto_utils::FromDurationProto(results[idx].run_time())
             << " with algo " << results[idx].conv().algorithm()

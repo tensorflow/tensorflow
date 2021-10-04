@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for make_template used with MirroredStrategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.framework import ops

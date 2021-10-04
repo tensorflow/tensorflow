@@ -156,8 +156,8 @@ func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) ->
 
 // CHECK-LABEL: func @while
 func @while() -> tensor<i32> {
-  // CHECK: [[VAL0:%.+]] = mhlo.constant dense<0>
-  // CHECK: [[VAL1:%.+]] = mhlo.constant dense<-1>
+  // CHECK-DAG: [[VAL0:%.+]] = mhlo.constant dense<0>
+  // CHECK-DAG: [[VAL1:%.+]] = mhlo.constant dense<-1>
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<-1> : tensor<i32>
   // CHECK: [[VAL2:%.+]] = "mhlo.tuple"([[VAL0]], [[VAL1]], [[VAL0]])

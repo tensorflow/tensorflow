@@ -139,6 +139,8 @@ class HloRunner : public HloRunnerInterface {
   Backend& backend();
   const Backend& backend() const;
 
+  absl::string_view Name() const override;
+
  private:
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it

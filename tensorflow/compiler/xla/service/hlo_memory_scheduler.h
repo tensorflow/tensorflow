@@ -56,7 +56,7 @@ typedef std::function<StatusOr<HloInstructionSequence>(
 
 // Scheduler for the entire module.
 typedef std::function<StatusOr<HloSchedule>(
-    HloModule*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
+    const HloModule*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
     const LogicalBuffer::SizeFunction&,
     /*peak_memory*/ int64_t*)>
     ModuleSchedulerAlgorithm;
@@ -110,7 +110,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 StatusOr<HloSchedule> DefaultModuleScheduler(
-    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+    const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function, int64_t* peak_memory);
 
@@ -119,7 +119,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
 // for a LogicalBuffer. peak_memory (if not nullptr) is set to the largest peak
 // memory (according to the HeapSimulator) of all computations in the module.
 StatusOr<HloSchedule> ScheduleModule(
-    HloModule* module, const LogicalBuffer::SizeFunction& size_function,
+    const HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm = {},
     int64_t* peak_memory = nullptr);
 

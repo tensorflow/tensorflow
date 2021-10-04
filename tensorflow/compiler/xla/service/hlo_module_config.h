@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -258,8 +259,33 @@ class HloModuleConfig {
     return &phase_ordering_config_;
   }
 
+  const absl::flat_hash_map<std::string, std::string>& flag_config() const {
+    return flag_config_;
+  }
+
+  absl::flat_hash_map<std::string, std::string>* mutable_flag_config() {
+    return &flag_config_;
+  }
+
   const int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
+
+  void set_allow_spmd_sharding_propagation_to_output(
+      bool allow_spmd_sharding_propagation_to_output) {
+    allow_spmd_sharding_propagation_to_output_ =
+        allow_spmd_sharding_propagation_to_output;
+  }
+  bool allow_spmd_sharding_propagation_to_output() const {
+    return allow_spmd_sharding_propagation_to_output_;
+  }
+
+  const std::vector<uint64_t>& memory_space_assignment_config() const {
+    return memory_space_assignment_config_;
+  }
+
+  std::vector<uint64_t>* mutable_memory_space_assignment_config() {
+    return &memory_space_assignment_config_;
+  }
 
  private:
   // If you add new members, be sure to update compilation_cache_key.
@@ -325,6 +351,11 @@ class HloModuleConfig {
   // decision i of operation v.
   std::vector<std::vector<std::vector<int64_t>>> layout_config_;
 
+  // Memory Space Assignment configuration, where
+  // memory_space_assignment_config_ controls the order of buffer intervals
+  // of this hlo module.
+  std::vector<uint64_t> memory_space_assignment_config_;
+
   // Phase ordering configuration, where phase_ordering_config[v][i] controls
   // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is
   // inserted after pass v in pipeline. See tuning::PhaseOrderingConfig for
@@ -334,6 +365,19 @@ class HloModuleConfig {
   // This is the variable that stores state to allow us to use the same
   // config across functions during compilation.
   int phase_index_ = 0;
+
+  // Flag configuration to use instead of global flags. This allows multiple
+  // HLO modules to be compiled in parallel with different flag values.
+  absl::flat_hash_map<std::string, std::string> flag_config_;
+
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  bool allow_spmd_sharding_propagation_to_output_ = false;
 };
 
 }  // namespace xla

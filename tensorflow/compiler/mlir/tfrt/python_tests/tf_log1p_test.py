@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 specializations = [
     tf_cpurt.Specialization.ENABLED,
@@ -57,7 +57,7 @@ def test_log1p(fn, rank):
       np.testing.assert_allclose(res, np.log1p(arg), atol=1e-06)
 
 
-class TfLog1PTest(googletest.TestCase):
+class TfLog1PTest(test.TestCase):
 
   def test_1d(self):
     test_log1p(log1p_1d, 1)
@@ -68,4 +68,4 @@ class TfLog1PTest(googletest.TestCase):
 
 if __name__ == "__main__":
   np.random.seed(0)
-  googletest.main()
+  test.main()

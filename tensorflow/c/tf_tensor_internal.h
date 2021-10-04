@@ -124,6 +124,7 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

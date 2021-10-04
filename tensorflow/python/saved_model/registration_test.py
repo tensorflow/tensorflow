@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Trackable class registration tests."""
+"""Trackable class registration tests.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+For integrated tests, see registration_saving_test.py.
+"""
 
 from absl.testing import parameterized
 
-from tensorflow.python.platform import test
+from tensorflow.python.eager import test
 from tensorflow.python.saved_model import registration
 from tensorflow.python.training.tracking import base
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for morphological filtering operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import config
@@ -142,7 +138,7 @@ class DilationTest(test.TestCase):
     image = [[[[.1], [.2], [.3]], [[.4], [.5], [.6]], [[.7], [.8], [.9]]]]
     # [2, 2, 1]
     kernel = [[[.4], [.3]], [[.1], [.2]]]
-    # Because rate = 2, the effective kernel is [3, 3, 1]:
+    # Because rate = 2.0, the effective kernel is [3, 3, 1]:
     # kernel_eff = [[[.4], [.0], [.3]],
     #               [[.0], [.0], [.0]],
     #               [[.1], [.0], [.2]]]
@@ -244,7 +240,7 @@ class DilationTest(test.TestCase):
   def _testDilationGradDeterminismError(self, use_gpu):
     if use_gpu and test.is_gpu_available(cuda_only=True):
       try:
-        config.enable_deterministic_ops(True)
+        config.enable_op_determinism()
         with self.assertRaisesRegexp(
             errors_impl.UnimplementedError, "Determinism is not yet supported "
             "for Dilation2DBackpropInput."):
@@ -256,10 +252,10 @@ class DilationTest(test.TestCase):
               padding="VALID",
               use_gpu=use_gpu)
       finally:
-        config.enable_deterministic_ops(False)
+        config.disable_op_determinism()
     else:
       try:
-        config.enable_deterministic_ops(True)
+        config.enable_op_determinism()
         self._ConstructAndTestGradient(
             image_shape=[1, 3, 3, 1],
             kernel_shape=[1, 1, 1],
@@ -268,7 +264,7 @@ class DilationTest(test.TestCase):
             padding="VALID",
             use_gpu=use_gpu)
       finally:
-        config.enable_deterministic_ops(False)
+        config.disable_op_determinism()
 
   def _testDilationGradSamePadding_1x1x1(self, use_gpu):
     self._ConstructAndTestGradient(
@@ -448,7 +444,7 @@ class ErosionTest(test.TestCase):
     image = [[[[.1], [.2], [.3]], [[.4], [.5], [.6]], [[.7], [.8], [.9]]]]
     # [2, 2, 1]
     kernel = [[[.4], [.3]], [[.1], [.2]]]
-    # Because rate = 2, the effective kernel is [3, 3, 1]:
+    # Because rate = 2.0, the effective kernel is [3, 3, 1]:
     # kernel_eff = [[[.4], [.0], [.3]],
     #               [[.0], [.0], [.0]],
     #               [[.1], [.0], [.2]]]

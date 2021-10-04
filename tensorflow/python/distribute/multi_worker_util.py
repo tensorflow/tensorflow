@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for multi-worker distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.training import server_lib

@@ -207,7 +207,6 @@ filegroup(
         "blocking_counter_test.cc",
         "coding_test.cc",
         "notification_test.cc",
-        "refcount_test.cc",
         "status_test.cc",
         "threadpool_test.cc",
     ],

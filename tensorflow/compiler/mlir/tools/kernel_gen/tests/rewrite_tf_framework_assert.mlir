@@ -42,8 +42,8 @@ func @double_assert(%ctx: !tf_framework.op_kernel_context)
   %unranked_buf = memref.cast %buf : memref<2xf32> to memref<*xf32>
   return %unranked_buf : memref<*xf32>
 }
-// CHECK:   [[TRUE:%.*]] = constant true
-// CHECK:   [[FALSE:%.*]] = constant false
+// CHECK-DAG:   [[TRUE:%.*]] = constant true
+// CHECK-DAG:   [[FALSE:%.*]] = constant false
 // CHECK:   cond_br [[TRUE]], ^bb1, ^bb3
 // CHECK: ^bb1:
 // CHECK:   cond_br [[FALSE]], ^bb2, ^bb4

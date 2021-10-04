@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import packed_distributed_variable
 from tensorflow.python.eager import context

@@ -385,6 +385,9 @@ struct ReadVariableOptionsT;
 struct AssignVariableOptions;
 struct AssignVariableOptionsT;
 
+struct RandomOptions;
+struct RandomOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -854,11 +857,12 @@ enum BuiltinOperator {
   BuiltinOperator_READ_VARIABLE = 143,
   BuiltinOperator_ASSIGN_VARIABLE = 144,
   BuiltinOperator_BROADCAST_ARGS = 145,
+  BuiltinOperator_RANDOM_STANDARD_NORMAL = 146,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BROADCAST_ARGS
+  BuiltinOperator_MAX = BuiltinOperator_RANDOM_STANDARD_NORMAL
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[146] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[147] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1005,13 +1009,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[146] {
     BuiltinOperator_VAR_HANDLE,
     BuiltinOperator_READ_VARIABLE,
     BuiltinOperator_ASSIGN_VARIABLE,
-    BuiltinOperator_BROADCAST_ARGS
+    BuiltinOperator_BROADCAST_ARGS,
+    BuiltinOperator_RANDOM_STANDARD_NORMAL
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[147] = {
+  static const char * const names[148] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1158,13 +1163,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "READ_VARIABLE",
     "ASSIGN_VARIABLE",
     "BROADCAST_ARGS",
+    "RANDOM_STANDARD_NORMAL",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BROADCAST_ARGS)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RANDOM_STANDARD_NORMAL)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1284,11 +1290,12 @@ enum BuiltinOptions {
   BuiltinOptions_VarHandleOptions = 111,
   BuiltinOptions_ReadVariableOptions = 112,
   BuiltinOptions_AssignVariableOptions = 113,
+  BuiltinOptions_RandomOptions = 114,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_AssignVariableOptions
+  BuiltinOptions_MAX = BuiltinOptions_RandomOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[114] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[115] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1403,13 +1410,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[114] {
     BuiltinOptions_HashtableSizeOptions,
     BuiltinOptions_VarHandleOptions,
     BuiltinOptions_ReadVariableOptions,
-    BuiltinOptions_AssignVariableOptions
+    BuiltinOptions_AssignVariableOptions,
+    BuiltinOptions_RandomOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[115] = {
+  static const char * const names[116] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1524,13 +1532,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "VarHandleOptions",
     "ReadVariableOptions",
     "AssignVariableOptions",
+    "RandomOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_AssignVariableOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_RandomOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1989,6 +1998,10 @@ template<> struct BuiltinOptionsTraits<tflite::ReadVariableOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::AssignVariableOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_AssignVariableOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::RandomOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RandomOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2926,6 +2939,14 @@ struct BuiltinOptionsUnion {
   const tflite::AssignVariableOptionsT *AsAssignVariableOptions() const {
     return type == BuiltinOptions_AssignVariableOptions ?
       reinterpret_cast<const tflite::AssignVariableOptionsT *>(value) : nullptr;
+  }
+  tflite::RandomOptionsT *AsRandomOptions() {
+    return type == BuiltinOptions_RandomOptions ?
+      reinterpret_cast<tflite::RandomOptionsT *>(value) : nullptr;
+  }
+  const tflite::RandomOptionsT *AsRandomOptions() const {
+    return type == BuiltinOptions_RandomOptions ?
+      reinterpret_cast<const tflite::RandomOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10343,6 +10364,72 @@ inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(
 
 flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct RandomOptionsT : public flatbuffers::NativeTable {
+  typedef RandomOptions TableType;
+  int32_t seed;
+  int32_t seed2;
+  RandomOptionsT()
+      : seed(0),
+        seed2(0) {
+  }
+};
+
+struct RandomOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RandomOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_SEED = 4,
+    VT_SEED2 = 6
+  };
+  int32_t seed() const {
+    return GetField<int32_t>(VT_SEED, 0);
+  }
+  int32_t seed2() const {
+    return GetField<int32_t>(VT_SEED2, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_SEED) &&
+           VerifyField<int32_t>(verifier, VT_SEED2) &&
+           verifier.EndTable();
+  }
+  RandomOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RandomOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<RandomOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const RandomOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RandomOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_seed(int32_t seed) {
+    fbb_.AddElement<int32_t>(RandomOptions::VT_SEED, seed, 0);
+  }
+  void add_seed2(int32_t seed2) {
+    fbb_.AddElement<int32_t>(RandomOptions::VT_SEED2, seed2, 0);
+  }
+  explicit RandomOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RandomOptionsBuilder &operator=(const RandomOptionsBuilder &);
+  flatbuffers::Offset<RandomOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RandomOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RandomOptions> CreateRandomOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t seed = 0,
+    int32_t seed2 = 0) {
+  RandomOptionsBuilder builder_(_fbb);
+  builder_.add_seed2(seed2);
+  builder_.add_seed(seed);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<RandomOptions> CreateRandomOptions(flatbuffers::FlatBufferBuilder &_fbb, const RandomOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -10832,6 +10919,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::AssignVariableOptions *builtin_options_as_AssignVariableOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_AssignVariableOptions ? static_cast<const tflite::AssignVariableOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::RandomOptions *builtin_options_as_RandomOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_RandomOptions ? static_cast<const tflite::RandomOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -11318,6 +11408,10 @@ template<> inline const tflite::ReadVariableOptions *Operator::builtin_options_a
 
 template<> inline const tflite::AssignVariableOptions *Operator::builtin_options_as<tflite::AssignVariableOptions>() const {
   return builtin_options_as_AssignVariableOptions();
+}
+
+template<> inline const tflite::RandomOptions *Operator::builtin_options_as<tflite::RandomOptions>() const {
+  return builtin_options_as_RandomOptions();
 }
 
 struct OperatorBuilder {
@@ -15325,6 +15419,35 @@ inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(fl
       _fbb);
 }
 
+inline RandomOptionsT *RandomOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new RandomOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void RandomOptions::UnPackTo(RandomOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = seed(); _o->seed = _e; }
+  { auto _e = seed2(); _o->seed2 = _e; }
+}
+
+inline flatbuffers::Offset<RandomOptions> RandomOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RandomOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRandomOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<RandomOptions> CreateRandomOptions(flatbuffers::FlatBufferBuilder &_fbb, const RandomOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RandomOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _seed = _o->seed;
+  auto _seed2 = _o->seed2;
+  return tflite::CreateRandomOptions(
+      _fbb,
+      _seed,
+      _seed2);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -16252,6 +16375,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_RandomOptions: {
+      auto ptr = reinterpret_cast<const tflite::RandomOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -16722,6 +16849,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_RandomOptions: {
+      auto ptr = reinterpret_cast<const tflite::RandomOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -17180,6 +17311,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptionsT *>(value);
       return CreateAssignVariableOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_RandomOptions: {
+      auto ptr = reinterpret_cast<const tflite::RandomOptionsT *>(value);
+      return CreateRandomOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -17636,6 +17771,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_AssignVariableOptions: {
       value = new tflite::AssignVariableOptionsT(*reinterpret_cast<tflite::AssignVariableOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RandomOptions: {
+      value = new tflite::RandomOptionsT(*reinterpret_cast<tflite::RandomOptionsT *>(u.value));
       break;
     }
     default:
@@ -18207,6 +18346,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_AssignVariableOptions: {
       auto ptr = reinterpret_cast<tflite::AssignVariableOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RandomOptions: {
+      auto ptr = reinterpret_cast<tflite::RandomOptionsT *>(value);
       delete ptr;
       break;
     }

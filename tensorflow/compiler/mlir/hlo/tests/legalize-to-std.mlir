@@ -38,8 +38,14 @@ func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32
   // CHECK-NEXT:   %4 = remi_signed %3, %arg1 : tensor<4xi32>
   %4 = "mhlo.remainder"(%3, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 
-  // CHECK-NEXT:   return %4 : tensor<4xi32>
-  return %4 : tensor<4xi32>
+  // CHECK-NEXT:   %5 = and %4, %arg1 : tensor<4xi32>
+  %5 = "mhlo.and"(%4, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  // CHECK-NEXT:   %6 = or %5, %arg1 : tensor<4xi32>
+  %6 = "mhlo.or"(%5, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  // CHECK-NEXT:   return %6 : tensor<4xi32>
+  return %6 : tensor<4xi32>
 }
 
 // CHECK-LABEL: func @unary_ops_float
@@ -201,4 +207,11 @@ func @iota.const.complex.f64() -> tensor<4xcomplex<f64>> {
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f64>>
   // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f64>>
   return %0 : tensor<4xcomplex<f64>>
+}
+
+// CHECK-LABEL: func @select(%arg0: tensor<4xi1>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<4xi32> {
+func @select(%arg0: tensor<4xi1>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-NEXT: %0 = select %arg0, %arg1, %arg2 : tensor<4xi1>, tensor<4xi32>
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }

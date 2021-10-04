@@ -260,7 +260,7 @@ class SplitVOpCPUImpl {
   template <typename MakeSizesType, typename ReshapeResultType>
   void operator()(OpKernelContext* context,
                   const InputReshapedType& input_reshaped,
-                  const std::vector<int64>& split_start_points,
+                  const std::vector<int64_t>& split_start_points,
                   const TensorShape& input_shape, int32_t split_dim,
                   Eigen::DenseIndex prefix_dim_size,
                   Eigen::DenseIndex split_dim_size,

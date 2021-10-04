@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.client import session
@@ -59,6 +55,18 @@ class SvdOpTest(test.TestCase):
     with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
                                 "rank.* 2.*1"):
       linalg_ops.svd(vector)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testThrowDeterminismError(self):
+    shape = [6, 5]
+    seed = [42, 24]
+    matrix1 = stateless_random_ops.stateless_random_normal(shape, seed)
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError, "Determinism is not yet supported "
+            "for Svd."):
+          self.evaluate(linalg_ops.svd(matrix1))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def DISABLED_testBadInputs(self):

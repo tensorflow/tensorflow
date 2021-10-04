@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.concatenate()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -33,7 +29,7 @@ from tensorflow.python.platform import test
 class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDataset(self):
+  def testBasic(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20),
         np.tile(np.array([[12], [13], [14], [15]]), 15),
@@ -67,7 +63,7 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDatasetDifferentShape(self):
+  def testDifferentShape(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20),
         np.tile(np.array([[12], [13], [14], [15]]), 4))
@@ -98,7 +94,7 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDatasetDifferentStructure(self):
+  def testDifferentStructure(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 5),
         np.tile(np.array([[12], [13], [14], [15]]), 4))
@@ -111,11 +107,12 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDatasetDifferentKeys(self):
+  def testDifferentKeys(self):
     input_components = {
         "foo": np.array([[1], [2], [3], [4]]),
         "bar": np.array([[12], [13], [14], [15]])
@@ -129,11 +126,12 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDatasetDifferentType(self):
+  def testDifferentType(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 5),
         np.tile(np.array([[12], [13], [14], [15]]), 4))
@@ -145,14 +143,22 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError,
+                                "Incompatible types of input datasets"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateWindows(self):
+  def testWindows(self):
     a = dataset_ops.Dataset.range(5).window(1)
     b = dataset_ops.Dataset.range(5, 10).window(1)
     c = a.concatenate(b).flat_map(lambda x: x)
+    self.assertDatasetProduces(c, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    a = dataset_ops.Dataset.range(5)
+    b = dataset_ops.Dataset.range(5, 10)
+    c = a.concatenate(b, name="concatenate")
     self.assertDatasetProduces(c, list(range(10)))
 
 

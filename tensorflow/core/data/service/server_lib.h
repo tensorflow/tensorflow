@@ -84,6 +84,8 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
   // Returns the number of workers registerd with the dispatcher.
   Status NumWorkers(int* num_workers);
+  // Returns the number of active (non-finished) jobs running on the dispatcher.
+  size_t NumActiveJobs();
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;

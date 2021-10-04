@@ -25,34 +25,123 @@ limitations under the License.
 
 namespace mlir {
 
+/// Representation of an inclusive Interval for the Userange.
+struct UseInterval {
+  using Vector = SmallVector<UseInterval, 8>;
+
+ public:
+  /// UseInterval Constructor.
+  UseInterval();
+  /// Empty UseInterval Constructor.
+  UseInterval(size_t start, size_t end) : start(start), end(end) {}
+
+  /// Checks if the given UseInterval overlaps with this UseInterval.
+  bool isOverlapping(const UseInterval &other) const {
+    return start <= other.end && end >= other.start;
+  }
+
+  /// Checks if the given UseInterval is contiguous with this UseInterval in
+  /// terms of doubled Ids.
+  /// For example: (0, 2) and (4, 6) are contiguous where (0, 2) and (5, 6) are
+  ///              not.
+  bool isContiguous(const UseInterval &other) const {
+    return start <= other.end + 2 && end + 2 >= other.start;
+  }
+
+  /// Checks if the given position is inside this UseInterval.
+  bool contains(size_t position) const {
+    return start <= position && end >= position;
+  }
+
+  /// Merges this UseInterval with the given UseInterval by updating start and
+  /// end.
+  bool mergeWith(const UseInterval &other) {
+    if (!isContiguous(other)) return false;
+    start = std::min(start, other.start);
+    end = std::max(end, other.end);
+    return true;
+  }
+
+  /// Performs an interval subtraction => A = A - B.
+  /// Note: This assumes that all intervals of b are included in some interval
+  ///       of a.
+  static void intervalSubtract(Vector &a, const Vector &b);
+
+  /// Performs an interval merge => A = A u B.
+  /// Note: All overlapping and contiguous UseIntervals are merged.
+  static void intervalMerge(Vector &a, const Vector &b);
+
+  /// Merge the UseIntervals and erase overlapping and contiguouse UseIntervals
+  /// of the UseInterval::Vector.
+  static void mergeAndEraseContiguousIntervals(Vector &interval,
+                                               UseInterval *iter,
+                                               const UseInterval &toMerge);
+
+  bool operator<(const UseInterval &other) const { return end < other.start; }
+
+  bool operator>(const UseInterval &other) const { return start > other.end; }
+
+  bool operator==(const UseInterval &other) const {
+    return start == other.start && end == other.end;
+  }
+
+  /// The start of this UseInterval.
+  size_t start;
+
+  /// The end of this UseInterval.
+  size_t end;
+};
+
 /// Represents an analysis for computing the useranges of all alloc values
 /// inside a given function operation. The analysis uses liveness information to
 /// compute intervals starting at the first and ending with the last use of
 /// every alloc value.
 class UserangeAnalysis {
  public:
-  /// A typedef declaration of an UseInterval, which represents an interval as a
-  /// pair of begin to end.
-  using UseInterval = std::pair<size_t, size_t>;
-  using IntervalVector = SmallVector<UseInterval, 8>;
+  using UsePosition = std::pair<size_t, Operation *>;
+  using UsePositionList = std::vector<UsePosition>;
 
   UserangeAnalysis(Operation *op, const BufferPlacementAllocs &allocs,
                    const BufferViewFlowAnalysis &aliases);
 
-  /// Returns the index of the first operation that uses the given value.
-  /// Returns an empty Optional if the value has no uses.
+  /// Returns the index of the first operation that uses the given value or an
+  /// empty Optional if the value has no uses.
   llvm::Optional<size_t> getFirstUseIndex(Value value) const {
     auto &intervals = useIntervalMap.find(value)->second;
-    return intervals.empty() ? llvm::None
-                             : llvm::Optional<size_t>(intervals.begin()->first);
+    if (intervals.empty()) return llvm::None;
+    return intervals.begin()->start;
   }
+
+  /// Returns the UseInterval::Vector of the given value.
+  llvm::Optional<const UseInterval::Vector *> getUserangeInterval(
+      Value value) const {
+    auto intervals = useIntervalMap.find(value);
+    if (intervals == useIntervalMap.end()) return llvm::None;
+    return &intervals->second;
+  }
+
+  /// Returns an UsePositionList* of the given value or an empty Optional
+  /// if the value has no uses.
+  llvm::Optional<const UsePositionList *> getUserangePositions(
+      Value value) const {
+    auto usePosition = usePositionMap.find(value);
+    if (usePosition == usePositionMap.end() || usePosition->second.empty())
+      return llvm::None;
+    return &usePosition->second;
+  }
+
+  /// Returns the operation associated with a given Id.
+  Operation *getOperation(size_t id) const { return operations[unwrapId(id)]; };
+
+  /// Computes the doubled Id for the given value inside the operation based on
+  /// the program sequence. If the value has only read effects, the returning ID
+  /// will be even, otherwise odd.
+  size_t computeId(Value v, Operation *op) const;
 
   /// Checks if the use intervals of the given values interfere.
   bool rangesInterfere(Value itemA, Value itemB) const;
 
   /// Merges the userange of itemB into the userange of itemA.
-  /// Note: This assumes that there is no interference between the two
-  /// ranges.
   void unionRanges(Value itemA, Value itemB);
 
   /// Dumps the liveness information to the given stream.
@@ -62,39 +151,25 @@ class UserangeAnalysis {
   using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
   using OperationListT = Liveness::OperationListT;
 
-  /// Builds an IntervalVector corresponding to the given OperationList.
-  IntervalVector computeInterval(Value value,
-                                 const Liveness::OperationListT &operationList);
+  /// Builds an UseInterval::Vector corresponding to the given OperationList.
+  UseInterval::Vector computeInterval(
+      Value value, const Liveness::OperationListT &operationList);
 
-  /// Checks each operand of the operation for its memory effects and separates
-  /// them into read and write. Operands with read or write effects are added
-  /// to the opReadWriteMap.
+  /// Checks each operand within the operation for its memory effects and
+  /// separates them into read and write.
   void gatherMemoryEffects(Operation *op);
 
-  /// Computes the ID for the operation. If the operation contains operands
-  /// which have read effects, the returning ID will be odd.
-  size_t computeID(Value v, Operation *op) const;
-
-  /// Merge two IntervalVectors into a new IntervalVector. Return a pair with
-  /// the resulting IntervalVector and a boolean if there were interferences
-  /// during merging.
-  std::pair<IntervalVector, bool> intervalMerge(
-      const IntervalVector &intervalA, const IntervalVector &intervalB) const;
-
-  /// Performs an interval union of the interval vectors from the given values.
-  /// Returns an empty Optional if there is an interval interference.
-  bool intervalUnion(Value itemA, Value itemB) const;
-
-  /// Performs an interval subtraction => A = A - B.
-  /// Note: This assumes that all intervals of b are included in some interval
-  ///       of a.
-  void intervalSubtract(IntervalVector &a, const IntervalVector &b) const;
+  /// Computes the doubled Id back to the OperationId.
+  size_t unwrapId(size_t id) const;
 
   /// Maps each Operation to a unique ID according to the program sequence.
   DenseMap<Operation *, size_t> operationIds;
 
-  /// Maps a value to its use range interval.
-  DenseMap<Value, IntervalVector> useIntervalMap;
+  /// Stores all operations according to the program sequence.
+  std::vector<Operation *> operations;
+
+  /// Maps a value to its UseInterval::Vector.
+  DenseMap<Value, UseInterval::Vector> useIntervalMap;
 
   /// Maps an Operation to a pair of read and write Operands.
   DenseMap<Operation *, std::pair<SmallPtrSet<Value, 2>, SmallPtrSet<Value, 2>>>
@@ -103,6 +178,10 @@ class UserangeAnalysis {
   /// Maps aliasValues to their use ranges. This is necessary to prevent
   /// recomputations of the use range intervals of the aliases.
   DenseMap<Value, OperationListT> aliasUseranges;
+
+  /// Maps a Value to a UsePostionList which contains all uses of the Value and
+  /// their userange position.
+  DenseMap<Value, UsePositionList> usePositionMap;
 
   /// Cache the alias lists for all values to avoid recomputation.
   BufferViewFlowAnalysis::ValueMapT aliasCache;

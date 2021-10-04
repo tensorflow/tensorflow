@@ -504,6 +504,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -682,6 +683,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":custom_call_thunk",
         "@llvm-project//llvm:Support",
     ] + if_nccl([
         ":virtual_nccl",
@@ -689,8 +691,10 @@ cc_library(
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":xlir_opdefs",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
+            "@tf_runtime//backends/gpu:gpu_kernels_detail",
             "@tf_runtime//backends/gpu:gpu_wrapper",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
@@ -830,15 +834,13 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
-            ":virtual_nccl",
-            ":virtual_nccl_utils",
-            ":virtual_rccl",
             ":xlir_kernels",
+            ":xlir_opdefs",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
             "//tensorflow/compiler/mlir/xla:attribute_exporter",
             "//tensorflow/compiler/xla/service:collective_ops_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
@@ -848,12 +850,14 @@ cc_library(
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             "@tf_runtime//backends/gpu:gpu_opdefs",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
         ],
         ":is_bef_executable_enabled": [
@@ -862,11 +866,33 @@ cc_library(
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:support",
             "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_passes",
             "@tf_runtime//backends/gpu:gpu_types",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Target used as --@rules_cuda//cuda:cuda_runtime when BefThunk is enabled.
+# TFRT uses this target to link against CUDA libraries. Using TFRT's own
+# cuda_stubs would duplicate symbols from stream_executor's stubs.
+cc_library(
+    name = "cuda_runtime_for_xlir",
+    deps = select({
+        ":is_bef_thunk_enabled": [
+            "@local_config_nccl//:nccl",
+            "//tensorflow/stream_executor/cuda:cublas_lt_stub",
+            "//tensorflow/stream_executor/cuda:cublas_stub",
+            "//tensorflow/stream_executor/cuda:cuda_stub",
+            "//tensorflow/stream_executor/cuda:cudart_stub",
+            "//tensorflow/stream_executor/cuda:cudnn_stub",
+            "//tensorflow/stream_executor/cuda:cufft_stub",
+            "//tensorflow/stream_executor/cuda:cusolver_stub",
         ],
         "//conditions:default": [],
     }),
@@ -1122,10 +1148,6 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
-        # copybara:uncomment-begin
-        # "@local_config_cuda//cuda:cublas_headers",
-        # "@local_config_cuda//cuda:cusolver_headers",
-        # copybara:uncomment-end
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]) + if_rocm_is_configured([
@@ -1288,6 +1310,36 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "fusion_bitcast_lift",
+    srcs = ["fusion_bitcast_lift.cc"],
+    hdrs = ["fusion_bitcast_lift.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "fusion_bitcast_lift_test",
+    srcs = ["fusion_bitcast_lift_test.cc"],
+    tags = ["no_pip"],
+    deps = [
+        ":fusion_bitcast_lift",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1534,6 +1586,7 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
+        ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
@@ -1582,6 +1635,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1589,6 +1643,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:all_gather_broadcast_reorder",
+        "//tensorflow/compiler/xla/service:dynamic_dimension_simplifier",
         "//tensorflow/compiler/xla/service:all_gather_combiner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
@@ -1658,9 +1713,11 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
     ] + select({
         ":is_bef_executable_enabled": [
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
+            "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_passes",
         ],
         "//conditions:default": [],
     }),
@@ -2421,5 +2478,19 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+test_suite(
+    name = "bef_thunk_tests",
+    tests = [
+        # Disabled: Repeated Kernel BefThunk invocations prolong test duration.
+        # E.g., it takes ~1300s for 256x128 matrix.
+        # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
+        "//tensorflow/compiler/xla/service/gpu:custom_call_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
+        "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
+        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
+        "//tensorflow/compiler/xla/tests:while_test_gpu",
     ],
 )

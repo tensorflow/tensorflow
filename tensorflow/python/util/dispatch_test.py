@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for operator dispatch."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import typing
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -31,11 +28,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -349,7 +348,10 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
   def testDispatchForOneSignature(self):
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor, "y": MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {
+        "x": MaskedTensor,
+        "y": MaskedTensor
+    })
     def masked_add(x, y, name=None):
       with ops.name_scope(name):
         return MaskedTensor(x.values + y.values, x.mask & y.mask)
@@ -363,10 +365,11 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchSignatureWithUnspecifiedParameter(self):
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor})
+
+    @dispatch.dispatch_for_api(math_ops.add, {"x": MaskedTensor})
     def masked_add(x, y):
       if y is None:
         return x
@@ -389,12 +392,12 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForMultipleSignatures(self):
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor},
-                           {"y": MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {"x": MaskedTensor},
+                               {"y": MaskedTensor})
     def masked_add(x, y, name=None):
       with ops.name_scope(name):
         x_values = x.values if isinstance(x, MaskedTensor) else x
@@ -412,12 +415,12 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForList(self):
 
-    @dispatch.dispatch_for(array_ops.concat,
-                           {"values": typing.List[MaskedTensor]})
+    @dispatch.dispatch_for_api(array_ops.concat,
+                               {"values": typing.List[MaskedTensor]})
     def masked_concat(values, axis, name=None):
       with ops.name_scope(name):
         return MaskedTensor(
@@ -433,12 +436,15 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
+      dispatch.unregister_dispatch_for(masked_concat)
 
   def testDispatchForUnion(self):
     MaybeMasked = typing.Union[MaskedTensor, ops.Tensor]
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaybeMasked, "y": MaybeMasked})
+    @dispatch.dispatch_for_api(math_ops.add, {
+        "x": MaybeMasked,
+        "y": MaybeMasked
+    })
     def masked_add(x, y, name=None):
       with ops.name_scope(name):
         x_values = x.values if isinstance(x, MaskedTensor) else x
@@ -456,12 +462,41 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
+
+  def testDispatchForTensorLike(self):
+    MaskedOrTensorLike = typing.Union[MaskedTensor, core_tf_types.TensorLike]
+
+    @dispatch.dispatch_for_api(math_ops.add)
+    def masked_add(x: MaskedOrTensorLike, y: MaskedOrTensorLike, name=None):
+      with ops.name_scope(name):
+        x_values = x.values if isinstance(x, MaskedTensor) else x
+        x_mask = x.mask if isinstance(x, MaskedTensor) else True
+        y_values = y.values if isinstance(y, MaskedTensor) else y
+        y_mask = y.mask if isinstance(y, MaskedTensor) else True
+        return MaskedTensor(x_values + y_values, x_mask & y_mask)
+
+    try:
+      x = MaskedTensor([1, 2, 3, 4, 5], [1, 0, 1, 1, 1])
+      y1 = [10, 20, 30, 40, 50]
+      y2 = np.array([10, 20, 30, 40, 50])
+      y3 = constant_op.constant([10, 20, 30, 40, 50])
+      y4 = variables.Variable([5, 4, 3, 2, 1])
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+      for y in [y1, y2, y3, y4]:
+        z = math_ops.add(x, y)
+        self.assertAllEqual(z.values, x.values + y)
+        self.assertAllEqual(z.mask, x.mask)
+
+    finally:
+      # Clean up dispatch table.
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForOptional(self):
     # Note: typing.Optional[X] == typing.Union[X, NoneType].
 
-    @dispatch.dispatch_for(
+    @dispatch.dispatch_for_api(
         array_ops.where_v2, {
             "condition": MaskedTensor,
             "x": typing.Optional[MaskedTensor],
@@ -478,11 +513,11 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(array_ops.where_v2, masked_where)
+      dispatch.unregister_dispatch_for(masked_where)
 
   def testDispatchForSignatureFromAnnotations(self):
 
-    @dispatch.dispatch_for(math_ops.add)
+    @dispatch.dispatch_for_api(math_ops.add)
     def masked_add(x: MaskedTensor, y: MaskedTensor, name=None):
       with ops.name_scope(name):
         return MaskedTensor(x.values + y.values, x.mask & y.mask)
@@ -496,11 +531,11 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchForPositionalSignature(self):
 
-    @dispatch.dispatch_for(math_ops.add, {0: MaskedTensor, 1: MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {0: MaskedTensor, 1: MaskedTensor})
     def masked_add(x, y, name=None):
       with ops.name_scope(name):
         return MaskedTensor(x.values + y.values, x.mask & y.mask)
@@ -514,11 +549,14 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchWithVarargs(self):
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor, "y": MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {
+        "x": MaskedTensor,
+        "y": MaskedTensor
+    })
     def masked_add(*args, **kwargs):
       self.assertAllEqual(args[0].values, x.values)
       self.assertAllEqual(args[1].values, y.values)
@@ -532,11 +570,14 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchWithKwargs(self):
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor, "y": MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {
+        "x": MaskedTensor,
+        "y": MaskedTensor
+    })
     def masked_add(*args, **kwargs):
       self.assertAllEqual(kwargs["x"].values, x.values)
       self.assertAllEqual(kwargs["y"].values, y.values)
@@ -550,7 +591,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchErrorForBadAPI(self):
 
@@ -559,7 +600,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegex(ValueError, ".* does not support dispatch."):
 
-      @dispatch.dispatch_for(api_without_dispatch_support, {"x": MaskedTensor})
+      @dispatch.dispatch_for_api(api_without_dispatch_support,
+                                 {"x": MaskedTensor})
       def my_version(x):  # pylint: disable=unused-variable
         del x
 
@@ -567,7 +609,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError,
                                 "must be called with at least one signature"):
 
-      @dispatch.dispatch_for(math_ops.add)
+      @dispatch.dispatch_for_api(math_ops.add)
       def my_add(x, y, name=None):  # pylint: disable=unused-variable
         del x, y, name
 
@@ -576,7 +618,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         ValueError, r"Dispatch function's signature \(x, why, name=None\) does "
         r"not match API's signature \(x, y, name=None\)."):
 
-      @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor})
+      @dispatch.dispatch_for_api(math_ops.add, {"x": MaskedTensor})
       def my_add(x, why, name=None):  # pylint: disable=unused-variable
         del x, why, name
 
@@ -585,7 +627,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         ValueError, r"Dispatch function's signature \(x, y, name=None, extra_"
         r"arg=None\) does not match API's signature \(x, y, name=None\)."):
 
-      @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor})
+      @dispatch.dispatch_for_api(math_ops.add, {"x": MaskedTensor})
       def my_add(x, y, name=None, extra_arg=None):  # pylint: disable=unused-variable
         del x, y, name, extra_arg
 
@@ -594,7 +636,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         ValueError,
         "Type annotation .* is not currently supported by dispatch."):
 
-      @dispatch.dispatch_for(math_ops.add, {"x": typing.Tuple[MaskedTensor]})
+      @dispatch.dispatch_for_api(math_ops.add,
+                                 {"x": typing.Tuple[MaskedTensor]})
       def my_add(x, y, name=None):  # pylint: disable=unused-variable
         del x, y, name
 
@@ -602,7 +645,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(
         ValueError, "signature includes annotation for unknown parameter 'z'."):
 
-      @dispatch.dispatch_for(math_ops.add, {"z": MaskedTensor})
+      @dispatch.dispatch_for_api(math_ops.add, {"z": MaskedTensor})
       def my_add(x, y, name=None):  # pylint: disable=unused-variable
         del x, y, name
 
@@ -616,7 +659,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         ValueError, "Dispatch currently only supports type "
         "annotations for positional parameters"):
 
-      @dispatch.dispatch_for(foo, {"y": MaskedTensor})
+      @dispatch.dispatch_for_api(foo, {"y": MaskedTensor})
       def masked_foo(x, *, y):  # pylint: disable=unused-variable
         del x, y
 
@@ -625,7 +668,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         TypeError, "signatures must be dictionaries mapping parameter "
         "names to type annotations"):
 
-      @dispatch.dispatch_for(math_ops.add, [MaskedTensor])
+      @dispatch.dispatch_for_api(math_ops.add, [MaskedTensor])
       def my_add(x, y, name=None):  # pylint: disable=unused-variable
         del x, y, name
 
@@ -633,20 +676,20 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         TypeError, "signatures must be dictionaries mapping parameter "
         "names to type annotations"):
 
-      @dispatch.dispatch_for(math_ops.multiply, {None: MaskedTensor})
+      @dispatch.dispatch_for_api(math_ops.multiply, {None: MaskedTensor})
       def my_multiply(x, y, name=None):  # pylint: disable=unused-variable
         del x, y, name
 
   def testDispatchErrorNotCallable(self):
     with self.assertRaisesRegex(TypeError,
                                 "Expected dispatch_target to be callable"):
-      dispatch.dispatch_for(math_ops.abs, {0: MaskedTensor})("not_callable")
+      dispatch.dispatch_for_api(math_ops.abs, {0: MaskedTensor})("not_callable")
 
   def testRegisterDispatchableType(self):
     Car = collections.namedtuple("Car", ["size", "speed"])
     dispatch.register_dispatchable_type(Car)
 
-    @dispatch.dispatch_for(math_ops.add, {"x": Car, "y": Car})
+    @dispatch.dispatch_for_api(math_ops.add, {"x": Car, "y": Car})
     def add_car(x, y, name=None):
       with ops.name_scope(name):
         return Car(x.size + y.size, x.speed + y.speed)
@@ -660,7 +703,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, add_car)
+      dispatch.unregister_dispatch_for(add_car)
 
   def testTypeCheckersAreCached(self):
     checker1 = dispatch.make_type_checker(int)
@@ -669,7 +712,10 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
   def testDispatchTargetWithNoNameArgument(self):
 
-    @dispatch.dispatch_for(math_ops.add, {"x": MaskedTensor, "y": MaskedTensor})
+    @dispatch.dispatch_for_api(math_ops.add, {
+        "x": MaskedTensor,
+        "y": MaskedTensor
+    })
     def masked_add(x, y):
       return MaskedTensor(x.values + y.values, x.mask & y.mask)
 
@@ -697,24 +743,23 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
+      dispatch.unregister_dispatch_for(masked_add)
 
   def testDispatchApiWithNoNameArg(self):
     # Note: The "tensor_equals" API has no "name" argument.
     signature = {"self": MaskedTensor, "other": MaskedTensor}
 
-    @dispatch.dispatch_for(math_ops.tensor_equals, signature)
+    @dispatch.dispatch_for_api(math_ops.tensor_equals, signature)
     def masked_tensor_equals(self, other):
       del self, other
 
-    dispatch.unregister_dispatch_target(math_ops.tensor_equals,
-                                        masked_tensor_equals)  # clean up.
+    dispatch.unregister_dispatch_for(masked_tensor_equals)  # clean up.
 
     with self.assertRaisesRegexp(
         ValueError, r"Dispatch function's signature \(self, other, name=None\) "
         r"does not match API's signature \(self, other\)\."):
 
-      @dispatch.dispatch_for(math_ops.tensor_equals, signature)
+      @dispatch.dispatch_for_api(math_ops.tensor_equals, signature)
       def masked_tensor_equals_2(self, other, name=None):
         del self, other, name
 
@@ -723,8 +768,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
   def testDispatchWithIterableParams(self):
     # The add_n API supports having `inputs` be an iterable (and not just
     # a sequence).
-    @dispatch.dispatch_for(math_ops.add_n,
-                           {"inputs": typing.List[MaskedTensor]})
+    @dispatch.dispatch_for_api(math_ops.add_n,
+                               {"inputs": typing.List[MaskedTensor]})
     def masked_add_n(inputs):
       masks = array_ops.stack([x.mask for x in inputs])
       return MaskedTensor(
@@ -739,7 +784,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add_n, masked_add_n)
+      dispatch.unregister_dispatch_for(masked_add_n)
 
   def testBadIterableParametersError(self):
     fn = lambda x: [t + 1 for t in x]
@@ -749,13 +794,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
   def testUnregisterDispatchTargetBadTargetError(self):
     fn = lambda x: x + 1
-    with self.assertRaisesRegex(ValueError, ".* does not support dispatch"):
-      dispatch.unregister_dispatch_target(fn, fn)
-
-  def testUnregisterDispatchTargetBadDispatchTargetError(self):
-    fn = lambda x: x + 1
-    with self.assertRaisesRegex(ValueError, ".* was not registered for .*"):
-      dispatch.unregister_dispatch_target(math_ops.add, fn)
+    with self.assertRaisesRegex(ValueError, "Function .* was not registered"):
+      dispatch.unregister_dispatch_for(fn)
 
   def testAddDuplicateApiDisptacherError(self):
     some_op = lambda x: x
@@ -772,19 +812,20 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
   def testTypeBasedDispatchTargetsFor(self):
     MaskedTensorList = typing.List[typing.Union[MaskedTensor, ops.Tensor]]
     try:
-      @dispatch.dispatch_for(math_ops.add)
+
+      @dispatch.dispatch_for_api(math_ops.add)
       def masked_add(x: MaskedTensor, y: MaskedTensor):
         del x, y
 
-      @dispatch.dispatch_for(array_ops.concat)
+      @dispatch.dispatch_for_api(array_ops.concat)
       def masked_concat(values: MaskedTensorList, axis):
         del values, axis
 
-      @dispatch.dispatch_for(math_ops.add)
+      @dispatch.dispatch_for_api(math_ops.add)
       def silly_add(x: SillyTensor, y: SillyTensor):
         del x, y
 
-      @dispatch.dispatch_for(math_ops.abs)
+      @dispatch.dispatch_for_api(math_ops.abs)
       def silly_abs(x: SillyTensor):
         del x
 
@@ -796,10 +837,10 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     finally:
       # Clean up dispatch table.
-      dispatch.unregister_dispatch_target(math_ops.add, masked_add)
-      dispatch.unregister_dispatch_target(array_ops.concat, masked_concat)
-      dispatch.unregister_dispatch_target(math_ops.add, silly_add)
-      dispatch.unregister_dispatch_target(math_ops.abs, silly_abs)
+      dispatch.unregister_dispatch_for(masked_add)
+      dispatch.unregister_dispatch_for(masked_concat)
+      dispatch.unregister_dispatch_for(silly_add)
+      dispatch.unregister_dispatch_for(silly_abs)
 
   def testDispatchForUnaryElementwiseAPIs(self):
 
@@ -835,7 +876,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
                          r"^ones_like_x_float/.*")
 
     finally:
-      dispatch.unregister_elementwise_api_handler(unary_elementwise_api_handler)
+      dispatch.unregister_dispatch_for(unary_elementwise_api_handler)
 
   def testDispatchForBinaryElementwiseAPIs(self):
 
@@ -874,8 +915,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         self.assertRegex(y_minus_x.values.name, r"^y_minus_x/.*")
 
     finally:
-      dispatch.unregister_elementwise_api_handler(
-          binary_elementwise_api_handler)
+      dispatch.unregister_dispatch_for(binary_elementwise_api_handler)
 
   def testDuplicateDispatchForUnaryElementwiseAPIsError(self):
 
@@ -895,7 +935,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         del another_handler
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testDuplicateDispatchForBinaryElementwiseAPIsError(self):
 
@@ -916,7 +956,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         del another_handler
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testRegisterUnaryElementwiseApiAfterHandler(self):
     # Test that it's ok to call register_unary_elementwise_api after
@@ -939,7 +979,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(y.mask, [True, False, True])
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testRegisterBinaryElementwiseApiAfterHandler(self):
     # Test that it's ok to call register_binary_elementwise_api after
@@ -963,13 +1003,32 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(z.mask, [True, False, False])
 
     finally:
-      dispatch.unregister_elementwise_api_handler(handler)
+      dispatch.unregister_dispatch_for(handler)
 
   def testElementwiseApiLists(self):
     self.assertIn(math_ops.abs, dispatch.unary_elementwise_apis())
     self.assertIn(math_ops.cos, dispatch.unary_elementwise_apis())
     self.assertIn(math_ops.add, dispatch.binary_elementwise_apis())
     self.assertIn(math_ops.multiply, dispatch.binary_elementwise_apis())
+
+  def testUpdateDocstringsWithAPILists(self):
+    dispatch.update_docstrings_with_api_lists()
+    self.assertRegex(
+        dispatch.dispatch_for_api.__doc__,
+        r"(?s)  The TensorFlow APIs that may be overridden "
+        r"by `@dispatch_for_api` are:\n\n.*"
+        r"  \* `tf\.concat\(values, axis, name\)`\n.*"
+        r"  \* `tf\.math\.add\(x, y, name\)`\n.*")
+    self.assertRegex(
+        dispatch.dispatch_for_unary_elementwise_apis.__doc__,
+        r"(?s)  The unary elementwise APIs are:\n\n.*"
+        r"  \* `tf\.math\.abs\(x, name\)`\n.*"
+        r"  \* `tf\.math\.cos\(x, name\)`\n.*")
+    self.assertRegex(
+        dispatch.dispatch_for_binary_elementwise_apis.__doc__,
+        r"(?s)  The binary elementwise APIs are:\n\n.*"
+        r"  \* `tf\.math\.add\(x, y, name\)`\n.*"
+        r"  \* `tf\.math\.multiply\(x, y, name\)`\n.*")
 
 
 if __name__ == "__main__":

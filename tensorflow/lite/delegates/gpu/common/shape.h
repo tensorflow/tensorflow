@@ -126,7 +126,7 @@ struct Shape {
   bool has(Axis axis) const { return HasAxis(layout, axis); }
 
   int64_t DimensionsProduct() const {
-    return std::accumulate(dimensions.begin(), dimensions.end(), 1ll,
+    return std::accumulate(dimensions.begin(), dimensions.end(), 1LL,
                            std::multiplies<int64_t>());
   }
 

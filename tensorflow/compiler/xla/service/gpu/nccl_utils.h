@@ -180,9 +180,15 @@ struct NcclCliqueParticipantData : public ParticipantData {
 // This struct contains stateful resource(s) needed to execute collective
 // BefThunks.
 struct XcclContext {
+  struct CollectivePermuteSourceTarget {
+    absl::optional<int64_t> source_peer;
+    absl::optional<int64_t> target_peer;
+  };
+
   XcclContext(const NcclClique& clique) : clique(clique) {}
 
   const NcclClique& clique;
+  CollectivePermuteSourceTarget collective_permute_source_target;
   tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> ccl_handle;
 };
 #endif  // BEF_THUNKS

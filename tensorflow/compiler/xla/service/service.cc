@@ -240,9 +240,10 @@ Service::ResolveAndValidateArguments(
   for (size_t i = 0; i < arguments.size(); ++i) {
     auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!buffer_status.ok()) {
-      return Status(buffer_status.status().code(),
-                    StrCat(buffer_status.status().error_message(), ", ",
-                           "failed to resolve allocation for parameter ", i));
+      return tensorflow::errors::CreateWithUpdatedMessage(
+          buffer_status.status(),
+          StrCat(buffer_status.status().error_message(), ", ",
+                 "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.ValueOrDie();
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());

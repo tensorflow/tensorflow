@@ -4,12 +4,14 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/attr_value.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ApiDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto";
-import "tensorflow/core/framework/attr_value.proto";
 
 // Used to specify and override the default API & behavior in the
 // generated code for client languages, from what you would get from
@@ -19,7 +21,7 @@ import "tensorflow/core/framework/attr_value.proto";
 // common ApiDefs which it can either replace or modify.
 //
 // We separate the API definition from the OpDef so we can evolve the
-// API while remaining backwards compatible when interpretting old
+// API while remaining backwards compatible when interpreting old
 // graphs.  Overrides go in an "api_def.pbtxt" file with a text-format
 // ApiDefs message.
 //

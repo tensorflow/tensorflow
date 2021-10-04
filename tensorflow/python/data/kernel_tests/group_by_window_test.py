@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.group_by_window()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -363,6 +359,15 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         reduce_func=lambda key, window: dataset_ops.Dataset.from_tensors(key),
         window_size=4)
     self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(np.int64(42)).group_by_window(
+        key_func=lambda x: x,
+        reduce_func=lambda key, window: window.batch(4),
+        window_size=4,
+        name="group_by_window")
+    self.assertDatasetProduces(dataset, [[42]])
 
 
 class GroupByWindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,

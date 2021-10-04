@@ -400,16 +400,15 @@ class TfFunctionIOConsistencyTests(ConsistencyTestBase, parameterized.TestCase):
             error as the cached tensor is from the previous trace.
 
     Error message:
-      "An op outside of the function building code is being passed a "Graph"
-      tensor."
+      "tf.Graph captured an external symbolic tensor."
 
     Improve error message? Needed. (b/187850615)
 
     Notes:
     * `self._cached_value` is already a cached tensor when the program tries to
       retrace upon receiving `tf.constant([1, 2])` as input.
-    * Error message mentions about "Graph" tensor being passed in. Is this the
-      most informative message? Left a TODO.
+    * The error message is returned during graph execution. Try to detect
+      illegal capture and raise an exception during tracing.
     """
     self.skipTest('b/149094965')
 

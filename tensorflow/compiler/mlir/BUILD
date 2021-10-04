@@ -29,6 +29,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/google/xla/mlir/...",
         "//learning/brain/mlir/...",
+        "//learning/pathways/data_parallel/serving/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/...",
         "//platforms/xla/...",

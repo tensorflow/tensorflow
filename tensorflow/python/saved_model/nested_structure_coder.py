@@ -26,10 +26,6 @@ signature_proto = coder.encode_structure(function.input_signature)
 restored_signature = coder.decode_proto(signature_proto)
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 
@@ -54,6 +50,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -560,12 +557,15 @@ class _TypeSpecCodec(object):
                       "imported and registered." % type_spec_class_name)
 
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
+    num_flat_components = len(
+        nest.flatten(type_spec_value._component_specs, expand_composites=True))  # pylint: disable=protected-access
     encoded_type_spec = struct_pb2.StructuredValue()
     encoded_type_spec.type_spec_value.CopyFrom(
         struct_pb2.TypeSpecProto(
             type_spec_class=type_spec_class,
             type_state=encode_fn(type_state),
-            type_spec_class_name=type_spec_class_name))
+            type_spec_class_name=type_spec_class_name,
+            num_flat_components=num_flat_components))
     return encoded_type_spec
 
   def can_decode(self, value):

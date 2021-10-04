@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests of the curses-based CLI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import curses
 import os

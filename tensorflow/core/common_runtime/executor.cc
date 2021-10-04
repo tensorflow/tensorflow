@@ -993,10 +993,11 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       if (stats_collector_) {
         string err = stats_collector_->ReportAllocsOnResourceExhausted(
             s.error_message());
-        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+        s = errors::CreateWithUpdatedMessage(
+            s, strings::StrCat(s.error_message(), err));
       } else {
-        s = Status(
-            s.code(),
+        s = errors::CreateWithUpdatedMessage(
+            s,
             strings::StrCat(
                 s.error_message(),
                 "\nHint: If you want to see a list of allocated tensors when "

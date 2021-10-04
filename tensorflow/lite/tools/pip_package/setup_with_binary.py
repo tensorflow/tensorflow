@@ -20,10 +20,6 @@ with low latency and a small binary size on Android, iOS, and other operating
 systems.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from setuptools import find_packages

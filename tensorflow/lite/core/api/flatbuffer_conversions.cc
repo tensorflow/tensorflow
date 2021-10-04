@@ -786,6 +786,17 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_RANDOM_STANDARD_NORMAL: {
+      auto params = safe_allocator.Allocate<TfLiteRandomParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* random_std_normal_params =
+              op->builtin_options_as_RandomOptions()) {
+        params->seed = random_std_normal_params->seed();
+        params->seed2 = random_std_normal_params->seed2();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -2226,8 +2237,12 @@ TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
       op->builtin_options_as_VarHandleOptions();
 
   if (schema_params != nullptr) {
-    params->container = schema_params->container()->c_str();
-    params->shared_name = schema_params->shared_name()->c_str();
+    if (schema_params->container()) {
+      params->container = schema_params->container()->c_str();
+    }
+    if (schema_params->shared_name()) {
+      params->shared_name = schema_params->shared_name()->c_str();
+    }
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

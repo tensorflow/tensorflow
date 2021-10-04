@@ -14,10 +14,6 @@
 # =============================================================================
 """xla is an experimental library that provides XLA support APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 from six.moves import xrange  # pylint: disable=redefined-builtin

@@ -33,6 +33,8 @@ mlir_tablegen(hlo_ops_base_structs.h.inc -gen-struct-attr-decls)
 mlir_tablegen(hlo_ops_base_structs.cc.inc -gen-struct-attr-defs)
 mlir_tablegen(hlo_ops_base_enums.h.inc -gen-enum-decls)
 mlir_tablegen(hlo_ops_base_enums.cc.inc -gen-enum-defs)
+mlir_tablegen(hlo_ops_base_attrs.h.inc -gen-attrdef-decls)
+mlir_tablegen(hlo_ops_base_attrs.cc.inc -gen-attrdef-defs)
 add_public_tablegen_target(MLIRhlo_opsIncGen)
 
 function(add_mlir_hlo_dialect_separate_files dialect has_enums)

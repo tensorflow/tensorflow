@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the static tf.data optimizations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
@@ -209,9 +205,11 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(existing_prefetch=[True, False]),
                          combinations.combine(autotune=[True, False]),
                          combinations.combine(set_env=[True, False])))
-  def testOptimizationInjectPrefetch(self, autotune, set_env):
+  def testOptimizationInjectPrefetch(self, existing_prefetch, autotune,
+                                     set_env):
     if set_env:
       os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "inject_prefetch"
       os.environ["TF_JOB_NAME"] = "test_job"
@@ -219,8 +217,10 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5)
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
-    if autotune and set_env:
-      dataset = dataset.apply(testing.assert_next(["Prefetch"]))
+    if existing_prefetch:
+      dataset = dataset.prefetch(1)
+    if autotune and set_env and not existing_prefetch:
+      dataset = dataset.apply(testing.assert_next(["Prefetch", "Root"]))
     else:
       dataset = dataset.apply(testing.assert_next(["Root"]))
 

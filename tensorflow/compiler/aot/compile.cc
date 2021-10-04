@@ -236,8 +236,8 @@ Status Main(const MainFlags& flags) {
   Status status =
       CompileGraph(std::move(graph_def), config, flags, &compile_result);
   if (!status.ok()) {
-    return Status(status.code(),
-                  InterpolateErrorMessage(status.error_message()));
+    return errors::CreateWithUpdatedMessage(
+        status, InterpolateErrorMessage(status.error_message()));
   }
 
   // Write output files.

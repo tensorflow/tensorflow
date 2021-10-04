@@ -33,6 +33,8 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
+        "//learning/brain/tfrt/tpu_runner/...",
+        "//learning/pathways/data_parallel/serving/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/contrib/waymo/...",
@@ -336,6 +338,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/canonicalize.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
     ],
 )
@@ -454,6 +457,7 @@ cc_library(
         deps = [
             ":attribute_utils",
             ":tensorflow_attributes",
+            ":rewrite_util",
             ":tensorflow_canonicalize_inc_gen",
             ":tensorflow_op_interfaces",
             ":tensorflow_op_interfaces_inc_gen",
@@ -496,6 +500,7 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":rewrite_util",
         ":serialize_mlir_module_utils",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
@@ -541,6 +546,7 @@ cc_library(
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":rewrite_util",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
@@ -585,6 +591,7 @@ cc_library(
         ":tensorflow_tfrt_ops_inc_gen",
         ":tensorflow_remaining_ops_inc_gen",
         ":tensorflow_attributes",
+        ":rewrite_util",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -685,6 +692,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
+        ":rewrite_util",
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
@@ -737,6 +745,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/decompose_resource_ops.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
@@ -752,9 +761,33 @@ cc_library(
     ],
     deps = [
         ":decompose_resource_ops_inc_gen",
+        ":rewrite_util",
         ":tensorflow",
         ":tensorflow_types",
         "//tensorflow/core:framework",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+td_library(
+    name = "rewrite_util_td_files",
+    srcs = [
+        "transforms/rewrite_util.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "rewrite_util",
+    srcs = [
+    ],
+    hdrs = [
+        "transforms/rewrite_util.h",
+    ],
+    deps = [
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1122,7 +1155,6 @@ cc_library(
         "transforms/test_resource_alias_analysis.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
-        "transforms/tf_device_replication_pass.cc",
         "transforms/tpu_cluster_cleanup_attributes.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_colocate_composite_resource_ops.cc",
@@ -1670,6 +1702,10 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -2050,6 +2086,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/lower_tf.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
@@ -2065,6 +2102,7 @@ cc_library(
     ],
     deps = [
         ":lower_tf_inc_gen",
+        ":rewrite_util",
         ":tensorflow",
         ":tensorflow_ops",
         ":tensorflow_types",

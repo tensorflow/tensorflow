@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -84,6 +85,7 @@ constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
+constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -109,6 +111,9 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kShuffleAndRepeatFusion) {
       optimization_default->insert(kShuffleAndRepeatFusionOpt);
     }
+  }
+  if (OpDeterminismRequired()) {
+    optimization_enabled->insert(kMakeDeterministicOpt);
   }
   if (optimization_options.optional_filter_fusion_case() ==
       OptimizationOptions::kFilterFusion) {
@@ -501,11 +506,11 @@ absl::flat_hash_set<string> GetExperiments(
 
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiments. "
-               "Please see `go/tf-data-experiments` for more details.";
+    LOG(INFO) << "The input pipeline is subject to tf.data experiments. "
+                 "Please see `go/tf-data-experiments` for more details.";
   }
   for (auto& experiment : experiments) {
-    VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+    LOG(INFO) << "The experiment \"" << experiment << "\" is applied.";
     metrics::RecordTFDataExperiment(experiment);
   }
 }
@@ -517,12 +522,10 @@ void GetOptimizations(const Options& options,
   DefaultOptimizationGraphRewrites(options, optimizations_enabled,
                                    optimizations_disabled,
                                    optimizations_default);
-  if (options.optional_deterministic_case() == Options::kDeterministic) {
-    if (options.deterministic()) {
-      optimizations_disabled->insert(kMakeSloppyOpt);
-    } else {
-      optimizations_enabled->insert(kMakeSloppyOpt);
-    }
+  if (!OpDeterminismRequired() &&
+      options.optional_deterministic_case() == Options::kDeterministic &&
+      !options.deterministic()) {
+    optimizations_enabled->insert(kMakeSloppyOpt);
   }
   if (options.optional_slack_case() == Options::kSlack) {
     if (options.slack()) {
@@ -897,7 +900,8 @@ namespace {
 
 REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
+REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 50);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

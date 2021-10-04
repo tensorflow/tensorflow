@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Ops for boosted_trees."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_boosted_trees_ops
@@ -63,8 +59,9 @@ class PruningMode(object):
     if mode in cls._map:
       return cls._map[mode]
     else:
-      raise ValueError('pruning_mode mode must be one of: {}'.format(', '.join(
-          sorted(cls._map))))
+      raise ValueError(
+          'pruning_mode mode must be one of: {}. Found: {}'.format(', '.join(
+              sorted(cls._map)), mode))
 
 
 class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):

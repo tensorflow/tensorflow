@@ -52,7 +52,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  static xla::StatusOr<mhlo::ScatterDimensionNumbers>
+  static xla::StatusOr<mhlo::ScatterDimensionNumbersAttr>
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
 

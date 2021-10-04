@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -32,10 +33,11 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// Creates a resource handle with a unique name for the given resource.
+// Creates a resource handle with a unique name for the given resource where
+// the resource is managed by the Resource Manager.
 template <typename T>
-Status CreateHandle(OpKernelContext* ctx, T* resource,
-                    const string& container_name, ResourceHandle* handle) {
+Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
+                        const string& container_name, ResourceHandle* handle) {
   static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
@@ -47,11 +49,30 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   return Status::OK();
 }
 
+// Creates a ref-counting resource handle for the given resource, where the
+// resource is owned by the handle.
+template <typename T>
+Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
+  *handle =
+      ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
+  return Status::OK();
+}
+
+// TODO(b/198162355): Merge this class with ResourceOpKernel.
 template <typename T>
 class AnonymousResourceOp : public OpKernel {
  public:
-  explicit AnonymousResourceOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  // Creates an AnonymousResourceOp.
+  // ref_counting: Determines if the Op returns a ref-counting ResourceHandle.
+  // ResourceHandle. See go/tf-resource-handle-ref-count.
+  // return_deleter: Determines if the Op outputs a deleter tensor in addition
+  // to the resource handle tensor.
+  // If the resource handle is ref-counting, a no-op deleter is returned.
+  explicit AnonymousResourceOp(OpKernelConstruction* context, bool ref_counting,
+                               bool return_deleter)
+      : OpKernel(context),
+        ref_counting_(ref_counting),
+        return_deleter_(return_deleter) {}
 
   void Compute(OpKernelContext* ctx) override {
     FunctionLibraryRuntime* lib;
@@ -64,19 +85,29 @@ class AnonymousResourceOp : public OpKernel {
                                        std::move(pflr), lib, &resource));
 
     ResourceHandle handle;
-    OP_REQUIRES_OK(ctx, CreateHandle(ctx, resource, name(), &handle));
+    if (ref_counting_) {
+      OP_REQUIRES_OK(ctx, CreateHandle(ctx, resource, &handle));
+    } else {
+      OP_REQUIRES_OK(ctx, CreateWeakHandle(ctx, resource, name(), &handle));
+    }
     Tensor* handle_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle_t));
     handle_t->scalar<ResourceHandle>()() = handle;
 
-    if (create_deleter_) {
+    if (return_deleter_) {
       Tensor* deleter_t;
       AllocatorAttributes attr;
       attr.set_on_host(true);
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
-      deleter_t->scalar<Variant>()() =
-          ResourceDeleter(handle, ctx->resource_manager());
+      if (ref_counting_) {
+        // A dummy output that does nothing when destroyed.
+        deleter_t->scalar<int>()() = 0;
+      } else {
+        // A deleter output that deletes the resource when destroyed.
+        deleter_t->scalar<Variant>()() =
+            ResourceDeleter(handle, ctx->resource_manager());
+      }
     }
   }
 
@@ -88,7 +119,9 @@ class AnonymousResourceOp : public OpKernel {
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
       FunctionLibraryRuntime* lib, T** resource) = 0;
 
-  bool create_deleter_ = true;
+ private:
+  const bool ref_counting_;
+  const bool return_deleter_;
 };
 
 // Returns Status::OK() if `expected` and `received` types match,

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on CPU."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
@@ -355,6 +351,19 @@ class CPUEmbeddingTest(test.TestCase):
     self.assertEqual(
         list(mid_level._variables[self.table_video.name].keys()),
         ['parameters'])
+
+  def test_cpu_multiple_creation(self):
+    feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_user, name='friends', max_sequence_length=2),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    embedding_one = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config, optimizer=optimizer)
+    embedding_two = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config, optimizer=optimizer)
+
+    # Both of the tpu embedding tables should be able to build on cpu.
+    embedding_one.build()
+    embedding_two.build()
 
 
 if __name__ == '__main__':

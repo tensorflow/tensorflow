@@ -322,11 +322,11 @@ class ConstTensorSkipTestCase {
               << "data_type: " << data_type_ << ", shape: {"
               << absl::StrJoin(shape_, ",") << "}, value: " << value_
               << ", expected: " << expected_;
-    // Build a graph wiht Const --> Identity --> Detect.
+    // Build a graph with Const --> Identity --> Detect.
     GrapplerItem item;
     const gtl::ArraySlice<int64_t> shape_array_slice(shape_);
     Tensor const_tensor_value(data_type_, TensorShape(shape_array_slice));
-    // Fille the const tensor value based on data type.
+    // Fill the const tensor value based on data type.
     switch (data_type_) {
       case DT_INT32:
         test::FillIota<int32>(&const_tensor_value, static_cast<int32>(value_));
@@ -1371,7 +1371,7 @@ TEST_F(GraphPropertiesTest, PackWithConstMinus1AndReshapes) {
   }
   // if input of Select can be either vector or the same shape to the
   // input/output; in this case, even if we know input and output are
-  // [4, ?], we can't say it's [4, ?] or a vector; hence, it shoudl be
+  // [4, ?], we can't say it's [4, ?] or a vector; hence, it should be
   // unknown.
   {
     const auto out_props = properties.GetOutputProperties("s1");

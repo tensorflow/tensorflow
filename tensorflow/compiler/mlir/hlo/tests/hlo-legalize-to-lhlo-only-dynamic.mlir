@@ -197,14 +197,15 @@ func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
   // CHECK: "lmhlo.gather"(%[[ARG0]], %[[ARG1]], %[[OUT]])
   %result =
     "mhlo.gather"(%operand, %idxs)
-      { dimension_numbers =
-        { collapsed_slice_dims = dense<0> : tensor<1xi64>
-        , index_vector_dim = 1 : i64
-        , offset_dims = dense<1> : tensor<1xi64>
-        , start_index_map = dense<0> : tensor<1xi64> }
-      , indices_are_sorted = false
-      , name = "gather.71"
-      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
+      { dimension_numbers = #mhlo.gather<
+          collapsed_slice_dims = [0],
+          index_vector_dim = 1,
+          offset_dims = [1],
+          start_index_map = [0],
+      >,
+      indices_are_sorted = false,
+      slice_sizes = dense<[1, 7]> : tensor<2xi64>
+      }
       : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
   return %result : tensor<?x?xf32>
 }
@@ -221,15 +222,15 @@ func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_siz
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[ARG1_DIM0]], %[[SIZE]]) : memref<?x?xf32>
   // CHECK: "lmhlo.dynamic_gather"(%[[ARG0]], %[[ARG1]], %[[ARG2]], %[[OUT]])
   %result =
-    "mhlo.dynamic_gather"(%operand, %idxs, %slice_sizes)
-      { dimension_numbers =
-        { collapsed_slice_dims = dense<0> : tensor<1xi64>
-        , index_vector_dim = 1 : i64
-        , offset_dims = dense<1> : tensor<1xi64>
-        , start_index_map = dense<0> : tensor<1xi64> }
-      , indices_are_sorted = false
-      , name = "gather.71"}
-      : (tensor<?x?xf32>, tensor<?xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+    "mhlo.dynamic_gather"(%operand, %idxs, %slice_sizes) {
+      dimension_numbers = #mhlo.gather<
+        collapsed_slice_dims = [0],
+        index_vector_dim = 1,
+        offset_dims = [1],
+        start_index_map = [0],
+      >,
+      indices_are_sorted = false
+    } : (tensor<?x?xf32>, tensor<?xi32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %result : tensor<?x?xf32>
 }
 

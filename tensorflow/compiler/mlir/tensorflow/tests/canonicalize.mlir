@@ -183,8 +183,8 @@ func @testConcatCwiseUnary(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2
 func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
   %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
 
-  // CHECK: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-  // CHECK: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK-DAG: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
 
   // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
   // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
@@ -212,8 +212,8 @@ func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
 func @testConcatCwiseBinaryPreserveAxisType(%arg0: tensor<?x1xf32>,
   %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
 
-  // CHECK: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
-  // CHECK: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
+  // CHECK-DAG: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
 
   // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
   // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
@@ -874,6 +874,46 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @addNWithZerosFloat
+func @addNWithZerosFloat(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
+  %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-DAG: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>}
+  // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
+  // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
+  %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %3 = "tf.AddN"(%1, %arg0, %1) : (tensor<2xf32>, tensor<2xf32> , tensor<2xf32>) -> tensor<2xf32>
+  %4 = "tf.AddN"(%1, %1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %5 = "tf.AddN"(%arg0, %1, %0) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %2, %3, %4, %5: tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+}
+
+// CHECK-LABEL: func @addNWithZerosInt
+func @addNWithZerosInt(%arg0: tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) {
+  %0 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: [[ZERO:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>}
+  // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]], [[ONE]])
+  // CHECK: return %arg0, %arg0, [[ZERO]], [[ADD_N]]
+  %2 = "tf.AddN"(%arg0, %1, %1) : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %3 = "tf.AddN"(%1, %arg0, %1) : (tensor<2xi32>, tensor<2xi32> , tensor<2xi32>) -> tensor<2xi32>
+  %4 = "tf.AddN"(%1, %1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  %5 = "tf.AddN"(%arg0, %1, %0) : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %2, %3, %4, %5: tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>
+}
+
+// CHECK-LABEL: func @addNSkipFoldingIfBroadcasting
+func @addNSkipFoldingIfBroadcasting(%arg0: tensor<1xf32>) -> tensor<10xf32> {
+  %0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32>
+  // CHECK: [[ZERO:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<10xf32>}
+  // CHECK: [[ADD_N:%.*]] = "tf.AddN"(%arg0, [[ZERO]])
+  // CHECK: return [[ADD_N]]
+  %1 = "tf.AddN"(%arg0, %0) : (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %1: tensor<10xf32>
+}
+
 // CHECK-LABEL: func @ToBool_0DScalarI1
 func @ToBool_0DScalarI1(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: return %arg0
@@ -1421,6 +1461,16 @@ func @testSumFoldBypass(%arg0: tensor<4x?xf16>, %arg1: tensor<*xi64>) -> tensor<
     // CHECK: return %arg0
   %0 = "tf.Sum"(%arg0, %arg1) { keep_dims = false }: (tensor<4x?xf16>, tensor<*xi64>) -> tensor<4x?xf16>
   return %0 : tensor<4x?xf16>
+}
+
+// CHECK-LABEL: @testMatrixDiag
+func @testMatrixDiag(%diag: tensor<2x4xf32>) -> tensor<2x4x4xf32> {
+  // CHECK-DAG: %[[MINUS1:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[ZEROI:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[ZEROF:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: "tf.MatrixDiagV3"(%arg0, %[[ZEROI]], %[[MINUS1]], %[[MINUS1]], %[[ZEROF]]) {align = "RIGHT_LEFT"} : (tensor<2x4xf32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>) -> tensor<2x4x4xf32>
+  %0 = "tf.MatrixDiag"(%diag) : (tensor<2x4xf32>) -> tensor<2x4x4xf32>
+  return %0 : tensor<2x4x4xf32>
 }
 
 // CHECK-LABEL: @testMatrixSetDiag

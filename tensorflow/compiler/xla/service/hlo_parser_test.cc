@@ -2983,13 +2983,13 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
 TEST_F(HloParserTest, ParseShardingSubGroup) {
   const string original =
       "{devices=[2,2,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 "
-      "last_tile_dims={replicated, manual}}";
+      "last_tile_dims={manual, replicated}}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
   Array<int64_t> tile_assignment({2, 2, 2, 2});
   tile_assignment.FillIota(0);
-  std::vector<OpSharding::Type> subgroup_types = {OpSharding::REPLICATED,
-                                                  OpSharding::MANUAL};
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
   EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
             original);
 }

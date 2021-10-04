@@ -464,20 +464,18 @@ static Value BroadcastToShapeOf(Location loc, Value input, Value broadcast_to,
 Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
                bool transpose_rhs, int64_t num_batch_dims,
                ArrayAttr precision_config, OpBuilder *builder) {
-  auto batch_dimensions = GetI64ElementsAttr(
-      llvm::to_vector<4>(llvm::seq<int64_t>(0, num_batch_dims)), builder);
-  auto lhs_contracting_dimensions = GetI64ElementsAttr(
-      llvm::makeArrayRef({transpose_lhs ? num_batch_dims : num_batch_dims + 1}),
-      builder);
-  auto rhs_contracting_dimensions = GetI64ElementsAttr(
-      llvm::makeArrayRef({transpose_rhs ? num_batch_dims + 1 : num_batch_dims}),
-      builder);
-  auto dimension_numbers = DotDimensionNumbers::get(
+  auto batch_dimensions =
+      llvm::to_vector<4>(llvm::seq<int64_t>(0, num_batch_dims));
+  auto lhs_contracting_dimensions = llvm::to_vector<1>(llvm::makeArrayRef(
+      {transpose_lhs ? num_batch_dims : num_batch_dims + 1}));
+  auto rhs_contracting_dimensions = llvm::to_vector<1>(llvm::makeArrayRef(
+      {transpose_rhs ? num_batch_dims + 1 : num_batch_dims}));
+  auto dimension_numbers = DotDimensionNumbersAttr::get(
+      builder->getContext(),
       /*lhs_batching_dimensions=*/batch_dimensions,
       /*rhs_batching_dimensions=*/batch_dimensions,
       /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
-      /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
-      builder->getContext());
+      /*rhs_contracting_dimensions=*/rhs_contracting_dimensions);
   auto lhs_shape = lhs.getType().cast<RankedTensorType>().getShape();
   auto rhs_shape = rhs.getType().cast<RankedTensorType>().getShape();
   auto shape = llvm::to_vector<4>(lhs_shape);
@@ -746,7 +744,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getIntValues())) {
+  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -1010,7 +1008,8 @@ bool HasValidGatherDims(StringAttr attr) {
   return dims.ParseFromString(attr.getValue().str());
 }
 
-GatherDimensionNumbers GetGatherDimNumsAttr(StringAttr attr, Builder *builder) {
+GatherDimensionNumbersAttr GetGatherDimNumsAttr(StringAttr attr,
+                                                Builder *builder) {
   ::xla::GatherDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertGatherDimensionNumbers(dims, builder);
@@ -1025,7 +1024,7 @@ bool HasValidDotDims(StringAttr attr) {
   return dims.ParseFromString(attr.getValue().str());
 }
 
-DotDimensionNumbers GetDotDimNumsAttr(StringAttr attr, Builder *builder) {
+DotDimensionNumbersAttr GetDotDimNumsAttr(StringAttr attr, Builder *builder) {
   ::xla::DotDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertDotDimensionNumbers(dims, builder);
@@ -1102,99 +1101,6 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
       add = rewriter.create<tensor::CastOp>(loc, op.getType(), add);
     }
     rewriter.replaceOp(op, {add});
-    return success();
-  }
-};
-
-// Convert TF::GatherV2Op to mhlo::DynamicGatherOp
-class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
-  using OpRewritePattern<TF::GatherV2Op>::OpRewritePattern;
-  // TODO(disc): To recover static special case's performance with folding and
-  // canonicalization.
-  LogicalResult matchAndRewrite(TF::GatherV2Op op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value params = op.params();
-    // params and indices of GatherNdOp must be ranked
-    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
-    Value indices = op.indices();
-    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
-    if (!params_ty || !indices_ty) return failure();
-
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
-      return failure();
-
-    int64_t params_rank = params_ty.getRank();
-    int64_t indices_rank = indices_ty.getRank();
-
-    // axis
-    DenseIntElementsAttr axis_attr;
-    // axis must be const for GatherOp
-    if (!matchPattern(op.axis(), m_Constant(&axis_attr))) return failure();
-
-    int64_t axis = (*axis_attr.begin()).getSExtValue();
-    if (axis < 0) axis += params_rank;
-
-    // slice_sizes
-    SmallVector<int64_t, 4> slice_sizes;
-    slice_sizes.reserve(params_rank);
-    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
-      if (dim_idx == axis) {
-        slice_sizes.push_back(1);
-      } else {
-        // potentially dynamic
-        int64_t dim_size = params_ty.getDimSize(dim_idx);
-        slice_sizes.push_back(dim_size);
-      }
-    }
-    SmallVector<Value, 4> slice_sizes_vals;
-    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
-      if (dim_idx == axis) {
-        slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-            loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
-      } else {
-        int64_t dim_size = params_ty.getDimSize(dim_idx);
-        if (dim_size != ShapedType::kDynamicSize) {
-          slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-              loc,
-              rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
-        } else {
-          slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-              loc, rewriter.create<tensor::DimOp>(loc, params, dim_idx),
-              indices_ty.getElementType()));
-        }
-      }
-    }
-    Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-        loc, indices_ty.getElementType(), slice_sizes_vals);
-    // offset_dims
-    SmallVector<int64_t, 4> offset_dims;
-    for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
-      if (dim_idx < axis) {
-        offset_dims.push_back(dim_idx);
-      } else if (dim_idx >= axis + 1) {
-        offset_dims.push_back(dim_idx + indices_rank - 1);
-      }
-    }
-    // collapsed_slice_dims
-    SmallVector<int64_t, 4> collapsed_slice_dims(1, axis);
-    // start_index_map
-    SmallVector<int64_t, 4> start_index_map(1, axis);
-    // index_vector_dim
-    int64_t index_vector_dim = indices_rank;
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
-        /*collapsed_slice_dims=*/
-        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
-        rewriter.getContext());
-
-    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
-        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
-        dims_attr);
     return success();
   }
 };
@@ -1704,13 +1610,9 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
     // index_vector_dim
     int64_t index_vector_dim = indices_rank - 1;
 
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
-        /*collapsed_slice_dims=*/
-        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(), offset_dims, collapsed_slice_dims,
+        start_index_map, index_vector_dim);
     // TODO(disc): Remove this if-statement once fold and canonicalization is
     // implemented.
     if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) {
@@ -2209,12 +2111,11 @@ class ConvertMatrixDiagPartV3Op
     // Gather the diagonal entries.
     // TODO(kramm): For a single diagonal, this might be slower than the
     //              mask + sum approach. Special-case num_diags==1?
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(0, num_dims - 2, &rewriter),
-        /*collapsed_slice_dims=*/GetI64ElementsAttr(collapsed_dims, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(0),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(0, num_dims - 2)),
+        /*collapsed_slice_dims=*/collapsed_dims, start_index_map,
+        /*index_vector_dim=*/0);
     Value gather = rewriter.create<mhlo::GatherOp>(
         loc, output_type, op.input(), start_indices, dims_attr,
         GetI64ElementsAttr(slice_sizes, &rewriter));
@@ -3410,18 +3311,17 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     rhs_type = rhs.getType().cast<RankedTensorType>();
     assert(lhs_type.getRank() == rhs_type.getRank());
     int64_t rank = lhs_type.getRank();
-    auto batch_dimensions = GetI64ElementsAttr(
-        llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2)), &rewriter);
-    auto lhs_contracting_dimensions = GetI64ElementsAttr(
-        llvm::makeArrayRef({op.adj_x() ? rank - 2 : rank - 1}), &rewriter);
-    auto rhs_contracting_dimensions = GetI64ElementsAttr(
-        llvm::makeArrayRef({op.adj_y() ? rank - 1 : rank - 2}), &rewriter);
-    auto dimension_numbers = DotDimensionNumbers::get(
+    auto batch_dimensions = llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2));
+    auto lhs_contracting_dimensions = llvm::to_vector<4>(
+        llvm::makeArrayRef({op.adj_x() ? rank - 2 : rank - 1}));
+    auto rhs_contracting_dimensions = llvm::to_vector<4>(
+        llvm::makeArrayRef({op.adj_y() ? rank - 1 : rank - 2}));
+    auto dimension_numbers = DotDimensionNumbersAttr::get(
+        rewriter.getContext(),
         /*lhs_batching_dimensions=*/batch_dimensions,
         /*rhs_batching_dimensions=*/batch_dimensions,
         /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
-        /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
-        rewriter.getContext());
+        /*rhs_contracting_dimensions=*/rhs_contracting_dimensions);
     // TODO(silvasean): Emit shape checks for contracting dimensions.
     // (The batch dimensions are checked by the broadcasting logic)
     rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
@@ -4619,12 +4519,13 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     int64_t updates_rank = updates_ty.getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(updates_rank - window_dims, updates_rank,
-                                 &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
-        rewriter.getI64IntegerAttr(indices_rank - 1), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(
+            llvm::seq<int64_t>(updates_rank - window_dims, updates_rank)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        indices_rank - 1);
 
     Location loc = op.getLoc();
     auto scatter = rewriter.create<ScatterOp>(
@@ -5905,11 +5806,10 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
     int64_t index_vector_dim = segment_ids_rank;
 
     // Put all parameters in a StructAttr.
-    auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttrForSeq(segment_ids_rank, data_rank, &rewriter),
-        GetI64ElementsAttr(inserted_window_dims, &rewriter),
-        GetI64ElementsAttr(scatter_dims_to_operand_dims, &rewriter),
-        rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
+    auto dims_attr = ScatterDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
+        inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
 
     auto scatter =
         rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
@@ -6127,12 +6027,12 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     ArrayRef<int64_t> input_shape = input_type.getShape();
     SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
     slice_sizes[0] = 1;
-    auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(1, input_rank, &rewriter),
-        /*collapsed_slice_dims=*/GetI64ElementsAttr({0}, &rewriter),
-        /*start_index_map=*/GetI64ElementsAttr({0}, &rewriter),
-        /*index_vector_dim=*/rewriter.getI64IntegerAttr(1),
-        rewriter.getContext());
+    auto dims_attr = GatherDimensionNumbersAttr::get(
+        rewriter.getContext(),
+        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(1, input_rank)),
+        /*collapsed_slice_dims=*/{0},
+        /*start_index_map=*/{0},
+        /*index_vector_dim=*/1);
     rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
         op, op.getType(), op.value(), swaped_indices, dims_attr,
         GetI64ElementsAttr(slice_sizes, &rewriter));
@@ -6304,6 +6204,72 @@ class ConvertXlaAllReduceOp : public OpRewritePattern<TF::XlaAllReduceOp> {
     // For mean, divide the merge result by group size.
     if (reduce_op == "Mean") {
       int64_t replica_group_size = replica_groups.getType().getDimSize(1);
+      auto divisor = GetScalarConstOfType(element_type, loc, replica_group_size,
+                                          &rewriter);
+      auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+      result = rewriter.create<chlo::BroadcastDivOp>(
+          loc, result, divisor.getResult(), broadcast_dims);
+    }
+
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
+// Converts a TF XlaReduceScatter op to ReduceScatter HLO.
+class ConvertXlaReduceScatterOp
+    : public OpRewritePattern<TF::XlaReduceScatterOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaReduceScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    DenseIntElementsAttr group_assignment;
+    if (!matchPattern(op.group_assignment(), m_Constant(&group_assignment)))
+      return failure();
+    auto replica_groups =
+        hlo::ConvertElementsAttr(group_assignment, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>();
+    if (replica_groups.getType().getRank() != 2) return failure();
+
+    APInt scatter_dimension;
+    if (!matchPattern(op.scatter_dimension(),
+                      m_ConstantInt(&scatter_dimension)))
+      return failure();
+
+    Location loc = op.getLoc();
+    Type element_type = getElementTypeOrSelf(op.input().getType());
+
+    auto reduce_scatter = rewriter.create<ReduceScatterOp>(
+        loc, op.getType(), op.input(),
+        rewriter.getIntegerAttr(rewriter.getIntegerType(64),
+                                scatter_dimension.getSExtValue()),
+        replica_groups, ChannelHandle());
+    StringRef reduce_op = op.reduce_op();
+    if (reduce_op == "Add") {
+      BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),
+                             &rewriter);
+    } else if (reduce_op == "Mul") {
+      BuildReduceBody<MulOp>(element_type, &reduce_scatter.computation(),
+                             &rewriter);
+    } else if (reduce_op == "Min") {
+      BuildReduceBody<MinOp>(element_type, &reduce_scatter.computation(),
+                             &rewriter);
+    } else if (reduce_op == "Max") {
+      BuildReduceBody<MaxOp>(element_type, &reduce_scatter.computation(),
+                             &rewriter);
+    } else {
+      // For mean, add replicas in the same group. Then divide the sum by the
+      // number of replicas in each group below.
+      assert(reduce_op == "Mean");
+      BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),
+                             &rewriter);
+    }
+    Value result = reduce_scatter.getResult();
+
+    // For mean, divide the merge result by group size.
+    if (reduce_op == "Mean") {
+      int64_t replica_group_size = replica_groups.getType().getDimSize(1);
+      if (replica_group_size == 0) return failure();
       auto divisor = GetScalarConstOfType(element_type, loc, replica_group_size,
                                           &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
@@ -6539,7 +6505,7 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
         op.getLoc(),
         RankedTensorType::get({input_ty.getRank()}, rewriter.getIndexType()),
         input);
-    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getIntValues());
+    auto expand_dims = llvm::to_vector<6>(expand_dims_attr.getValues<APInt>());
 
     llvm::SmallVector<Value, 4> dims;
     dims.resize(result_ty.getRank());
@@ -7161,6 +7127,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaAllReduceOp,
+    ConvertXlaReduceScatterOp,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
@@ -7171,7 +7138,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertUnpackOpDynamic,
     ConvertSignOpDynamic,
     ConvertSigmoidGradOpDynamic,
-    ConvertGatherV2OpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
     ConvertGatherNdOpDynamic>(context);

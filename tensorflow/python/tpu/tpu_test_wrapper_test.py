@@ -14,10 +14,6 @@
 # =============================================================================
 """Tests for tpu_test_wrapper.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib.util  # Python 3 only.
 import os
 
@@ -118,10 +114,6 @@ class TPUTestWrapperTest(test.TestCase):
 
   def test_run_user_main(self):
     test_module = _write_and_load_module("""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 VARS = 1
 
 if 'unrelated_if' == 'should_be_ignored':
@@ -140,10 +132,6 @@ if 'extra_if_at_bottom' == 'should_be_ignored':
 
   def test_run_user_main_missing_if(self):
     test_module = _write_and_load_module("""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 VARS = 1
 """)
 
@@ -153,10 +141,6 @@ VARS = 1
 
   def test_run_user_main_double_quotes(self):
     test_module = _write_and_load_module("""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 VARS = 1
 
 if "unrelated_if" == "should_be_ignored":
@@ -175,10 +159,6 @@ if "extra_if_at_bottom" == "should_be_ignored":
 
   def test_run_user_main_test(self):
     test_module = _write_and_load_module("""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.platform import test as unique_name
 
 class DummyTest(unique_name.TestCase):

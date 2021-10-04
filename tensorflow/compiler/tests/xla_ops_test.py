@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for XLA op wrappers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
@@ -1021,7 +1017,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     initial_state = array_ops.placeholder(np.uint64, shape=(None,))
     shape = (None, 3)
     with self.assertRaisesRegex(TypeError,
-                                'Failed to convert object .* to Tensor'):
+                                'Failed to convert elements .* to Tensor'):
       res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 

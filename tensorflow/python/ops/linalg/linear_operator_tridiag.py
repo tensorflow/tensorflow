@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` acting like a tridiagonal matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -185,8 +181,8 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
     with ops.name_scope(name, values=[diagonals]):
       if diagonals_format not in _DIAGONAL_FORMATS:
         raise ValueError(
-            'Diagonals Format must be one of compact, matrix, sequence'
-            ', got : {}'.format(diagonals_format))
+            f'Argument `diagonals_format` must be one of compact, matrix, or '
+            f'sequence. Received : {diagonals_format}.')
       if diagonals_format == _SEQUENCE:
         self._diagonals = [linear_operator_util.convert_nonref_to_tensor(
             d, name='diag_{}'.format(i)) for i, d in enumerate(diagonals)]

@@ -34,8 +34,6 @@ NOTES:
   //third_party/gpus/crosstool/v*/*/clang/bin/crosstool_wrapper_is_not_gcc
 """
 
-from __future__ import print_function
-
 __author__ = 'keveman@google.com (Manjunath Kudlur)'
 
 from argparse import ArgumentParser

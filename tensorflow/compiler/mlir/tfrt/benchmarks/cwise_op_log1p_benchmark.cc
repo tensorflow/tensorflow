@@ -28,19 +28,19 @@ func @log1p_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 #define EXPR_BUILDER [](auto& in) { return in.log1p(); }
 
-BM_TFMlir(Log1p, mlir_input, "log1p_1d", 1, f32, 1.0, 0.0)
+BM_TFMlir(Log1p, mlir_input, "log1p_1d", 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenScalar(Log1p, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_EigenScalar(Log1p, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenVectorized(Log1p, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_EigenVectorized(Log1p, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

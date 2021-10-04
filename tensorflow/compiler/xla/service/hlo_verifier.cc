@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -1882,7 +1883,7 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
-Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
+Status VerifyChannels(const HloModule& module) {
   absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
@@ -1944,13 +1945,11 @@ Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
       if (sendrecv->is_host_transfer()) {
         TF_RET_CHECK(instructions.size() == 2)
             << "channel " << pair.first
-            << " is used for multiple host send/recv instructions "
-            << " for pass " << pass_name;
+            << " is used for multiple host send/recv instructions";
       } else {
         TF_RET_CHECK(instructions.size() == opcodes.size())
             << "channel " << pair.first
-            << " is used for multiple send/recv instructions "
-            << " for pass " << pass_name;
+            << " is used for multiple send/recv instructions";
       }
     } else {
       for (const HloInstruction* instr : instructions) {
@@ -2164,6 +2163,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleBitcastConvert(HloInstruction* c) override {
+    // Shape verifier will check all we need.
+    return Status::OK();
+  }
+
   Status HandleWhile(HloInstruction* xla_while) override {
     auto* while_cond = xla_while->while_condition();
     auto* while_body = xla_while->while_body();
@@ -2280,46 +2284,54 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
-  TF_RET_CHECK(!module->name().empty());
+  auto status_or_changed = [&]() -> StatusOr<bool> {
+    TF_RET_CHECK(!module->name().empty());
 
-  if (module->entry_computation()->IsFusionComputation()) {
-    return InvalidArgument(
-        "Module entry computation cannot be a fusion computation");
+    if (module->entry_computation()->IsFusionComputation()) {
+      return InvalidArgument(
+          "Module entry computation cannot be a fusion computation");
+    }
+
+    TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+    TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
+    TF_RETURN_IF_ERROR(VerifyChannels(*module));
+
+    std::unique_ptr<ShapeVerifier> shape_verifier =
+        target_metadata_->GetVerifier();
+    InstructionVerifier instruction_verifier(
+        instruction_can_change_layout_func_);
+    for (auto* computation : module->computations()) {
+      TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
+      TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
+    }
+
+    TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
+    TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
+
+    // If the module has a schedule, it must be valid.
+    if (module->has_schedule()) {
+      TF_RETURN_IF_ERROR(module->schedule().Verify());
+    }
+
+    TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
+        *module, [this](const Shape& shape) -> int64_t {
+          if (target_metadata_->IsLayoutSensitive()) {
+            return target_metadata_->ShapeSize(shape);
+          } else {
+            return 0;
+          }
+        }));
+
+    TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+    TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
+    return false;
+  }();
+  if (status_or_changed.ok()) {
+    return status_or_changed.ValueOrDie();
   }
-
-  TF_RETURN_IF_ERROR(VerifyHloStructure(module));
-  TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
-  TF_RETURN_IF_ERROR(VerifyChannels(*module, pass_name_));
-
-  std::unique_ptr<ShapeVerifier> shape_verifier =
-      target_metadata_->GetVerifier();
-  InstructionVerifier instruction_verifier(instruction_can_change_layout_func_);
-  for (auto* computation : module->computations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
-    TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
-  }
-
-  TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
-  TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
-
-  // If the module has a schedule, it must be valid.
-  if (module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Verify());
-  }
-
-  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) -> int64_t {
-        if (target_metadata_->IsLayoutSensitive()) {
-          return target_metadata_->ShapeSize(shape);
-        } else {
-          return 0;
-        }
-      }));
-
-  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
-  TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
-
-  return false;
+  return Status(status_or_changed.status().code(),
+                absl::StrCat("during context [", context_, "]: ",
+                             status_or_changed.status().error_message()));
 }
 
 }  // namespace xla

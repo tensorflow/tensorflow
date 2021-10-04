@@ -42,6 +42,7 @@ using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 
 Status RegisterDataset(int64_t id, uint64 fingerprint, DispatcherState& state) {
   Update update;
@@ -548,6 +549,37 @@ TEST(DispatcherState, ReleaseJobClientId) {
   EXPECT_EQ(job->num_clients, 0);
   Status s = state.JobForJobClientId(job_client_id, job);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
+}
+
+TEST(DispatcherState, ListActiveClientsEmpty) {
+  int64_t job_id = 3;
+  int64_t dataset_id = 10;
+  int64_t job_client_id = 6;
+  int64_t release_time = 100;
+  DispatcherState state;
+  EXPECT_THAT(state.ListActiveClientIds(), IsEmpty());
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id, state));
+  TF_EXPECT_OK(ReleaseJobClientId(job_client_id, release_time, state));
+  EXPECT_THAT(state.ListActiveClientIds(), IsEmpty());
+}
+
+TEST(DispatcherState, ListActiveClients) {
+  int64_t job_id = 3;
+  int64_t dataset_id = 10;
+  int64_t job_client_id_1 = 6;
+  int64_t job_client_id_2 = 7;
+  int64_t job_client_id_3 = 8;
+  int64_t release_time = 100;
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_1, state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_2, state));
+  TF_EXPECT_OK(ReleaseJobClientId(job_client_id_2, release_time, state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_3, state));
+  EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
 }
 
 }  // namespace data

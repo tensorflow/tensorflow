@@ -121,19 +121,39 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
 
 namespace {
 
-StatusOr<FullTypeDef> run_type_constructor(Graph* graph,
-                                           const NodeDef& node_def) {
+StatusOr<FullTypeDef> run_type_constructor(
+    const tensorflow::OpRegistrationData& op_reg_data,
+    const NodeDef& node_def) {
+  static FullTypeDef no_type;
+
   // TODO(mdan): Decouple this from graph building, or run again after.
-  const auto* op_registry = graph->op_registry();
-  const tensorflow::OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def.op(), &op_reg_data));
-  if (op_reg_data->type_ctor == nullptr) {
-    // Default to the default unset type.
-    return FullTypeDef();
+  if (op_reg_data.type_ctor == nullptr) {
+    return no_type;
   }
 
   // TODO(mdan): Do we still need to save this info in the Graph object?
-  return full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
+  return full_type::SpecializeType(AttrSlice(node_def), op_reg_data.op_def);
+}
+
+StatusOr<FullTypeDef> run_forward_type_inference(
+    const tensorflow::OpRegistrationData& op_reg_data, const NodeDef& node,
+    const std::vector<NodeBuilder::NodeOut>& inputs) {
+  static FullTypeDef no_type;
+
+  if (op_reg_data.fwd_type_fn == nullptr) {
+    return no_type;
+  }
+
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (const auto& input : inputs) {
+    if (input.node && input.node->def().has_experimental_type()) {
+      input_types.emplace_back(input.node->def().experimental_type());
+    } else {
+      input_types.emplace_back(no_type);
+    }
+  }
+
+  return op_reg_data.fwd_type_fn(input_types);
 }
 
 }  // namespace
@@ -151,17 +171,29 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
 
-  const auto ret = run_type_constructor(graph, node_def);
-  TF_RETURN_IF_ERROR(ret.status());
+  const auto* op_registry = graph->op_registry();
+  const tensorflow::OpRegistrationData* op_reg_data;
+  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def.op(), &op_reg_data));
+
+  const auto ctor_type = run_type_constructor(*op_reg_data, node_def);
+  TF_RETURN_IF_ERROR(ctor_type.status());
+  const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
+  if (ctor_typedef.type_id() != TFT_UNSET) {
+    *(node_def.mutable_experimental_type()) = ctor_typedef;
+  }
+
+  const auto infer_type =
+      run_forward_type_inference(*op_reg_data, node_def, inputs_);
+  TF_RETURN_IF_ERROR(infer_type.status());
+
+  const auto infer_typedef = infer_type.ValueOrDie();
+  if (infer_typedef.type_id() != TFT_UNSET) {
+    *(node_def.mutable_experimental_type()) = infer_typedef;
+  }
 
   Status status;
   Node* node = graph->AddNode(std::move(node_def), &status);
   TF_RETURN_IF_ERROR(status);
-
-  FullTypeDef ft = ret.ValueOrDie();
-  if (ft.type_id() != TFT_UNSET) {
-    graph->SetNodeType(node->name(), ft);
-  }
 
   node->set_assigned_device_name(assigned_device_);
 
@@ -173,7 +205,9 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   for (Node* control_input : control_inputs_) {
     graph->AddControlEdge(control_input, node);
   }
+
   if (created_node != nullptr) *created_node = node;
+
   return Status::OK();
 }
 

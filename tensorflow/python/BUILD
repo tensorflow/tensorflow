@@ -84,6 +84,11 @@ py_library(
     ],
 )
 
+# Some of the dependencies in keras_lib are possibly outdated or not generally
+# useful, so a future task is to determine a good set of dependencies.
+# keras_lib may be removed in the future, it should NOT be used as
+# a direct dependency.
+# TODO(b/199420795) investigate minimal set of dependencies ...
 py_library(
     name = "keras_lib",
     srcs_version = "PY3",
@@ -193,6 +198,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
+        "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -431,6 +437,15 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
+    # extra_py_tests_deps is public to allow the use of tf_py_test or
+    # cuda_py_test build rules for out-of-tree custom ops.
+    # extra_py_tests_deps should NOT be used as dependency directly
+    # in out-of-tree BUILD files.
+    # Some of the dependencies in :keras_lib are possibly outdated
+    # or not generally useful, so a future task is to determine a good
+    # set of dependencies.
+    # TODO(b/199420795) investigate minimal set of dependencies ...
+    visibility = ["//visibility:public"],
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
@@ -891,14 +906,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tpu_xla_ops_gen",
+    name = "tpu_partition_ops_gen",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/tpu/ops",
+        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
     ],
 )
 
@@ -1779,6 +1794,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -2150,6 +2166,8 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",
@@ -2809,6 +2827,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
+        "noasan",  # TODO(b/199895990):re-enable
     ],
     deps = [
         ":array_ops",

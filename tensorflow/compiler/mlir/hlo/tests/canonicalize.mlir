@@ -537,25 +537,21 @@ func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f
   return %2 : tensor<4xcomplex<f32>>
 }
 
-// CHECK-LABEL: @dynamic_iota_is_static(
-// CHECK-SAME:                          %[[ARG_0:.*]]: tensor<1xindex>) -> tensor<4xi32> {
-// CHECK:         %[[VAL_0:.*]] = mhlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
-// CHECK:         return %[[VAL_0]] : tensor<4xi32>
-// CHECK:       }
+// CHECK-LABEL: @dynamic_iota_is_static
 func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
+  // CHECK: [[RESULT:%.*]] = "mhlo.iota"
+  // CHECK: return [[RESULT]]
   %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
 
-// CHECK-LABEL: @dynamic_iota_broadcast(
-// CHECK-SAME:                          %[[ARG_0:.*]]: tensor<2xindex>) -> tensor<5x?xi32> {
-// CHECK:         %[[VAL_0:.*]] = mhlo.constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
-// CHECK:         %[[VAL_1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[VAL_0]], %[[ARG_0]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>, tensor<2xindex>) -> tensor<5x?xi32>
-// CHECK:         return %[[VAL_1]] : tensor<5x?xi32>
-// CHECK:       }
-
+// CHECK-LABEL: @dynamic_iota_broadcast
 func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>, tensor<2xindex>) -> tensor<5x?xi32>
   %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
+
+  // CHECK: return [[BROADCAST]]
   return %0 : tensor<5x?xi32>
 }
 
@@ -600,13 +596,29 @@ func @iota_constant_multi() -> tensor<1x4xi32> {
   return %0 : tensor<1x4xi32>
 }
 
-// CHECK-LABEL: @iota_broadcast() -> tensor<5x4xi32> {
-// CHECK:         %[[VAL_0:.*]] = mhlo.constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
-// CHECK:         %[[VAL_1:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_0]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>) -> tensor<5x4xi32>
-// CHECK:           return %[[VAL_1]] : tensor<5x4xi32>
-// CHECK:         }
+// CHECK-LABEL: @iota_not_lowered_to_constant
+func @iota_not_lowered_to_constant() -> tensor<4xi32> {
+  // CHECK: [[RESULT:%.*]] = "mhlo.iota"
+  // CHECK: return [[RESULT]]
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
 func @iota_broadcast() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>) -> tensor<5x4xi32>
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5x4xi32>
+
+  return %0 : tensor<5x4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
+func @iota_broadcast_second() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<5x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<5x4xi32>
+
   return %0 : tensor<5x4xi32>
 }
 
@@ -1121,10 +1133,11 @@ func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> tensor
 func @gather_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<3x6x5xf32> {
   %0 = constant dense<[1, 2]> : tensor<2xi32>
   %1 = "mhlo.gather"(%arg0, %0) {
-    dimension_numbers = {collapsed_slice_dims = dense<> : tensor<0xi64>,
-                         index_vector_dim = 0 : i64,
-                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
-                         start_index_map = dense<[0, 2]> : tensor<2xi64>},
+    dimension_numbers = #mhlo.gather<
+      index_vector_dim = 0,
+      offset_dims = [0, 1, 2],
+      start_index_map = [0, 2],
+    >,
     indices_are_sorted = false,
     slice_sizes = dense<[3, 6, 5]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<2xi32>) -> tensor<3x6x5xf32>
   return %1 : tensor<3x6x5xf32>
@@ -1136,10 +1149,11 @@ func @gather_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<3x6x5xf32> {
 func @gather_scalar_index_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<5x6x4xf32> {
   %0 = constant dense<1> : tensor<i32>
   %1 = "mhlo.gather"(%arg0, %0) {
-    dimension_numbers = {collapsed_slice_dims = dense<> : tensor<0xi64>,
-                         index_vector_dim = 0 : i64,
-                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
-                         start_index_map = dense<[2]> : tensor<1xi64>},
+    dimension_numbers = #mhlo.gather<
+      index_vector_dim = 0,
+      offset_dims = [0, 1, 2],
+      start_index_map = [2],
+    >,
     indices_are_sorted = false,
     slice_sizes = dense<[5, 6, 4]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<i32>) -> tensor<5x6x4xf32>
   return %1 : tensor<5x6x4xf32>
@@ -1151,10 +1165,12 @@ func @gather_scalar_index_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<5x6x4xf32
 func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> {
   %0 = constant dense<[1, 2]> : tensor<2xi32>
   %1 = "mhlo.gather"(%arg0, %0) {
-    dimension_numbers = {collapsed_slice_dims = dense<[2]> : tensor<1xi64>,
-                         index_vector_dim = 0 : i64,
-                         offset_dims = dense<[0, 1, 2]> : tensor<3xi64>,
-                         start_index_map = dense<[0, 2]> : tensor<2xi64>},
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [2],
+      index_vector_dim = 0,
+      offset_dims = [0, 1],
+      start_index_map = [0, 2],
+    >,
     indices_are_sorted = false,
     slice_sizes = dense<[3, 6, 1]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<2xi32>) -> tensor<3x6xf32>
   return %1 : tensor<3x6xf32>
@@ -1473,12 +1489,12 @@ func @tensor_flow_scatter_v1_update() -> tensor<3x3xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1496,12 +1512,12 @@ func @tensor_flow_scatter_v2_update() -> tensor<3x3xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<1> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<1> : tensor<1xi64>,
-          update_window_dims = dense<[0]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [0],
+          inserted_window_dims = [1],
+          scatter_dims_to_operand_dims = [1],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<3x2xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1520,12 +1536,12 @@ func @tensor_flow_scatter_add() -> tensor<3x3xi32> {
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1544,12 +1560,12 @@ func @tensor_flow_scatter_repeated() -> tensor<3x3xi32> {
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1568,12 +1584,12 @@ func @tensor_flow_scatter_multiple_batch() -> tensor<3x3xi32> {
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 2 : i64,
-          inserted_window_dims = dense<1> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<1> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers =  #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [1],
+          scatter_dims_to_operand_dims = [1],
+          index_vector_dim = 2,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<2x3x2xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1591,12 +1607,12 @@ func @tensor_flow_scatter_nd() -> tensor<3x3x2xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers =  #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0, 1],
+          scatter_dims_to_operand_dims = [0, 1],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3x2xi32>, tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<3x3x2xi32>
   return %3 : tensor<3x3x2xi32>
@@ -1616,12 +1632,12 @@ func @tensor_flow_scatter_nd_index_vector() -> tensor<3x3x2xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 0 : i64,
-          inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0, 1],
+          scatter_dims_to_operand_dims = [0, 1],
+          index_vector_dim = 0,
+        >,
         unique_indices = false
     } : (tensor<3x3x2xi32>, tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<3x3x2xi32>
   return %3 : tensor<3x3x2xi32>
@@ -1641,12 +1657,11 @@ func @scatter_batch_dus() -> tensor<3x3xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 0 : i64,
-          inserted_window_dims = dense<> : tensor<0xi64>,
-          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-          update_window_dims = dense<[1, 2]> : tensor<2xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1, 2],
+          scatter_dims_to_operand_dims = [0, 1],
+          index_vector_dim = 0,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<2x1x1xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1665,12 +1680,11 @@ func @scatter_no_update_window_dim() -> tensor<3xi32> {
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 2 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<> : tensor<0xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 2,
+        >,
         unique_indices = false
     } : (tensor<3xi32>, tensor<2x2x1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
   return %3 : tensor<3xi32>
@@ -1686,12 +1700,12 @@ func @scatter_negative_index() -> tensor<3x3xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1708,12 +1722,12 @@ func @scatter_out_of_bound() -> tensor<3x3xi32> {
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
-        scatter_dimension_numbers = {
-          index_vector_dim = 1 : i64,
-          inserted_window_dims = dense<0> : tensor<1xi64>,
-          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-          update_window_dims = dense<[1]> : tensor<1xi64>
-        },
+        scatter_dimension_numbers = #mhlo.scatter<
+          update_window_dims = [1],
+          inserted_window_dims = [0],
+          scatter_dims_to_operand_dims = [0],
+          index_vector_dim = 1,
+        >,
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
@@ -1871,70 +1885,20 @@ func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor
 // CHECK:         {dimension = 0 : i64, is_stable = false} : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>
 
-
-// CHECK-LABEL: @fold_itoa_i32() -> tensor<2x5xi32> {
-// CHECK:         %[[VAL_0:.*]] = mhlo.constant dense<
-// CHECK-SAME{LITERAL}:                               [[0, 1, 2, 3, 4],
-// CHECK-SAME{LITERAL}:                                [0, 1, 2, 3, 4]]> : tensor<2x5xi32>
-// CHECK:         return %[[VAL_0]] : tensor<2x5xi32>
-// CHECK:       }
-func @fold_itoa_i32() -> tensor<2x5xi32> {
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<2x5xi32>
-  return %0 : tensor<2x5xi32>
+func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
+  %0 = "mhlo.sort"(%arg0) ( {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
+    %1 = "mhlo.compare"(%arg1, %arg2) {
+      comparison_direction = "GT"
+    } : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimension = -1 : i64,
+      is_stable = false
+  } : (tensor<3x5xi32>) -> tensor<3x5xi32>
+  return %0 : tensor<3x5xi32>
 }
-
-// CHECK-LABEL: @fold_itoa_i64() -> tensor<3x2x2xi64> {
-// CHECK:         %[[VAL_0:[a-zA-Z0-9_]+]] = mhlo.constant dense<
-// CHECK-SAME{LITERAL}:                                          [[[0, 1], [0, 1]],
-// CHECK-SAME{LITERAL}:                                           [[0, 1], [0, 1]],
-// CHECK-SAME{LITERAL}:                                           [[0, 1], [0, 1]]]> : tensor<3x2x2xi64>
-// CHECK:         return %[[VAL_0]] : tensor<3x2x2xi64>
-// CHECK:       }
-func @fold_itoa_i64() -> tensor<3x2x2xi64> {
-  %0 = "mhlo.iota"() {iota_dimension = 2 : i64} : () -> tensor<3x2x2xi64>
-  return %0 : tensor<3x2x2xi64>
-}
-
-// CHECK-LABEL: @fold_itoa_f32() -> tensor<2x4xf32> {
-// CHECK:         %[[VAL_0:[a-zA-Z0-9_]+]] = mhlo.constant dense<
-// CHECK-SAME{LITERAL}:                                          [[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00],
-// CHECK-SAME{LITERAL}:                                           [0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]]> : tensor<2x4xf32>
-// CHECK:         return %[[VAL_0]] : tensor<2x4xf32>
-// CHECK:       }
-func @fold_itoa_f32() -> tensor<2x4xf32> {
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<2x4xf32>
-  return %0 : tensor<2x4xf32>
-}
-
-// CHECK-LABEL: @fold_itoa_f64() -> tensor<3x2xf64> {
-// CHECK:         %[[VAL_0:[a-zA-Z0-9_]+]] = mhlo.constant dense<
-// CHECK-SAME{LITERAL}:                                          [[0.000000e+00, 1.000000e+00],
-// CHECK-SAME{LITERAL}:                                           [0.000000e+00, 1.000000e+00],
-// CHECK-SAME{LITERAL}:                                           [0.000000e+00, 1.000000e+00]]> : tensor<3x2xf64>
-// CHECK:         return %[[VAL_0]] : tensor<3x2xf64>
-// CHECK:       }
-func @fold_itoa_f64() -> tensor<3x2xf64> {
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<3x2xf64>
-  return %0 : tensor<3x2xf64>
-}
-
-// CHECK-LABEL: @fold_itoa_non_folded() -> tensor<1025x1025xi32> {
-// CHECK:         %[[VAL_0:[a-zA-Z0-9_]+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<1025xi32>
-// CHECK:         %[[VAL_1:[a-zA-Z0-9_]+]] = "mhlo.broadcast_in_dim"(%[[VAL_0]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1025xi32>) -> tensor<1025x1025xi32>
-// CHECK:         return %[[VAL_1]] : tensor<1025x1025xi32>
-// CHECK:       }
-func @fold_itoa_non_folded() -> tensor<1025x1025xi32> {
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<1025x1025xi32>
-  return %0 : tensor<1025x1025xi32>
-}
-
-// CHECK-LABEL: @fold_itoa_range_folded() -> tensor<1025x4xi32> {
-// CHECK:         %[[VAL_0:[a-zA-Z0-9_]+]] = mhlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
-// CHECK:         %[[VAL_1:[a-zA-Z0-9_]+]] = "mhlo.broadcast_in_dim"(%[[VAL_0]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1025x4xi32>
-// CHECK:         return %[[VAL_1]] : tensor<1025x4xi32>
-// CHECK:       }
-func @fold_itoa_range_folded() -> tensor<1025x4xi32> {
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<1025x4xi32>
-  return %0 : tensor<1025x4xi32>
-}
-
+// CHECK-LABEL: @sort_no_dim_provided
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
+// CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
+// CHECK:           dimension = 1 : i64
+// CHECK:         return %[[RES]] : tensor<3x5xi32>

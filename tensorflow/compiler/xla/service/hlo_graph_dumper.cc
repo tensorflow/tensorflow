@@ -1314,13 +1314,13 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(
     const HloInstruction* instr) {
-  while (instr->opcode() == HloOpcode::kFusion &&
-         ShouldShowFusionSubcomputation(instr)) {
-    instr = instr->fused_expression_root();
-  }
   // Skip over get-tuple-element nodes.
   if (instr->opcode() == HloOpcode::kGetTupleElement) {
     instr = instr->operand(0);
+  }
+  while (instr->opcode() == HloOpcode::kFusion &&
+         ShouldShowFusionSubcomputation(instr)) {
+    instr = instr->fused_expression_root();
   }
   return instr;
 }

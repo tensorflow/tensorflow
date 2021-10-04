@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -247,11 +243,11 @@ class ConstantInitializersTest(test.TestCase):
   def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
     with self.assertRaisesRegex(TypeError,
-                                r"Invalid type for initial value: .*Tensor.*"):
+                                r"Invalid type for initial value=.*Tensor.*"):
       init_ops.constant_initializer(c, dtype=dtypes.float32)
     v = variables.Variable([3.0, 2.0, 1.0])
     with self.assertRaisesRegex(
-        TypeError, r"Invalid type for initial value: .*Variable.*"):
+        TypeError, r"Invalid type for initial value=.*Variable.*"):
       init_ops.constant_initializer(v, dtype=dtypes.float32)
 
 

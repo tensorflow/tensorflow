@@ -58,6 +58,11 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
 
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+#include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
+#endif
+
 namespace tensorflow {
 namespace grappler {
 
@@ -134,11 +139,8 @@ bool IsXlaGlobalJitOn(
   // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
   // graphs. This is a conservative approach that turns off the memory optimizer
   // when we are sure that all graphs will be processed by XLA JIT.
-  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
-               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.general == OptimizerOptions::ON_2);
-  return is_on;
+  return xla_global_jit_level.single_gpu >= OptimizerOptions::ON_1 &&
+         xla_global_jit_level.general >= OptimizerOptions::ON_1;
 }
 
 // A helper function to decide whether to enable the memory optimizer.
@@ -205,7 +207,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
              !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", "shape_optimization", new ShapeOptimizer());
   MK_OPT("remap", "remapping",
-         new Remapper(cfg_.remapping(), xla_auto_clustering_on_));
+         new Remapper(cfg_.remapping(), cfg_.cpu_layout_conversion(),
+                      xla_auto_clustering_on_));
   MK_OPT("layout", "layout_optimizer",
          new GenericLayoutOptimizer(
              /*optimization level*/ cfg_.layout_optimizer(),
@@ -265,6 +268,12 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
+
+  // #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+  // Hooks the MLIR optimizer, it won't run any optimizations right now.
+  optimizers->push_back(MakeUnique<mlir::tfg::TfgGrapplerOptimizer>(""));
+#endif
 
 #define USER_IS_ON(CFG) cfg_.CFG() == RewriterConfig::ON
 #define USER_NOT_OFF(CFG) cfg_.CFG() != RewriterConfig::OFF
@@ -327,8 +336,9 @@ Status MetaOptimizer::InitializeOptimizers(
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   }
   if (BOTH_NOT_OFF(remapping)) {
-    optimizers->push_back(
-        MakeUnique<Remapper>(cfg_.remapping(), xla_auto_clustering_on_));
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping(),
+                                               cfg_.cpu_layout_conversion(),
+                                               xla_auto_clustering_on_));
   }
   if (BOTH_NOT_OFF(loop_optimization)) {
     optimizers->push_back(

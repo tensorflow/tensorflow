@@ -47,6 +47,18 @@ class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
   let assemblyFormat = "operands attr-dict";
 }
 
+def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
+  let description = [{
+    xlir.module.load loads GPU device module from a binary blob provided by the
+    execution context.
+
+    Example:
+      %module = tfrt_gpu.module.load %ctx
+  }];
+  let arguments = (ins GPU_ContextType:$ctx);
+  let results = (outs GPU_ModuleType);
+}
+
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let description = [{
     xlir.ccl.create returns a ccl.handle, which can be populated with individual
@@ -55,6 +67,50 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   }];
   let arguments = (ins GPU_ContextType);
   let results = (outs GPU_CclHandleType);
+}
+
+def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
+  let description = [{
+    xlir.ccl.collective_permute inserts into the ccl.handle operations to send
+    data at the input buffer and receive data into the output buffer depending
+    on the source and target peers supplied in the ExecutionContext
+    (XcclContext).
+  }];
+  let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
+                   GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $chain attr-dict
+  }];
+}
+
+def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
+  let description = [{
+    xlir.custom_call invokes a host function, supplied in the ExecutionContext
+    (CustomCallContext), using 'buffers' for the purposes of enqueuing
+    operations on the GPU device. 'opaque' is used to supply an arbitrary string
+    of bytes to the host function call.
+
+    Optionally specify an 'args_to_target_args' and/or
+    'results_to_target_results' to rearrange 'buffers' supplied to the host
+    function. Example:
+        buffers = [ A, B ]
+        args_to_target_args = [ 0, 2 ]
+        target_args_count = 5
+        (rearranged buffers = [ A, nullptr, B, nulltpr, nullptr ])
+  }];
+  let arguments = (ins GPU_StreamType:$stream, TFRT_ChainType:$chain,
+                   Variadic<GPU_BufferType>:$buffers,
+                   I64ArrayAttr:$args_to_target_args, StrAttr:$opaque,
+                   I64ArrayAttr:$results_to_target_results,
+                   I64Attr:$target_args_count, I64Attr:$target_results_count);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $chain`,` $buffers`,` $args_to_target_args`,`
+    $results_to_target_results`,` $target_args_count`,` $target_results_count
+    attr-dict
+  }];
 }
 
 #endif  // XLIR_OPS

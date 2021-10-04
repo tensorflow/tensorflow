@@ -15,10 +15,6 @@
 """Tests for pfor and for_loop."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import sys
 import time
@@ -133,7 +129,7 @@ class PForTest(PForTestCase):
           lambda i: 1, dtypes.int32, 8, parallel_iterations=0)
 
   def test_parallel_iterations_one(self):
-    with self.assertRaisesRegex(ValueError, "Use for_loop instead"):
+    with self.assertRaisesRegex(ValueError, "Use `for_loop` instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
   def test_vectorized_map(self):
@@ -330,7 +326,7 @@ class ReductionTest(PForTestCase):
       return pfor_config.reduce_sum(x_i)
 
     with self.assertRaisesRegex(ValueError,
-                                "parallel_iterations currently unsupported"):
+                                "`parallel_iterations` currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
   def test_var_loop_len(self):
@@ -595,8 +591,6 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_shift(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([3, 5, 6, 7])
 
     def loop_fn(i):
@@ -606,8 +600,6 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_scalar_shift(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([5, 5, 6])
 
     def loop_fn(i):

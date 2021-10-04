@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_batch_gather_ops.batch_gather."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import context
@@ -477,12 +473,12 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
         indices, [0, 2, 4])
 
     with self.assertRaisesRegex(
-        ValueError, r'batch_dims may only be negative '
+        ValueError, r'batch_dims=-1 may only be negative '
         r'if rank\(indices\) is statically known.'):
       ragged_batch_gather_ops.batch_gather(params, indices)
 
     with self.assertRaisesRegex(
-        ValueError, r'batch_dims may only be negative '
+        ValueError, r'batch_dims=-1 may only be negative '
         r'if rank\(indices\) is statically known.'):
       ragged_batch_gather_ops.batch_gather(params, ragged_indices)
 

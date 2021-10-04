@@ -125,6 +125,7 @@ const std::map<string, string>& GetKnownBrokenNnapiTests() {
       new std::map<string, string>({
           // Certain NNAPI kernels silently fail with int32 types.
           {R"(^\/add.*dtype=tf\.int32)", "122987564"},
+          {R"(^\/add.*dtype=tf\.uint32)", "122987564"},
           {R"(^\/concat.*dtype=tf\.int32)", "122987564"},
           {R"(^\/mul.*dtype=tf\.int32)", "122987564"},
           {R"(^\/space_to_depth.*dtype=tf\.int32)", "122987564"},

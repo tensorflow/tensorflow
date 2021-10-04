@@ -159,6 +159,7 @@ class GraphImporter {
         builder_(context),
         context_(context),
         dialect_(context->getLoadedDialect<TFGraphDialect>()),
+        unknown_loc_(UnknownLoc::get(context)),
         debug_info_(debug_info),
         function_name_for_debug_info_(function_name_for_debug_info) {}
 
@@ -228,6 +229,7 @@ class GraphImporter {
   OpBuilder builder_;
   MLIRContext* context_;
   TFGraphDialect* dialect_;
+  UnknownLoc unknown_loc_;
   const GraphDebugInfo& debug_info_;
   llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
@@ -494,9 +496,7 @@ Location GraphImporter::GetLocation(const Node& node) {
   auto original_funcs =
       node_def.experimental_debug_info().original_func_names();
 
-  if (original_nodes.empty()) {
-    return create_location(node.name(), function_name_for_debug_info_);
-  } else {
+  if (!original_nodes.empty()) {
     // If the original nodes are defined, then we use them to get a list of
     // call sites, and then fuse them to a single fused location, with the name
     // of the node_def.
@@ -509,11 +509,9 @@ Location GraphImporter::GetLocation(const Node& node) {
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_locations.push_back(create_location(node_name, func_name));
     }
-    // store the name of the node_def
-    node_locations.push_back(
-        create_location(node.name(), function_name_for_debug_info_));
     return FusedLoc::get(context_, node_locations);
   }
+  return unknown_loc_;
 }
 
 Value GraphImporter::GetOperand(const Edge& edge) {
@@ -912,47 +910,6 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   return func_op;
 }
 
-}  // namespace
-
-// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
-// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
-// and a ShapeAttr
-tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
-    Builder builder,
-    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
-  // Two entries: a type and a shape.
-  SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle_data : handle_data) {
-    Type dtype;
-    if (handle_data.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle_data.dtype(), builder, &dtype));
-    TF_ASSIGN_OR_RETURN(
-        Attribute shape,
-        ConvertTensorShapeProto(handle_data.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
-  }
-  return builder.getArrayAttr(dtype_and_shape);
-}
-
-tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
-    MLIRContext* context, const GraphDebugInfo& debug_info,
-    const GraphDef& graphdef) {
-  VLOG(4) << "ConvertGraphdefToMlir begin";
-  GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  options.add_default_attributes = true;
-  // TODO(aminim): remove dependency on the global registry and allow for
-  // injection.
-  Graph graph(OpRegistry::Global());
-  GraphDef preprocessed_graphdef(graphdef);
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(preprocessed_graphdef), &graph));
-  return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
-                                       graph.flib_def());
-}
-
 bool IsGenericFunction(FunctionDef fdef) {
   for (const NodeDef& node : fdef.node_def())
     for (const auto& named_attr : node.attr()) {
@@ -994,14 +951,45 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
   return module;
 }
 
-tensorflow::StatusOr<GraphFuncOp> ImportFunctionToMlir(
-    ModuleOp module, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, absl::string_view func_name,
-    AttrSlice instantiation_attributes) {
-  const FunctionDef* func = flib_def.Find(std::string(func_name));
-  SymbolTable symbol_table(module);
-  return ImportFunctionDef(module, debug_info, flib_def, *func,
-                           instantiation_attributes);
+}  // namespace
+
+// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
+// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
+// and a ShapeAttr
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
+  // Two entries: a type and a shape.
+  SmallVector<Attribute> dtype_and_shape;
+  for (const auto& handle : handle_data) {
+    Type dtype;
+    if (handle.dtype() != tensorflow::DT_INVALID)
+      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_ASSIGN_OR_RETURN(
+        Attribute shape,
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
+
+    dtype_and_shape.push_back(
+        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+  }
+  return builder.getArrayAttr(dtype_and_shape);
+}
+
+tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
+    MLIRContext* context, const GraphDebugInfo& debug_info,
+    const GraphDef& graphdef) {
+  VLOG(4) << "ConvertGraphdefToMlir begin";
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.add_default_attributes = true;
+  // TODO(aminim): remove dependency on the global registry and allow for
+  // injection.
+  Graph graph(OpRegistry::Global());
+  GraphDef preprocessed_graphdef(graphdef);
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
+  return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
+                                       graph.flib_def());
 }
 
 }  // namespace tfg

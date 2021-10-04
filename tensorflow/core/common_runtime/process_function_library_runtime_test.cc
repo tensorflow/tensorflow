@@ -939,7 +939,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
   ASSERT_TRUE(status.ok()) << status.error_message();
 
-  // Run the function taking a resource and outputing it
+  // Run the function taking a resource and outputting it
   FunctionLibraryRuntime::Options opts;
   Tensor x1 = CPUToGPU(test::AsTensor<float>({1, 2}));
   Tensor x2 = GetResourceHandle("my_gpu_var", mgr->default_container(),

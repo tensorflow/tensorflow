@@ -14,13 +14,10 @@
 # ==============================================================================
 """Classes for storing ragged tensors and their values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import operator
 
+import typing
 import numpy as np
 
 from tensorflow.python import tf2
@@ -43,6 +40,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -374,7 +372,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RaggedTensor` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or zero if `value_rowids` is empty).
-        Defaults to `value_rowids[-1]` (or zero if `value_rowids` is empty).
+        Defaults to `value_rowids[-1] + 1` (or zero if `value_rowids` is empty).
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
@@ -3044,3 +3042,13 @@ def _assert_is_supported_ragged_values_type(value):
   if not _is_supported_ragged_values_type(value):
     ok_types = ", ".join(cls.__name__ for cls in _SUPPORTED_RAGGED_VALUE_TYPES)
     raise TypeError(f"type(values) must be one of: {ok_types}, got {value}.")
+
+
+# Type annotation indicating that a value is ragged.  Includes RaggedTensor
+# as well as the (deprecated) RaggedTensorValue class from TF 1.x.
+Ragged = typing.Union[RaggedTensor, ragged_tensor_value.RaggedTensorValue]
+
+# Type annotation indicating that a value is a ragged tensor, a dense tensor,
+# or a value that can be converted to a tensor (e.g. np.array).
+# TODO(edloper): Add Variable to TensorLike, and remove it from here.
+RaggedOrDense = typing.Union[Ragged, core_types.TensorLike]

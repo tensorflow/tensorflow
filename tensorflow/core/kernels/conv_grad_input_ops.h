@@ -112,7 +112,7 @@ struct LaunchConv2DBackpropInputOpImpl {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
     std::vector<int32> strides(4, 1);
     std::vector<int32> dilations(4, 1);
@@ -207,7 +207,7 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
     LaunchConv2DBackpropInputOpImpl<CPUDevice, T> launcher;
     launcher(ctx, use_cudnn, cudnn_use_autotune, out_backprop, filter,

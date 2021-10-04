@@ -15,10 +15,6 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import pprint
@@ -55,6 +51,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -74,6 +71,8 @@ from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
 from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
@@ -94,13 +93,6 @@ from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_deb
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
 
 
 @_tf_export("lite.Optimize")
@@ -162,6 +154,7 @@ class Optimize(enum.Enum):
     return str(self.value)
 
 
+# TODO(b/198099651): move converter implementation out of lite.py
 @_tf_export("lite.RepresentativeDataset")
 class RepresentativeDataset(object):
   """Representative dataset used to optimize the model.
@@ -362,7 +355,7 @@ class QuantizationMode(object):
           "post_training_quantize": True,
           "quantize_to_float16": True,  # enable float16 quantization
           "accumulation_type":
-              self._target_spec._experimental_supported_accumulation_type,
+              self._target_spec._experimental_supported_accumulation_type,  # pylint: disable=protected-access
           "allow_bfloat16":
               self.is_bfloat16_inference_allowed()
       }

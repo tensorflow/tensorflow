@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Tests for c_api utils."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest

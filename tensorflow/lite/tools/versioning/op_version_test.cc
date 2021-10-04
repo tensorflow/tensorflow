@@ -576,6 +576,25 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+TEST(OpVersionTest, VersioningQuantizeTest) {
+  OpSignature fake_op_sig;
+  fake_op_sig.op = BuiltinOperator_QUANTIZE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  fake_op_sig.ext_options.quantize.is_per_channel_quantized = false;
+
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.ext_options.quantize.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+}
+
 TEST(OpVersionTest, VersioningConv2DTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_CONV_2D,

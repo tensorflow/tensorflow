@@ -67,14 +67,19 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
-    const std::string& mlir_module, const std::string& entrypoint,
-    Specialization specialization) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
+                                                 const std::string& entrypoint,
+                                                 Specialization specialization,
+                                                 bool vectorize) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
+    tensorflow::TfCpuRtPipelineOptions opts;
+    opts.vectorize = vectorize;
+    tensorflow::CreateTfCpuRtPipeline(pm, opts);
+  };
   opts.specialization = specialization;
   opts.type_converter = mlir::BufferizeTypeConverter();
 
@@ -284,7 +289,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   result_storage.reserve(num_results);
   for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
 
-  RemainingResults results(&host_context_, result_storage);
+  RemainingResults results(result_storage);
 
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);
@@ -320,6 +325,7 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
-               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled,
+           py::arg("vectorize") = false)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute);
 }
