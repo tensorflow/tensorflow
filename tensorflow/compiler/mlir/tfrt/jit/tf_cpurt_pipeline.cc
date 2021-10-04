@@ -91,10 +91,6 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
-  // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
-
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
   pm.addNestedPass<mlir::FuncOp>(
@@ -106,6 +102,9 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Fuse Linalg on tensors operations.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
+  // Lower index cast on tensors to tensor.generate.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
