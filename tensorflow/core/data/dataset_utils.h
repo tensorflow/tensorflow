@@ -53,8 +53,11 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 // resource is owned by the handle.
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
+  ResourceMgr* mgr = ctx->resource_manager();
   *handle =
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
+  TF_RETURN_IF_ERROR(
+      mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
   return Status::OK();
 }
 
