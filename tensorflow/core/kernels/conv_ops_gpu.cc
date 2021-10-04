@@ -60,19 +60,19 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
     Status cudnn_launch_status =
         launch_func(allocator_used, profile_config, &profile_result);
 
-    if (cudnn_launch_status.ok() && profile_result.is_valid()) {
-      results.emplace_back();
-      auto& result = results.back();
-      if (CudnnUseFrontend()) {
-        result.mutable_cuda_conv_plan()->set_exec_plan_id(
-            profile_config.algorithm()->exec_plan_id());
-      } else {
-        result.mutable_conv()->set_algorithm(
-            profile_config.algorithm()->algo_id());
-        result.mutable_conv()->set_tensor_ops_enabled(
-            profile_config.algorithm()->tensor_ops_enabled());
-      }
+    results.emplace_back();
+    auto& result = results.back();
+    if (CudnnUseFrontend()) {
+      result.mutable_cuda_conv_plan()->set_exec_plan_id(
+          profile_config.algorithm()->exec_plan_id());
+    } else {
+      result.mutable_conv()->set_algorithm(
+          profile_config.algorithm()->algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(
+          profile_config.algorithm()->tensor_ops_enabled());
+    }
 
+    if (cudnn_launch_status.ok() && profile_result.is_valid()) {
       result.set_scratch_bytes(
           !RedzoneCheckDisabled()
               ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
@@ -82,16 +82,12 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
-    } else if (CudnnUseFrontend()) {
-      // When CuDNN frontend APIs are used, we need to make sure the profiling
-      // results are one-to-one mapping of the "plans". So, we insert dummy
-      // results when the execution fails.
-      results.emplace_back();
-      auto& result = results.back();
+    } else {
       result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
-          absl::StrCat("Profiling failure on CUDNN engine: ",
-                       profile_config.algorithm()->exec_plan_id()));
+          absl::StrCat("Profiling failure on CUDNN engine ",
+                       profile_config.algorithm()->exec_plan_id(), ": ",
+                       cudnn_launch_status.ToString()));
     }
   }
 

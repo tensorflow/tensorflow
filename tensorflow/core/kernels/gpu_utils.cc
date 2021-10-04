@@ -238,7 +238,13 @@ Status BestCudnnConvAlgorithm(
   }
 
   if (idx == -1) {
-    return errors::NotFound("No algorithm worked!");
+    std::ostringstream msg;
+    msg << "No algorithm worked!  Error messages:";
+    // TODO(awpr): identify the algorithm as part of this error message, too.
+    for (const auto& result : results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return errors::NotFound(msg.str());
   }
 
   if (!plans || plans->empty()) {
