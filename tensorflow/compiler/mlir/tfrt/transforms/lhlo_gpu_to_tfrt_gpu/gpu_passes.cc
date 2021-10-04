@@ -41,6 +41,7 @@ limitations under the License.
 namespace tensorflow {
 
 void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
 
@@ -63,6 +64,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
 
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
+  populateCholeskyConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
   populateFuncOpTypeConversionPattern(patterns, converter);

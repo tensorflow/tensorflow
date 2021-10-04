@@ -30,6 +30,7 @@ cc_library(
     name = "passes",
     srcs = [
         "ccl_pattern.cc",
+        "cholesky_pattern.cc",
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "gpu_passes.cc",
@@ -56,6 +57,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/service/gpu:xlir_opdefs",
         "@com_google_absl//absl/strings",
