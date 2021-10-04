@@ -6,7 +6,10 @@ py_strict_test(
     name = "multiple_results_test",
     srcs = ["multiple_results_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
         "//tensorflow/python:client_testlib",
