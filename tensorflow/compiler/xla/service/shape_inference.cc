@@ -786,7 +786,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
     // See b/25177275 for more details.
-    return InvalidArgument("Automatic shape inference not supported: %s and %s",
+    return InvalidArgument("Shapes must be equal rank, but are %s and %s",
                            ShapeUtil::HumanString(smaller_shape),
                            ShapeUtil::HumanString(larger_shape));
   } else if (broadcast_dimensions.size() != smaller_shape.rank()) {

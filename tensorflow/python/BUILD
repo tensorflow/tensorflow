@@ -2913,6 +2913,7 @@ cuda_py_test(
         ":math_ops",
         ":platform_test",
         ":variables",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
