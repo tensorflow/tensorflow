@@ -251,7 +251,7 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
 class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
 
   def testDenseUpdate(self, strategy, tf_function, update_fn):
-    if isinstance(strategy, tpu_strategy.TPUStrategy) and (not tf_function):
+    if strategy_test_lib.is_tpu_strategy(strategy) and (not tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
     with strategy.scope():
       distributed_variable1 = variables.Variable(5.0)
@@ -294,7 +294,7 @@ class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
 class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
 
   def testDense(self, strategy, tf_function):
-    if (isinstance(strategy, tpu_strategy.TPUStrategy) and
+    if (strategy_test_lib.is_tpu_strategy(strategy) and
         tf_function is combinations.no_tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
 
@@ -395,7 +395,7 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
 class AllReduceTest(test.TestCase, parameterized.TestCase):
 
   def testDense(self, strategy, tf_function):
-    if (isinstance(strategy, tpu_strategy.TPUStrategy) and
+    if (strategy_test_lib.is_tpu_strategy(strategy) and
         tf_function is combinations.no_tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
 
@@ -433,9 +433,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
 
     got = fn()[0]
 
-    if not isinstance(strategy,
-                      (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
-                       tpu_strategy.TPUStrategyV1)):
+    if not strategy_test_lib.is_tpu_strategy(strategy):
       self.assertIsInstance(got, ops.IndexedSlices)
     expect = ops.IndexedSlices(
         values=array_ops.identity([[1.0]]),
@@ -468,9 +466,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
 
     got = fn()[0]
 
-    if not isinstance(strategy,
-                      (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
-                       tpu_strategy.TPUStrategyV1)):
+    if not strategy_test_lib.is_tpu_strategy(strategy):
       for g in got:
         self.assertIsInstance(g, ops.IndexedSlices)
     expect = [
@@ -544,12 +540,6 @@ def _get_num_replicas_per_client(strategy):
     return max(nest.flatten(resolver.num_accelerators())[0], 1)
   else:
     return strategy.num_replicas_in_sync
-
-
-def _is_tpu_strategy(strategy):
-  return isinstance(strategy,
-                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
-                     tpu_strategy.TPUStrategyV2))
 
 
 @combinations.generate(

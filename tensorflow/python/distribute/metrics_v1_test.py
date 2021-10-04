@@ -17,7 +17,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
@@ -95,8 +95,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
       iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
-      if isinstance(distribution, (tpu_strategy.TPUStrategy,
-                                   tpu_strategy.TPUStrategyV1)):
+      if strategy_test_lib.is_tpu_strategy(distribution):
         def step_fn(ctx, inputs):
           value, update = distribution.extended.call_for_each_replica(
               metric_fn, args=(inputs,))
