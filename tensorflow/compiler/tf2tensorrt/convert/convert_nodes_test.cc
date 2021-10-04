@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -271,11 +273,6 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  std::unordered_map<string, OpConverter>& op_validators(
-      TrtNodeValidator* validator) {
-    return validator->op_validators_;
-  }
-
   Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
                                   int output_port,
                                   TRT_TensorOrWeights* tensor_or_weights) {
@@ -290,10 +287,6 @@ class ValidatorTest : public ::testing::Test {
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
-
-  const std::set<string>* GetQuantizeOps(TrtNodeValidator* validator) {
-    return validator->quantize_ops;
-  }
 };
 
 TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
@@ -302,8 +295,8 @@ TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
                              /*use_implicit_batch=*/true);
-  for (const string& quantize_op : *GetQuantizeOps(&validator)) {
-    QCHECK(op_validators(&validator).count(quantize_op));
+  for (const string& quantize_op : kQuantizationOpNames) {
+    TF_EXPECT_OK(validator.GetValidator(quantize_op).status());
   }
 }
 
@@ -378,6 +371,7 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
                              /*use_calibration=*/false,
                              /*use_implicit_batch=*/true);
 
+  // Override the Add converter.
   bool start_conversion = false;
   bool should_fail = false;
   auto op_converter = [&start_conversion,
@@ -388,13 +382,14 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   };
 
   // Validator not registered.
-  ASSERT_EQ(1, op_validators(&validator).erase("Add"));
+  auto original_op_converter = GetOpConverterRegistry()->LookUp("Add");
+  ASSERT_TRUE(original_op_converter.ok());
+  GetOpConverterRegistry()->Clear("Add");
   EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
               StatusIs(error::UNIMPLEMENTED,
                        HasSubstr("Op type Add is not supported.")));
-
-  // Register validator.
-  op_validators(&validator)["Add"] = op_converter;
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority + 1,
+                                     op_converter);
   TF_EXPECT_OK(validator.IsTensorRTCandidate(add_node));
   EXPECT_EQ(false, start_conversion);
 
@@ -402,6 +397,9 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   should_fail = true;
   EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
               StatusIs(error::INVALID_ARGUMENT));
+  GetOpConverterRegistry()->Clear("Add");
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority,
+                                     *original_op_converter);
 }
 
 TEST(TrtNodeValidator, IsTensorRTCandidate) {
@@ -492,6 +490,8 @@ class ConverterTest : public ::testing::Test {
   ConverterTest() { Reset(); }
 
   void Reset() {
+    GetOpConverterRegistry()->Clear("MyOp");
+    GetOpConverterRegistry()->Clear("DummyOp");
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
@@ -501,12 +501,9 @@ class ConverterTest : public ::testing::Test {
     weight_store_ = &converter_->weight_store_;
   }
 
-  void AddOpConverter(const string& op_name, OpConverter op_converter) {
-    converter_->op_registry_[op_name] = op_converter;
-  }
-
+  // TODO(cbate): These should be removed or changed to public per black-box
+  // testing principle.
   // Below we expose private methods of Converter for testing.
-
   Status MaybeUpdateBatchSize(int batch_size) {
     return converter_->MaybeUpdateBatchSize(batch_size);
   }
@@ -559,17 +556,19 @@ TEST_F(ConverterTest, ConvertNode) {
     return Status::OK();
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
-  TF_EXPECT_OK(converter_->AddInputTensor(
+
+  TF_ASSERT_OK(converter_->AddInputTensor(
       "my_input", nvinfer1::DataType::kFLOAT, CreateDims({123}), 1));
 
   // Converter not registered.
-  EXPECT_THAT(converter_->ConvertNode(node_def),
-              StatusIs(error::UNIMPLEMENTED,
-                       HasSubstr("No converter registered for op: MyOp")));
+  EXPECT_THAT(
+      converter_->ConvertNode(node_def),
+      StatusIs(error::NOT_FOUND, HasSubstr("No converter for op MyOp")));
 
   // Register the converter and retry.
-  AddOpConverter("MyOp", op_converter);
-  TF_EXPECT_OK(converter_->ConvertNode(node_def));
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
+  TF_ASSERT_OK(converter_->ConvertNode(node_def));
 
   TRT_TensorOrWeights actual_output_1;
   TF_EXPECT_OK(GetTensorOrWeights("my_op", &actual_output_1));
@@ -641,7 +640,8 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
     params->outputs->emplace_back(output_weights);
     return Status::OK();
   };
-  AddOpConverter("MyOp", op_converter);
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
 
   // Run the conversion.
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
@@ -2908,14 +2908,12 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  // Add all ops supported by ConvertBinary.
-  auto* supported_ops = BinaryOperationMap();
   // Test combinations of tensor vs weight inputs (except when both inputs are
   // weights).
   for (const bool operand_1_is_tensor : {true, false}) {
     for (const bool operand_2_is_tensor : {true, false}) {
       if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
-      for (auto& iter : *supported_ops) {
+      for (auto& iter : kBinaryOperations) {
         string op_name = iter.first;
         SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
                             operand_2_is_tensor ? "T" : "W"));

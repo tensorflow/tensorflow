@@ -439,6 +439,61 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
+tf_cuda_library(
+    name = "trt_weights",
+    srcs = ["convert/weights.cc"],
+    hdrs = [
+        "convert/weights.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_library(
+    name = "op_converter",
+    srcs = [],
+    hdrs = [
+        "convert/op_converter.h",
+    ],
+    deps = [
+        ":trt_weights",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_library(
+    name = "op_converter_registry",
+    srcs = ["convert/op_converter_registry.cc"],
+    hdrs = [
+        "convert/op_converter_registry.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        ":op_converter",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "op_converter_registry_test",
+    size = "small",
+    srcs = ["convert/op_converter_registry_test.cc"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":op_converter_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
@@ -464,6 +519,9 @@ tf_cuda_library(
         ":trt_logging",
         ":trt_resources",
         ":utils",
+        ":trt_weights",
+        ":op_converter",
+        ":op_converter_registry",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/common_runtime:core_cpu",
