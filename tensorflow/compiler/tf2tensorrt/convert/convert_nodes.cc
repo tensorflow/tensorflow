@@ -1383,7 +1383,14 @@ Status Converter::BuildCudaEngine(
     int nbBindings = (*engine)->getNbBindings();
     VLOG(2) << "Number of engine bindings: " << nbBindings;
     for (int i = 0; i < nbBindings; i++) {
-      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i);
+      auto get_location_string = [&engine](int i) {
+        if ((*engine)->getLocation(i) == nvinfer1::TensorLocation::kDEVICE)
+          return " on device";
+        else
+          return " on host";
+      };
+      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i)
+              << get_location_string(i);
     }
   }
   return Status::OK();
