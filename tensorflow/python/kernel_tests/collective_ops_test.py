@@ -1182,6 +1182,69 @@ class InputPipelineTest(test.TestCase):
     self.assertAllEqual(self.evaluate(f()), [[3.], [3.]])
 
 
+@combinations.generate(
+    combinations.times(
+        combinations.combine(collective_op=[
+            combinations.NamedObject('all_reduce_v2',
+                                     CollectiveOpsV2.all_reduce),
+            combinations.NamedObject('all_gather_v2',
+                                     CollectiveOpsV2.all_gather)
+        ]), device_combination))
+class InvalidInputTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testInvalidGroupKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = [100]
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+  def testInvalidGroupSize(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = -2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+  def testInvalidInstanceKey(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    group_size = 2
+    group_key = 100
+    instance_key = [100]
+    in_tensor = constant_op.constant([1.])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+
 class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
