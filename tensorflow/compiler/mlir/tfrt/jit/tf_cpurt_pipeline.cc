@@ -16,14 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -112,6 +111,11 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
+    pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
+
+    pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+
     pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }

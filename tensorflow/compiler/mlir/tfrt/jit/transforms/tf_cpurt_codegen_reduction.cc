@@ -16,8 +16,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
@@ -216,6 +217,7 @@ struct CodegenReductionPass
 
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
+    mlir::memref::populateResolveRankedShapeTypeResultDimsPatterns(patterns);
     auto filter = LinalgTransformationFilter(
                       llvm::None, {Identifier::get("tiled", context)})
                       .addFilter([](Operation *op) {
