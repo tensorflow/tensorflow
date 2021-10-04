@@ -63,6 +63,7 @@ namespace grappler {
 namespace {
 
 constexpr char kFusedConv2D[] = "_FusedConv2D";
+constexpr char kFusedConv3D[] = "_FusedConv3D";
 constexpr char kFusedMatMul[] = "_FusedMatMul";
 constexpr char kFusedDepthwiseConv2dNative[] = "_FusedDepthwiseConv2dNative";
 constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
@@ -263,7 +264,7 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
 
   if (is_one_dnn_enabled) {
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-            IsMatMul(*contraction)) &&
+            IsMatMul(*contraction) || IsConv3D(*contraction)) &&
            (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
   }
   if (IsConv2D(*contraction)) {
@@ -286,12 +287,17 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
 }
 
 bool IsCpuCompatibleDataFormat(const RemapperContext& ctx,
-                               const NodeDef* conv2d) {
-  DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
-  const string& data_format = conv2d->attr().at(kDataFormat).s();
-  return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW") ||
-         (ctx.cpu_layout_conversion == RewriterConfig::NHWC_TO_NCHW &&
-          data_format == "NCHW");
+                               const NodeDef* conv_node) {
+  const string& data_format = conv_node->attr().at(kDataFormat).s();
+  if (IsConv2D(*conv_node)) {
+    return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW") ||
+           (ctx.cpu_layout_conversion == RewriterConfig::NHWC_TO_NCHW &&
+            data_format == "NCHW");
+  } else if (IsConv3D(*conv_node)) {
+    return data_format == "NDHWC" || (IsMKLEnabled() && data_format == "NCDHW");
+  } else {
+    return false;
+  }
 }
 
 bool IsGpuCompatibleDataFormat(const RemapperContext& ctx,
@@ -305,6 +311,12 @@ bool IsCpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   return NodeIsOnCpu(conv2d) && IsCpuCompatibleDataType(conv2d) &&
          IsCpuCompatibleDataFormat(ctx, conv2d);
+}
+
+bool IsCpuCompatibleConv3D(const RemapperContext& ctx, const NodeDef* conv3d) {
+  DCHECK(IsConv3D(*conv3d)) << "Expected Conv3D op";
+  return NodeIsOnCpu(conv3d) && IsCpuCompatibleDataType(conv3d) &&
+         IsCpuCompatibleDataFormat(ctx, conv3d);
 }
 
 bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
@@ -334,6 +346,8 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return (IsMKLEnabled() && IsCpuCompatibleDepthwiseConv2dNative(&node));
   } else if (IsMatMul(node)) {
     return IsCpuCompatibleMatMul(ctx, &node);
+  } else if (IsConv3D(node)) {
+    return (IsMKLEnabled() && IsCpuCompatibleConv3D(ctx, &node));
   } else {
     return false;
   }
@@ -432,7 +446,7 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
   const auto* node_def = node_view->node();
   if (!IsBiasAdd(*node_def)) return false;
 
-  // Input to the BiasAdd must be a Conv2D or a MatMul.
+  // Input to the BiasAdd must be a Conv2D/3D or a MatMul.
   if (node_view->NumRegularFanins() < 1) return false;
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
   const auto* contraction_node_view = regular_fanin_0.node_view();
@@ -440,6 +454,7 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 
   // Conv2D, MatMul or DepthwiseConv2D
   bool is_contraction = IsConv2D(*contraction_node_def) ||
+                        (IsConv3D(*contraction_node_def) && IsMKLEnabled()) ||
                         IsMatMul(*contraction_node_def) ||
                         IsDepthwiseConv2dNative(*contraction_node_def);
 
@@ -497,7 +512,8 @@ bool FindContractionWithBiasAndActivation(
     return false;
 
   // Currently, only (conv | matmul) + bias + leakyrelu is enabled
-  if (!(IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def)) &&
+  if (!(IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def) ||
+        (IsConv3D(*contraction_node_def) && IsMKLEnabled())) &&
       IsLeakyRelu(*node_def))
     return false;
 
@@ -512,8 +528,8 @@ bool FindContractionWithBiasAndActivation(
   return true;
 }
 
-bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
-                                  ContractionWithSqueezeAndBiasAdd* matched) {
+bool FindConvWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
+                                ContractionWithSqueezeAndBiasAdd* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -535,29 +551,32 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
       IsInPreserveSet(ctx, squeeze_node_def))
     return false;
 
+  // Input to the Squeeze must be a Conv2D/3D.
+  if (squeeze_node_view->NumRegularFanins() < 1) return false;
+  const auto& squeeze_regular_fanin_0 = squeeze_node_view->GetRegularFanin(0);
+  const auto* conv_node_view = squeeze_regular_fanin_0.node_view();
+  const auto* conv_node_def = conv_node_view->node();
+
+  if (!(IsConv2D(*conv_node_def) ||
+        (IsConv3D(*conv_node_def) && IsMKLEnabled())) ||
+      !HaveSameDataType(node_def, conv_node_def, "T") ||
+      HasControlFaninOrFanout(*conv_node_view) ||
+      !HasAtMostOneFanoutAtPort0(*conv_node_view) ||
+      IsInPreserveSet(ctx, conv_node_def))
+    return false;
+
   // Squeeze must not squeeze output channel dimension.
   std::vector<int32> dims;
   if (!TryGetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims)) return false;
   for (auto dim : dims) {
-    if (dim == 3) return false;
+    if ((dim == 3 && IsConv2D(*conv_node_def)) ||
+        (dim == 4 && IsConv3D(*conv_node_def)))
+      return false;
   }
-
-  // Input to the Squeeze must be a Conv2D.
-  if (squeeze_node_view->NumRegularFanins() < 1) return false;
-  const auto& squeeze_regular_fanin_0 = squeeze_node_view->GetRegularFanin(0);
-  const auto* conv2d_node_view = squeeze_regular_fanin_0.node_view();
-  const auto* conv2d_node_def = conv2d_node_view->node();
-
-  if (!IsConv2D(*conv2d_node_def) ||
-      !HaveSameDataType(node_def, conv2d_node_def, "T") ||
-      HasControlFaninOrFanout(*conv2d_node_view) ||
-      !HasAtMostOneFanoutAtPort0(*conv2d_node_view) ||
-      IsInPreserveSet(ctx, conv2d_node_def))
-    return false;
 
   // Check that data type and data format are supported on assigned device.
   const ContractionWithSqueezeAndBiasAdd pattern{
-      conv2d_node_view->node_index(), squeeze_node_view->node_index(),
+      conv_node_view->node_index(), squeeze_node_view->node_index(),
       node_index};
   if (!IsDeviceCompatible(ctx, pattern)) return false;
 
@@ -778,9 +797,14 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* contraction_node_def = contraction_node_view->node();
 
   // Currently, only conv + bias + add + leakyrelu is enabled
-  if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
+  if ((!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) ||
+      (!IsMKLEnabled() && !IsConv3D(*contraction_node_def) &&
+       IsLeakyRelu(*node_def))) {
+    return false;
+  }
 
-  // We successfully found a Conv2D+BiasAdd+AddN+activation pattern.
+  // We successfully found a Conv2D+BiasAdd+AddN+activation pattern
+  // or Conv3D+BiasAdd+AddN+activation pattern
   const ContractionWithBiasAndAddActivation pattern{
       base.contraction, base.bias_add, base.add, base.port_id, node_index};
   *matched = pattern;
@@ -1194,6 +1218,25 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   }
 }
 
+void CopyConv3DAttributes(const NodeDef& conv3d, NodeDef* fused_conv3d,
+                          const NodeDef* activation = nullptr) {
+  DCHECK(IsConv3D(conv3d)) << "Input node must be a Conv3D";
+
+  auto* attr = fused_conv3d->mutable_attr();
+  auto& src_attr = conv3d.attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["strides"] = src_attr.at("strides");
+  (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["dilations"] = src_attr.at("dilations");
+  (*attr)["data_format"] = src_attr.at("data_format");
+  // Copy LeakyRelu's attr alpha to FusedConv3D's attr leakyrelu_alpha
+  if (activation != nullptr && IsLeakyRelu(*activation)) {
+    auto& activation_attr = activation->attr();
+    (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
+  }
+}
+
 void CopyDepthwiseConv2dNativeAttributes(const NodeDef& dw_conv2d,
                                          NodeDef* fused_dw_conv2d,
                                          const NodeDef* activation = nullptr) {
@@ -1316,6 +1359,9 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &fused_op);
+  } else if (IsConv3D(contraction)) {
+    fused_op.set_op(kFusedConv3D);
+    CopyConv3DAttributes(contraction, &fused_op);
   }
 
   SetFusedOpAttributes(&fused_op, {"BiasAdd"});
@@ -1365,6 +1411,9 @@ Status AddFusedContractionNode(
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &fused_op, &activation);
+  } else if (IsConv3D(contraction)) {
+    fused_op.set_op(kFusedConv3D);
+    CopyConv3DAttributes(contraction, &fused_op, &activation);
   }
 
   SetFusedOpAttributes(&fused_op, {"BiasAdd", activation.op()});
@@ -1382,34 +1431,39 @@ Status AddFusedContractionNode(
   return Status::OK();
 }
 
-Status AddFusedConv2DNode(RemapperContext* ctx,
-                          const ContractionWithSqueezeAndBiasAdd& matched,
-                          std::vector<bool>* invalidated_nodes,
-                          std::vector<bool>* nodes_to_delete) {
+Status AddFusedConvNode(RemapperContext* ctx,
+                        const ContractionWithSqueezeAndBiasAdd& matched,
+                        std::vector<bool>* invalidated_nodes,
+                        std::vector<bool>* nodes_to_delete) {
   DCHECK(IsDeviceCompatible(*ctx, matched)) << "Unsupported fusion pattern";
 
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
-  DCHECK(IsConv2D(contraction)) << "Only Conv2D supported for now";
 
   const NodeDef& bias_add = graph->node(matched.bias_add);
   const NodeDef& squeeze = graph->node(matched.squeeze);
-  VLOG(2) << "Fuse Conv2D with Squeeze and BiasAdd: "
+  VLOG(2) << "Fuse Conv2D/3D with Squeeze and BiasAdd: "
           << " bias_add=" << bias_add.name() << " squeeze=" << squeeze.name()
-          << " conv2d=" << contraction.name();
+          << " conv=" << contraction.name();
 
-  // Replace Conv2D node with a fused Conv2D. Matched pattern guarantees that it
-  // has single consumer (only the squeeze node).
-  NodeDef fused_conv2d;
-  fused_conv2d.set_name(contraction.name());
-  fused_conv2d.set_op(kFusedConv2D);
-  fused_conv2d.set_device(contraction.device());
-  fused_conv2d.add_input(contraction.input(0));  // 0: input
-  fused_conv2d.add_input(contraction.input(1));  // 1: filter
-  fused_conv2d.add_input(bias_add.input(1));     // 2: bias
+  // Replace Conv2D/3D node with a fused Conv2D/3D. Matched pattern guarantees
+  // that it has single consumer (only the squeeze node).
+  NodeDef fused_conv;
+  fused_conv.set_name(contraction.name());
+  fused_conv.set_device(contraction.device());
+  fused_conv.add_input(contraction.input(0));  // 0: input
+  fused_conv.add_input(contraction.input(1));  // 1: filter
+  fused_conv.add_input(bias_add.input(1));     // 2: bias
 
-  CopyConv2DAttributes(contraction, &fused_conv2d);
-  SetFusedOpAttributes(&fused_conv2d, {"BiasAdd"});
+  if (IsConv2D(contraction)) {
+    fused_conv.set_op(kFusedConv2D);
+    CopyConv2DAttributes(contraction, &fused_conv);
+  } else if (IsConv3D(contraction)) {
+    fused_conv.set_op(kFusedConv3D);
+    CopyConv3DAttributes(contraction, &fused_conv);
+  }
+
+  SetFusedOpAttributes(&fused_conv, {"BiasAdd"});
 
   // Replace BiasAdd node with a Squeeze.
   NodeDef remapped_squeeze = squeeze;
@@ -1418,7 +1472,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
-  mutation->AddNode(std::move(fused_conv2d), &status);
+  mutation->AddNode(std::move(fused_conv), &status);
   TF_RETURN_IF_ERROR(status);
   mutation->AddNode(std::move(remapped_squeeze), &status);
   TF_RETURN_IF_ERROR(status);
@@ -2170,6 +2224,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     if (IsMKLEnabled() && !item.optimization_options().is_eager_mode) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
+      // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(
               ctx, i, &contract_with_bias_and_add_activation)) {
         TF_RETURN_IF_ERROR(
@@ -2209,8 +2264,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd+Activation into the
-    // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}.
+    // Remap {Conv2D,DepthwiseConv2D,MatMul,Conv3D}+BiasAdd+Activation into the
+    // _Fused{Conv2D,DepthwiseConv2dNative,MatMul,Conv3D}.
     ContractionWithBiasAddAndActivation contract_with_bias_and_activation;
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBiasAndActivation(
@@ -2225,13 +2280,14 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // it for MatMul as well, but in practice this pattern does not appear in
     // real Tensorflow graphs.
 
-    // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
+    // Remap {Conv2D, Conv3D}+Squeeze+BiasAdd into the {_FusedConv2D,
+    // _FusedConv3D}+Squeeze.
     ContractionWithSqueezeAndBiasAdd contract_with_squeeze_and_bias;
     if (allow_non_differentiable_rewrites &&
-        FindConv2DWithSqueezeAndBias(ctx, i, &contract_with_squeeze_and_bias)) {
-      TF_RETURN_IF_ERROR(
-          AddFusedConv2DNode(&ctx, contract_with_squeeze_and_bias,
-                             &invalidated_nodes, &nodes_to_delete));
+        FindConvWithSqueezeAndBias(ctx, i, &contract_with_squeeze_and_bias)) {
+      TF_RETURN_IF_ERROR(AddFusedConvNode(&ctx, contract_with_squeeze_and_bias,
+                                          &invalidated_nodes,
+                                          &nodes_to_delete));
       continue;
     }
 
