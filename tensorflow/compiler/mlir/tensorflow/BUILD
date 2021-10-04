@@ -338,6 +338,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/canonicalize.td",
     deps = [
+        ":rewrite_util_td_files",
         ":tensorflow_ops_td_files",
     ],
 )
@@ -456,6 +457,7 @@ cc_library(
         deps = [
             ":attribute_utils",
             ":tensorflow_attributes",
+            ":rewrite_util",
             ":tensorflow_canonicalize_inc_gen",
             ":tensorflow_op_interfaces",
             ":tensorflow_op_interfaces_inc_gen",
@@ -498,6 +500,7 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":rewrite_util",
         ":serialize_mlir_module_utils",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
@@ -543,6 +546,7 @@ cc_library(
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":rewrite_util",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
@@ -587,6 +591,7 @@ cc_library(
         ":tensorflow_tfrt_ops_inc_gen",
         ":tensorflow_remaining_ops_inc_gen",
         ":tensorflow_attributes",
+        ":rewrite_util",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -687,6 +692,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
+        ":rewrite_util",
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
