@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -506,11 +507,14 @@ absl::flat_hash_set<string> GetExperiments(
 
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
-    LOG(INFO) << "The input pipeline is subject to tf.data experiments. "
-                 "Please see `go/tf-data-experiments` for more details.";
+    constexpr float TEN_MINUTES = 60.0 * 10.0;
+    LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
+        << "The input pipeline is subject to tf.data experiments. "
+           "Please see `go/tf-data-experiments` for more details.\n"
+        << "The experiments \"" << absl::StrJoin(experiments, ",")
+        << "\" are applied.";
   }
   for (auto& experiment : experiments) {
-    LOG(INFO) << "The experiment \"" << experiment << "\" is applied.";
     metrics::RecordTFDataExperiment(experiment);
   }
 }
