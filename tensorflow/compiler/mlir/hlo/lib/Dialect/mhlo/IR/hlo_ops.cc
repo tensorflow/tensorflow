@@ -1398,7 +1398,9 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
   LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
                                 PatternRewriter& rewriter) const override {
     auto type = op.getType().dyn_cast<RankedTensorType>();
-    if (!type || !type.hasStaticShape()) {
+    auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape() || !operandType ||
+        !operandType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op, "requires static shape");
     }
     rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
