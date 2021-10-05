@@ -91,7 +91,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<NDK path>/build/cmake/android.toolchain.cmake \
 ##### Specifics of kernel (unit) tests cross-compilation
 
 Cross-compilation of the unit tests requires flatc compiler for the host architecture.
-For this purpose, there is a CMakeLists located in _tensorflow/lite/tools/cmake/native_tools/flatbuffers_
+For this purpose, there is a CMakeLists located in `tensorflow/lite/tools/cmake/native_tools/flatbuffers`
 to build the flatc compiler with CMake in advance in a separate build directory using the host toolchain.
 
 ```sh
