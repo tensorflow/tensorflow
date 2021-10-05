@@ -481,6 +481,7 @@ cc_library(
         "//platforms/xla/tests/gpu:__pkg__",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:lhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/xla/service:hlo",
@@ -624,6 +625,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:lhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
