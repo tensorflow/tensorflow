@@ -49,6 +49,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif
 
@@ -925,9 +926,11 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   if (!stream) {
     return errors::Internal("Failed to copy params to device");
   }
-  // Block host, since 'host_params' cannot be destructed until the copy is
-  // done.
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  // Deallocate host_params' buffer once the host-to-device copy is complete.
+  // host_params is captured by value in the lambda so that its buffer is only
+  // destructed once the lambda is destructed.
+  c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+      stream, [host_params]{});
   return Status::OK();
 }
 
