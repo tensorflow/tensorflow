@@ -205,6 +205,13 @@ There are two ways to run TensorFlow unit tests.
     ```bash
     bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
     ```
+    
+    For a single/parametrized test e.g. `test_capture_variables` in `tensorflow/python/saved_model/load_test.py`:
+    
+    (Requires `python>=2.7`)
+    
+    ```bash
+    bazel test //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*  --test_sharding_strategy=disabled
 
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
