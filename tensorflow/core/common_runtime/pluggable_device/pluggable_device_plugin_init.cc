@@ -52,7 +52,8 @@ static Status InitDeviceAndGraphModule(void* dso_handle) {
         init_fn, &device_type, &platform_name));
 
     DeviceFactory::Register(
-        device_type, new PluggableDeviceFactory(device_type, platform_name),
+        device_type,
+        std::make_unique<PluggableDeviceFactory>(device_type, platform_name),
         /*priority=*/220, /*is_pluggable_device=*/true);
 
     TF_RETURN_IF_ERROR(CopyTensor::Register(
