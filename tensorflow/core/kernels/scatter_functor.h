@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -221,7 +222,8 @@ struct ScatterFunctorBase {
     // serially or parallelly. Also if 'N' is small, overheads of parallel
     // execution outweigh its benefits and hence we check the value of N.
     const bool execute_serial =
-        ((N < min_n_threshold) || ((N / limit) > ser_par_ratio));
+        N < min_n_threshold || (N / limit) > ser_par_ratio ||
+        OpDeterminismRequired();
     if (execute_serial)
       return SerialExecute(c, d, params, updates, indices);
     else
