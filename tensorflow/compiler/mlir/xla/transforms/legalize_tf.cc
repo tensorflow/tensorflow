@@ -3039,9 +3039,12 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
     Value then_shape_split = then_shape;
     if (needs_broadcast) {
       Value const_one = b.create<ConstantIndexOp>(1);
-      Type extents = shape::getExtentTensorType(b.getContext());
+      Type extent_first = shape::getExtentTensorType(b.getContext(), 1);
+      Type extent_second =
+          shape::getExtentTensorType(b.getContext(), then_type.getRank() - 1);
       SmallVector<Value, 2> then_split;
-      b.createOrFold<shape::SplitAtOp>(then_split, TypeRange{extents, extents},
+      b.createOrFold<shape::SplitAtOp>(then_split,
+                                       TypeRange{extent_first, extent_second},
                                        then_shape, const_one);
       then_shape_split = then_split[0];
     }
