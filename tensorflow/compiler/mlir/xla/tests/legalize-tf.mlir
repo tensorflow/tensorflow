@@ -6191,6 +6191,17 @@ func @xladotv2_matmul(%lhs : tensor<64x32xi8>, %rhs : tensor<32x16xi8>) -> tenso
 }
 
 //===----------------------------------------------------------------------===//
+// tf.XlaEinsum legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @xlaeinsum
+func @xlaeinsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
+  // CHECK-NEXT:  mhlo.einsum
+  %0 = "tf.XlaEinsum"(%arg0, %arg1) {equation = "ab,bc->ac"} : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
+  return %0: tensor<2x4xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.Print legalization
 //===----------------------------------------------------------------------===//
 // CHECK-LABEL: @simple_print

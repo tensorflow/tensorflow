@@ -3497,6 +3497,56 @@ TEST_F(OpTest, XlaDotV2) {
   });
 }
 
+TEST_F(OpTest, XlaEinsum) {
+  Repeatedly([this]() {
+    std::string equation;
+    std::vector<int64> lhs_dims, rhs_dims;
+
+    enum EinsumType { matmul, batchmatmul, dot, outer };
+    int op_kind = Choose<int>({matmul, batchmatmul, dot, outer});
+    switch (op_kind) {
+      case matmul:
+      case batchmatmul: {
+        std::vector<int64> dims;
+        if (op_kind == matmul) {
+          equation = "ij,jk->ik";
+          dims = RandomDims(2, 2);
+        } else {
+          equation = "...ij,...jk->...ik";
+          dims = RandomDims(2);
+        }
+        int64_t ndims = dims.size();
+        int64_t inner_dim = RandomDim();
+        lhs_dims = dims;
+        rhs_dims = dims;
+        lhs_dims[ndims - 1] = inner_dim;
+        rhs_dims[ndims - 2] = inner_dim;
+        break;
+      }
+      case dot: {
+        equation = "i,i->";
+        std::vector<int64> dims = RandomDims(1, 1);
+        lhs_dims = dims;
+        rhs_dims = dims;
+        break;
+      }
+      case outer: {
+        equation = "i,j->ij";
+        lhs_dims = RandomDims(1, 1);
+        rhs_dims = RandomDims(1, 1);
+        break;
+      }
+    }
+
+    auto dtype = Choose<DataType>(kAllXlaTypes);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("XlaEinsum")
+                                             .RandomInput(dtype, lhs_dims)
+                                             .RandomInput(dtype, rhs_dims)
+                                             .Attr("equation", equation)
+                                             .Attr("T", dtype));
+  });
+}
+
 TEST_F(OpTest, ZerosLike) {
   GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
