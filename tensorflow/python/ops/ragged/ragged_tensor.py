@@ -338,7 +338,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nvals = _nrows(values, row_partition.dtype)
       checks = [
           check_ops.assert_equal(
-              row_partition.nvals(out_type=row_partition.dtype),
+              math_ops.cast(row_partition.nvals(), row_partition.dtype),
               nvals,
               message=msg),
       ]
@@ -1188,7 +1188,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     """
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return self._row_partition.nrows(out_type=out_type)
+      if out_type is None:
+        return self._row_partition.nrows()
+      else:
+        return math_ops.cast(self._row_partition.nrows(), dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.

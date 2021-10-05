@@ -21,6 +21,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -639,9 +640,9 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([
       dict(
-          testcase_name='NRowsMismatch',
-          x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
-          y=lambda: RowPartition.from_uniform_row_length(5, nvals=15),
+          testcase_name='NRowsMismatchAlt',
+          x=lambda: RowPartition.from_uniform_row_length(5, nrows=4, nvals=20),
+          y=lambda: RowPartition.from_uniform_row_length(5, nrows=3, nvals=15),
           message='incompatible nrows'),
       dict(
           testcase_name='UniformRowLengthMismatch',
@@ -671,6 +672,30 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError, message):
       self.evaluate(x.merge_precomputed_encodings(y).row_splits())
     with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+      self.evaluate(y.merge_precomputed_encodings(x).row_splits())
+
+  @parameterized.named_parameters([
+      # It throws the right error, but it still complains.
+      dict(
+          testcase_name='NRowsMismatch',
+          x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
+          y=lambda: RowPartition.from_uniform_row_length(5, nvals=15),
+          message='incompatible row_splits',
+          emessage='incompatible nrows'),
+  ])
+  def testMergePrecomputedEncodingStaticErrors2(self, x, y,
+                                                message, emessage):
+    # Message error and type varies depending upon eager execution.
+    x = x()
+    y = y()
+
+    error_type = errors_impl.InvalidArgumentError if context.executing_eagerly(
+    ) else ValueError
+
+    expected_message = emessage if context.executing_eagerly() else message
+    with self.assertRaisesRegex(error_type, expected_message):
+      self.evaluate(x.merge_precomputed_encodings(y).row_splits())
+    with self.assertRaisesRegex(error_type, expected_message):
       self.evaluate(y.merge_precomputed_encodings(x).row_splits())
 
   @parameterized.named_parameters([
@@ -713,6 +738,18 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = x()
     actual = x.offsets_in_rows()
     self.assertAllEqual(expected, actual)
+
+  def testFromUniformRowLengthBugConvertToTensor(self):
+    # This originally failed to run because nrows was dtypes.int32. I think
+    # we may need to consider the semantics of the type of a RowPartition
+    # if preferred_dtype is unspecified. Also, looking at convert_to_tensor:
+    # dtype specifies the type of the output.
+    # preferred_dtype/dtype_hint is a suggestion, and dtype_hint is the new
+    # name.
+    nrows = constant_op.constant(3, dtype=dtypes.int32)
+    nvals = constant_op.constant(12, dtype=dtypes.int64)
+    row_length = constant_op.constant(4, dtype=dtypes.int64)
+    RowPartition.from_uniform_row_length(row_length, nvals=nvals, nrows=nrows)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -890,6 +927,12 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
   def testMostSpecificCompatibleTypeError(self, spec1, spec2):
     with self.assertRaisesRegex(ValueError, 'Encountered incompatible types'):
       spec1.most_specific_compatible_type(spec2)
+
+  def testNumRowsInt64(self):
+    row_splits = array_ops.constant([0, 2, 3, 5], dtype=dtypes.int64)
+    values = RowPartition.from_row_splits(row_splits)
+    nrows = values.nrows()
+    self.assertEqual(dtypes.int64, nrows.dtype)
 
   def testFromValue(self):
     self.assertEqual(
