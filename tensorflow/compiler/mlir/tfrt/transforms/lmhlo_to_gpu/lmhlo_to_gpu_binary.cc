@@ -33,9 +33,11 @@ void populateFusionConversionPattern(mlir::RewritePatternSet&);
 
 namespace {
 
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/gpu_passes.h.inc"
+
 struct ConvertLmhloToGpuBinaryPass
-    : public mlir::PassWrapper<ConvertLmhloToGpuBinaryPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
+    : public ConvertLmhloToGpuBinaryPassBase<ConvertLmhloToGpuBinaryPass> {
  private:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
@@ -47,7 +49,6 @@ struct ConvertLmhloToGpuBinaryPass
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::StandardOpsDialect, mlir::gpu::GPUDialect>();
   }
-  mlir::StringRef getArgument() const override { return "lmhlo-to-gpu-binary"; }
 };
 
 }  // namespace
