@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that
@@ -29,7 +28,7 @@ limitations under the License.
 namespace xla {
 class ProgramShapeProto;
 class HloProfilePrinterData;
-}  // namespace xla
+}
 
 namespace tensorflow {
 
@@ -53,7 +52,7 @@ class XlaCompiledCpuFunction {
   using RawFunction = void (*)(void* result,
                                const xla::ExecutableRunOptions* run_options,
                                const void** args, void** temps,
-                               XlaCustomCallStatus*, int64_t* profile_counters);
+                               int64_t* profile_counters);
 
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
