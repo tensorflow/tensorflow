@@ -1800,6 +1800,68 @@ func @DontConvertConstSelectMixed(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) ->
   // CHECK: return %0, %1
 }
 
+// CHECK-LABEL: EliminateReduceOpsBool
+func @EliminateReduceOpsBool(%arg: tensor<1x2x1x3xi1>, %arg_scalar: tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<2x1x3xi1>, tensor<1x2x1x3xi1>, tensor<1x1x1x3xi1>, tensor<1x1x3xi1>, tensor<1x2x3xi1>, tensor<1x2x1x3xi1>, tensor<1x2x1xi1>, tensor<1x2x1x1xi1>) {
+  %axis_0 = constant dense<0> : tensor<1xi32>
+  %axis_1 = constant dense<1> : tensor<1xi32>
+  %axis_2 = constant dense<2> : tensor<1xi32>
+  %axis_3 = constant dense<3> : tensor<1xi32>
+  %0 = "tfl.reduce_any"(%arg_scalar, %axis_0) { keep_dims = false } : (tensor<i1>, tensor<1xi32>) -> tensor<i1>
+  %1 = "tfl.reduce_any"(%arg_scalar, %axis_1) { keep_dims = true } : (tensor<i1>, tensor<1xi32>) -> tensor<i1>
+  %2 = "tfl.reduce_any"(%arg, %axis_0) { keep_dims = false } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<2x1x3xi1>
+  %3 = "tfl.reduce_any"(%arg, %axis_0) { keep_dims = true } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1x3xi1>
+  %4 = "tfl.reduce_any"(%arg, %axis_1) { keep_dims = false } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x1x1x3xi1>
+  %5 = "tfl.reduce_all"(%arg, %axis_1) { keep_dims = true } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x1x3xi1>
+  %6 = "tfl.reduce_all"(%arg, %axis_2) { keep_dims = false } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x3xi1>
+  %7 = "tfl.reduce_all"(%arg, %axis_2) { keep_dims = true } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1x3xi1>
+  %8 = "tfl.reduce_all"(%arg, %axis_3) { keep_dims = false } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1xi1>
+  %9 = "tfl.reduce_all"(%arg, %axis_3) { keep_dims = true } : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1x1xi1>
+  return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : tensor<i1>, tensor<i1>, tensor<2x1x3xi1>, tensor<1x2x1x3xi1>, tensor<1x1x1x3xi1>, tensor<1x1x3xi1>, tensor<1x2x3xi1>, tensor<1x2x1x3xi1>, tensor<1x2x1xi1>, tensor<1x2x1x1xi1>
+
+  // CHECK-DAG: %[[AXIS_0:.*]] = constant dense<0> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_1:.*]] = constant dense<1> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_2:.*]] = constant dense<2> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_3:.*]] = constant dense<3> : tensor<1xi32>
+  // CHECK: %[[RET_0:.*]] = "tfl.reduce_any"(%arg0, %[[AXIS_0]]) {keep_dims = false} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<2x1x3xi1>
+  // CHECK: %[[RET_1:.*]] = "tfl.reduce_any"(%arg0, %[[AXIS_1]]) {keep_dims = false} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x1x1x3xi1>
+  // CHECK: %[[RET_2:.*]] = "tfl.reduce_all"(%arg0, %[[AXIS_1]]) {keep_dims = true} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x1x3xi1>
+  // CHECK: %[[RET_3:.*]] = "tfl.reduce_all"(%arg0, %[[AXIS_2]]) {keep_dims = false} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x3xi1>
+  // CHECK: %[[RET_4:.*]] = "tfl.reduce_all"(%arg0, %[[AXIS_3]]) {keep_dims = false} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1xi1>
+  // CHECK: %[[RET_5:.*]] = "tfl.reduce_all"(%arg0, %[[AXIS_3]]) {keep_dims = true} : (tensor<1x2x1x3xi1>, tensor<1xi32>) -> tensor<1x2x1x1xi1>
+  // CHECK: return %arg1, %arg1, %[[RET_0]], %arg0, %[[RET_1]], %[[RET_2]], %[[RET_3]], %arg0, %[[RET_4]], %[[RET_5]] : tensor<i1>, tensor<i1>, tensor<2x1x3xi1>, tensor<1x2x1x3xi1>, tensor<1x1x1x3xi1>, tensor<1x1x3xi1>, tensor<1x2x3xi1>, tensor<1x2x1x3xi1>, tensor<1x2x1xi1>, tensor<1x2x1x1xi1>
+}
+
+// CHECK-LABEL: EliminateReduceOpsFloat
+func @EliminateReduceOpsFloat(%arg: tensor<1x2x1x3xf32>, %arg_scalar: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x1x1x3xf32>, tensor<1x1x3xf32>, tensor<1x2x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1xf32>, tensor<1x2x1x1xf32>) {
+  %axis_0 = constant dense<0> : tensor<1xi32>
+  %axis_1 = constant dense<1> : tensor<1xi32>
+  %axis_2 = constant dense<2> : tensor<1xi32>
+  %axis_3 = constant dense<3> : tensor<1xi32>
+  %0 = "tfl.mean"(%arg_scalar, %axis_0) { keep_dims = false } : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  %1 = "tfl.sum"(%arg_scalar, %axis_1) { keep_dims = true } : (tensor<f32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.reduce_min"(%arg, %axis_0) { keep_dims = false } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<2x1x3xf32>
+  %3 = "tfl.reduce_max"(%arg, %axis_0) { keep_dims = true } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1x3xf32>
+  %4 = "tfl.reduce_prod"(%arg, %axis_1) { keep_dims = false } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x1x1x3xf32>
+  %5 = "tfl.mean"(%arg, %axis_1) { keep_dims = true } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x1x3xf32>
+  %6 = "tfl.sum"(%arg, %axis_2) { keep_dims = false } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x3xf32>
+  %7 = "tfl.reduce_min"(%arg, %axis_2) { keep_dims = true } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1x3xf32>
+  %8 = "tfl.reduce_max"(%arg, %axis_3) { keep_dims = false } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1xf32>
+  %9 = "tfl.reduce_prod"(%arg, %axis_3) { keep_dims = true } : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1x1xf32>
+  return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : tensor<f32>, tensor<f32>, tensor<2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x1x1x3xf32>, tensor<1x1x3xf32>, tensor<1x2x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1xf32>, tensor<1x2x1x1xf32>
+
+  // CHECK-DAG: %[[AXIS_0:.*]] = constant dense<0> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_1:.*]] = constant dense<1> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_2:.*]] = constant dense<2> : tensor<1xi32>
+  // CHECK-DAG: %[[AXIS_3:.*]] = constant dense<3> : tensor<1xi32>
+  // CHECK: %[[RET_0:.*]] = "tfl.reduce_min"(%arg0, %[[AXIS_0]]) {keep_dims = false} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<2x1x3xf32>
+  // CHECK: %[[RET_1:.*]] = "tfl.reduce_prod"(%arg0, %[[AXIS_1]]) {keep_dims = false} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x1x1x3xf32>
+  // CHECK: %[[RET_2:.*]] = "tfl.mean"(%arg0, %[[AXIS_1]]) {keep_dims = true} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x1x3xf32>
+  // CHECK: %[[RET_3:.*]] = "tfl.sum"(%arg0, %[[AXIS_2]]) {keep_dims = false} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x3xf32>
+  // CHECK: %[[RET_4:.*]] = "tfl.reduce_max"(%arg0, %[[AXIS_3]]) {keep_dims = false} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1xf32>
+  // CHECK: %[[RET_5:.*]] = "tfl.reduce_prod"(%arg0, %[[AXIS_3]]) {keep_dims = true} : (tensor<1x2x1x3xf32>, tensor<1xi32>) -> tensor<1x2x1x1xf32>
+  // CHECK: return %arg1, %arg1, %[[RET_0]], %arg0, %[[RET_1]], %[[RET_2]], %[[RET_3]], %arg0, %[[RET_4]], %[[RET_5]] : tensor<f32>, tensor<f32>, tensor<2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x1x1x3xf32>, tensor<1x1x3xf32>, tensor<1x2x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1xf32>, tensor<1x2x1x1xf32>
+}
+
 // CHECK-LABEL: RemoveSoftmaxBeforeArgmax
 func @RemoveSoftmaxBeforeArgmax(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
   %cst = constant dense<-1> : tensor<1xi32>
