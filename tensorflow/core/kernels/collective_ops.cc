@@ -907,6 +907,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     group_params->device_type = device_type_;
     group_params->group_size = resource->group_size();
     group_params->group_key = resource->group_key();
+    group_params->user_specified_rank = resource->rank();
 
     auto* col_exec = c->collective_executor();
 
@@ -985,6 +986,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->group.device_type = device_type_;
     col_params->group.group_size = group_size;
     col_params->group.group_key = resource->group_key();
+    col_params->group.user_specified_rank = resource->rank();
     col_params->instance.type = collective_type;
     col_params->instance.instance_key = instance_key;
     col_params->instance.data_type = data_type_;
@@ -1095,7 +1097,7 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
         c,
         FillCollectiveParams(col_params, group_assignment, REDUCTION_COLLECTIVE,
                              resource.get()),
-        done);
+        done_with_cleanup);
     col_params->instance.shape = c->input(0).shape();
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
@@ -1145,7 +1147,7 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
         c,
         FillCollectiveParams(col_params, group_assignment,
                              ALL_TO_ALL_COLLECTIVE, resource.get()),
-        done);
+        done_with_cleanup);
     col_params->instance.shape = c->input(0).shape();
     VLOG(1) << "CollectiveAllToAll group_size " << col_params->group.group_size
             << " group_key " << col_params->group.group_key << " instance_key "
