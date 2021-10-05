@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -143,6 +144,23 @@ absl::optional<double> GetConstantValue(const HloInstruction* inst) {
     default:
       return absl::nullopt;
   }
+}
+
+static bool IsScalarConstant(const HloInstruction* hlo,
+                             const LiteralSlice& literal) {
+  return hlo->opcode() == HloOpcode::kConstant &&
+         ShapeUtil::IsEffectiveScalar(hlo->shape()) &&
+         literal_comparison::Equal(hlo->literal(), literal).ok();
+}
+
+static bool IsScalarConstantZero(const HloInstruction* hlo) {
+  return IsScalarConstant(hlo, LiteralUtil::Zero(hlo->shape().element_type()));
+}
+
+static bool IsScalarConstantNegInf(const HloInstruction* hlo) {
+  return !primitive_util::IsComplexType(hlo->shape().element_type()) &&
+         IsScalarConstant(hlo,
+                          LiteralUtil::MinValue(hlo->shape().element_type()));
 }
 
 bool IsNonNegative(const HloInstruction* hlo,
@@ -4576,6 +4594,55 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   return Status::OK();
 }
 
+// Match on variadic reduce which computes and returns (max, arg_max).
+//
+//                   p0   p2    p1    p3
+//                  /|\ \/ |\    |\   /|
+//                 / | \/\ | \   | \ / |
+//                /  | /\ \|  |  |  /\ |
+//               Ne  Gt |  \  |  | |  ||
+//                 \ /  |  |\ |  | /  ||
+//                  Or /  /  Eq  Lt   ||
+//                  | /  /    \  /    //
+//                  | |  |     And   //
+//                  | |  |      |  //
+//                  select     select
+//                      \     /
+//                       tuple
+//
+static bool MatchArgMax(const HloInstruction* hlo) {
+  // Match on variadic Reduce ArgMax.
+  if (hlo->opcode() != HloOpcode::kReduce || hlo->operand_count() != 4 ||
+      !hlo->shape().IsTuple() ||
+      hlo->operand(1)->opcode() != HloOpcode::kIota ||
+      !IsScalarConstantNegInf(hlo->operand(2)) ||
+      !IsScalarConstantZero(hlo->operand(3))) {
+    return false;
+  }
+
+  // Create matcher for shared sub-expression.
+  auto value_pred =
+      m::OrAnyOrder(m::Compare(m::Parameter(0), m::Parameter(2))
+                        .WithComparisonDirection(ComparisonDirection::kGt),
+                    m::Compare(m::Parameter(0), m::Parameter(0))
+                        .WithComparisonDirection(ComparisonDirection::kNe));
+
+  // Match on argmax reduction computation.
+  return Match(
+      hlo->to_apply()->root_instruction(),
+      m::Tuple(
+          m::Select(value_pred, m::Parameter(0), m::Parameter(2)),
+          m::Select(
+              m::OrAnyOrder(
+                  value_pred,
+                  m::And(
+                      m::Compare(m::Parameter(0), m::Parameter(2))
+                          .WithComparisonDirection(ComparisonDirection::kEq),
+                      m::Compare(m::Parameter(1), m::Parameter(3))
+                          .WithComparisonDirection(ComparisonDirection::kLt))),
+              m::Parameter(1), m::Parameter(3))));
+}
+
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   bool multi_output_reduce = reduce->shape().IsTuple();
@@ -4858,6 +4925,27 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     reduce->SetupDerivedInstruction(new_reduce);
     return ReplaceInstruction(hlo, new_reduce);
   }
+
+  // Replace Use(ReduceMax(Arg)) with Use(Gte(ReduceArgMax, 0)).
+  // Match on Reduce Max with init value -Inf.
+  if (reduce->operand_count() == 2 && IsScalarConstantNegInf(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    // Match on variadic Reduce ArgMax which is also fed by 'arg'.
+    auto arg_max_candidate =
+        absl::c_find_if(arg->users(), [&](const HloInstruction* user) {
+          return user != reduce && user->operand(0) == arg &&
+                 MatchArgMax(user) &&
+                 reduce->dimensions() == user->dimensions();
+        });
+    if (arg_max_candidate != arg->users().end()) {
+      // Replace 'reduce' uses with GTE(ArgMax, 0).
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateGetTupleElement(*arg_max_candidate,
+                                                        /*index=*/0));
+    }
+  }
+
   return Status::OK();
 }
 
