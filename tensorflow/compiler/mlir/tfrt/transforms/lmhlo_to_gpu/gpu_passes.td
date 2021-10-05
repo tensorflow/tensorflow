@@ -16,17 +16,21 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def ConvertLmhloToGpuPass : FunctionPass<"lmhlo-to-gpu"> {
-  let summary = "Convert lmhlo_gpu ops to tfrt_gpu dialect.";
+  let summary = "Convert lmhlo ops to gpu dialect.";
   let description = [{
-    Move lmhlo_gpu ops inside tfrt_gpu_conversion.execute ops and convert them
-    to tfrt_gpu dialect.
+    Some lmhlo ops are converted to gpu dialect. Others are moved inside
+    tfrt_gpu_conversion.execute ops and converted to tfrt_gpu dialect.
   }];
   let constructor = "createConvertLmhloToGpuPass()";
-  let dependentDialects = [
-    "::mlir::gpu::GPUDialect",
-    "::tfrt::compiler::TFRTDialect",
-    "::tfrt::gpu::GpuDialect",
-    "::tfrt::gpu::conversion::GpuConversionDialect",
-    "::xla::gpu::XlirDialect"
-  ];
+}
+
+def ConvertLmhloToGpuBinaryPass :
+    Pass<"lmhlo-to-gpu-binary", "mlir::ModuleOp"> {
+  let summary = "Compile lmhlo ops to gpu device code.";
+  let description = [{
+    Replace device code ops (only lmhlo.fusion at the moment) with 
+    gpu.launch_func referring to a gpu.module with annotated binary gpu device
+    code.
+  }];
+  let constructor = "createConvertLmhloToGpuBinaryPass()";
 }

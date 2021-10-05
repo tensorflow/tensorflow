@@ -164,7 +164,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if BEF_EXECUTABLE
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime

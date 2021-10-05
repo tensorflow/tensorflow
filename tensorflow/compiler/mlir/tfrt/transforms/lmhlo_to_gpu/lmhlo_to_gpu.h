@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_GPU_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_GPU_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_LMHLO_TO_GPU_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_LMHLO_TO_GPU_H_
 
 #include <memory>
 
 #include "mlir/Pass/Pass.h"
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 
@@ -26,6 +25,8 @@ namespace tensorflow {
 // to be consumed by MLIR's gpu-async-region pass.
 std::unique_ptr<mlir::FunctionPass> createConvertLmhloToGpuPass();
 
+void registerConvertLmhloToGpuPass();
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LHLO_GPU_TO_TFRT_GPU_GPU_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_LMHLO_TO_GPU_H_

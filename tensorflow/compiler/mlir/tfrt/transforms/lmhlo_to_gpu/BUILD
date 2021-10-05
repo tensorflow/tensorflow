@@ -8,17 +8,12 @@ package(
 )
 
 gentbl_cc_library(
-    name = "TfrtGpuPassIncGen",
+    name = "GpuPassesIncGen",
     compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=Xlir",
-            ],
-            "gpu_passes.h.inc",
-        ),
-    ],
+    tbl_outs = [(
+        ["-gen-pass-decls"],
+        "gpu_passes.h.inc",
+    )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "gpu_passes.td",
     deps = [
@@ -27,17 +22,16 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "passes",
+    name = "lmhlo_to_gpu",
     srcs = [
         "ccl_pattern.cc",
         "cholesky_pattern.cc",
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
-        "gpu_passes.cc",
+        "lmhlo_to_gpu.cc",
     ],
     hdrs = [
-        "gpu_passes.h",
-        "register_passes.h",
+        "lmhlo_to_gpu.h",
     ],
     tags = [
         "gpu",
@@ -50,7 +44,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__pkg__",
     ],
     deps = [
-        ":TfrtGpuPassIncGen",
+        ":GpuPassesIncGen",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -80,9 +74,9 @@ cc_library(
 )
 
 # The lmhlo-to-gpu-binary pass is a separate target to avoid a dependcy cycle:
-# :lhlo_to_gpu_binary > xla/service/gpu:gpu_executable > :passes
+# :lmhlo_to_gpu_binary > xla/service/gpu:gpu_executable > :lmhlo_to_gpu
 cc_library(
-    name = "lhlo_to_gpu_binary",
+    name = "lmhlo_to_gpu_binary",
     srcs = [
         "fusion_pattern.cc",
         "lmhlo_to_gpu_binary.cc",
@@ -98,6 +92,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__pkg__",
     ],
     deps = [
+        ":GpuPassesIncGen",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
