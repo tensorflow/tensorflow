@@ -1113,6 +1113,17 @@ class SwishTest(test_lib.TestCase):
 
 class MomentsTest(test_lib.TestCase):
 
+  def testFloat16(self):
+    results = nn_impl.moments(
+        constant_op.constant(
+            [[[[[ -741., 353.2, 1099., -1807., 502.8, -83.4, 333.5, -130.9]]]]],
+            dtype=dtypes.float16),
+        [1, 2, 4],
+        True)
+    is_finite = math_ops.reduce_all(math_ops.is_finite(results))
+    self.assertTrue(is_finite)
+
+
   def doOutputTest(self,
                    input_shape,
                    moments_axes,
