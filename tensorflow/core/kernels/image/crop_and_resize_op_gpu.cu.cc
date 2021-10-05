@@ -71,7 +71,7 @@ __global__ void CropAndResizeKernel(
 
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
+                           : 0.5f * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
@@ -79,7 +79,7 @@ __global__ void CropAndResizeKernel(
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
+                           : 0.5f * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
@@ -164,14 +164,14 @@ __global__ void CropAndResizeBackpropImageKernel(
 
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
+                           : 0.5f * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
+                           : 0.5f * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       continue;
     }
@@ -266,14 +266,14 @@ __global__ void CropAndResizeBackpropBoxesKernel(
 
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
+                           : 0.5f * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
+                           : 0.5f * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       continue;
     }
@@ -322,8 +322,8 @@ __global__ void CropAndResizeBackpropBoxesKernel(
       dy1 = image_grad_y * (image_height - 1 - y * height_ratio);
       dy2 = image_grad_y * (y * height_ratio);
     } else {
-      dy1 = image_grad_y * 0.5 * (image_height - 1);
-      dy2 = image_grad_y * 0.5 * (image_height - 1);
+      dy1 = image_grad_y * 0.5f * (image_height - 1);
+      dy2 = image_grad_y * 0.5f * (image_height - 1);
     }
 
     float dx1, dx2;
@@ -331,8 +331,8 @@ __global__ void CropAndResizeBackpropBoxesKernel(
       dx1 = image_grad_x * (image_width - 1 - x * width_ratio);
       dx2 = image_grad_x * (x * width_ratio);
     } else {
-      dx1 = image_grad_x * 0.5 * (image_width - 1);
-      dx2 = image_grad_x * 0.5 * (image_width - 1);
+      dx1 = image_grad_x * 0.5f * (image_width - 1);
+      dx2 = image_grad_x * 0.5f * (image_width - 1);
     }
 
     GpuAtomicAdd(grads_boxes_ptr + b * 4 + 0, dy1);
