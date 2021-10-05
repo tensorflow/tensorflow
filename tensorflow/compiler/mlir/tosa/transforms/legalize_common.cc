@@ -1953,6 +1953,8 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 
   auto input_shape = input_type.getShape();
 
+  if (axis < 0) axis += input_type.getRank();
+
   SmallVector<Value> results_vec;
 
   assert(axis >= 0 && axis < input_shape.size());
