@@ -4409,7 +4409,7 @@ the output tensor can vary depending on how many true values there are in
   }];
 
   let arguments = (ins
-    TFL_BoolTensor:$condition
+    TFL_TensorOf<[I1, F32, TFL_Int32Or64, I8, UI8, UI32]>:$condition
   );
 
   let results = (outs

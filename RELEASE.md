@@ -14,6 +14,9 @@
 *<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 # Major Features and Improvements
+* `tf.lite`:
+  * Where operation support is added for these data types
+    'int32/uint32/int8/uint8/int64'
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
