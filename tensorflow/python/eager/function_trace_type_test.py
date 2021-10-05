@@ -41,7 +41,13 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
     self.report_benchmark(
-        name='tensor_cache_key_generation', iters=iterations, wall_time=t)
+        name='tensor_cache_key_generation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'tensor_cache_key_generation_time',
+            'value': t
+        }])
 
   def benchmarkTensorSpec(self):
     shapes = [[1], [2, 19], [5, 11, 24], [4, 5, 9, 23]]
@@ -56,7 +62,13 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     t = timeit.timeit(
         lambda: encode_tensor_specs(tensor_specs), number=iterations)
     self.report_benchmark(
-        name='tensor_spec_cache_key_generation', iters=iterations, wall_time=t)
+        name='tensor_spec_cache_key_generation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'tensor_spec_cache_key_generation_time',
+            'value': t
+        }])
 
   def benchmarkVariable(self):
     var_list = [
@@ -71,7 +83,13 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     iterations = 100000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
     self.report_benchmark(
-        name='variable_cache_key_generation', iters=iterations, wall_time=t)
+        name='variable_cache_key_generation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'variable_cache_key_generation_time',
+            'value': t
+        }])
 
   def benchmarkKerasModel(self):
     inputs = keras.Input(shape=(3,))
@@ -85,7 +103,13 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     iterations = 100000
     t = timeit.timeit(lambda: encode_model(model), number=iterations)
     self.report_benchmark(
-        name='keras_model_cache_key_generation', iters=iterations, wall_time=t)
+        name='keras_model_cache_key_generation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'keras_model_cache_key_generation_time',
+            'value': t
+        }])
 
   def benchmarkCacheKeyLookup(self):
 
@@ -109,7 +133,31 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     t = timeit.timeit(stmt=lambda: defined(lookup_call_arg), number=iterations)
 
     self.report_benchmark(
-        name='cache_key_lookup', iters=iterations, wall_time=t)
+        name='cache_key_lookup',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'cache_key_lookup_time',
+            'value': t
+        }])
+
+  def benchmarkNestedStruct(self):
+
+    struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
+
+    def encode_struct(struct):
+      function_trace_type.get_arg_spec(struct, False, False)
+
+    iterations = 100000
+    t = timeit.timeit(lambda: encode_struct(struct), number=iterations)
+    self.report_benchmark(
+        name='nested_truct_cache_key_generation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'nested_struct_cache_key_generation_time',
+            'value': t
+        }])
 
 
 if __name__ == '__main__':
