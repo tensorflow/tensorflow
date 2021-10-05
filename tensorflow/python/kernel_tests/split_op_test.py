@@ -384,6 +384,24 @@ class SplitOpTest(test.TestCase):
                                   "must have exactly one element"):
         sess.run(y, {x: np.array([], dtype=np.int32), splits: [4, 11, 15]})
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNegativeSizes(self):
+    x = constant_op.constant([1, 2, 3], dtypes.float32)
+    # A size of -1 signifies to determine size based on sum of other splits.
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "Split size at index 1 must be >= 0. Got: -2"):
+      splits = [-1, -2]
+      self.evaluate(array_ops.split(x, splits, axis=0))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBadSplitSizes(self):
+    x = constant_op.constant([1, 2], dtypes.float32)
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "Determined shape must either match input"
+                                "|can't split axis"):
+      splits = [1, 2]
+      self.evaluate(array_ops.split(x, splits, axis=0))
+
 
 if __name__ == "__main__":
   test.main()
