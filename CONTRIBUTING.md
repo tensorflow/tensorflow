@@ -208,7 +208,7 @@ There are two ways to run TensorFlow unit tests.
     
     For a single/parametrized test e.g. `test_capture_variables` in `tensorflow/python/saved_model/load_test.py`:
     
-    (Requires `python>=2.7`)
+    (Requires `python>=3.7`)
     
     ```bash
     bazel test //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*  --test_sharding_strategy=disabled
