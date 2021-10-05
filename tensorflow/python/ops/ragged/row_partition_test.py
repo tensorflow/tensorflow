@@ -758,9 +758,9 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
 
   def testDefaultConstruction(self):
     spec = RowPartitionSpec()
-    self.assertEqual(spec.nrows, None)
-    self.assertEqual(spec.nvals, None)
-    self.assertEqual(spec.uniform_row_length, None)
+    self.assertIsNone(spec.nrows)
+    self.assertIsNone(spec.nvals)
+    self.assertIsNone(spec.uniform_row_length)
     self.assertEqual(spec.dtype, dtypes.int64)
 
   @parameterized.parameters([
