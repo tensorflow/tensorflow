@@ -1045,34 +1045,30 @@ mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
 // Op converters.
 //===----------------------------------------------------------------------===//
 
-NamedAttribute GetConvDimensionNumbersAttr(
-    ArrayRef<int64_t> spatial_dim_indices, tensorflow::TensorFormat format,
-    Builder *builder) {
-  int64_t num_spatial_dims = spatial_dim_indices.size();
+NamedAttribute GetConvDimensionNumbersAttr(ArrayRef<int64_t> spatial_dims,
+                                           tensorflow::TensorFormat format,
+                                           Builder *builder) {
+  int64_t num_spatial_dims = spatial_dims.size();
   int64_t num_dims = num_spatial_dims + 2;
 
-  IntegerAttr batch_dim =
-      builder->getI64IntegerAttr(GetTensorBatchDimIndex(num_dims, format));
-  IntegerAttr feature_dim =
-      builder->getI64IntegerAttr(GetTensorFeatureDimIndex(num_dims, format));
-  DenseIntElementsAttr spatial_dims =
-      GetI64ElementsAttr(spatial_dim_indices, builder);
+  int64_t batch_dim = GetTensorBatchDimIndex(num_dims, format);
+  int64_t feature_dim = GetTensorFeatureDimIndex(num_dims, format);
 
   // Filters data_format is always HWIO so input channels dimension is after
   // all spatial dimensions.
-  IntegerAttr kernel_input_feature_dim =
-      builder->getI64IntegerAttr(num_spatial_dims);
-  IntegerAttr kernel_output_feature_dim =
-      builder->getI64IntegerAttr(num_spatial_dims + 1);
-  DenseIntElementsAttr kernel_spatial_dimensions =
-      GetI64ElementsAttrForSeq(0, num_spatial_dims, builder);
+  int64_t kernel_input_feature_dim = num_spatial_dims;
+  int64_t kernel_output_feature_dim = num_spatial_dims + 1;
+  SmallVector<int64_t, 4> kernel_spatial_dimensions;
+  kernel_spatial_dimensions.resize(num_spatial_dims);
+  std::iota(kernel_spatial_dimensions.begin(), kernel_spatial_dimensions.end(),
+            0);
 
   return builder->getNamedAttr(
       "dimension_numbers",
-      ConvDimensionNumbers::get(
-          batch_dim, feature_dim, spatial_dims, kernel_input_feature_dim,
-          kernel_output_feature_dim, kernel_spatial_dimensions, batch_dim,
-          feature_dim, spatial_dims, builder->getContext()));
+      ConvDimensionNumbersAttr::get(
+          builder->getContext(), batch_dim, feature_dim, spatial_dims,
+          kernel_input_feature_dim, kernel_output_feature_dim,
+          kernel_spatial_dimensions, batch_dim, feature_dim, spatial_dims));
 }
 
 // Converts a TF::BiasAddOp to HLO.
@@ -4941,8 +4937,6 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
     auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, paddings);
 
-    auto spatial_dims_attr = GetI64ElementsAttr(spatial_dims, &rewriter);
-
     Value filter = op.filter();
 
     const int feature_dim =
@@ -4979,17 +4973,17 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
       filter = rewriter.create<ReshapeOp>(op.getLoc(), ty, filter);
     }
 
-    auto kernel_spatial_dims_attr =
-        GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter);
+    SmallVector<int64_t, 4> kernel_spatial_dims;
+    kernel_spatial_dims.resize(num_spatial_dims);
+    std::iota(kernel_spatial_dims.begin(), kernel_spatial_dims.end(), 0);
 
     // Mirror the filter in the spatial dimensions.
-    filter = rewriter.create<ReverseOp>(op.getLoc(), filter,
-                                        kernel_spatial_dims_attr);
+    filter = rewriter.create<ReverseOp>(
+        op.getLoc(), filter,
+        GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
 
     const int batch_dim =
         tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
-    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
-    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
 
     // activation gradients
     //   = gradients (with padding and dilation) <conv> mirrored_weights
@@ -5001,22 +4995,22 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         /*window_reversal=*/nullptr,
-        ConvDimensionNumbers::get(
-            /*input_batch_dimension=*/batch_dim_attr,
-            /*input_feature_dimension=*/feature_dim_attr,
-            /*input_spatial_dimensions=*/spatial_dims_attr,
+        ConvDimensionNumbersAttr::get(
+            rewriter.getContext(),
+            /*input_batch_dimension=*/batch_dim,
+            /*input_feature_dimension=*/feature_dim,
+            /*input_spatial_dimensions=*/spatial_dims,
             // TF filter shape is [ H, W, ..., inC, outC ]
             // Transpose the input and output features for computing the
             // gradient.
             /*kernel_input_feature_dimension=*/
-            rewriter.getI64IntegerAttr(num_spatial_dims + 1),
+            num_spatial_dims + 1,
             /*kernel_output_feature_dimension=*/
-            rewriter.getI64IntegerAttr(num_spatial_dims),
-            /*kernel_spatial_dimensions=*/kernel_spatial_dims_attr,
-            /*output_batch_dimension=*/batch_dim_attr,
-            /*output_feature_dimension=*/feature_dim_attr,
-            /*output_spatial_dimensions=*/spatial_dims_attr,
-            rewriter.getContext()),
+            num_spatial_dims,
+            /*kernel_spatial_dimensions=*/kernel_spatial_dims,
+            /*output_batch_dimension=*/batch_dim,
+            /*output_feature_dimension=*/feature_dim,
+            /*output_spatial_dimensions=*/spatial_dims),
         rewriter.getI64IntegerAttr(feature_group_count),
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
         /*precision_config=*/ArrayAttr());
@@ -5190,13 +5184,14 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
     RankedTensorType paddings_ty = RankedTensorType::get(
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
     auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, paddings);
-    auto kernel_spatial_dims_attr =
-        GetI64ElementsAttr(kernel_spatial_dims, &rewriter);
+
+    SmallVector<int64_t, 4> output_spatial_dimensions;
+    output_spatial_dimensions.resize(num_spatial_dims);
+    std::iota(output_spatial_dimensions.begin(),
+              output_spatial_dimensions.end(), 0);
 
     const int batch_dim =
         tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
-    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
-    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
 
     Value result = rewriter.create<ConvOp>(
         op.getLoc(), op.getType(), op.input(), op.out_backprop(),
@@ -5206,25 +5201,22 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
                                    &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         /*window_reversal=*/nullptr,
-        ConvDimensionNumbers::get(
+        ConvDimensionNumbersAttr::get(
+            rewriter.getContext(),
             // Swap batch_dim and feature_dim in the activations.
-            /*input_batch_dimension=*/feature_dim_attr,
-            /*input_feature_dimension=*/batch_dim_attr,
-            /*input_spatial_dimensions=*/kernel_spatial_dims_attr,
+            /*input_batch_dimension=*/feature_dim,
+            /*input_feature_dimension=*/batch_dim,
+            /*input_spatial_dimensions=*/kernel_spatial_dims,
             // The gradients become the RHS of the convolution.
             // The gradients have shape [batch, out_rows, out_cols, ...,
             // out_depth] where the batch becomes the input feature for the
             // convolution.
-            /*kernel_input_feature_dimension=*/batch_dim_attr,
-            /*kernel_output_feature_dimension=*/feature_dim_attr,
-            /*kernel_spatial_dimensions=*/kernel_spatial_dims_attr,
-            /*output_batch_dimension=*/
-            rewriter.getI64IntegerAttr(num_spatial_dims),
-            /*output_feature_dimension=*/
-            rewriter.getI64IntegerAttr(num_spatial_dims + 1),
-            /*output_spatial_dimensions=*/
-            GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter),
-            rewriter.getContext()),
+            /*kernel_input_feature_dimension=*/batch_dim,
+            /*kernel_output_feature_dimension=*/feature_dim,
+            /*kernel_spatial_dimensions=*/kernel_spatial_dims,
+            /*output_batch_dimension=*/num_spatial_dims,
+            /*output_feature_dimension=*/num_spatial_dims + 1,
+            /*output_spatial_dimensions=*/output_spatial_dimensions),
         /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
         rewriter.getI64IntegerAttr(batch_group_count),
         /*precision_config=*/ArrayAttr());

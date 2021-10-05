@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -188,36 +189,35 @@ bool isSplatValue(DenseIntElementsAttr attr, uint64_t value) {
 ///   output_channel_count).
 /// * Output dimensions have order: (batch_count, spatial_dims,
 ///   output_channel_count).
-template <typename DimensionNumbersTy>
 static bool HasCanonicalDimensionNumbers(
-    const DimensionNumbersTy& dimension_numbers) {
+    mhlo::ConvDimensionNumbersAttr dimension_numbers) {
   const int input_spatial_rank =
-      llvm::size(dimension_numbers.input_spatial_dimensions());
+      llvm::size(dimension_numbers.getInputSpatialDimensions());
   // The dimensions for input should follow the order of
   // batch_count, spatial_dims..., input_feature_count.
-  if (dimension_numbers.input_batch_dimension().getInt() != 0 ||
-      dimension_numbers.input_feature_dimension().getInt() !=
+  if (dimension_numbers.getInputBatchDimension() != 0 ||
+      dimension_numbers.getInputFeatureDimension() !=
           (input_spatial_rank + 1)) {
     return false;
   }
 
   const int kernel_spatial_rank =
-      llvm::size(dimension_numbers.kernel_spatial_dimensions());
+      llvm::size(dimension_numbers.getKernelSpatialDimensions());
   // The dimensions for filter should follow the order of
   // spatial_dims..., input_feature_count, num_output_feature_count.
-  if (dimension_numbers.kernel_input_feature_dimension().getInt() !=
+  if (dimension_numbers.getKernelInputFeatureDimension() !=
           kernel_spatial_rank ||
-      dimension_numbers.kernel_output_feature_dimension().getInt() !=
+      dimension_numbers.getKernelOutputFeatureDimension() !=
           (kernel_spatial_rank + 1)) {
     return false;
   }
 
   const int output_spatial_rank =
-      llvm::size(dimension_numbers.output_spatial_dimensions());
+      llvm::size(dimension_numbers.getOutputSpatialDimensions());
   // The dimensions for output should follow the order of
   // batch_count, spatial_dims.., output_feature_count.
-  if (dimension_numbers.output_batch_dimension().getInt() != 0 ||
-      dimension_numbers.output_feature_dimension().getInt() !=
+  if (dimension_numbers.getOutputBatchDimension() != 0 ||
+      dimension_numbers.getOutputFeatureDimension() !=
           (output_spatial_rank + 1)) {
     return false;
   }
@@ -227,17 +227,17 @@ static bool HasCanonicalDimensionNumbers(
     return false;
   }
 
-  auto input_spatial_dim = dimension_numbers.input_spatial_dimensions().begin();
+  auto input_spatial_dim =
+      dimension_numbers.getInputSpatialDimensions().begin();
   auto kernel_spatial_dim =
-      dimension_numbers.kernel_spatial_dimensions().begin();
+      dimension_numbers.getKernelSpatialDimensions().begin();
   auto output_spatial_dim =
-      dimension_numbers.output_spatial_dimensions().begin();
+      dimension_numbers.getOutputSpatialDimensions().begin();
   // Check spatial dims are ordered correctly.
   for (int i = 0; i < input_spatial_rank; ++i) {
     const int dim = i + 1;
-    if ((*input_spatial_dim++).getZExtValue() != dim ||
-        (*output_spatial_dim++).getZExtValue() != dim ||
-        (*kernel_spatial_dim++).getZExtValue() != i) {
+    if ((*input_spatial_dim++) != dim || (*output_spatial_dim++) != dim ||
+        (*kernel_spatial_dim++) != i) {
       return false;
     }
   }
@@ -2290,19 +2290,18 @@ struct DepthwiseConvOpOnTensorsConversion
           op, "non-one lhs- dialation unsupported yet");
     }
 
-    if (const mhlo::ConvDimensionNumbers& dimension_numbers =
+    if (const mhlo::ConvDimensionNumbersAttr& dimension_numbers =
             op.dimension_numbers()) {
       // Make sure that this is 2-D convolution.
       const auto spatial_rank =
-          llvm::size(dimension_numbers.input_spatial_dimensions());
+          llvm::size(dimension_numbers.getInputSpatialDimensions());
       if (spatial_rank != 2) {
         return rewriter.notifyMatchFailure(op,
                                            "only support 2-D cases for now");
       }
 
       // Make sure that this is depthwise convolution.
-      int64_t input_feature_dim =
-          dimension_numbers.input_feature_dimension().getInt();
+      int64_t input_feature_dim = dimension_numbers.getInputFeatureDimension();
       int64_t input_feature_count =
           op.lhs().getType().cast<ShapedType>().getDimSize(input_feature_dim);
       if (op.feature_group_count() != input_feature_count) {
