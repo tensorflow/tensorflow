@@ -149,56 +149,32 @@ class InferenceContext {
   TensorMemoryType GetTensorMemoryType(ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
-  struct DummyTensor {
-    BHWC shape;
-    TensorDescriptor descriptor;
-
-    bool operator==(const DummyTensor& b) const {
-      return shape == b.shape && descriptor == b.descriptor;
-    }
-  };
-
   class TensorReserver {
    public:
     TensorReserver() : next_(0) {}
-    ValueId Add(const DummyTensor& dummy) {
+    ValueId Add(const TensorDescriptor& dummy) {
       reservations_[next_] = dummy;
       return next_++;
     }
-    void Add(ValueId id, const DummyTensor& dummy) {
+    void Add(ValueId id, const TensorDescriptor& dummy) {
       reservations_[id] = dummy;
     }
     void SetNext(ValueId id) { next_ = id; }
-    DummyTensor Get(ValueId id) { return reservations_[id]; }
+    TensorDescriptor Get(ValueId id) { return reservations_[id]; }
 
     std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
-      std::vector<std::pair<ValueId, TensorDescriptor>> result;
-      for (auto& v : reservations_) {
-        TensorDescriptor desc = v.second.descriptor;
-        desc.shape.b = v.second.shape.b;
-        desc.shape.h = v.second.shape.h;
-        desc.shape.w = v.second.shape.w;
-        desc.shape.d = 1;
-        desc.shape.c = v.second.shape.c;
-        result.push_back({v.first, desc});
-      }
-      return result;
+      return std::vector<std::pair<ValueId, TensorDescriptor>>(
+          reservations_.begin(), reservations_.end());
     }
 
     void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
       for (auto& v : tensors) {
-        DummyTensor dummy;
-        dummy.descriptor = v.second;
-        dummy.shape.b = v.second.shape.b;
-        dummy.shape.h = v.second.shape.h;
-        dummy.shape.w = v.second.shape.w;
-        dummy.shape.c = v.second.shape.c;
-        Add(v.first, dummy);
+        Add(v.first, v.second);
       }
     }
 
    private:
-    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
+    absl::flat_hash_map<ValueId, TensorDescriptor> reservations_;
     ValueId next_;
   };
   TensorReserver tensor_reserver_;

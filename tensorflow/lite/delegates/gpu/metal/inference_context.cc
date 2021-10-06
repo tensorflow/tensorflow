@@ -188,8 +188,10 @@ absl::Status InferenceContext::ReserveGraphTensors(
     // }
     RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
                                           data_type, layout, &storage_type));
-    tensor_reserver_.Add(
-        t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
+
+    TensorDescriptor tensor_desc{data_type, storage_type, layout};
+    tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+    tensor_reserver_.Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
@@ -202,7 +204,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
-    tensor_descriptors[value->id] = tensor_reserver_.Get(value->id).descriptor;
+    tensor_descriptors[value->id] = tensor_reserver_.Get(value->id);
   }
   std::set<NodeId> consumed_nodes;
   std::map<ValueId, int>
@@ -223,7 +225,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
           absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);
       const_tensors_descs_[outputs[0]->id] =
-          tensor_reserver_.Get(outputs[0]->id).descriptor;
+          tensor_reserver_.Get(outputs[0]->id);
       const_tensors_descs_[outputs[0]->id].UploadData(attr.tensor);
       continue;
     }
@@ -263,12 +265,10 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       OperationDef op_def;
       op_def.precision = precision_;
       for (int j = 0; j < inputs.size(); ++j) {
-        op_def.src_tensors.push_back(
-            tensor_reserver_.Get(inputs[j]->id).descriptor);
+        op_def.src_tensors.push_back(tensor_reserver_.Get(inputs[j]->id));
       }
       for (int j = 0; j < outputs.size(); ++j) {
-        op_def.dst_tensors.push_back(
-            tensor_reserver_.Get(outputs[j]->id).descriptor);
+        op_def.dst_tensors.push_back(tensor_reserver_.Get(outputs[j]->id));
       }
       RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
                                            outputs, node, &gpu_subgraph));
@@ -276,7 +276,9 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      auto global_id = tensor_reserver_.Add({t.first, t.second});
+      TensorDescriptor td = t.second;
+      td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
+      auto global_id = tensor_reserver_.Add(td);
       mapping_to_global_ids[j] = global_id;
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
@@ -372,7 +374,7 @@ absl::Status InferenceContext::AllocateTensors(
   for (auto& tensor_id : preallocated_ids) {
     const auto& t = tensor_reserver_.Get(tensor_id);
     RETURN_IF_ERROR(CreateSharedBufferTensor(
-        nil, t.shape, t.descriptor, &preallocated_tensors_[tensor_id]));
+        nil, t.shape, t, &preallocated_tensors_[tensor_id]));
   }
 
   RETURN_IF_ERROR(AllocateMemoryForConstTensors(device));
@@ -416,10 +418,12 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     std::vector<BHWC> src_shapes;
     std::vector<BHWC> dst_shapes;
     for (const auto& in_id : node.inputs) {
-      src_shapes.push_back(tensor_reserver_.Get(in_id).shape);
+      const auto& shape = tensor_reserver_.Get(in_id).shape;
+      src_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     for (const auto& out_id : node.outputs) {
-      dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
+      const auto& shape = tensor_reserver_.Get(out_id).shape;
+      dst_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     RETURN_IF_ERROR(node.task.UpdateParams());
   }
@@ -432,7 +436,7 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     return TensorMemoryType::kPreallocated;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
-  } else if (IsBufferBased(tensor_reserver_.Get(id).descriptor.storage_type)) {
+  } else if (IsBufferBased(tensor_reserver_.Get(id).storage_type)) {
     return TensorMemoryType::kBuffer;
   } else {
     return TensorMemoryType::kStrongShape;
@@ -534,8 +538,8 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       const auto& tensor_dummy = tensor_reserver_.Get(tensor_id);
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
       RETURN_IF_ERROR(CreateSharedBufferTensor(
-          shared_buffers_[buffer_index], tensor_dummy.shape,
-          tensor_dummy.descriptor, &shared_buffer_tensors_[tensor_index]));
+          shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
+          &shared_buffer_tensors_[tensor_index]));
       created_tensors[tensor_index] = true;
     }
   }
@@ -551,7 +555,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       },
       &usages);
 
-  std::vector<TensorUsageRecord<DummyTensor>> usage_records;
+  std::vector<TensorUsageRecord<TensorDescriptor>> usage_records;
   std::map<ValueId, ValueId> remap_from_graph_ids;
   for (auto& usage : usages) {
     remap_from_graph_ids[usage.first] = usage_records.size();
@@ -560,7 +564,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
                              static_cast<TaskId>(usage.second.y)});
   }
 
-  ObjectsAssignment<DummyTensor> assignment;
+  ObjectsAssignment<TensorDescriptor> assignment;
   RETURN_IF_ERROR(AssignObjectsToTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
@@ -577,8 +581,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
         RETURN_IF_ERROR(CreateTensor(device->device(), tensor_dummy.shape,
-                                     tensor_dummy.descriptor,
-                                     &strong_shape_tensors_[id]));
+                                     tensor_dummy, &strong_shape_tensors_[id]));
       }
     }
   }
