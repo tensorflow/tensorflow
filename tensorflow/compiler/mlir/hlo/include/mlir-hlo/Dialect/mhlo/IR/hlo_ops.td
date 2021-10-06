@@ -1747,9 +1747,11 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`
-    based on the values of `pred`.
+    based on the values of `pred`. All three operands must be of the same shape
+    with the exception of `pred`, which may also be a scalar in which case it is
+    broadcasted.
 
-    `pred`, `on_true` and `on_false` must be broadcast compatible.
+    See https://www.tensorflow.org/xla/operation_semantics#select.
   }];
   let arguments = (ins
     HLO_PredTensor:$pred,
