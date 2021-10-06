@@ -190,15 +190,6 @@ class RnnStateTensorDescriptor {
   virtual ~RnnStateTensorDescriptor() {}
 };
 
-// Specifies the execution plan in convolution.
-class ConvolveExecutionPlan {
- public:
-  virtual ~ConvolveExecutionPlan() {}
-  virtual std::string getTag() const { return "unknown"; }
-  virtual void* get_raw_desc() const { return nullptr; }
-  virtual int64_t getWorkspaceSize() const { return -1; }
-};
-
 // Returns a string representation of the given quantization mode.
 std::string QuantizedActivationModeString(QuantizedActivationMode mode);
 
@@ -845,6 +836,50 @@ class ProfileResult {
   size_t scratch_size_ = 0;
 };
 
+// Backend-specific data shared between repeated launches of the same
+// convolution.
+template <typename Sig>
+class OpRunner;
+
+// An abstract class owning cached state for a particular op/configuration.
+//
+// The primary motivation for this is cuDNN backend ExecutionPlans, which are
+// costly to recreate.
+//
+// All OpRunners must be outlived by their parent Stream.
+template <typename... Args>
+class OpRunner<port::Status(Args...)> {
+ public:
+  virtual ~OpRunner() {}
+
+  // Get a description of the runner, for uniqueness of autotune entries.
+  //
+  // Since this is used to determine whether runners are equivalent for the
+  // purpose of scoring autotune entries, it shall be unique among runners of
+  // the same op and parameters.
+  virtual std::string ToString() const = 0;
+
+  // Get the number of bytes of scratch space needed for `operator()`.
+  virtual port::StatusOr<size_t> GetWorkspaceSize() const = 0;
+
+  // Launch the operation, with the signature determined by `Sig`.
+  virtual port::Status operator()(Args... args) const = 0;
+};
+
+using ConvSignature = port::Status(Stream*, DeviceMemoryBase /* input_data */,
+                                   DeviceMemoryBase /* filter_data */,
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* scratch_memory */,
+                                   ProfileResult*);
+using ConvRunner = OpRunner<ConvSignature>;
+
+using FusedConvSignature = port::Status(
+    Stream*, DeviceMemoryBase /* input_data */,
+    DeviceMemoryBase /* filter_data */, DeviceMemoryBase /* side_input_data */,
+    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* output_data */,
+    DeviceMemoryBase /* scratch_memory */, ProfileResult*);
+using FusedConvRunner = OpRunner<FusedConvSignature>;
+
 // Describes the configuration for the algorithms that will used.
 //
 // Arguments:
@@ -1337,8 +1372,7 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
-          out_exec_plans);
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

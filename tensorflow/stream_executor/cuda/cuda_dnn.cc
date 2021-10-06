@@ -75,26 +75,26 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
 
 // If 'expr' doesn't return CUDNN_STATUS_SUCCESS, returns from the current
 // function with a non-successful port::Status.
-#define RETURN_IF_CUDNN_ERROR(expr)                                      \
-  do {                                                                   \
-    cudnnStatus_t _status = (expr);                                      \
-    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {             \
-      std::ostringstream oss;                                            \
-      oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__ \
-          << "): '" << #expr << "'";                                     \
-      return port::Status(port::error::UNKNOWN, oss.str());              \
-    }                                                                    \
+#define RETURN_IF_CUDNN_ERROR(expr)                                     \
+  do {                                                                  \
+    cudnnStatus_t _status = (expr);                                     \
+    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {            \
+      std::ostringstream oss;                                           \
+      oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
+          << __LINE__ << "): '" << #expr << "'";                        \
+      return port::Status(port::error::UNKNOWN, oss.str());             \
+    }                                                                   \
   } while (false)
 
-#define RETURN_MSG_IF_CUDNN_ERROR(expr)                                  \
-  do {                                                                   \
-    cudnnStatus_t _status = (expr).get_status();                         \
-    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {             \
-      std::ostringstream oss;                                            \
-      oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__ \
-          << "): '" << #expr << "' " << (expr).get_error();              \
-      return port::Status(port::error::UNKNOWN, oss.str());              \
-    }                                                                    \
+#define RETURN_MSG_IF_CUDNN_ERROR(expr)                                 \
+  do {                                                                  \
+    cudnnStatus_t _status = (expr).get_status();                        \
+    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {            \
+      std::ostringstream oss;                                           \
+      oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
+          << __LINE__ << "): '" << #expr << "' " << (expr).get_error(); \
+      return port::Status(port::error::UNKNOWN, oss.str());             \
+    }                                                                   \
   } while (false)
 
 #define RETURN_FALSE_IF_CUDNN_ERROR(expr)                                \
@@ -114,7 +114,7 @@ NarrowT CheckedNarrowing(const WideT& wide) {
   return narrow;
 }
 
-std::string ToString(cudnnStatus_t status) {
+std::string CudnnStatusToString(cudnnStatus_t status) {
   switch (status) {
     case CUDNN_STATUS_SUCCESS:
       return "CUDNN_STATUS_SUCCESS";
@@ -368,7 +368,8 @@ port::Status CudnnSupport::Init() {
   }
 
   CHECK_EQ(cudnn_handle, nullptr);
-  LOG(ERROR) << "Could not create cudnn handle: " << ToString(status);
+  LOG(ERROR) << "Could not create cudnn handle: "
+             << CudnnStatusToString(status);
   if (status == CUDNN_STATUS_NOT_INITIALIZED) {
     auto result = gpu::Diagnostician::FindKernelDriverVersion();
     if (!result.ok()) {
@@ -383,7 +384,7 @@ port::Status CudnnSupport::Init() {
 
   return port::Status(port::error::INTERNAL,
                       absl::StrCat("cudnn library could not create a handle: ",
-                                   ToString(status)));
+                                   CudnnStatusToString(status)));
 }
 
 port::StatusOr<perftools::gputools::dnn::VersionInfo>
@@ -1682,21 +1683,6 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
   cudnnDataType_t data_type_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnStateTensorDescriptor);
 };
-
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-class CudnnConvolveExecutionPlan : public dnn::ConvolveExecutionPlan {
- public:
-  CudnnConvolveExecutionPlan(cudnn_frontend::ExecutionPlan plan)
-      : plan_(std::move(plan)) {}
-  std::string getTag() const override { return plan_.getTag(); };
-  void* get_raw_desc() const override { return plan_.get_raw_desc(); }
-  int64_t getWorkspaceSize() const override { return plan_.getWorkspaceSize(); }
-
- private:
-  cudnn_frontend::ExecutionPlan plan_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnConvolveExecutionPlan);
-};
-#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 namespace {
 
@@ -3848,6 +3834,7 @@ GetFirstWorkingExecutionPlan(
               ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64_t{0})
               : int64_t{0};
       int64_t workspace_size = plan.getWorkspaceSize();
+      RETURN_MSG_IF_CUDNN_ERROR(plan);
       if (workspace_size <= memory_limit_bytes) {
         return std::unique_ptr<cudnn_frontend::ExecutionPlan>(
             new cudnn_frontend::ExecutionPlan(std::move(plan)));
@@ -3855,8 +3842,7 @@ GetFirstWorkingExecutionPlan(
     }
   }
   return port::Status(port::error::UNKNOWN,
-                      "CUDNN failed to get a working"
-                      " plan.");
+                      "CUDNN failed to get a working plan.");
 }
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
@@ -4058,72 +4044,100 @@ port::Status CudnnSupport::DoConvolve(
   return port::Status::OK();
 }
 
-port::Status CudnnSupport::DoConvolveWithExecutionPlan(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::ConvolveExecutionPlan& execution_plan,
-    DeviceMemoryBase scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  size_t workspace_size = execution_plan.getWorkspaceSize();
+// An OpRunner implemented by an ExecutionPlan.
+//
+// This is an ad-hoc base class holding the implementation of ToString and
+// GetWorkspaceSize for use by CudnnConvRunner and CudnnFusedConvRunner (and
+// future cudnn frontend op runners as the API encompasses more ops).
+template <typename Sig>
+class CudnnExecutionPlanRunner : public dnn::OpRunner<Sig> {
+ public:
+  CudnnExecutionPlanRunner(GpuExecutor* parent, CudnnAccess* cudnn,
+                           cudnn_frontend::ExecutionPlan plan)
+      : parent_(parent), cudnn_(cudnn), plan_(std::move(plan)) {}
 
-  void* data_ptrs[] = {input_data.opaque(), output_data.opaque(),
-                       filter_data.opaque()};
-  int64_t uids[] = {'x', 'y', 'w'};
-  auto variantPack = cudnn_frontend::VariantPackBuilder()
-                         .setWorkspacePointer(scratch_memory.opaque())
-                         .setDataPointers(3, data_ptrs)
-                         .setUids(3, uids)
-                         .build();
-  RETURN_MSG_IF_CUDNN_ERROR(variantPack);
-
-  VLOG(4) << "\nDo convolution with plan tag: " << execution_plan.getTag()
-          << "\nWorkspace size in bytes: " << workspace_size
-          << "\nVariantPack: " << variantPack.describe();
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));  // NOLINT
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
+  std::string ToString() const override { return plan_.getTag(); }
+  port::StatusOr<size_t> GetWorkspaceSize() const override {
+    auto result = plan_.getWorkspaceSize();
+    RETURN_MSG_IF_CUDNN_ERROR(plan_);
+    return result;
   }
 
-  cudnnStatus_t status =
-      cudnnBackendExecute(cudnn.handle(), execution_plan.get_raw_desc(),
-                          variantPack.get_raw_desc());
-  RETURN_IF_CUDNN_ERROR(status);
+ protected:
+  GpuExecutor* parent_;
+  CudnnAccess* cudnn_;
+  cudnn_frontend::ExecutionPlan plan_;
 
-  if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(CudnnExecutionPlanRunner);
+};
+
+class CudnnConvRunner : public CudnnExecutionPlanRunner<dnn::ConvSignature> {
+ public:
+  using CudnnExecutionPlanRunner::CudnnExecutionPlanRunner;
+
+  port::Status operator()(
+      Stream* stream, DeviceMemoryBase input_data, DeviceMemoryBase filter_data,
+      DeviceMemoryBase output_data, DeviceMemoryBase scratch_memory,
+      dnn::ProfileResult* output_profile_result) const override {
+    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+        stream->parent()->implementation()) {
+      return port::InternalError(
+          "CudnnConvRunner cached across multiple StreamExecutors.");
     }
-    output_profile_result->set_algorithm(
-        dnn::AlgorithmDesc{execution_plan.getTag()});
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
-    output_profile_result->set_scratch_size(scratch_memory.size());
-  }
 
-  return port::Status::OK();
-#else
-  return port::InternalError(
-      "To use CuDNN frontend APIs, CuDNN v8.1 or later "
-      "is required.");
+    auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+    size_t workspace_size = plan_.getWorkspaceSize();
+    RETURN_MSG_IF_CUDNN_ERROR(plan_);
+
+    void* data_ptrs[] = {input_data.opaque(), output_data.opaque(),
+                         filter_data.opaque()};
+    int64_t uids[] = {'x', 'y', 'w'};
+    auto variantPack = cudnn_frontend::VariantPackBuilder()
+                           .setWorkspacePointer(scratch_memory.opaque())
+                           .setDataPointers(3, data_ptrs)
+                           .setUids(3, uids)
+                           .build();
+    RETURN_MSG_IF_CUDNN_ERROR(variantPack);
+
+    VLOG(4) << "\nDo convolution with plan tag: " << plan_.getTag()
+            << "\nWorkspace size in bytes: " << workspace_size
+            << "\nVariantPack: " << variantPack.describe();
+
+    const bool is_profiling = output_profile_result != nullptr;
+
+    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    if (is_profiling) {
+      timer.reset(new GpuTimer(parent_));  // NOLINT
+      // The start and stop of the timer should be as close to the Cudnn call as
+      // possible. It is still possible for other threads to issue workload on
+      // to this stream. So it could take multiple profiling measurements.
+      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    cudnnStatus_t status = cudnnBackendExecute(
+        cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
+    RETURN_IF_CUDNN_ERROR(status);
+
+    if (is_profiling) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      output_profile_result->set_algorithm(dnn::AlgorithmDesc{plan_.getTag()});
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+      output_profile_result->set_scratch_size(scratch_memory.size());
+    }
+
+    return port::Status::OK();
+  }
+};
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-}
 
 // Utility for dealing with CUDA's type-erased scaling parameters, where some
 // sets of parameters expect a void* pointing at a float while others expect it
@@ -4162,8 +4176,7 @@ bool CudnnSupport::GetConvolveExecutionPlans(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
-        out_exec_plans) {
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnOperationGraph(
@@ -4237,8 +4250,8 @@ bool CudnnSupport::GetConvolveExecutionPlans(
         continue;
       }
 
-      out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
-          new CudnnConvolveExecutionPlan(std::move(plan))));
+      out_exec_plans->push_back(std::make_unique<CudnnConvRunner>(
+          parent_, cudnn_.get(), std::move(plan)));
       // We will use the first working plan when determinism is required.
       if (RequireCudnnDeterminism()) {
         break;
@@ -4254,6 +4267,84 @@ bool CudnnSupport::GetConvolveExecutionPlans(
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+class CudnnFusedConvRunner
+    : public CudnnExecutionPlanRunner<dnn::FusedConvSignature> {
+ public:
+  using CudnnExecutionPlanRunner::CudnnExecutionPlanRunner;
+
+  port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
+                          DeviceMemoryBase filter_data,
+                          DeviceMemoryBase side_input_data,
+                          DeviceMemoryBase bias_data,
+                          DeviceMemoryBase output_data,
+                          DeviceMemoryBase scratch_memory,
+                          dnn::ProfileResult* profile_result) const override {
+    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+        stream->parent()->implementation()) {
+      return port::InternalError(
+          "CudnnFusedConvRunner cached across multiple StreamExecutors.");
+    }
+
+    auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+    size_t workspace_size = plan_.getWorkspaceSize();
+    RETURN_MSG_IF_CUDNN_ERROR(plan_);
+
+    void* data_ptrs[] = {
+        input_data.opaque(),      output_data.opaque(), filter_data.opaque(),
+        side_input_data.opaque(), bias_data.opaque(),
+    };
+    int64_t uids[] = {'x', 'y', 'w', 'z', 'b'};
+    auto variantPack = cudnn_frontend::VariantPackBuilder()
+                           .setWorkspacePointer(scratch_memory.opaque())
+                           .setDataPointers(5, data_ptrs)
+                           .setUids(5, uids)
+                           .build();
+    RETURN_MSG_IF_CUDNN_ERROR(variantPack);
+
+    VLOG(4) << "\nDo fused convolution with plan tag: " << plan_.getTag()
+            << "\nWorkspace size in bytes: " << workspace_size
+            << "\nVariantPack: " << variantPack.describe();
+
+    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    if (profile_result) {
+      timer.reset(new GpuTimer(parent_));  // NOLINT
+      // The start and stop of the timer should be as close to the Cudnn call as
+      // possible. It is still possible for other threads to issue workload on
+      // to this stream. So it could take multiple profiling measurements.
+      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    cudnnStatus_t status = cudnnBackendExecute(
+        cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
+    if (status != CUDNN_STATUS_SUCCESS || !profile_result) {
+      VLOG(4) << "conv with plan " << plan_.getTag()
+              << ", workspace_size=" << workspace_size << " -> "
+              << CudnnStatusToString(status);
+    }
+    RETURN_IF_CUDNN_ERROR(status);
+
+    if (profile_result) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      profile_result->set_algorithm(dnn::AlgorithmDesc{plan_.getTag()});
+      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+      profile_result->set_scratch_size(scratch_memory.size());
+      VLOG(4) << "conv with plan " << plan_.getTag()
+              << ", workspace_size=" << workspace_size << " -> "
+              << CudnnStatusToString(status) << " in "
+              << timer->GetElapsedMilliseconds() << "ms";
+    }
+
+    return port::Status::OK();
+  }
+};
+#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+
 port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     double conv_input_scale, double side_input_scale, Stream* stream,
@@ -4263,8 +4354,7 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode,
-    std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
-        out_exec_plans) {
+    std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
@@ -4342,8 +4432,8 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
         continue;
       }
 
-      out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
-          new CudnnConvolveExecutionPlan(std::move(plan))));
+      out_exec_plans->push_back(std::make_unique<CudnnFusedConvRunner>(
+          parent_, cudnn_.get(), std::move(plan)));
       // We will use the first working plan when determinism is required.
       if (RequireCudnnDeterminism()) {
         break;
@@ -4905,13 +4995,12 @@ port::Status CudnnSupport::DoFusedConvolve(
       ToCudnnDataType(input_type, filter_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
   const bool is_profiling = output_profile_result != nullptr;
 
   DeviceMemory<uint8> scratch;
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
   SE_ASSIGN_OR_RETURN(
-      dnn::AlgorithmDesc algo_desc,
+      auto algo_desc,
       GetCudnnConvolutionForwardAlgorithm(
           stream, cudnn, algorithm_config, conv_input_nd, filter, input_type,
           convolution_descriptor, output_nd, scratch_allocator, &scratch));
@@ -4986,7 +5075,7 @@ port::Status CudnnSupport::DoFusedConvolve(
   if (status != CUDNN_STATUS_SUCCESS || !is_profiling) {
     VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo_desc)
             << ", workspace_size=" << scratch.size() << " -> "
-            << ToString(status);
+            << CudnnStatusToString(status);
   }
   RETURN_IF_CUDNN_ERROR(status);
 
@@ -5001,92 +5090,11 @@ port::Status CudnnSupport::DoFusedConvolve(
     VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo_desc)
             << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
             << ", workspace_size=" << scratch.size() << " -> "
-            << ToString(status) << " in " << timer->GetElapsedMilliseconds()
-            << "ms";
+            << CudnnStatusToString(status) << " in "
+            << timer->GetElapsedMilliseconds() << "ms";
   }
 
   return port::Status::OK();
-}
-
-port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
-    Stream* stream, dnn::DataType element_type,
-    const dnn::BatchDescriptor& conv_input_descriptor,
-    DeviceMemoryBase conv_input_data, double conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    DeviceMemoryBase side_input_data, double side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-    dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-    DeviceMemoryBase scratch_memory,
-    const dnn::ConvolveExecutionPlan& execution_plan,
-    dnn::ProfileResult* output_profile_result) {
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  size_t workspace_size = execution_plan.getWorkspaceSize();
-
-  void* data_ptrs[] = {
-      conv_input_data.opaque(), output_data.opaque(), filter_data.opaque(),
-      side_input_data.opaque(), biases.opaque(),
-  };
-  int64_t uids[] = {'x', 'y', 'w', 'z', 'b'};
-  auto variantPack = cudnn_frontend::VariantPackBuilder()
-                         .setWorkspacePointer(scratch_memory.opaque())
-                         .setDataPointers(5, data_ptrs)
-                         .setUids(5, uids)
-                         .build();
-  RETURN_MSG_IF_CUDNN_ERROR(variantPack);
-
-  VLOG(4) << "\nDo fused convolution with plan tag: " << execution_plan.getTag()
-          << "\nWorkspace size in bytes: " << workspace_size
-          << "\nVariantPack: " << variantPack.describe();
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));  // NOLINT
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
-  }
-
-  cudnnStatus_t status =
-      cudnnBackendExecute(cudnn.handle(), execution_plan.get_raw_desc(),
-                          variantPack.get_raw_desc());
-  if (status != CUDNN_STATUS_SUCCESS || !is_profiling) {
-    VLOG(4) << "conv with plan " << execution_plan.getTag()
-            << ", workspace_size=" << workspace_size << " -> "
-            << ToString(status);
-  }
-  RETURN_IF_CUDNN_ERROR(status);
-
-  if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
-    }
-    output_profile_result->set_algorithm(
-        dnn::AlgorithmDesc{execution_plan.getTag()});
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
-    output_profile_result->set_scratch_size(scratch_memory.size());
-    VLOG(4) << "conv with plan " << execution_plan.getTag()
-            << ", workspace_size=" << workspace_size << " -> "
-            << ToString(status) << " in " << timer->GetElapsedMilliseconds()
-            << "ms";
-  }
-
-  return port::Status::OK();
-#else
-  return port::InternalError(
-      "To use CuDNN frontend APIs, CuDNN v8.1 or later "
-      "is required.");
-#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
 port::Status CudnnSupport::DoPrepareForCtcLoss(
@@ -5108,9 +5116,9 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
 
-  // Try running with `algo`, if successful then pick it. The non-deterministic
-  // algorithm is first and thus preferentially picked when determinism is not
-  // required.
+  // Try running with `algo`, if successful then pick it. The
+  // non-deterministic algorithm is first and thus preferentially picked when
+  // determinism is not required.
   auto algo = RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
                                         : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC;
   cudnnStatus_t status = cudnnGetCTCLossWorkspaceSize(

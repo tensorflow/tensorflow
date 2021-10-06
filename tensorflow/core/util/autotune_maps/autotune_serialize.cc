@@ -38,8 +38,9 @@ using stream_executor::dnn::AlgorithmConfigProto;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
+template <typename Sig>
 ConvMapProto ConvMapToProto(
-    const AutotuneMap<ConvParameters, ConvAutotuneEntry> &autotune_map) {
+    const AutotuneMap<ConvParameters, AutotuneEntry<Sig>> &autotune_map) {
   ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
@@ -75,9 +76,10 @@ ConvMapProto ConvMapToProto(
   return proto;
 }
 
+template <typename Sig>
 Status PopulateConvMap(
     const ConvMapProto &m,
-    AutotuneMap<ConvParameters, ConvAutotuneEntry> *autotune_map) {
+    AutotuneMap<ConvParameters, AutotuneEntry<Sig>> *autotune_map) {
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -117,7 +119,7 @@ Status PopulateConvMap(
     for (int device_id : device_ids) {
       autotune_map->Insert(
           ConvParameters(device_id, params_proto),
-          ConvAutotuneEntry(AlgorithmConfig(algorithm_config_proto)));
+          AutotuneEntry<Sig>(AlgorithmConfig(algorithm_config_proto)));
     }
   }
   return Status::OK();

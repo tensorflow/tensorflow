@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
+#include "absl/types/variant.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
@@ -105,7 +106,7 @@ TEST(AutotuneSerializeTest, Consistency) {
 
   AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
   AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
-  ConvAutotuneEntry algorithm_config_example_a(
+  AutotuneEntry<se::dnn::ConvSignature> algorithm_config_example_a(
       AlgorithmConfig(algorithm, /*scratch_size=*/1, algorithm_no_scratch));
   ConvAutotuneMap::GetInstance()->Insert(conv_params_example_a,
                                          algorithm_config_example_a);
@@ -119,7 +120,7 @@ TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
   EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 3);
 
-  ConvAutotuneEntry entry;
+  AutotuneEntry<se::dnn::ConvSignature> entry;
   EXPECT_TRUE(
       ConvAutotuneMap::GetInstance()->Find(conv_params_example_a, &entry));
   EXPECT_EQ(entry, algorithm_config_example_a);

@@ -562,24 +562,17 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
     if (!autotune_entry.is_algorithm_config()) {
-      auto& execution_plans = autotune_entry.GetExecutionPlans();
-      auto plan_and_scratch_or =
-          AllocateScratchOrFallback(&scratch_allocator, execution_plans);
-      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
-      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
-      cudnn_launch_status = stream->FusedConvolveWithExecutionPlan(
-          input_desc, input_ptr,            // input
-          kConvScale,                       // input_scale
-          filter_desc, filter_ptr,          // filter
-          conv_desc,                        // conv
-          side_input_ptr, kSideInputScale,  // side_input
-          bias_desc, bias_ptr,              // bias
-          dnn_activation_mode,              // activation
-          output_desc, &output_ptr,         // output
-          std::get<se::DeviceMemoryBase>(plan_and_scratch),
-          *std::get<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>(
-              plan_and_scratch),
-          nullptr);
+      auto& runners = autotune_entry.GetOpRunners();
+      auto runner_and_scratch_or =
+          AllocateScratchOrFallback<se::dnn::FusedConvSignature>(
+              &scratch_allocator, runners);
+      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
+      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
+      auto& runner = *std::get<std::shared_ptr<const se::dnn::FusedConvRunner>>(
+          runner_and_scratch);
+      cudnn_launch_status = runner(
+          stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr,
+          std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
     } else {
       cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
           input_desc, input_ptr,            // input

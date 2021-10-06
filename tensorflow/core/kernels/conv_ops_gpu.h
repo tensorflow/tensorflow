@@ -94,9 +94,10 @@ typedef Eigen::GpuDevice GPUDevice;
 // autotuning with a cache, or by falling back to a default if
 // 'cudnn_use_autotune' is true and cuDNN is the statically-chosen DNN backend.
 template <typename T>
-StatusOr<ConvAutotuneEntry> AutotuneFusedConv(
+StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, ConvAutotuneEntry>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvSignature>>*
+        autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
@@ -110,9 +111,10 @@ StatusOr<ConvAutotuneEntry> AutotuneFusedConv(
     int64_t scratch_size);
 
 template <typename T>
-StatusOr<ConvAutotuneEntry> AutotuneUnfusedConv(
+StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, ConvAutotuneEntry>* autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvSignature>>*
+        autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<T> input_ptr, const se::dnn::FilterDescriptor& filter_desc,
@@ -121,14 +123,40 @@ StatusOr<ConvAutotuneEntry> AutotuneUnfusedConv(
     const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> output_ptr,
     int64_t scratch_size_limit);
 
-// Returns a pointer to the primary plan of 'algorithm_config' and allocated
+// Returns a pointer to the primary 'OpRunner' of 'runners' and allocated
 // scratch memory if allocatable; else a pointer to its fallback
-// no-scratch-space plan, and a null 'DeviceMemoryBase'.
-StatusOr<std::tuple<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>,
+// no-scratch-space runner, and a null 'DeviceMemoryBase'.
+template <typename Sig>
+StatusOr<std::tuple<std::shared_ptr<const se::dnn::OpRunner<Sig>>,
                     se::DeviceMemoryBase>>
 AllocateScratchOrFallback(
     se::ScratchAllocator* scratch_allocator,
-    const ConvAutotuneEntry::ExecutionPlans& algorithm_config);
+    const typename AutotuneEntry<Sig>::OpRunners& runners) {
+  std::shared_ptr<const se::dnn::OpRunner<Sig>> selected_runner =
+      runners.primary;
+  TF_ASSIGN_OR_RETURN(auto workspace_size, selected_runner->GetWorkspaceSize());
+
+  se::DeviceMemoryBase scratch_memory;
+  if (workspace_size > 0) {
+    auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
+    if (scratch_or.ok()) {
+      scratch_memory = scratch_or.ValueOrDie();
+    } else if ((selected_runner = runners.no_scratch_fallback)) {
+      TF_ASSIGN_OR_RETURN(auto no_scratch_workspace_size,
+                          selected_runner->GetWorkspaceSize());
+      if (no_scratch_workspace_size > 0) {
+        return errors::Internal(
+            "No-scratch fallback runner requires nonzero scratch space");
+      }
+    } else {
+      return errors::Unknown(
+          "CUDNN failed to allocate the scratch space for the runner or to "
+          "find a working no-scratch runner.");
+    }
+  }
+
+  return std::make_tuple(selected_runner, scratch_memory);
+}
 
 }  // namespace tensorflow
 

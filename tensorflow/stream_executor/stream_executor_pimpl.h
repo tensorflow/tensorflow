@@ -376,8 +376,7 @@ class StreamExecutor {
       const dnn::FilterDescriptor &filter_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>
-          *out_exec_plans);
+      std::vector<std::unique_ptr<const dnn::ConvRunner>> *out_exec_plans);
 
   port::Status GetFusedConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -388,7 +387,7 @@ class StreamExecutor {
       const dnn::BatchDescriptor &output_descriptor,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       dnn::ActivationMode activation_mode,
-      std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>
           *out_exec_plans) {
     dnn::DnnSupport *dnn_support = AsDnn();
     if (dnn_support) {

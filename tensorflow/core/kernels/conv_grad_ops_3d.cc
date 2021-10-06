@@ -1197,7 +1197,7 @@ struct Conv3dBackwardDataAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardDataAutotuneGroup, ConvParameters,
-                          ConvAutotuneEntry>
+                          AutotuneEntry<se::dnn::ConvSignature>>
 
     AutotuneConv3dBwdData;
 
@@ -1518,20 +1518,19 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
     if (!autotune_entry.is_algorithm_config()) {
-      auto& execution_plans = autotune_entry.GetExecutionPlans();
+      auto& runners = autotune_entry.GetOpRunners();
       VLOG(4) << "Conv3DBackpropInput Execution Plan: "
-              << execution_plans.plan->getTag();
-      auto plan_and_scratch_or =
-          AllocateScratchOrFallback(&scratch_allocator, execution_plans);
-      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
-      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
-      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
-          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          std::get<se::DeviceMemoryBase>(plan_and_scratch),
-          *std::get<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>(
-              plan_and_scratch),
-          nullptr);
+              << runners.primary->ToString();
+      auto runner_and_scratch_or =
+          AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
+                                                            runners);
+      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
+      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
+      auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
+          runner_and_scratch);
+      cudnn_launch_status =
+          runner(stream, in_backprop_ptr, filter_ptr, out_backprop_ptr,
+                 std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
     } else {
       cudnn_launch_status = stream->ConvolveWithAlgorithm(
           se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
@@ -1592,7 +1591,7 @@ struct Conv3dBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
-                          ConvAutotuneEntry>
+                          AutotuneEntry<se::dnn::ConvSignature>>
     AutotuneConv3dBwdFilter;
 
 template <typename T>
@@ -1928,20 +1927,19 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
     if (!autotune_entry.is_algorithm_config()) {
-      auto& execution_plans = autotune_entry.GetExecutionPlans();
+      auto& runners = autotune_entry.GetOpRunners();
       VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
-              << execution_plans.plan->getTag();
-      auto plan_and_scratch_or =
-          AllocateScratchOrFallback(&scratch_allocator, execution_plans);
-      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
-      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
-      cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, std::get<se::DeviceMemoryBase>(plan_and_scratch),
-          *std::get<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>(
-              plan_and_scratch),
-          nullptr);
+              << runners.primary->ToString();
+      auto runner_and_scratch_or =
+          AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
+                                                            runners);
+      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
+      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
+      auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
+          runner_and_scratch);
+      cudnn_launch_status =
+          runner(stream, input_ptr, filter_backprop_ptr, out_backprop_ptr,
+                 std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
     } else {
       cudnn_launch_status = stream->ConvolveWithAlgorithm(
           se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
