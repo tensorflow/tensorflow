@@ -1418,10 +1418,52 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "cudnn_support_utils",
+    srcs = ["cudnn_support_utils.cc"],
+    hdrs = ["cudnn_support_utils.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor:stream_header",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_support_utils_test",
+    srcs = ["cudnn_support_utils_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cudnn_support_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/stream_executor:device_description",
+        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "cudnn_pad_for_convolutions",
     srcs = ["cudnn_pad_for_convolutions.cc"],
     hdrs = ["cudnn_pad_for_convolutions.h"],
     deps = [
+        ":cudnn_support_utils",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -1429,6 +1471,8 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/functional:bind_front",
     ],
 )
@@ -1457,11 +1501,14 @@ cc_library(
     srcs = ["cudnn_vectorize_convolutions.cc"],
     hdrs = ["cudnn_vectorize_convolutions.h"],
     deps = [
+        ":cudnn_support_utils",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/stream_executor:device_description",
+        "//tensorflow/stream_executor:stream_header",
     ],
 )
 
