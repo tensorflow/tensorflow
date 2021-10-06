@@ -699,16 +699,27 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       },
       &usages);
 
-  std::vector<TensorUsageRecord<TensorDescriptor>> usage_records;
+  struct TensorDescComparator {
+    TensorDescriptor tensor_desc;
+
+    bool operator==(const TensorDescComparator& t) const {
+      return tensor_desc.data_type == t.tensor_desc.data_type &&
+             tensor_desc.storage_type == t.tensor_desc.storage_type &&
+             tensor_desc.layout == t.tensor_desc.layout &&
+             tensor_desc.shape == t.tensor_desc.shape;
+    }
+  };
+
+  std::vector<TensorUsageRecord<TensorDescComparator>> usage_records;
   std::map<ValueId, ValueId> remap_from_graph_ids;
   for (auto& usage : usages) {
     remap_from_graph_ids[usage.first] = usage_records.size();
-    usage_records.push_back({tensor_reserver_.Get(usage.first),
+    usage_records.push_back({{tensor_reserver_.Get(usage.first)},
                              static_cast<TaskId>(usage.second.x),
                              static_cast<TaskId>(usage.second.y)});
   }
 
-  ObjectsAssignment<TensorDescriptor> assignment;
+  ObjectsAssignment<TensorDescComparator> assignment;
   RETURN_IF_ERROR(AssignObjectsToTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
