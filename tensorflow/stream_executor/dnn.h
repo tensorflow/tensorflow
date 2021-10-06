@@ -1367,7 +1367,8 @@ class DnnSupport {
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool GetConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,

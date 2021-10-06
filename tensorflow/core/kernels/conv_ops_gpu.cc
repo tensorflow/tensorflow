@@ -326,8 +326,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     if (CudnnUseFrontend()) {
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
       if (!stream->parent()->GetConvolveExecutionPlans(
-              kind, element_type, stream, input_desc, filter_desc, output_desc,
-              conv_desc, &runners)) {
+              kind, element_type, element_type, stream, input_desc, filter_desc,
+              output_desc, conv_desc, &runners)) {
         return get_algo_failed_error;
       }
       auto launch_func =
