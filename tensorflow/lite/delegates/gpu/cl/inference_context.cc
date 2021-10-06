@@ -177,8 +177,6 @@ absl::Status InferenceContext::InitFromGraph(
 
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph));
-  precision_ = create_info.precision;
-  storage_type_ = create_info.storage_type;
   if (env->device().GetInfo().IsMali()) {
     need_flush_ = true;
     need_manual_release_ =
@@ -192,7 +190,7 @@ absl::Status InferenceContext::InitFromGraph(
   }
   CopyInAndOutIds(graph);
   RETURN_IF_ERROR(ConvertOperations(creation_context.GetGpuInfo(), graph,
-                                    create_info.hints));
+                                    create_info.precision, create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
@@ -339,9 +337,9 @@ absl::Status InferenceContext::ReserveGraphTensors(
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
-                                                 const GraphFloat32& graph,
-                                                 ModelHints hints) {
+absl::Status InferenceContext::ConvertOperations(
+    const GpuInfo& gpu_info, const GraphFloat32& graph,
+    CalculationsPrecision precision, ModelHints hints) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
@@ -373,7 +371,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
     std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, precision_, graph, node.id,
+        GPUSubgraphFromGraph(gpu_info, precision, graph, node.id,
                              tensor_descriptors, &consumed_nodes, &gpu_subgraph,
                              &op_name)
             .ok()) {
@@ -404,7 +402,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
       }
       consumed_nodes.insert(node.id);
       OperationDef op_def;
-      op_def.precision = precision_;
+      op_def.precision = precision;
       for (int j = 0; j < inputs.size(); ++j) {
         op_def.src_tensors.push_back(tensor_reserver_.Get(inputs[j]->id));
       }

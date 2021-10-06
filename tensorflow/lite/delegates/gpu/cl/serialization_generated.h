@@ -304,16 +304,14 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FLUSH_PERIODICALLY = 10,
     VT_FLUSH_PERIOD = 12,
     VT_NEED_MANUAL_RELEASE = 14,
-    VT_PRECISION = 16,
-    VT_STORAGE_TYPE = 18,
-    VT_NODES = 20,
-    VT_TENSORS = 22,
-    VT_CONST_TENSORS = 24,
-    VT_INPUT_IDS = 26,
-    VT_VARIABLE_IDS_AND_REFS = 28,
-    VT_OUTPUT_IDS = 30,
-    VT_INPUT_REFS = 32,
-    VT_OUTPUT_REFS = 34
+    VT_NODES = 16,
+    VT_TENSORS = 18,
+    VT_CONST_TENSORS = 20,
+    VT_INPUT_IDS = 22,
+    VT_VARIABLE_IDS_AND_REFS = 24,
+    VT_OUTPUT_IDS = 26,
+    VT_INPUT_REFS = 28,
+    VT_OUTPUT_REFS = 30
   };
   const flatbuffers::String *driver_version() const {
     return GetPointer<const flatbuffers::String *>(VT_DRIVER_VERSION);
@@ -336,13 +334,6 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool need_manual_release() const {
     return GetField<uint8_t>(VT_NEED_MANUAL_RELEASE, 0) != 0;
-  }
-  tflite::gpu::data::CalculationsPrecision precision() const {
-    return static_cast<tflite::gpu::data::CalculationsPrecision>(
-        GetField<int8_t>(VT_PRECISION, 0));
-  }
-  tflite::gpu::data::TensorStorageType storage_type() const {
-    return static_cast<tflite::gpu::data::TensorStorageType>(GetField<int8_t>(VT_STORAGE_TYPE, 0));
   }
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>> *nodes() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>> *>(VT_NODES);
@@ -383,8 +374,6 @@ struct InferenceContext FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_FLUSH_PERIODICALLY) &&
            VerifyField<int32_t>(verifier, VT_FLUSH_PERIOD) &&
            VerifyField<uint8_t>(verifier, VT_NEED_MANUAL_RELEASE) &&
-           VerifyField<int8_t>(verifier, VT_PRECISION) &&
-           VerifyField<int8_t>(verifier, VT_STORAGE_TYPE) &&
            VerifyOffset(verifier, VT_NODES) && verifier.VerifyVector(nodes()) &&
            verifier.VerifyVectorOfTables(nodes()) &&
            VerifyOffset(verifier, VT_TENSORS) &&
@@ -433,12 +422,6 @@ struct InferenceContextBuilder {
   void add_need_manual_release(bool need_manual_release) {
     fbb_.AddElement<uint8_t>(InferenceContext::VT_NEED_MANUAL_RELEASE, static_cast<uint8_t>(need_manual_release), 0);
   }
-  void add_precision(tflite::gpu::data::CalculationsPrecision precision) {
-    fbb_.AddElement<int8_t>(InferenceContext::VT_PRECISION, static_cast<int8_t>(precision), 0);
-  }
-  void add_storage_type(tflite::gpu::data::TensorStorageType storage_type) {
-    fbb_.AddElement<int8_t>(InferenceContext::VT_STORAGE_TYPE, static_cast<int8_t>(storage_type), 0);
-  }
   void add_nodes(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>> nodes) {
     fbb_.AddOffset(InferenceContext::VT_NODES, nodes);
   }
@@ -485,10 +468,6 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContext(
         binary_programs = 0,
     bool need_flush = false, bool flush_periodically = false,
     int32_t flush_period = 0, bool need_manual_release = false,
-    tflite::gpu::data::CalculationsPrecision precision =
-        tflite::gpu::data::CalculationsPrecision::F32,
-    tflite::gpu::data::TensorStorageType storage_type =
-        tflite::gpu::data::TensorStorageType::UNKNOWN,
     flatbuffers::Offset<
         flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>>
         nodes = 0,
@@ -517,8 +496,6 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContext(
   builder_.add_flush_period(flush_period);
   builder_.add_binary_programs(binary_programs);
   builder_.add_driver_version(driver_version);
-  builder_.add_storage_type(storage_type);
-  builder_.add_precision(precision);
   builder_.add_need_manual_release(need_manual_release);
   builder_.add_flush_periodically(flush_periodically);
   builder_.add_need_flush(need_flush);
@@ -531,10 +508,6 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContextDirect(
         *binary_programs = nullptr,
     bool need_flush = false, bool flush_periodically = false,
     int32_t flush_period = 0, bool need_manual_release = false,
-    tflite::gpu::data::CalculationsPrecision precision =
-        tflite::gpu::data::CalculationsPrecision::F32,
-    tflite::gpu::data::TensorStorageType storage_type =
-        tflite::gpu::data::TensorStorageType::UNKNOWN,
     const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::CLNode>>
         *nodes = nullptr,
     const std::vector<
@@ -572,9 +545,9 @@ inline flatbuffers::Offset<InferenceContext> CreateInferenceContextDirect(
   auto output_refs__ = output_refs ? _fbb.CreateVector<int64_t>(*output_refs) : 0;
   return tflite::gpu::cl::data::CreateInferenceContext(
       _fbb, driver_version__, binary_programs__, need_flush, flush_periodically,
-      flush_period, need_manual_release, precision, storage_type, nodes__,
-      tensors__, const_tensors__, input_ids__, variable_ids_and_refs__,
-      output_ids__, input_refs__, output_refs__);
+      flush_period, need_manual_release, nodes__, tensors__, const_tensors__,
+      input_ids__, variable_ids_and_refs__, output_ids__, input_refs__,
+      output_refs__);
 }
 
 inline const tflite::gpu::cl::data::InferenceContext *GetInferenceContext(const void *buf) {

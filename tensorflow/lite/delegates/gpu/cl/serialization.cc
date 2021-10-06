@@ -1012,8 +1012,6 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   inf_builder.add_flush_periodically(inference.flush_periodically_);
   inf_builder.add_flush_period(inference.flush_period_);
   inf_builder.add_need_manual_release(inference.need_manual_release_);
-  inf_builder.add_precision(ToFB(inference.precision_));
-  inf_builder.add_storage_type(tflite::gpu::ToFB(inference.storage_type_));
   inf_builder.add_nodes(nodes_fb_vec);
   inf_builder.add_tensors(tensors_fb_vec);
   inf_builder.add_const_tensors(const_tensors_fb_vec);
@@ -1040,8 +1038,6 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
   inference->flush_periodically_ = fb_inference->flush_periodically();
   inference->flush_period_ = fb_inference->flush_period();
   inference->need_manual_release_ = fb_inference->need_manual_release();
-  inference->precision_ = ToEnum(fb_inference->precision());
-  inference->storage_type_ = tflite::gpu::ToEnum(fb_inference->storage_type());
 
   for (auto binary_program_fb : *fb_inference->binary_programs()) {
     RETURN_IF_ERROR(program_cache->AddProgramBinary(

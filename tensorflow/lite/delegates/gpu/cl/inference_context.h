@@ -114,7 +114,9 @@ class InferenceContext {
 
   void CopyInAndOutIds(const GraphFloat32& graph);
   absl::Status ConvertOperations(const GpuInfo& gpu_info,
-                                 const GraphFloat32& graph, ModelHints hints);
+                                 const GraphFloat32& graph,
+                                 CalculationsPrecision precision,
+                                 ModelHints hints);
   void CreateLinks();
   absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
                                    const GpuInfo& gpu_info,
@@ -160,9 +162,6 @@ class InferenceContext {
   // already be executed on GPU and should not stall the pipeline.
   bool need_manual_release_ = false;
   CLEvent prev_enqueue_start_point_;
-
-  CalculationsPrecision precision_;
-  TensorStorageType storage_type_;
 
   // Directly mapped nodes from graph, but some of them "inactive" due
   //  to fusion (inactive = fused).

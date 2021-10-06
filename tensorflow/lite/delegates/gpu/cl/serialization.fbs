@@ -46,8 +46,6 @@ table InferenceContext {
   flush_periodically:bool;
   flush_period:int32;
   need_manual_release:bool;
-  precision:tflite.gpu.data.CalculationsPrecision;
-  storage_type:tflite.gpu.data.TensorStorageType;
   nodes:[CLNode];
   tensors:[TensorDescWithId];
   const_tensors:[TensorDescWithId];
