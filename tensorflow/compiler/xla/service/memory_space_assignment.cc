@@ -1225,6 +1225,25 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   }
 
   AllocateReservedScopedAllocations();
+  std::vector<BufferInterval> sorted_buffer_intervals =
+      GetSortedBufferIntervals();
+  memory_space_assignment::CustomizeSortedBufferInterval(
+      options_.autotuning_config, sorted_buffer_intervals);
+
+  // Calculate the memory pressure for the buffers that can be assigned in the
+  // alternate memory.
+  memory_pressure_ = 0;
+  for (auto& interval : sorted_buffer_intervals) {
+    if (!interval.need_allocation ||
+        !MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
+            interval) ||
+        interval.size > available_heap_size()) {
+      continue;
+    }
+    memory_pressure_ += interval.size;
+  }
+  VLOG(1) << "Memory pressure = " << memory_pressure_;
+
   if (options_.enable_cross_program_prefetch) {
     absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
         prefetch_candidate = FindCrossProgramPrefetchCandidate(
@@ -1236,10 +1255,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     }
   }
 
-  std::vector<BufferInterval> sorted_buffer_intervals =
-      GetSortedBufferIntervals();
-  memory_space_assignment::CustomizeSortedBufferInterval(
-      options_.autotuning_config, sorted_buffer_intervals);
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
@@ -1841,9 +1856,10 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
           << ", buffer occupied ratio = " << buffer_occupied_ratio;
   // Freeing buffer only makes sense if the buffer will be free for a
   // substantial time. Only perform this optimization if the ratio is below the
-  // limit.
+  // limit, and if the memory pressure is above the alternate memory size.
   bool free_buffer =
       (options_.enable_cross_program_prefetch_freeing &&
+       memory_pressure_ > options_.max_size_in_bytes &&
        buffer_occupied_ratio < kCrossProgramPrefetchOccupyFreeingLimit &&
        end_of_program_prefetch_start_time > last_use_time &&
        end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);
