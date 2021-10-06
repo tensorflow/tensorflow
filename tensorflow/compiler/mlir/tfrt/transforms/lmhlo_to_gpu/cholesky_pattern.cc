@@ -17,6 +17,7 @@
 #include <string>
 
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -25,18 +26,6 @@
 
 namespace tensorflow {
 namespace {
-
-static cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
-  if (type.isF16()) return CUDA_R_16F;
-  if (type.isF32()) return CUDA_R_32F;
-  if (type.isF64()) return CUDA_R_64F;
-  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
-    auto element_type = complex_type.getElementType();
-    if (element_type.isF32()) return CUDA_C_32F;
-    if (element_type.isF64()) return CUDA_C_64F;
-  }
-  llvm_unreachable("unsupported type");
-}
 
 struct CholeskyRewritePattern
     : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo_gpu::CholeskyOp> {

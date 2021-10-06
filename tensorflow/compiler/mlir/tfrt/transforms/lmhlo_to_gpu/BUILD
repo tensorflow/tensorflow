@@ -22,6 +22,19 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "pattern_utils",
+    srcs = ["pattern_utils.cc"],
+    hdrs = ["pattern_utils.h"],
+    tags = ["gpu"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//backends/gpu:gpu_wrapper",
+    ],
+)
+
+cc_library(
     name = "lmhlo_to_gpu",
     srcs = [
         "ccl_pattern.cc",
@@ -45,6 +58,7 @@ cc_library(
     ],
     deps = [
         ":GpuPassesIncGen",
+        ":pattern_utils",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
