@@ -727,7 +727,7 @@ Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
 }
 
 #ifdef INTEL_MKL
-void GetMKLNodeDef(NodeDef* ndef) {
+inline void GetMKLNodeDef(NodeDef* ndef) {
   // All MKL eager ops have `_kernel` private attribute that needs to be set
   // to a fixed label.
   AttrValue attr_kernel;
