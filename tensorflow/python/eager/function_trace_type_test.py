@@ -27,6 +27,50 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+class CacheKeyGenerationTest(test.TestCase):
+
+  def testTupleEquality(self):
+    trace_a = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
+    trace_b = function_trace_type.get_arg_spec((1, 2, 2, 4), False, False, True)
+    trace_c = function_trace_type.get_arg_spec((1, 2, 3), False, False, True)
+    trace_d = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
+
+    self.assertNotEqual(trace_a, trace_b)
+    self.assertNotEqual(trace_a, trace_c)
+    self.assertNotEqual(trace_b, trace_c)
+    self.assertEqual(trace_a, trace_d)
+
+  def testListEquality(self):
+    trace_a = function_trace_type.get_arg_spec([1, 2, 3, 4], False, False, True)
+    trace_b = function_trace_type.get_arg_spec([1, 2, 2, 4], False, False, True)
+    trace_c = function_trace_type.get_arg_spec([1, 2, 3], False, False, True)
+    trace_d = function_trace_type.get_arg_spec([1, 2, 3, 4], False, False, True)
+
+    self.assertNotEqual(trace_a, trace_b)
+    self.assertNotEqual(trace_a, trace_c)
+    self.assertNotEqual(trace_b, trace_c)
+    self.assertEqual(trace_a, trace_d)
+
+  def testDictEquality(self):
+    trace_a = function_trace_type.get_arg_spec({1: 2, 3: 4}, False, False, True)
+    trace_b = function_trace_type.get_arg_spec({1: 2, 3: 2}, False, False, True)
+    trace_c = function_trace_type.get_arg_spec({1: 2, 3: 0}, False, False, True)
+    trace_d = function_trace_type.get_arg_spec({3: 4, 1: 2}, False, False, True)
+
+    self.assertNotEqual(trace_a, trace_b)
+    self.assertNotEqual(trace_a, trace_c)
+    self.assertNotEqual(trace_b, trace_c)
+    self.assertEqual(trace_a, trace_d)
+
+  def testComplexStruct(self):
+    struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
+    trace_a = function_trace_type.get_arg_spec(struct, False, False, True)
+    trace_b = function_trace_type.get_arg_spec(struct, False, False, True)
+    self.assertEqual(trace_a, trace_b)
+    self.assertTrue(trace_a.is_subtype_of(trace_b))
+    self.assertTrue(trace_b.is_subtype_of(trace_a))
+
+
 class CacheKeyGenerationBenchmark(test.Benchmark):
 
   def benchmarkTensor(self):
@@ -36,7 +80,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensors.append(array_ops.zeros(s))
 
     def encode_tensors(tensors):
-      function_trace_type.get_arg_spec(tensors, False, False)
+      function_trace_type.get_arg_spec(tensors, False, False,
+                                       function.USE_FULL_TRACE_TYPE)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_tensors(tensors), number=iterations)
@@ -56,7 +101,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       tensor_specs.append(tensor_spec.TensorSpec(s, dtypes.int32))
 
     def encode_tensor_specs(tensor_specs):
-      function_trace_type.get_arg_spec(tensor_specs, False, False)
+      function_trace_type.get_arg_spec(tensor_specs, False, False,
+                                       function.USE_FULL_TRACE_TYPE)
 
     iterations = 100000
     t = timeit.timeit(
@@ -78,7 +124,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     ]
 
     def encode_variables(var_list):
-      function_trace_type.get_arg_spec(var_list, False, False)
+      function_trace_type.get_arg_spec(var_list, False, False,
+                                       function.USE_FULL_TRACE_TYPE)
 
     iterations = 1000000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
@@ -98,7 +145,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     model = keras.Model(inputs=inputs, outputs=outputs)
 
     def encode_model(model):
-      function_trace_type.get_arg_spec(model, False, False)
+      function_trace_type.get_arg_spec(model, False, False,
+                                       function.USE_FULL_TRACE_TYPE)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_model(model), number=iterations)
@@ -146,7 +194,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
-      function_trace_type.get_arg_spec(struct, False, False)
+      function_trace_type.get_arg_spec(struct, False, False,
+                                       function.USE_FULL_TRACE_TYPE)
 
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)
