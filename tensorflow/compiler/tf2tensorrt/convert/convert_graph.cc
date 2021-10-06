@@ -253,7 +253,7 @@ Status GetEngineInfo(const Graph* g,
   TF_RETURN_IF_ERROR(
       ConvertSegmentToGraphDef(g, graph_properties, subgraph_nodes, info));
   VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
-          << "' to a GraphDef " << info->has_int32_input;
+          << "' to a GraphDef";
   if (segment_device.has_type) {
     // If the accumulated device assignment for the segment has a device type,
     // the segmenter guarantees the device type is GPU. Use the device
@@ -585,8 +585,7 @@ Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
 }  // namespace
 
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
-                                      Graph* graph, const string& engine_name,
-                                      bool has_int32_input) {
+                                      Graph* graph, const string& engine_name) {
   Graph segment_graph(graph->flib_def());
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
                                             segment_graph_def, &segment_graph));
@@ -594,16 +593,6 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
   auto segment_func = library.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       segment_graph, StrCat(engine_name, "_native_segment"), segment_func));
-  if (has_int32_input) {
-    // Setting this attribute value informs TensorFlow that the int32 _Arg node
-    // inputs are on device memory during native segment execution. We only set
-    // the attribute value when there is any int32 input because the attribute
-    // is not compatible with is_multi_device_function.
-    SetAttrValue(
-        true,
-        &(*segment_func
-               ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]);
-  }
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << segment_func->DebugString();
@@ -825,8 +814,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
 
     status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
-                                            &graph, curr_engine.engine_name,
-                                            curr_engine.has_int32_input);
+                                            &graph, curr_engine.engine_name);
 
     if (!status.ok()) {
       LOG_WARNING_WITH_PREFIX
