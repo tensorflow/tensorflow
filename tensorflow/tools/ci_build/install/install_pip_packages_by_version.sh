@@ -29,7 +29,7 @@ PACKAGES=(
   # NOTE: As numpy has releases that break semver guarantees and several other
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
-  "numpy~=1.19.2"
+  "numpy~=1.21.2"
   "auditwheel"
   "wheel"
   "setuptools"
