@@ -506,6 +506,7 @@ CreateDefaultExecutionContext() {
       });
 }
 
+#if XLA_ENABLE_XCCL
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
                            const NcclCollectiveConfig& xccl_config,
@@ -579,6 +580,7 @@ GetCollectivePermuteSourceTarget(
                                                       it->second.target};
   return XcclContext::CollectivePermuteSourceTarget{};
 }
+#endif  // XLA_ENABLE_XCCL
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateKernelExecutionContext(absl::optional<GpuModuleData> gpu_module_data) {
@@ -646,6 +648,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Create execution context.
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
+#if XLA_ENABLE_XCCL
   StatusOr<LockedNcclClique> locked_clique_or;  // Destruction = freeing lock.
   if (xccl_config_.has_value()) {
     TF_ASSIGN_OR_RETURN(
@@ -658,15 +661,19 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
           GetCollectivePermuteSourceTarget(
               params, *xccl_config_, id_to_collective_permute_source_target_));
     }
-  } else if (kind() == Thunk::kKernel) {
-    tensorflow::mutex_lock lock(mutex_);
-    TF_ASSIGN_OR_RETURN(exec_ctx,
-                        CreateKernelExecutionContext(gpu_module_data_));
-  } else if (kind() == Thunk::kCustomCall) {
-    TF_ASSIGN_OR_RETURN(exec_ctx,
-                        CreateCustomCallExecutionContext(custom_call_target_));
-  } else {
-    TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
+  }
+#endif  // XLA_ENABLE_XCCL
+  if (!exec_ctx) {
+    if (kind() == Thunk::kKernel) {
+      tensorflow::mutex_lock lock(mutex_);
+      TF_ASSIGN_OR_RETURN(exec_ctx,
+                          CreateKernelExecutionContext(gpu_module_data_));
+    } else if (kind() == Thunk::kCustomCall) {
+      TF_ASSIGN_OR_RETURN(
+          exec_ctx, CreateCustomCallExecutionContext(custom_call_target_));
+    } else {
+      TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
+    }
   }
 
   // Create owning handles for arguments and add pointer to them to 'args'.
@@ -699,12 +706,14 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Wait for async execution to complete.
   tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
+#if XLA_ENABLE_XCCL
   if (xccl_config_.has_value()) {
     auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
     // Release the ownership of comms lent to tfrt::gpu::GpuCclHandle.
     xccl_ctx.ccl_handle->release();
     xccl_ctx.ccl_handle.reset();
   }
+#endif  // XLA_ENABLE_XCCL
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())

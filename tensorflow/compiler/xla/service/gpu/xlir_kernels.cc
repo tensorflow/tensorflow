@@ -92,6 +92,7 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
+#if XLA_ENABLE_XCCL
 static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -177,6 +178,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
 
   return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
+#endif  // XLA_ENABLE_XCCL
 
 static llvm::Error CustomCall(
     const tfrt::gpu::GpuStream& stream, tfrt::Chain chain,
@@ -234,11 +236,13 @@ static llvm::Error CustomCall(
 
 static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+  kernel_reg->AddKernel("xlir.custom_call",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
+#if XLA_ENABLE_XCCL
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
   kernel_reg->AddKernel("xlir.ccl.collective_permute",
                         TFRT_KERNEL(CclCollectivePermute));
-  kernel_reg->AddKernel("xlir.custom_call",
-                        TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
+#endif  // XLA_ENABLE_XCCL
 }
 
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterXlirKernels);
