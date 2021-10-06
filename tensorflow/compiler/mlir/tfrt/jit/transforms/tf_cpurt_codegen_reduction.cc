@@ -196,7 +196,7 @@ struct FillOfExtractSlice : public mlir::OpRewritePattern<FillOp> {
 // Match 2D row reduction. This is a starting point, we will relax this
 // condition further down the road, when we add support for more reduction
 // types.
-bool is2DRowReduction(mlir::Operation *op) {
+bool is2DRowOrColumnReduction(mlir::Operation *op) {
   auto reduction = mlir::dyn_cast<GenericOp>(op);
   if (!reduction) return false;
 
@@ -221,7 +221,7 @@ struct CodegenReductionPass
     auto filter = LinalgTransformationFilter(
                       llvm::None, {Identifier::get("tiled", context)})
                       .addFilter([](Operation *op) {
-                        return success(is2DRowReduction(op));
+                        return success(is2DRowOrColumnReduction(op));
                       });
     patterns.insert<FillOfExtractSlice>(context);
     patterns.insert<TileAndFusePattern>(tiling_options, filter,
