@@ -141,6 +141,11 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    bool non_negative =
+        std::all_of(ksize_.begin(), ksize_.end(), [](int k) { return k > 0; });
+    OP_REQUIRES(context, non_negative,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "have non-negative dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
