@@ -105,8 +105,8 @@ TEST(AutotuneSerializeTest, Consistency) {
 
   AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
   AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
-  AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
-                                             algorithm_no_scratch);
+  ConvAutotuneEntry algorithm_config_example_a(
+      AlgorithmConfig(algorithm, /*scratch_size=*/1, algorithm_no_scratch));
   ConvAutotuneMap::GetInstance()->Insert(conv_params_example_a,
                                          algorithm_config_example_a);
   ConvAutotuneMap::GetInstance()->Insert(fused_params_example_a,
@@ -119,16 +119,16 @@ TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
   EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 3);
 
-  AlgorithmConfig algorithm_config;
-  EXPECT_TRUE(ConvAutotuneMap::GetInstance()->Find(conv_params_example_a,
-                                                   &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
-  EXPECT_TRUE(ConvAutotuneMap::GetInstance()->Find(fused_params_example_a,
-                                                   &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
+  ConvAutotuneEntry entry;
+  EXPECT_TRUE(
+      ConvAutotuneMap::GetInstance()->Find(conv_params_example_a, &entry));
+  EXPECT_EQ(entry, algorithm_config_example_a);
+  EXPECT_TRUE(
+      ConvAutotuneMap::GetInstance()->Find(fused_params_example_a, &entry));
+  EXPECT_EQ(entry, algorithm_config_example_a);
   EXPECT_TRUE(ConvAutotuneMap::GetInstance()->Find(
-      contrib_fused_params_example_a, &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
+      contrib_fused_params_example_a, &entry));
+  EXPECT_EQ(entry, algorithm_config_example_a);
 }
 
 // Test that LoadSerializedAutotuneMaps will reject entries with incompatible

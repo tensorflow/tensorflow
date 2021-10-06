@@ -4111,7 +4111,7 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     output_profile_result->set_algorithm(
-        {execution_plan.getTag(), execution_plan.get_raw_desc()});
+        dnn::AlgorithmDesc{execution_plan.getTag()});
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());
@@ -4162,7 +4162,8 @@ bool CudnnSupport::GetConvolveExecutionPlans(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans) {
+    std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
+        out_exec_plans) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnOperationGraph(
@@ -4262,7 +4263,8 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans) {
+    std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
+        out_exec_plans) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
@@ -5069,7 +5071,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     output_profile_result->set_algorithm(
-        {execution_plan.getTag(), execution_plan.get_raw_desc()});
+        dnn::AlgorithmDesc{execution_plan.getTag()});
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());

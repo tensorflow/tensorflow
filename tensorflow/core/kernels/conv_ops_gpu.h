@@ -94,9 +94,9 @@ typedef Eigen::GpuDevice GPUDevice;
 // autotuning with a cache, or by falling back to a default if
 // 'cudnn_use_autotune' is true and cuDNN is the statically-chosen DNN backend.
 template <typename T>
-StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
+StatusOr<ConvAutotuneEntry> AutotuneFusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, ConvAutotuneEntry>* autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
@@ -110,9 +110,9 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneFusedConv(
     int64_t scratch_size);
 
 template <typename T>
-StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
+StatusOr<ConvAutotuneEntry> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig>* autotune_map,
+    AutotuneMap<ConvParameters, ConvAutotuneEntry>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<T> input_ptr, const se::dnn::FilterDescriptor& filter_desc,
@@ -123,12 +123,12 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
 
 // Returns a pointer to the primary plan of 'algorithm_config' and allocated
 // scratch memory if allocatable; else a pointer to its fallback
-// no-scratch-space plan, and a null 'DeviceMemoryBase'.  The
-// 'ConvolveExecutionPlan' pointers are lifetime-bound to the 'AlgorithmConfig'.
-StatusOr<
-    std::tuple<const se::dnn::ConvolveExecutionPlan*, se::DeviceMemoryBase>>
-AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
-                          const se::dnn::AlgorithmConfig& algorithm_config);
+// no-scratch-space plan, and a null 'DeviceMemoryBase'.
+StatusOr<std::tuple<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>,
+                    se::DeviceMemoryBase>>
+AllocateScratchOrFallback(
+    se::ScratchAllocator* scratch_allocator,
+    const ConvAutotuneEntry::ExecutionPlans& algorithm_config);
 
 }  // namespace tensorflow
 

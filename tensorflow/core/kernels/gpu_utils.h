@@ -257,14 +257,87 @@ void LogFusedConvForwardAutotuneResults(
     double side_value_scale, se::dnn::ActivationMode activation_mode,
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
+// Autotuning map entry for cuDNN-frontend-capable APIs.
+class ConvAutotuneEntry {
+ public:
+  ConvAutotuneEntry() : is_algorithm_config_(true) {}
+
+  ConvAutotuneEntry(se::dnn::AlgorithmConfig config)
+      : is_algorithm_config_(true), algorithm_config_(std::move(config)) {}
+
+  ConvAutotuneEntry(
+      std::shared_ptr<const se::dnn::ConvolveExecutionPlan> plan,
+      std::shared_ptr<const se::dnn::ConvolveExecutionPlan> plan_no_scratch)
+      : is_algorithm_config_(false),
+        execution_plans_{std::move(plan), std::move(plan_no_scratch)} {}
+
+  struct ExecutionPlans {
+    std::shared_ptr<const se::dnn::ConvolveExecutionPlan> plan;  // Non-null
+    std::shared_ptr<const se::dnn::ConvolveExecutionPlan>
+        plan_no_scratch;  // Nullable
+
+    bool operator==(const ExecutionPlans& other) const {
+      return plan->getTag() == other.plan->getTag() &&
+             ((!plan_no_scratch && !other.plan_no_scratch) ||
+              (plan_no_scratch && other.plan_no_scratch &&
+               plan_no_scratch->getTag() == other.plan_no_scratch->getTag()));
+    }
+  };
+
+  bool is_algorithm_config() const { return is_algorithm_config_; }
+
+  const se::dnn::AlgorithmConfig& GetAlgorithmConfig() const {
+    DCHECK(is_algorithm_config_);
+    return algorithm_config_;
+  }
+
+  const ExecutionPlans& GetExecutionPlans() const {
+    DCHECK(!is_algorithm_config_);
+    return execution_plans_;
+  }
+
+  // AutotuneMap needs to test equality to keep track of the number of times an
+  // algorithm has won autotuning; for this purpose, we can consider execution
+  // plans with equal tags to be equal.
+  bool operator==(const ConvAutotuneEntry& other) const {
+    if (is_algorithm_config_) {
+      return other.is_algorithm_config_ &&
+             algorithm_config_ == other.algorithm_config_;
+    }
+
+    return !other.is_algorithm_config_ &&
+           execution_plans_ == other.execution_plans_;
+  }
+
+  bool operator!=(const ConvAutotuneEntry& other) const {
+    return !(*this == other);
+  }
+
+  std::string ToString() const {
+    if (is_algorithm_config_) {
+      return algorithm_config_.ToString();
+    }
+    return absl::StrCat("{", execution_plans_.plan->getTag(), ", ",
+                        execution_plans_.plan_no_scratch->getTag(), "}");
+  }
+
+ private:
+  // NVCC is broken, so we can't use absl::variant here.  Just fake it with a
+  // bool and both fields.
+  bool is_algorithm_config_;
+  se::dnn::AlgorithmConfig algorithm_config_;
+  ExecutionPlans execution_plans_;
+};
+
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored. The "plans" can be null or empty when Cudnn frontend
-// APIs are not used.
-Status BestCudnnConvAlgorithm(
+// allowed and ignored.
+StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results);
+
+StatusOr<ConvAutotuneEntry> BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo);
+    std::vector<std::unique_ptr<const se::dnn::ConvolveExecutionPlan>> plans);
 
 }  // namespace tensorflow
 

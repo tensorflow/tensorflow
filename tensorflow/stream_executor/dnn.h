@@ -795,21 +795,14 @@ class AlgorithmDesc {
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
   }
-  AlgorithmDesc(Tag a, void* b) {
-    proto_.set_exec_plan_id(a);
-    exec_plan_desc_ = b;
-  }
+  explicit AlgorithmDesc(Tag a) { proto_.set_exec_plan_id(a); }
   bool IsExecutionPlan() const { return exec_plan_id() != ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
   Index algo_id() const { return proto_.algo_id(); }
   Tag exec_plan_id() const { return proto_.exec_plan_id(); }
-  void* exec_plan_desc() const { return exec_plan_desc_; }
   bool operator==(const AlgorithmDesc& other) const {
-    if (IsExecutionPlan()) {
-      return exec_plan_id() == other.exec_plan_id();
-    }
     return algo_id() == other.algo_id() &&
            tensor_ops_enabled() == other.tensor_ops_enabled();
   }
@@ -821,9 +814,6 @@ class AlgorithmDesc {
 
  private:
   AlgorithmProto proto_;
-  // We keep a pointer for the execution plan if cuDNN v8 is used. Note,
-  // AlgorithmDesc doesn't own it.
-  void* exec_plan_desc_;
 };
 
 // Describes the result from a perf experiment.
@@ -926,17 +916,6 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
-  void set_plan(std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
-    plan_ = std::move(plan);
-  }
-  const dnn::ConvolveExecutionPlan* get_plan() const { return plan_.get(); }
-  void set_plan_no_scratch(
-      std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
-    plan_no_scratch_ = std::move(plan);
-  }
-  const dnn::ConvolveExecutionPlan* get_plan_no_scratch() const {
-    return plan_no_scratch_.get();
-  }
 
   // TODO(ruochengw): After cl/380702564, add support for algorithm configs with
   // cuDNN Frontend APIs.
@@ -960,8 +939,6 @@ class AlgorithmConfig {
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -1360,7 +1337,8 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
+      std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>*
+          out_exec_plans);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

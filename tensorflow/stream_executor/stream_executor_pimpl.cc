@@ -290,7 +290,8 @@ bool StreamExecutor::GetConvolveExecutionPlans(
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
+    std::vector<std::unique_ptr<const dnn::ConvolveExecutionPlan>>
+        *out_exec_plans) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;

@@ -44,7 +44,7 @@ struct ConvBackwardDataAutotuneGroup {
 };
 
 typedef AutotuneSingleton<ConvBackwardDataAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
+                          ConvAutotuneEntry>
     AutotuneConvBwdData;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -377,33 +377,32 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       conv_desc.group_count()              // group_count
   };
 
-  auto config_or = AutotuneUnfusedConv(
+  auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, AutotuneConvBwdData::GetInstance(), conv_parameters,
       ctx, se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
       filter_desc, filter_ptr, conv_desc, output_desc, out_backprop_ptr,
       ConvolveBackwardDataScratchSize);
-  OP_REQUIRES_OK(ctx, config_or.status());
-  AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+  OP_REQUIRES_OK(ctx, entry_or.status());
+  auto autotune_entry = entry_or.ConsumeValueOrDie();
 
   Status cudnn_launch_status;
-  if (CudnnUseFrontend()) {
-    if (algorithm_config.algorithm().has_value()) {
-      VLOG(4) << "Conv2DBackpropInput Execution Plan: "
-              << algorithm_config.algorithm()->exec_plan_id();
-    } else {
-      VLOG(4) << "Convolution Autotune has been turned off";
-    }
+  if (!autotune_entry.is_algorithm_config()) {
+    auto& execution_plans = autotune_entry.GetExecutionPlans();
+    VLOG(4) << "Conv2DBackpropInput Execution Plan: "
+            << execution_plans.plan->getTag();
     auto plan_and_scratch_or =
-        AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+        AllocateScratchOrFallback(&scratch_allocator, execution_plans);
     OP_REQUIRES_OK(ctx, plan_and_scratch_or.status());
     auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
     cudnn_launch_status = stream->ConvolveWithExecutionPlan(
         se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
         std::get<se::DeviceMemoryBase>(plan_and_scratch),
-        *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+        *std::get<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>(
+            plan_and_scratch),
         nullptr);
   } else {
+    const auto& algorithm_config = autotune_entry.GetAlgorithmConfig();
     cudnn_launch_status = stream->ConvolveWithAlgorithm(
         se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,

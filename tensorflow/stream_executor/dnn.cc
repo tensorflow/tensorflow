@@ -60,7 +60,8 @@ bool DnnSupport::GetConvolveExecutionPlans(
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* /*exec_plans*/) {
+    std::vector<
+        std::unique_ptr<const dnn::ConvolveExecutionPlan>>* /*exec_plans*/) {
   return false;
 }
 

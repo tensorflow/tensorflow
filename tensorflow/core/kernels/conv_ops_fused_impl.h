@@ -550,20 +550,21 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                    dnn_activation_mode,  // activation_mode
                                    /*is_contrib=*/false}};
 
-    auto config_or = AutotuneFusedConv<T>(
+    auto entry_or = AutotuneFusedConv<T>(
         cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
         conv_parameters, context, input_desc, filter_desc, bias_desc,
         output_desc, conv_desc, dnn_activation_mode, kConvScale,
         kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
         side_input_ptr, ConvolveScratchSize());
-    OP_REQUIRES_OK(context, config_or.status());
-    auto algorithm_config = config_or.ConsumeValueOrDie();
+    OP_REQUIRES_OK(context, entry_or.status());
+    auto autotune_entry = entry_or.ConsumeValueOrDie();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
-    if (CudnnUseFrontend()) {
+    if (!autotune_entry.is_algorithm_config()) {
+      auto& execution_plans = autotune_entry.GetExecutionPlans();
       auto plan_and_scratch_or =
-          AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+          AllocateScratchOrFallback(&scratch_allocator, execution_plans);
       OP_REQUIRES_OK(context, plan_and_scratch_or.status());
       auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
       cudnn_launch_status = stream->FusedConvolveWithExecutionPlan(
@@ -576,7 +577,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           dnn_activation_mode,              // activation
           output_desc, &output_ptr,         // output
           std::get<se::DeviceMemoryBase>(plan_and_scratch),
-          *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+          *std::get<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>(
+              plan_and_scratch),
           nullptr);
     } else {
       cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
@@ -588,7 +590,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           bias_desc, bias_ptr,              // bias
           dnn_activation_mode,              // activation
           output_desc, &output_ptr,         // output
-          &scratch_allocator, algorithm_config, nullptr);
+          &scratch_allocator, autotune_entry.GetAlgorithmConfig(), nullptr);
     }
 
     OP_REQUIRES_OK(context, cudnn_launch_status);
