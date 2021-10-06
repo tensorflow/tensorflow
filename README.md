@@ -78,7 +78,7 @@ b'Hello, TensorFlow!'
 ```
 
 For more examples, see the
-[TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
+[TensorFlow tutorial](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 
