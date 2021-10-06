@@ -1414,7 +1414,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     x: A tensor.
     axes: 1-d tensor of int32 values; these are the axes along which
       to compute mean and variance.
-    frequency_weights: A tensor of non-negative weights which can be
+    frequency_weights: A tensor of positive weights which can be
       broadcast with x.
     name: Name used to scope the operation.
     keep_dims: Produce moments with the same dimensionality as the input.
@@ -1458,7 +1458,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     sum_of_weights = math_ops.reduce_sum(
         broadcasted_weights, axes, name="sum_of_weights", keepdims=True)
 
-    divisor = math_ops.reciprocal_no_nan(sum_of_weights, name="inv_weight_sum")
+    divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
 
     weighted_mean = math_ops.multiply(weighted_input_sum, divisor)
 
@@ -1492,7 +1492,7 @@ def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
     x: A tensor.
     axes: 1-d tensor of int32 values; these are the axes along which
       to compute mean and variance.
-    frequency_weights: A tensor of non-negative weights which can be
+    frequency_weights: A tensor of positive weights which can be
       broadcast with x.
     keepdims: Produce moments with the same dimensionality as the input.
     name: Name used to scope the operation.
