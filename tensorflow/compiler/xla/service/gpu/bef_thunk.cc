@@ -356,7 +356,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
     buffer_values.push_back(func.getArgument(2 + i));
   }
 
-  mlir::Value launch_op = builder.create<tfrt::gpu::LaunchOp>(
+  mlir::Value launch_op = builder.create<tfrt::gpu::FunctionLaunchOp>(
       loc, chain_type, stream_arg, module_function_op, grid_dim_x, grid_dim_y,
       grid_dim_z, block_dim_x, block_dim_y, block_dim_z, shared_mem_size,
       in_chain, mlir::ValueRange(buffer_values));
