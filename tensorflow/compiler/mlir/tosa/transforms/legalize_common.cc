@@ -1231,6 +1231,10 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
       }
     }
   } else {
+    for (auto& dim : squeeze_dims) {
+      dim = dim < 0 ? dim + input_shape.size() : dim;
+    }
+
     // Remove only specified dims.
     // First sort the array so they can be picked off in sequence.
     std::sort(squeeze_dims.begin(), squeeze_dims.end(),

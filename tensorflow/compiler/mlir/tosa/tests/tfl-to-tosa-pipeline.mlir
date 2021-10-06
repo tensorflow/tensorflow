@@ -1363,3 +1363,23 @@ func @test_conv2d_infer(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32
   %1 = "tfl.conv_2d"(%arg0, %0, %cst)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8xf32>, tensor<*xf32>, tensor<16xf32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @test_squeeze
+func @test_squeeze(%arg0: tensor<2x1x3x1xf32>) -> tensor<2x3x1xf32> {
+  // CHECK: tosa.reshape
+  // CHECK: -> tensor<2x3x1xf32>
+  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [1]} : (tensor<2x1x3x1xf32>) -> tensor<2x3x1xf32>
+  return %0 : tensor<2x3x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_squeeze_neg
+func @test_squeeze_neg(%arg0: tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32> {
+  // CHECK: tosa.reshape
+  // CHECK: -> tensor<2x1x3xf32>
+  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [-1]} : (tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+}
