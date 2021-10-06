@@ -80,7 +80,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     def encode_variables(var_list):
       function_trace_type.get_arg_spec(var_list, False, False)
 
-    iterations = 100000
+    iterations = 1000000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
     self.report_benchmark(
         name='variable_cache_key_generation',
