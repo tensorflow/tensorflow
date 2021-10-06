@@ -24,6 +24,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//platforms/xla/tests/gpu/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -618,6 +619,7 @@ tf_cc_binary(
         "gpu",
         "no_oss",
     ],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
