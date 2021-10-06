@@ -92,7 +92,7 @@ Status TfgGrapplerOptimizer::Optimize(
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       tensorflow::ExportMlirToGraphdef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
-  *optimized_graph = graphdef;
+  *optimized_graph = std::move(graphdef);
 #ifndef NDEBUG
   if (VLOG_IS_ON(5)) {
     fprintf(stderr, "After Graph: %s\nMlir Module:\n",
