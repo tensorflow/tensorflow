@@ -568,7 +568,9 @@ class MklConvOp : public OpKernel {
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     is_filter_const_ = false;
-    if (context->HasAttr("is_filter_const")) {
+    if (AreWeightsFrozen()) {
+      is_filter_const_ = true;
+    } else if (context->HasAttr("is_filter_const")) {
       OP_REQUIRES_OK(context,
                      context->GetAttr("is_filter_const", &is_filter_const_));
     }
