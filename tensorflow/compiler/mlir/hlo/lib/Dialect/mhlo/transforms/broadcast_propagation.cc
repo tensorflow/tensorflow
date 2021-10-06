@@ -449,8 +449,10 @@ struct BroadcastPropagationPass
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    GreedyRewriteConfig config;
+    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
+                                            config))) {
       return signalPassFailure();
     }
   }
